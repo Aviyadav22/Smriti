@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Data
+backend/data/raw/
+backend/data/extracted/
+backend/data/pdfs/
+backend/data/ingestion_tracker.db
+
+# Node
+node_modules/
+.next/
+out/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+
+# ruff
+.ruff_cache/
+
+# Logs
+*.log

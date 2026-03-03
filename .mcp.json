@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "scopecraft": {
+      "command": "npx",
+      "args": [
+        "--yes",
+        "--package=@scopecraft/cmd",
+        "scopecraft-stdio",
+        "--root-dir",
+        "d:/Startup/Smriti"
+      ]
+    }
+  }
+}
