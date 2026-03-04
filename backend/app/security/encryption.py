@@ -106,7 +106,7 @@ def decrypt_field(ciphertext: str) -> str:
 
     try:
         plaintext_bytes = aesgcm.decrypt(nonce, encrypted_data, None)
-    except Exception as exc:
-        raise ValueError(f"Decryption failed: {exc}")
+    except (ValueError, OverflowError) as exc:
+        raise ValueError(f"Decryption failed: {exc}") from exc
 
     return plaintext_bytes.decode("utf-8")

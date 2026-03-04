@@ -6,6 +6,7 @@ Follows the architecture defined in DATA_SOURCES.md §3.
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from dataclasses import asdict
@@ -86,7 +87,7 @@ async def ingest_judgment(
 
     if not full_text or len(full_text) < 50:
         logger.error("No text extracted from PDF: %s", pdf_path)
-        await _insert_failed_document(db, case_id, pdf_path, "No text extracted")
+        await _record_ingestion_failure(db, case_id, pdf_path, "No text extracted")
         return case_id
 
     # ------------------------------------------------------------------
@@ -110,8 +111,8 @@ async def ingest_judgment(
     storage_dest = f"cases/{case_id}/{_safe_filename(parquet_metadata)}"
     try:
         storage_path = await storage.store(pdf_path, storage_dest)
-    except Exception:
-        logger.exception("Failed to store PDF: %s", pdf_path)
+    except (OSError, PermissionError, FileNotFoundError) as exc:
+        logger.error("Failed to store PDF %s: %s", pdf_path, exc)
         storage_path = pdf_path  # fallback: keep original path
 
     # ------------------------------------------------------------------
@@ -239,25 +240,23 @@ async def _insert_case(
     await db.commit()
 
 
-async def _insert_failed_document(
+async def _record_ingestion_failure(
     db: AsyncSession,
     case_id: str,
     pdf_path: str,
     error_message: str,
 ) -> None:
-    """Insert a failed document record for tracking."""
+    """Record an ingestion failure in the audit_logs table for tracking."""
     await db.execute(
         text(
-            "INSERT INTO documents (id, user_id, filename, storage_path, status, error_message) "
-            "VALUES (:id, :user_id, :filename, :storage_path, :status, :error_message)"
+            "INSERT INTO audit_logs (action, resource_type, resource_id, metadata, created_at) "
+            "VALUES (:action, :resource_type, :resource_id, :metadata, NOW())"
         ),
         {
-            "id": case_id,
-            "user_id": "system",
-            "filename": pdf_path,
-            "storage_path": pdf_path,
-            "status": "failed",
-            "error_message": error_message,
+            "action": "ingestion.failed",
+            "resource_type": "case",
+            "resource_id": case_id,
+            "metadata": json.dumps({"pdf_path": pdf_path, "error": error_message}),
         },
     )
     await db.commit()
@@ -329,8 +328,8 @@ async def _build_citation_graph(
                 "year": metadata.year or 0,
             },
         )
-    except Exception:
-        logger.exception("Failed to create case node: %s", case_id)
+    except (OSError, ConnectionError, RuntimeError) as exc:
+        logger.error("Failed to create case node %s: %s", case_id, exc)
         return
 
     # Extract citations from the text
@@ -359,5 +358,5 @@ async def _build_citation_graph(
                     "reporter": citation.reporter,
                 },
             )
-        except Exception:
+        except (OSError, ConnectionError, RuntimeError):
             logger.warning("Failed to create citation edge: %s -> %s", case_id, cited_ref)

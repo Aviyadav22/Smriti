@@ -1,7 +1,7 @@
 """Authentication endpoints: register, login, refresh."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
@@ -81,7 +81,7 @@ async def register(
     # Record consent
     await db.execute(
         text(
-            "INSERT INTO consent_records (id, user_id, consent_type, granted, version) "
+            "INSERT INTO consents (id, user_id, consent_type, granted, version) "
             "VALUES (:id, :user_id, :consent_type, :granted, :version)"
         ),
         {
@@ -128,9 +128,7 @@ async def login(
         new_count = (user["failed_login_count"] or 0) + 1
         lock_until = None
         if new_count >= 5:
-            lock_until = datetime.now(timezone.utc).replace(
-                minute=datetime.now(timezone.utc).minute + 15
-            )
+            lock_until = datetime.now(timezone.utc) + timedelta(minutes=15)
         await db.execute(
             text(
                 "UPDATE users SET failed_login_count = :count, locked_until = :lock "
@@ -162,11 +160,23 @@ async def login(
 
 
 @router.post("/refresh")
-async def refresh_token(body: RefreshRequest) -> TokenResponse:
-    """Refresh access token using refresh token."""
+async def refresh_token(
+    body: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """Refresh access token using refresh token with rotation."""
     payload = verify_refresh_token(body.refresh_token)
 
-    access_token = create_access_token(payload.sub, payload.role)
+    # Fetch the user's actual role from the database (refresh token has role="refresh")
+    result = await db.execute(
+        text("SELECT role, is_active FROM users WHERE id = :id"),
+        {"id": payload.sub},
+    )
+    user = result.mappings().one_or_none()
+    if user is None or not user["is_active"]:
+        raise HTTPException(status_code=401, detail="User not found or deactivated")
+
+    access_token = create_access_token(payload.sub, user["role"])
     new_refresh_token = create_refresh_token(payload.sub)
 
     return TokenResponse(

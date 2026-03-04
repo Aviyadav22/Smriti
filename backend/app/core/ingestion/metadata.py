@@ -66,8 +66,8 @@ async def extract_metadata_llm(text: str, llm: LLMProvider) -> CaseMetadata:
             output_schema=METADATA_OUTPUT_SCHEMA,
             temperature=0.1,
         )
-    except Exception:
-        logger.exception("LLM metadata extraction failed")
+    except (ValueError, KeyError, ConnectionError, TimeoutError, RuntimeError) as exc:
+        logger.error("LLM metadata extraction failed: %s", exc)
         return CaseMetadata()
 
     # Build CaseMetadata only from keys that match its fields.

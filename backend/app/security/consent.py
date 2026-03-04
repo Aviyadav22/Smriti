@@ -36,7 +36,7 @@ async def record_consent(
     await db.execute(
         text(
             """
-            INSERT INTO user_consents (
+            INSERT INTO consents (
                 user_id,
                 consent_type,
                 granted,
@@ -90,7 +90,7 @@ async def check_consent(
         text(
             """
             SELECT granted
-            FROM user_consents
+            FROM consents
             WHERE user_id = :user_id
               AND consent_type = :consent_type
             """
@@ -126,7 +126,7 @@ async def revoke_consent(
     await db.execute(
         text(
             """
-            UPDATE user_consents
+            UPDATE consents
             SET granted = FALSE,
                 updated_at = :updated_at
             WHERE user_id = :user_id

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 import pdfplumber
+from pdfplumber.utils.exceptions import PSException
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +28,12 @@ async def extract_pdf_text(file_path: str) -> str:
                     page_text = page.extract_text()
                     if page_text:
                         text_parts.append(page_text)
-                except Exception:
-                    logger.warning("Failed to extract text from page %d of %s", page_num, file_path)
-    except Exception:
-        logger.exception("Failed to open PDF: %s", file_path)
+                except (ValueError, TypeError, KeyError):
+                    logger.warning(
+                        "Failed to extract text from page %d of %s", page_num, file_path
+                    )
+    except (OSError, PSException, ValueError) as exc:
+        logger.error("Failed to open PDF %s: %s", file_path, exc)
         return ""
 
     return "\n\n".join(text_parts)
@@ -50,8 +53,9 @@ async def extract_with_ocr(file_path: str) -> str:
         Returns an empty string on failure.
     """
     try:
-        import pytesseract  # noqa: T20
+        import pytesseract
         from pdf2image import convert_from_path
+        from pdf2image.exceptions import PDFPageCountError, PDFSyntaxError
     except ImportError:
         logger.error(
             "pdf2image or pytesseract not installed. "
@@ -67,9 +71,9 @@ async def extract_with_ocr(file_path: str) -> str:
                 page_text = pytesseract.image_to_string(img)
                 if page_text and page_text.strip():
                     text_parts.append(page_text)
-            except Exception:
+            except (OSError, RuntimeError):
                 logger.warning("OCR failed on page %d of %s", i, file_path)
         return "\n\n".join(text_parts)
-    except Exception:
-        logger.exception("OCR extraction failed for %s", file_path)
+    except (OSError, PDFPageCountError, PDFSyntaxError) as exc:
+        logger.error("OCR extraction failed for %s: %s", file_path, exc)
         return ""

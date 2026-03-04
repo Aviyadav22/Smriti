@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from pinecone import Pinecone
 
 from app.core.config import settings
@@ -9,7 +11,11 @@ from app.core.interfaces.vector_store import SearchResult
 
 
 class PineconeStore:
-    """Pinecone vector store implementing VectorStore protocol."""
+    """Pinecone vector store implementing VectorStore protocol.
+
+    Pinecone's Python SDK is synchronous, so all calls are wrapped in
+    ``asyncio.to_thread()`` to avoid blocking the event loop.
+    """
 
     def __init__(self) -> None:
         self._client = Pinecone(api_key=settings.pinecone_api_key)
@@ -20,7 +26,7 @@ class PineconeStore:
 
         Each dict must contain: id, values, metadata.
         """
-        self._index.upsert(vectors=vectors)
+        await asyncio.to_thread(self._index.upsert, vectors=vectors)
 
     async def search(
         self,
@@ -29,7 +35,8 @@ class PineconeStore:
         top_k: int = 20,
         filters: dict | None = None,
     ) -> list[SearchResult]:
-        results = self._index.query(
+        results = await asyncio.to_thread(
+            self._index.query,
             vector=query_vector,
             top_k=top_k,
             filter=filters,
@@ -41,4 +48,4 @@ class PineconeStore:
         ]
 
     async def delete(self, ids: list[str]) -> None:
-        self._index.delete(ids=ids)
+        await asyncio.to_thread(self._index.delete, ids=ids)

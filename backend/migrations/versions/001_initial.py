@@ -317,6 +317,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
+        sa.UniqueConstraint("user_id", "consent_type", name="uq_consents_user_type"),
     )
 
     # --- Full-text search trigger function and trigger ---
