@@ -79,6 +79,16 @@ class Settings(BaseSettings):
     ingestion_concurrency: int = 5
     ingestion_tracker_db: str = "./data/ingestion_tracker.db"
 
+    # Search
+    search_cache_ttl: int = 300
+    search_facet_cache_ttl: int = 900
+    search_rrf_k: int = 60
+    search_vector_top_k: int = 20
+    search_fts_top_k: int = 20
+    search_rerank_top_n: int = 10
+    search_default_page_size: int = 10
+    search_max_page_size: int = 50
+
     # Rate Limiting
     rate_limit_default: str = "100/minute"
     rate_limit_search: str = "60/minute"

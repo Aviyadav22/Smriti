@@ -1,14 +1,14 @@
-# Smriti — Phase 1 Implementation Progress
+# Smriti — Implementation Progress
 
-**Last Updated**: 2026-03-04
+**Last Updated**: 2026-03-05
 **Branch**: `master`
-**Latest Commit**: `409b09d` — Add comprehensive unit and security tests
+**Latest Commit**: Phase 2 backend search pipeline
 
 ---
 
-## Status: Phase 1 ~95% Complete
+## Status: Phase 2 Backend COMPLETE — Frontend Starting
 
-### What's Done (All Committed)
+### Phase 1 — All Done (Audited & Committed)
 
 | # | Module | Files | Status |
 |---|--------|-------|--------|
@@ -22,16 +22,44 @@
 | 8 | **Ingestion Pipeline** | `core/ingestion/{pdf,metadata,chunker,pipeline}.py`, `__init__.py` | DONE |
 | 9 | **S3 Bulk Script** | `scripts/ingest_s3.py` | DONE |
 | 10 | **Tests** | `tests/unit/{test_courts,test_extractor,test_chunker,test_auth,test_sanitizer,test_encryption,test_metadata}.py`, `tests/security/test_security.py`, `tests/conftest.py` | DONE |
+| 11 | **Pre-commit hooks** | `.pre-commit-config.yaml` (ruff, mypy, detect-secrets) | DONE |
+| 12 | **FTS Trigger** | `migrations/versions/001_initial.py` lines 322-347 (weighted tsvector, GIN index) | DONE |
 
----
+### Phase 2 Backend — All Done (25 Tests Pass)
 
-### What's Remaining (Phase 1 Polish)
+| # | Module | Files | Status |
+|---|--------|-------|--------|
+| 1 | **Search Pipeline** | `core/search/{query,fulltext,hybrid}.py`, `__init__.py` | DONE |
+| 2 | **Search API** | `api/routes/search.py` (GET /search, /search/suggest, /search/facets) | DONE |
+| 3 | **Cases API Enhanced** | `api/routes/cases.py` (5 endpoints: detail+sections, pdf, citations, cited-by, similar) | DONE |
+| 4 | **Config Updates** | `core/config.py` (9 search settings), `main.py` (search router) | DONE |
+| 5 | **Unit Tests** | `tests/unit/{test_rrf,test_query_understanding,test_fulltext}.py` (25 tests) | DONE |
 
-1. **Run tests and fix any failures** — Tests haven't been executed yet (need `pip install` in venv first)
-2. **Pre-commit hooks** — ruff, mypy, secrets detection (listed in PHASE_PLAN.md §1.1)
-3. **Integration tests** — API endpoint tests with test database (tests/integration/)
-4. **FTS trigger** — PostgreSQL full-text search trigger on cases table (tsvector auto-update)
-5. **Structured logging** — Switch from stdlib logging to structlog (per DECISIONS.md ADR-015)
+### Phase 2 Backend — What Was Built
+
+**Search Pipeline** (`core/search/`):
+- `query.py` — LLM query understanding via Gemini structured JSON output. Parses raw queries into intent, entities, filters, expanded_query. Graceful fallback on LLM failure.
+- `fulltext.py` — PostgreSQL FTS using `ts_rank_cd` with dynamic filter construction, `ts_headline` snippets.
+- `hybrid.py` — Orchestrator: parallel vector + FTS → RRF merge (k=60) → Cohere rerank → enrich from PostgreSQL. Redis caching with SHA-256 cache keys.
+
+**Search API** (`api/routes/search.py`):
+- `GET /api/v1/search` — Full hybrid search with query params: q, court, year_from, year_to, case_type, bench_type, judge, act, page, page_size
+- `GET /api/v1/search/suggest` — Auto-complete suggestions (ILIKE on case titles, Redis-cached 15min)
+- `GET /api/v1/search/facets` — Distinct filter values (courts, case_types, years, bench_types), Redis-cached 15min
+
+**Enhanced Cases API** (`api/routes/cases.py`):
+- `GET /cases/{id}` — Full case with judgment sections (joined from document_chunks)
+- `GET /cases/{id}/pdf` — Serve PDF from FileStorage
+- `GET /cases/{id}/citations` — Cases cited by this case (Neo4j outgoing CITES)
+- `GET /cases/{id}/cited-by` — Cases citing this case (Neo4j incoming CITES)
+- `GET /cases/{id}/similar` — Semantically similar cases (embed ratio_decidendi → Pinecone)
+
+### Deferred to Later
+
+- **Phase 2 Frontend** — Next.js 15 frontend (search UI, case viewer, auth pages)
+- **Bulk Ingestion Scale-Up** — Ingest 5,000+ judgments
+- **Integration tests** — End-to-end search with running infrastructure
+- **Structured logging** — Switch to structlog (ADR-015)
 
 ---
 
@@ -41,36 +69,34 @@
 backend/
 ├── app/
 │   ├── main.py                          # FastAPI app, CORS, exception handlers, lifespan
-│   ├── api/routes/                      # REST endpoints (health, auth, cases, ingest)
+│   ├── api/routes/                      # REST endpoints (health, auth, cases, ingest, search)
 │   ├── core/
-│   │   ├── config.py                    # Pydantic Settings (all config)
+│   │   ├── config.py                    # Pydantic Settings (all config including search)
 │   │   ├── dependencies.py              # DI factories (get_llm, get_embedder, etc.)
 │   │   ├── interfaces/                  # 7 Protocol classes (structural subtyping)
 │   │   ├── legal/                       # Courts, citations, constants, LLM prompts
+│   │   ├── search/                      # Query understanding, FTS, hybrid RRF, caching
 │   │   ├── ingestion/                   # PDF→text→metadata→chunks→embed→store pipeline
 │   │   └── providers/                   # Gemini, Pinecone, Neo4j, Cohere, LocalStorage
 │   ├── db/                              # Async PostgreSQL + Redis connections
-│   ├── models/                          # SQLAlchemy 2.0 ORM (case, user, document, chat, audit, consent)
-│   └── security/                        # JWT, RBAC, encryption, sanitizer, rate limiter, audit, consent
+│   ├── models/                          # SQLAlchemy 2.0 ORM
+│   └── security/                        # JWT, RBAC, encryption, sanitizer, rate limiter
 ├── migrations/versions/001_initial.py   # All tables, indexes, triggers
 ├── scripts/ingest_s3.py                 # CLI bulk ingestion from AWS Open Data
-└── tests/                               # Unit + security tests (8 test files, ~80 tests)
+└── tests/                               # Unit + security tests (11 test files, ~105 tests)
 ```
 
 ### Key Technical Decisions
 
 - **Protocols (not ABCs)** for all interfaces (ADR-001)
 - **JWT HS256** — 15-min access, 7-day refresh with rotation (ADR-005)
-- **bcrypt cost=12** for passwords
-- **AES-256-GCM** field encryption for PII
+- **RRF k=60** for hybrid search fusion (ADR-009)
+- **Parallel retrieval** — asyncio.gather() for vector + FTS (ADR-009)
+- **Cohere rerank-v3.5** on top-20 RRF results → return top-10
+- **Redis caching** — 5-min search results, 15-min facets/suggestions
 - **Legal-aware chunking**: 2000 chars, 200 overlap, section-tagged
-- **Metadata merge**: Parquet wins for structured fields, LLM wins for semantic fields
-- **Gemini 3.1 Pro** via google-genai SDK
+- **Gemini 3.1 Pro** via google-genai SDK for query understanding + metadata
 - **text-embedding-004** (768 dimensions, cosine)
-- **Pinecone** serverless vector DB
-- **Neo4j** citation graph
-- **Cohere rerank-v3.5** for search reranking
-- **Redis** sliding-window rate limiting
 
 ### Config/Env Reference
 
@@ -81,19 +107,24 @@ All settings in `app/core/config.py`. Key env vars:
 - `DATABASE_URL` — `postgresql+asyncpg://...`
 - `REDIS_URL` — `redis://...`
 - `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`
+- Search config: `SEARCH_CACHE_TTL`, `SEARCH_RRF_K`, `SEARCH_VECTOR_TOP_K`, etc.
 
 ### How to Continue
 
-1. **Set up environment**: `cd backend && python -m venv .venv && .venv/Scripts/activate && pip install -e ".[dev]"`
+1. **Set up environment**: `cd backend && python -m venv .venv && .venv\Scripts\activate && pip install -e ".[dev]"`
 2. **Start infra**: `docker-compose up -d` (PostgreSQL, Redis, Neo4j)
 3. **Run migrations**: `cd backend && alembic upgrade head`
 4. **Run tests**: `cd backend && pytest tests/ -v`
-5. **Fix any test failures**, then implement remaining items above
-6. **Phase 2** (per PHASE_PLAN.md): Search module (hybrid FTS+vector+graph), RAG pipeline, chat API
+5. **Start dev server**: `uvicorn app.main:app --reload --port 8000`
+6. **Check API docs**: `http://localhost:8000/docs`
+7. **Phase 2 Frontend** (per PHASE_PLAN.md §2.4-2.5): Next.js 15, search UI, case viewer
 
 ### Commit History
 
 ```
+[PENDING] Add Phase 2 backend: search pipeline, search API, enhanced cases API
+922a5d6 Fix all Phase 1 audit issues for pristine condition
+b5ecf1a Add PROGRESS.md for cross-session handoff and context tracking
 409b09d Add comprehensive unit and security tests for Phase 1 modules
 b36541c Add ingestion pipeline orchestrator, S3 bulk script, and module exports
 93f7e0d Add legal domain, security, and ingestion modules from worktree agents

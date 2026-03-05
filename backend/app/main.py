@@ -79,13 +79,14 @@ async def rate_limit_error_handler(
     )
 
 
-# Routes
 from app.api.routes.health import router as health_router  # noqa: E402
 from app.api.routes.auth import router as auth_router  # noqa: E402
 from app.api.routes.cases import router as cases_router  # noqa: E402
 from app.api.routes.ingest import router as ingest_router  # noqa: E402
+from app.api.routes.search import router as search_router  # noqa: E402
 
 app.include_router(health_router, tags=["health"])
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(cases_router, prefix="/api/v1/cases", tags=["cases"])
 app.include_router(ingest_router, prefix="/api/v1/ingest", tags=["ingest"])
+app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
