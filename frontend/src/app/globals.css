@@ -1,0 +1,164 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-lora);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-warm: var(--warm);
+  --color-gold: var(--gold);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+}
+
+/* ----------------------------------------------------------------
+   LIGHT MODE — Classic parchment / old Roman legal aesthetic
+   Warm creams, muted tans, deep off-black text, serif headings
+   ---------------------------------------------------------------- */
+:root {
+  --radius: 0.375rem;
+
+  /* Warm parchment backgrounds */
+  --background: #F5F0E8;
+  --foreground: #1A1A1A;
+  --card: #FFFDF7;
+  --card-foreground: #1A1A1A;
+  --popover: #FFFDF7;
+  --popover-foreground: #1A1A1A;
+
+  /* Deep charcoal primary — authoritative, not flashy */
+  --primary: #1A1A1A;
+  --primary-foreground: #F5F0E8;
+
+  /* Warm secondary */
+  --secondary: #EDE8DD;
+  --secondary-foreground: #1A1A1A;
+
+  /* Muted warm tones */
+  --muted: #EDE8DD;
+  --muted-foreground: #6B6458;
+
+  /* Subtle warm accent */
+  --accent: #E8E0D0;
+  --accent-foreground: #1A1A1A;
+
+  /* Destructive */
+  --destructive: #9B2C2C;
+
+  /* Borders — warm, not cold gray */
+  --border: #D8D0C4;
+  --input: #D8D0C4;
+  --ring: #B8A990;
+
+  /* Brand gold from marketing site */
+  --warm: #C4A97D;
+  --gold: #B89B6A;
+
+  /* Charts */
+  --chart-1: #B89B6A;
+  --chart-2: #8B7355;
+  --chart-3: #6B6458;
+  --chart-4: #9B8B75;
+  --chart-5: #A69478;
+}
+
+/* ----------------------------------------------------------------
+   DARK MODE — "Vercel meets Palantir"
+   Ultra-clean, data-dense, enterprise authority
+   ---------------------------------------------------------------- */
+.dark {
+  --background: #0B0D0F;
+  --foreground: #E8ECF1;
+  --card: #111418;
+  --card-foreground: #E8ECF1;
+  --popover: #111418;
+  --popover-foreground: #E8ECF1;
+
+  /* Slate-cool primary */
+  --primary: #E8ECF1;
+  --primary-foreground: #0B0D0F;
+
+  --secondary: #1A1D23;
+  --secondary-foreground: #E8ECF1;
+
+  --muted: #1A1D23;
+  --muted-foreground: #7C8594;
+
+  --accent: #1E2128;
+  --accent-foreground: #E8ECF1;
+
+  --destructive: #E53E3E;
+
+  /* Crisp borders */
+  --border: #2A2D35;
+  --input: #2A2D35;
+  --ring: #4A5163;
+
+  /* Gold persists across modes */
+  --warm: #C4A97D;
+  --gold: #D4B98A;
+
+  --chart-1: #D4B98A;
+  --chart-2: #7C8594;
+  --chart-3: #4A5163;
+  --chart-4: #B8A990;
+  --chart-5: #9B8B75;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+
+  /* Serif headings for that classic legal gravitas */
+  h1, h2, h3 {
+    font-family: var(--font-lora), Georgia, 'Times New Roman', serif;
+  }
+
+  /* Tight professional transitions everywhere */
+  button, a, input, [role="button"] {
+    transition-duration: 100ms;
+    transition-timing-function: ease-out;
+  }
+}
