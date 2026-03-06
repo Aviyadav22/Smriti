@@ -2,8 +2,8 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml* ./
-RUN corepack enable && pnpm install --frozen-lockfile
+COPY package.json package-lock.json* ./
+RUN npm ci
 
 COPY . .
 
@@ -11,7 +11,7 @@ COPY . .
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
-RUN pnpm build
+RUN npm run build
 
 FROM node:20-slim AS runner
 
