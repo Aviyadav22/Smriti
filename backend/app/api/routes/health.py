@@ -20,7 +20,7 @@ async def health_check() -> dict:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         checks["postgres"] = "healthy"
-    except (OSError, ConnectionError, RuntimeError):
+    except Exception:
         checks["postgres"] = "unhealthy"
 
     # Redis
@@ -30,7 +30,7 @@ async def health_check() -> dict:
         redis = await get_redis()
         await redis.ping()
         checks["redis"] = "healthy"
-    except (OSError, ConnectionError, RuntimeError):
+    except Exception:
         checks["redis"] = "unhealthy"
 
     all_healthy = all(v == "healthy" for v in checks.values())
