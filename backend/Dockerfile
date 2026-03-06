@@ -9,16 +9,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies first (layer caching)
-COPY pyproject.toml .
-RUN pip install --no-cache-dir .
-
-# Copy application code
+# Copy application code first (needed for pip install .)
 COPY . .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir .
 
 # Cloud Run sets PORT env var
 ENV PORT=8000
 
 EXPOSE 8000
 
-CMD exec uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --workers 2"]
