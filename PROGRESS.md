@@ -92,11 +92,11 @@ backend/
 - **JWT HS256** — 15-min access, 7-day refresh with rotation (ADR-005)
 - **RRF k=60** for hybrid search fusion (ADR-009)
 - **Parallel retrieval** — asyncio.gather() for vector + FTS (ADR-009)
-- **Cohere rerank-v3.5** on top-20 RRF results → return top-10
+- **Cohere rerank-v4.0-pro** on top-20 RRF results → return top-10
 - **Redis caching** — 5-min search results, 15-min facets/suggestions
 - **Legal-aware chunking**: 2000 chars, 200 overlap, section-tagged
 - **Gemini 3.1 Pro** via google-genai SDK for query understanding + metadata
-- **text-embedding-004** (768 dimensions, cosine)
+- **gemini-embedding-001** (1536 dimensions, Matryoshka, cosine)
 
 ### Config/Env Reference
 

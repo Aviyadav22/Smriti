@@ -65,8 +65,8 @@ REDIS_URL=redis://localhost:6379/0
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=                        # From https://aistudio.google.com/apikey
 GEMINI_MODEL=gemini-3.1-pro           # Model for chat, analysis, extraction
-GEMINI_EMBEDDING_MODEL=text-embedding-004
-GEMINI_EMBEDDING_DIMENSION=768
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+GEMINI_EMBEDDING_DIMENSION=1536
 GEMINI_MAX_TOKENS=8192                 # Max output tokens
 GEMINI_TEMPERATURE=0.1                 # Low temp for factual extraction
 GEMINI_RATE_LIMIT_RPM=60              # Requests per minute
@@ -76,7 +76,7 @@ VECTOR_PROVIDER=pinecone
 PINECONE_API_KEY=                      # From https://app.pinecone.io/
 PINECONE_INDEX_NAME=smriti-legal
 PINECONE_ENVIRONMENT=us-east-1        # Free tier region
-PINECONE_DIMENSION=768                 # Must match embedding dimension
+PINECONE_DIMENSION=1536                # Must match embedding dimension
 PINECONE_METRIC=cosine
 PINECONE_CLOUD=aws                     # aws | gcp | azure
 PINECONE_TOP_K=20                      # Default number of results
@@ -92,7 +92,7 @@ NEO4J_DATABASE=neo4j
 # ---------- Cohere (Reranker) ----------
 RERANKER_PROVIDER=cohere
 COHERE_API_KEY=                        # From https://dashboard.cohere.com/api-keys
-COHERE_RERANK_MODEL=rerank-v3.5
+COHERE_RERANK_MODEL=rerank-v4.0-pro
 COHERE_RERANK_TOP_N=10                # Return top N after reranking
 
 # ---------- Storage ----------
@@ -289,7 +289,7 @@ volumes:
 2. Sign up (free tier: 100K vectors)
 3. Create index:
    - Name: `smriti-legal`
-   - Dimensions: `768`
+   - Dimensions: `1536`
    - Metric: `cosine`
    - Cloud: `AWS`
    - Region: `us-east-1`

@@ -1453,9 +1453,9 @@ GET /api/v1/cases?cursor=eyJpZCI6MTIzfQ&limit=20
 │  │                │ │              │ │                  │              │
 │  │ 1. Embed query │ │ plainto_     │ │ SELECT doc_id    │              │
 │  │    via Gemini  │ │ tsquery()    │ │ FROM cases       │              │
-│  │    text-embed- │ │              │ │ WHERE court =    │              │
-│  │    ding-004    │ │ ts_rank_cd() │ │   'supreme_court'│              │
-│  │    (768 dims)  │ │ for cover    │ │ AND year >= 2020 │              │
+│  │    gemini-     │ │              │ │ WHERE court =    │              │
+│  │    embedding   │ │ ts_rank_cd() │ │   'supreme_court'│              │
+│  │    (1536 dims) │ │ for cover    │ │ AND year >= 2020 │              │
 │  │                │ │ density      │ │                  │              │
 │  │ 2. Query with  │ │ ranking      │ │ Returns: set of  │              │
 │  │    filters:    │ │              │ │ doc_ids for      │              │
@@ -1479,7 +1479,7 @@ GET /api/v1/cases?cursor=eyJpZCI6MTIzfQ&limit=20
 │                         │                                               │
 │                         ▼                                               │
 │  ┌──────────────────────────────────────────────────────┐               │
-│  │  Cohere rerank-v3                                     │               │
+│  │  Cohere rerank-v4.0-pro                                     │               │
 │  │                                                        │               │
 │  │  Input: query + 20 document texts                      │               │
 │  │  Cross-encoder attention: reads query and doc together  │               │
@@ -1529,7 +1529,7 @@ GET /api/v1/cases?cursor=eyJpZCI6MTIzfQ&limit=20
 | Stage | Target | Notes |
 |-------|--------|-------|
 | Query Understanding | 200-400ms | Gemini structured output, cached for repeated queries |
-| Embedding | 50-100ms | Single vector, Gemini text-embedding-004 |
+| Embedding | 50-100ms | Single vector, Gemini gemini-embedding-001 |
 | Vector Search (Pinecone) | 50-100ms | Serverless, ~20ms p50 |
 | FTS Search (PostgreSQL) | 20-50ms | GIN index on tsvector column |
 | Metadata Filter (PostgreSQL) | 10-20ms | B-tree indexes on court, year, case_type |
@@ -1548,7 +1548,7 @@ GET /api/v1/cases?cursor=eyJpZCI6MTIzfQ&limit=20
 |----------|-------|-----------|
 | Index name | `smriti-legal` | Single index for all legal documents |
 | Namespace | Not used (single namespace) | Simplicity; filtering via metadata sufficient |
-| Dimensions | 768 | Gemini text-embedding-004 output dimensionality |
+| Dimensions | 1536 | Gemini gemini-embedding-001 output dimensionality |
 | Metric | Cosine | Standard for text similarity; normalized embeddings |
 | Pod type | Serverless (starter) | Cost-effective for MVP; scales automatically |
 
@@ -1559,7 +1559,7 @@ Each vector in Pinecone represents a single chunk of a legal document:
 ```json
 {
   "id": "case_12345_chunk_003",
-  "values": [0.0234, -0.0891, ...],   // 768 floats
+  "values": [0.0234, -0.0891, ...],   // 1536 floats
   "metadata": {
     "doc_id": "case_12345",
     "case_id": "2024-SC-CrlA-1234",
@@ -1634,8 +1634,8 @@ results = await pinecone_index.query(
 | Total documents | 10,000 cases | 100,000 cases |
 | Avg chunks per document | 15 | 15 |
 | Total vectors | 150,000 | 1,500,000 |
-| Storage per vector | 768 * 4 bytes = ~3 KB | ~3 KB |
-| Total vector storage | ~450 MB | ~4.5 GB |
+| Storage per vector | 1536 * 4 bytes = ~6 KB | ~6 KB |
+| Total vector storage | ~900 MB | ~9 GB |
 | Metadata per vector | ~200 bytes | ~200 bytes |
 | Total metadata storage | ~30 MB | ~300 MB |
 

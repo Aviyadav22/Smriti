@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     llm_provider: str = "gemini"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.1-pro"
-    gemini_embedding_model: str = "text-embedding-004"
-    gemini_embedding_dimension: int = 768
+    gemini_embedding_model: str = "gemini-embedding-001"
+    gemini_embedding_dimension: int = 1536
     gemini_max_tokens: int = 8192
     gemini_temperature: float = 0.1
     gemini_rate_limit_rpm: int = 60
@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     pinecone_api_key: str = ""
     pinecone_index_name: str = "smriti-legal"
     pinecone_environment: str = "us-east-1"
-    pinecone_dimension: int = 768
+    pinecone_dimension: int = 1536
     pinecone_metric: str = "cosine"
     pinecone_cloud: str = "aws"
     pinecone_top_k: int = 20
@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     # Cohere
     reranker_provider: str = "cohere"
     cohere_api_key: str = ""
-    cohere_rerank_model: str = "rerank-v3.5"
+    cohere_rerank_model: str = "rerank-v4.0-pro"
     cohere_rerank_top_n: int = 10
 
     # Storage

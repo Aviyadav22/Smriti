@@ -216,7 +216,7 @@ async def ingest_judgment(pdf_path: str, parquet_metadata: dict) -> str:
     chunks = chunk_judgment(text, sections)      # 2000 chars, 200 overlap, section-tagged
 
     # 8. GENERATE EMBEDDINGS
-    embeddings = await embed_chunks(chunks)      # Gemini text-embedding-004
+    embeddings = await embed_chunks(chunks)      # Gemini gemini-embedding-001
 
     # 9. UPSERT TO PINECONE
     await upsert_vectors(case_id, chunks, embeddings, metadata)

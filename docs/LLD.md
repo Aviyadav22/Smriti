@@ -250,7 +250,7 @@ CREATE INDEX idx_consent_user ON consent_records(user_id);
 
 ```
 Index: smriti-legal
-Dimensions: 768 (Gemini text-embedding-004)
+Dimensions: 1536 (Gemini gemini-embedding-001)
 Metric: cosine
 Pod type: Starter (free tier)
 
@@ -650,7 +650,7 @@ User drops PDF
        c. Extract metadata (Gemini structured output)
        d. Create `cases` row with extracted metadata
        e. Chunk text (legal-aware, 2000 chars, 200 overlap)
-       f. Generate embeddings (Gemini text-embedding-004)
+       f. Generate embeddings (Gemini gemini-embedding-001)
        g. Upsert to Pinecone
        h. Extract citations → create Neo4j edges
        i. Update `documents` row (status: completed, case_id: linked)

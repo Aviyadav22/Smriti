@@ -22,8 +22,8 @@ Smriti is a purpose-built Indian legal research platform — think Harvey AI but
 | Vector DB | Pinecone | Managed, metadata filtering, hybrid search |
 | Graph DB | Neo4j AuraDB | Citation graph, precedent tracking |
 | LLM | Gemini 3.1 Pro (Vertex AI) | 1M context, best reasoning, GCP native |
-| Embeddings | Gemini text-embedding-004 | 768-dim, free tier on GCP |
-| Reranker | Cohere rerank-v3 | Native reranker API, free tier |
+| Embeddings | Gemini gemini-embedding-001 | 1536-dim (Matryoshka), free tier on GCP |
+| Reranker | Cohere rerank-v4.0-pro | Native reranker API, free tier |
 | Cache | Redis (Upstash) | Session, query caching, rate limiting |
 | Storage | Google Cloud Storage | PDF documents |
 | Deploy | Google Cloud Run | Serverless containers |

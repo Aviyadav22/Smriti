@@ -209,7 +209,7 @@ Need an LLM for: metadata extraction, query understanding, RAG chat, section det
 Hybrid search produces merged results from vector + FTS. Need reranking to improve final result quality.
 
 ### Decision
-**Cohere rerank-v3** (1,000 free API calls/month)
+**Cohere rerank-v4.0-pro** (1,000 free API calls/month)
 
 ### Alternatives Considered
 1. **Cross-encoder reranking (local)**: Good quality but requires GPU or is very slow on CPU
