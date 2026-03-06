@@ -15,9 +15,31 @@ from app.security.exceptions import (
 )
 
 
+def _run_migrations() -> None:
+    """Run Alembic migrations on startup in production."""
+    import subprocess
+    import os
+
+    if settings.app_env == "production":
+        try:
+            # In Docker, the app is at /app; locally it's at the backend dir
+            app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            subprocess.run(
+                ["alembic", "upgrade", "head"],
+                cwd=app_dir,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger("smriti").warning(f"Auto-migration skipped: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    # Startup
+    # Startup — run DB migrations
+    _run_migrations()
     yield
     # Shutdown
     from app.db.redis_client import close_redis
