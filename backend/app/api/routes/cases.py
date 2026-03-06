@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid as _uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy import text
@@ -13,6 +15,7 @@ from app.core.dependencies import (
     get_storage,
     get_vector_store,
 )
+from app.core.ingestion.chunker import detect_judgment_sections
 from app.db.postgres import get_db
 
 router = APIRouter()
@@ -34,7 +37,7 @@ async def get_case(
             "SELECT id, title, citation, case_id, cnr, court, year, case_type, "
             "jurisdiction, bench_type, judge, author_judge, petitioner, respondent, "
             "decision_date, disposal_nature, description, keywords, acts_cited, "
-            "cases_cited, ratio_decidendi, pdf_storage_path, source, language, "
+            "cases_cited, ratio_decidendi, full_text, pdf_storage_path, source, language, "
             "chunk_count, available_languages, created_at, updated_at "
             "FROM cases WHERE id = :id"
         ),
@@ -50,26 +53,14 @@ async def get_case(
 
     case_dict = dict(case)
 
-    # Attach judgment sections if chunks exist
-    chunks_result = await db.execute(
-        text(
-            "SELECT chunk_index, section_type, chunk_text "
-            "FROM document_chunks "
-            "WHERE case_id = :case_id "
-            "ORDER BY chunk_index"
-        ),
-        {"case_id": case_id},
-    )
-    chunks = chunks_result.mappings().all()
-
-    if chunks:
-        sections: dict[str, list[str]] = {}
-        for chunk in chunks:
-            sec = chunk.get("section_type", "UNKNOWN")
-            if sec not in sections:
-                sections[sec] = []
-            sections[sec].append(chunk["chunk_text"])
-        case_dict["sections"] = {k: "\n".join(v) for k, v in sections.items()}
+    # Build sections from full_text using section detector
+    full_text = case_dict.pop("full_text", "") or ""
+    if full_text:
+        detected = detect_judgment_sections(full_text)
+        sections: dict[str, str] = {}
+        for sec in detected:
+            sections[sec.type] = full_text[sec.start : sec.end]
+        case_dict["sections"] = sections
     else:
         case_dict["sections"] = {}
 
@@ -248,6 +239,15 @@ async def get_similar(
 # ---------------------------------------------------------------------------
 
 
+def _is_valid_uuid(val: str) -> bool:
+    """Check if a string is a valid UUID."""
+    try:
+        _uuid.UUID(val)
+        return True
+    except (ValueError, AttributeError):
+        return False
+
+
 async def _enrich_graph_nodes(
     neighbors: list[dict],
     db: AsyncSession,
@@ -257,21 +257,21 @@ async def _enrich_graph_nodes(
     for n in neighbors:
         node = n.get("node", {})
         nid = node.get("id")
-        if nid:
+        if nid and _is_valid_uuid(nid):
             node_ids.append(nid)
 
-    if not node_ids:
-        return []
+    # Query PostgreSQL only for valid UUIDs
+    rows: dict = {}
+    if node_ids:
+        placeholders = ", ".join(f":id_{i}" for i in range(len(node_ids)))
+        params = {f"id_{i}": nid for i, nid in enumerate(node_ids)}
 
-    placeholders = ", ".join(f":id_{i}" for i in range(len(node_ids)))
-    params = {f"id_{i}": nid for i, nid in enumerate(node_ids)}
-
-    sql = text(
-        f"SELECT id, title, citation, court, year, decision_date "
-        f"FROM cases WHERE id IN ({placeholders})"
-    )
-    result = await db.execute(sql, params)
-    rows = {str(r["id"]): r for r in result.mappings().all()}
+        sql = text(
+            f"SELECT id, title, citation, court, year, decision_date "
+            f"FROM cases WHERE id IN ({placeholders})"
+        )
+        result = await db.execute(sql, params)
+        rows = {str(r["id"]): r for r in result.mappings().all()}
 
     enriched = []
     for n in neighbors:

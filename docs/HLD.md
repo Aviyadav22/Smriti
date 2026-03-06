@@ -1425,7 +1425,7 @@ GET /api/v1/cases?cursor=eyJpZCI6MTIzfQ&limit=20
 │         │                                                               │
 │         ▼                                                               │
 │  ┌──────────────────────────────────────────────────────┐               │
-│  │  QueryUnderstanding (Gemini 3.1 Pro)                  │               │
+│  │  QueryUnderstanding (Gemini 2.5 Pro)                  │               │
 │  │                                                        │               │
 │  │  Structured output:                                    │               │
 │  │  {                                                     │               │

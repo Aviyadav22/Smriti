@@ -273,7 +273,7 @@ The Parquet metadata from S3 provides structured fields, but some are missing or
 | **bench_type** | Not available | **LLM only** | LLM |
 | **jurisdiction** | Not available | **LLM only** | LLM |
 
-### Cost Estimation (Gemini 3.1 Pro for Metadata Extraction)
+### Cost Estimation (Gemini 2.5 Pro for Metadata Extraction)
 
 ```
 Per judgment:

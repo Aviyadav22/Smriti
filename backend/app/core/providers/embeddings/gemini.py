@@ -15,8 +15,8 @@ from app.core.config import settings
 class GeminiEmbedder:
     """Google Gemini embedding provider implementing EmbeddingProvider protocol."""
 
-    def __init__(self) -> None:
-        self._client = genai.Client(api_key=settings.gemini_api_key)
+    def __init__(self, *, api_key: str | None = None) -> None:
+        self._client = genai.Client(api_key=api_key or settings.gemini_api_key)
         self._model = settings.gemini_embedding_model
         self._dimension = settings.gemini_embedding_dimension
 

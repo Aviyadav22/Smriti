@@ -21,7 +21,7 @@ Smriti is a purpose-built Indian legal research platform — think Harvey AI but
 | Primary DB | PostgreSQL 16 | Metadata, FTS (tsvector + ts_rank_cd), users, audit |
 | Vector DB | Pinecone | Managed, metadata filtering, hybrid search |
 | Graph DB | Neo4j AuraDB | Citation graph, precedent tracking |
-| LLM | Gemini 3.1 Pro (Vertex AI) | 1M context, best reasoning, GCP native |
+| LLM | Gemini 2.5 Pro | 1M context, best reasoning, GCP native |
 | Embeddings | Gemini gemini-embedding-001 | 1536-dim (Matryoshka), free tier on GCP |
 | Reranker | Cohere rerank-v4.0-pro | Native reranker API, free tier |
 | Cache | Redis (Upstash) | Session, query caching, rate limiting |
@@ -174,9 +174,9 @@ python scripts/ingest_s3.py --year 2024 --limit 100
 
 ## Current Phase
 
-**Phase 0: Documentation & Dev Environment Setup**
+**Phase 2: Search + Frontend (in progress)**
 
-We are currently creating all documentation files before writing any code. See `PHASE_PLAN.md` for what's in scope.
+Phase 1 (Foundation + Ingestion) is complete — all backend code, security, DB, interfaces, providers, ingestion pipeline, and tests are built. Phase 2 search pipeline and frontend are built; currently ingesting SC judgments and validating search quality. See `PHASE_PLAN.md` for full status.
 
 ---
 

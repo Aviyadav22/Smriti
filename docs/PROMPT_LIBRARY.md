@@ -1,13 +1,13 @@
 # Smriti — Prompt Library
 
-All system prompts and few-shot examples used by Gemini 3.1 Pro across the platform. Each prompt is versioned and tested.
+All system prompts and few-shot examples used by Gemini 2.5 Pro across the platform. Each prompt is versioned and tested.
 
 ---
 
 ## 1. Metadata Extraction Prompt
 
 **Used in**: `core/ingestion/metadata.py`
-**Model**: Gemini 3.1 Pro (structured JSON output)
+**Model**: Gemini 2.5 Pro (structured JSON output)
 **When**: During ingestion, after PDF text extraction
 
 ```
@@ -123,7 +123,7 @@ OUTPUT:
 ## 2. Query Understanding Prompt
 
 **Used in**: `core/search/query.py`
-**Model**: Gemini 3.1 Pro (structured JSON output)
+**Model**: Gemini 2.5 Pro (structured JSON output)
 **When**: Before search execution, to parse user's natural language query
 
 ```
@@ -261,7 +261,7 @@ OUTPUT:
 ## 3. RAG Chat System Prompt
 
 **Used in**: `api/routes/chat.py`
-**Model**: Gemini 3.1 Pro (streaming)
+**Model**: Gemini 2.5 Pro (streaming)
 **When**: During legal research chat
 
 ```
@@ -341,7 +341,7 @@ The law on anticipatory bail was settled by the **Constitution Bench** in **Sush
 ## 4. Section Detection Prompt
 
 **Used in**: `core/legal/sections.py` (fallback when regex detection fails)
-**Model**: Gemini 3.1 Pro
+**Model**: Gemini 2.5 Pro
 **When**: During ingestion, to identify judgment sections
 
 ```
@@ -385,7 +385,7 @@ RULES:
 ## 5. Citation Extraction Prompt
 
 **Used in**: `core/legal/citations.py` (supplement to regex extraction)
-**Model**: Gemini 3.1 Pro
+**Model**: Gemini 2.5 Pro
 **When**: During ingestion, to extract case citations from judgment text
 
 ```
@@ -444,7 +444,7 @@ RULES:
 ## 6. Case Analysis Prompt
 
 **Used in**: `api/routes/chat.py` (when user asks for case analysis)
-**Model**: Gemini 3.1 Pro
+**Model**: Gemini 2.5 Pro
 **When**: On-demand, when user asks to analyze a specific case
 
 ```
@@ -477,7 +477,7 @@ RULES:
 ## 7. Legal Draft Assistance Prompt
 
 **Used in**: Future feature (Phase 5+)
-**Model**: Gemini 3.1 Pro
+**Model**: Gemini 2.5 Pro
 **When**: When user requests help drafting legal documents
 
 ```
@@ -506,7 +506,7 @@ RULES:
 ## 8. Judgment Summarization Prompt
 
 **Used in**: `api/routes/cases.py` (summary generation)
-**Model**: Gemini 3.1 Pro
+**Model**: Gemini 2.5 Pro
 **When**: When user requests a case summary or for search result snippets
 
 ```

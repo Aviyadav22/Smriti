@@ -116,9 +116,9 @@ async def ingest_judgment(
         storage_path = pdf_path  # fallback: keep original path
 
     # ------------------------------------------------------------------
-    # 5. INSERT CASE INTO POSTGRESQL
+    # 5. INSERT CASE INTO POSTGRESQL (upsert on citation conflict)
     # ------------------------------------------------------------------
-    await _insert_case(db, case_id, metadata, full_text, storage_path, parquet_metadata)
+    case_id = await _insert_case(db, case_id, metadata, full_text, storage_path, parquet_metadata)
 
     # ------------------------------------------------------------------
     # 6. DETECT SECTIONS + CHUNK
@@ -173,8 +173,8 @@ async def _insert_case(
     full_text: str,
     storage_path: str,
     parquet_meta: dict,
-) -> None:
-    """Insert a case record into PostgreSQL."""
+) -> str:
+    """Insert or update a case record into PostgreSQL. Returns the case_id used."""
     # Parse decision_date to a proper date object
     decision_date: date | None = None
     if metadata.decision_date:
@@ -182,6 +182,52 @@ async def _insert_case(
             decision_date = datetime.fromisoformat(metadata.decision_date).date()
         except ValueError:
             pass
+
+    params = {
+        "id": case_id,
+        "title": metadata.title or parquet_meta.get("title", "Untitled"),
+        "citation": metadata.citation,
+        "case_id": parquet_meta.get("case_id"),
+        "cnr": parquet_meta.get("cnr"),
+        "court": metadata.court or "Supreme Court of India",
+        "year": metadata.year,
+        "case_type": metadata.case_type,
+        "jurisdiction": metadata.jurisdiction,
+        "bench_type": metadata.bench_type,
+        "judge": metadata.judge,
+        "author_judge": metadata.author_judge,
+        "petitioner": metadata.petitioner,
+        "respondent": metadata.respondent,
+        "decision_date": decision_date,
+        "disposal_nature": metadata.disposal_nature,
+        "description": parquet_meta.get("description"),
+        "keywords": metadata.keywords,
+        "acts_cited": metadata.acts_cited,
+        "cases_cited": metadata.cases_cited,
+        "ratio_decidendi": metadata.ratio_decidendi,
+        "full_text": full_text,
+        "pdf_storage_path": storage_path,
+        "s3_source_path": parquet_meta.get("path"),
+        "source": "aws_open_data",
+        "language": "english",
+        "available_languages": (
+            parquet_meta.get("available_languages", "").split(",")
+            if parquet_meta.get("available_languages")
+            else None
+        ),
+    }
+
+    # Check if a case with this citation already exists
+    if metadata.citation:
+        existing = await db.execute(
+            text("SELECT id FROM cases WHERE citation = :citation"),
+            {"citation": metadata.citation},
+        )
+        row = existing.fetchone()
+        if row:
+            logger.info("Case with citation %s already exists (id=%s), skipping insert", metadata.citation, row[0])
+            await db.commit()
+            return str(row[0])
 
     await db.execute(
         text(
@@ -203,41 +249,10 @@ async def _insert_case(
             )
             """
         ),
-        {
-            "id": case_id,
-            "title": metadata.title or parquet_meta.get("title", "Untitled"),
-            "citation": metadata.citation,
-            "case_id": parquet_meta.get("case_id"),
-            "cnr": parquet_meta.get("cnr"),
-            "court": metadata.court or "Supreme Court of India",
-            "year": metadata.year,
-            "case_type": metadata.case_type,
-            "jurisdiction": metadata.jurisdiction,
-            "bench_type": metadata.bench_type,
-            "judge": metadata.judge,
-            "author_judge": metadata.author_judge,
-            "petitioner": metadata.petitioner,
-            "respondent": metadata.respondent,
-            "decision_date": decision_date,
-            "disposal_nature": metadata.disposal_nature,
-            "description": parquet_meta.get("description"),
-            "keywords": metadata.keywords,
-            "acts_cited": metadata.acts_cited,
-            "cases_cited": metadata.cases_cited,
-            "ratio_decidendi": metadata.ratio_decidendi,
-            "full_text": full_text,
-            "pdf_storage_path": storage_path,
-            "s3_source_path": parquet_meta.get("path"),
-            "source": "aws_open_data",
-            "language": "english",
-            "available_languages": (
-                parquet_meta.get("available_languages", "").split(",")
-                if parquet_meta.get("available_languages")
-                else None
-            ),
-        },
+        params,
     )
     await db.commit()
+    return case_id
 
 
 async def _record_ingestion_failure(

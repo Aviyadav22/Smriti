@@ -172,7 +172,7 @@ Indian case law is inherently a citation graph. Judgments cite, overrule, affirm
 
 ---
 
-## ADR-007: Gemini 3.1 Pro Over Claude / GPT-4
+## ADR-007: Gemini 2.5 Pro Over Claude / GPT-4
 
 **Status**: Accepted
 **Date**: 2026-03
@@ -181,7 +181,7 @@ Indian case law is inherently a citation graph. Judgments cite, overrule, affirm
 Need an LLM for: metadata extraction, query understanding, RAG chat, section detection. Budget: $300 GCP credits (3-month trial).
 
 ### Decision
-**Gemini 3.1 Pro** via Vertex AI
+**Gemini 2.5 Pro** via Vertex AI
 
 ### Alternatives Considered
 1. **Claude 3.5 Sonnet/Opus**: Excellent reasoning, but no free credits, $3-15/M input tokens
@@ -200,7 +200,7 @@ Need an LLM for: metadata extraction, query understanding, RAG chat, section det
 
 ---
 
-## ADR-008: Cohere Rerank-v3 Over Cross-Encoder / Gemini Reranking
+## ADR-008: Cohere Rerank-v4.0-pro Over Cross-Encoder / Gemini Reranking
 
 **Status**: Accepted
 **Date**: 2026-03
@@ -343,7 +343,7 @@ Judgments have distinct sections (Facts, Arguments, Ratio, Order). Chunking acro
 Need to extract structured metadata from judgment text: acts cited, cases cited, ratio decidendi, keywords, bench type. Regex alone can't extract semantic fields like ratio decidendi.
 
 ### Decision
-**Gemini 3.1 Pro structured output** as primary extraction, with regex patterns as validation/fallback.
+**Gemini 2.5 Pro structured output** as primary extraction, with regex patterns as validation/fallback.
 
 ### Alternatives Considered
 1. **Regex-only**: Fast, deterministic, but can't extract ratio decidendi, keywords, or bench type

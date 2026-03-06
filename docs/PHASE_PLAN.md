@@ -23,92 +23,92 @@ Backend scaffold with security, database, ingestion pipeline. Ingest first 1,000
 ### Deliverables
 
 #### 1.1 Project Scaffold
-- [ ] FastAPI project with app router structure
-- [ ] `pyproject.toml` with all dependencies (pinned versions)
-- [ ] `Dockerfile` for backend (multi-stage, slim Python 3.12)
-- [ ] `docker-compose.yml` for local dev: PostgreSQL 16, Redis 7, Neo4j 5
-- [ ] `.env.example` with all config variables documented
-- [ ] `.gitignore` (secrets, venvs, __pycache__, .env, data/)
-- [ ] `Makefile` with common commands (dev, test, lint, migrate, ingest)
-- [ ] ruff + mypy configuration
-- [ ] Pre-commit hooks (ruff, mypy, secrets detection)
+- [x] FastAPI project with app router structure
+- [x] `pyproject.toml` with all dependencies (pinned versions)
+- [x] `Dockerfile` for backend (multi-stage, slim Python 3.12)
+- [x] `docker-compose.yml` for local dev: PostgreSQL 16, Redis 7, Neo4j 5
+- [x] `.env.example` with all config variables documented
+- [x] `.gitignore` (secrets, venvs, __pycache__, .env, data/)
+- [x] `Makefile` with common commands (dev, test, lint, migrate, ingest)
+- [x] ruff + mypy configuration
+- [x] Pre-commit hooks (ruff, mypy, secrets detection)
 
 #### 1.2 Interface Layer (Protocols)
-- [ ] `core/interfaces/llm.py` — LLMProvider Protocol
-- [ ] `core/interfaces/embedder.py` — EmbeddingProvider Protocol
-- [ ] `core/interfaces/vector_store.py` — VectorStore Protocol
-- [ ] `core/interfaces/graph_store.py` — GraphStore Protocol
-- [ ] `core/interfaces/reranker.py` — Reranker Protocol
-- [ ] `core/interfaces/document_parser.py` — DocumentParser Protocol
-- [ ] `core/interfaces/storage.py` — FileStorage Protocol
+- [x] `core/interfaces/llm.py` — LLMProvider Protocol
+- [x] `core/interfaces/embedder.py` — EmbeddingProvider Protocol
+- [x] `core/interfaces/vector_store.py` — VectorStore Protocol
+- [x] `core/interfaces/graph_store.py` — GraphStore Protocol
+- [x] `core/interfaces/reranker.py` — Reranker Protocol
+- [x] `core/interfaces/document_parser.py` — DocumentParser Protocol
+- [x] `core/interfaces/storage.py` — FileStorage Protocol
 
 #### 1.3 Security Module
-- [ ] `security/auth.py` — JWT access (15-min) + refresh tokens (7-day, rotated)
-- [ ] `security/auth.py` — bcrypt password hashing (cost factor 12)
-- [ ] `security/rbac.py` — Role-based access: admin, researcher, viewer
-- [ ] `security/sanitizer.py` — Input sanitization (HTML entities, SQL chars, LLM prompt injection markers)
-- [ ] `security/rate_limiter.py` — Redis-backed per-user + per-IP rate limiting
-- [ ] `security/audit.py` — Audit log middleware (every API call: user, IP, endpoint, timestamp, response_code)
-- [ ] `security/consent.py` — DPDP Act consent recording (timestamped, versioned)
-- [ ] `security/encryption.py` — AES-256-GCM field-level encryption for PII
+- [x] `security/auth.py` — JWT access (15-min) + refresh tokens (7-day, rotated)
+- [x] `security/auth.py` — bcrypt password hashing (cost factor 12)
+- [x] `security/rbac.py` — Role-based access: admin, researcher, viewer
+- [x] `security/sanitizer.py` — Input sanitization (HTML entities, SQL chars, LLM prompt injection markers)
+- [x] `security/rate_limiter.py` — Redis-backed per-user + per-IP rate limiting
+- [x] `security/audit.py` — Audit log middleware (every API call: user, IP, endpoint, timestamp, response_code)
+- [x] `security/consent.py` — DPDP Act consent recording (timestamped, versioned)
+- [x] `security/encryption.py` — AES-256-GCM field-level encryption for PII
 
 #### 1.4 Database Layer
-- [ ] SQLAlchemy 2.0 async models: cases, users, documents, audit_logs, consent_records, chat_sessions, chat_messages
-- [ ] Alembic migration: `001_initial.py` — all tables, indexes, triggers
-- [ ] PostgreSQL FTS setup: weighted tsvector trigger on cases table
-- [ ] `db/postgres.py` — async connection pool (SSL-only in production)
-- [ ] `db/redis_client.py` — Upstash-compatible Redis client
+- [x] SQLAlchemy 2.0 async models: cases, users, documents, audit_logs, consent_records, chat_sessions, chat_messages
+- [x] Alembic migration: `001_initial.py` — all tables, indexes, triggers
+- [x] PostgreSQL FTS setup: weighted tsvector trigger on cases table
+- [x] `db/postgres.py` — async connection pool (SSL-only in production)
+- [x] `db/redis_client.py` — Upstash-compatible Redis client
 
 #### 1.5 Provider Implementations (Phase 1)
-- [ ] `providers/llm/gemini.py` — GeminiLLM: generate, generate_structured, stream
-- [ ] `providers/embeddings/gemini.py` — GeminiEmbedder: embed_text, embed_batch
-- [ ] `providers/vector/pinecone.py` — PineconeStore: upsert, search, delete
-- [ ] `providers/graph/neo4j.py` — Neo4jGraph: create_node, create_edge, query
-- [ ] `providers/storage/local.py` — LocalStorage: store, retrieve, delete (dev)
-- [ ] Dependency injection setup in `config.py` using FastAPI Depends()
+- [x] `providers/llm/gemini.py` — GeminiLLM: generate, generate_structured, stream
+- [x] `providers/embeddings/gemini.py` — GeminiEmbedder: embed_text, embed_batch
+- [x] `providers/vector/pinecone.py` — PineconeStore: upsert, search, delete
+- [x] `providers/graph/neo4j.py` — Neo4jGraph: create_node, create_edge, query
+- [x] `providers/storage/local.py` — LocalStorage: store, retrieve, delete (dev)
+- [x] Dependency injection setup in `config.py` using FastAPI Depends()
 
 #### 1.6 Ingestion Pipeline
-- [ ] `core/ingestion/pdf.py` — PDF text extraction (pdfplumber + Tesseract OCR fallback)
-- [ ] `core/ingestion/metadata.py` — LLM-based metadata extraction (Gemini structured JSON output)
-- [ ] `core/ingestion/metadata.py` — Regex validation of LLM output (catch hallucinations)
-- [ ] `core/ingestion/chunker.py` — Legal-aware chunking:
+- [x] `core/ingestion/pdf.py` — PDF text extraction (pdfplumber + Tesseract OCR fallback)
+- [x] `core/ingestion/metadata.py` — LLM-based metadata extraction (Gemini structured JSON output)
+- [x] `core/ingestion/metadata.py` — Regex validation of LLM output (catch hallucinations)
+- [x] `core/ingestion/chunker.py` — Legal-aware chunking:
   - Section detection (FACTS, ARGUMENTS, ANALYSIS, RATIO DECIDENDI, ORDER)
   - 2000-char chunks with 200-char overlap
   - Each chunk tagged: section_type, page_number, case_id, chunk_index
-- [ ] `core/ingestion/pipeline.py` — Orchestrator: PDF → text → metadata → chunks → embeddings → store
-- [ ] `core/legal/extractor.py` — Indian citation regex (5 formats), acts/sections parser
-- [ ] `core/legal/courts.py` — Court name normalization (SC + 25 HCs + tribunals)
-- [ ] `core/legal/constants.py` — Case types, bench types, disposal natures
+- [x] `core/ingestion/pipeline.py` — Orchestrator: PDF → text → metadata → chunks → embeddings → store
+- [x] `core/legal/extractor.py` — Indian citation regex (5 formats), acts/sections parser
+- [x] `core/legal/courts.py` — Court name normalization (SC + 25 HCs + tribunals)
+- [x] `core/legal/constants.py` — Case types, bench types, disposal natures
 
 #### 1.7 S3 Bulk Ingestion Script
-- [ ] `scripts/ingest_s3.py` — Download tar/zip + parquet from S3 (no-sign-required)
-- [ ] Parquet metadata reading + merge with LLM extraction
-- [ ] Progress tracking in local SQLite (resume support)
-- [ ] Rate limiting for Gemini API calls
-- [ ] Error logging for failed documents
-- [ ] Configurable concurrency (default: 5 parallel)
-- [ ] Ingest 1 year of SC judgments (~1000 docs) as initial dataset
+- [x] `scripts/ingest_s3.py` — Download tar/zip + parquet from S3 (no-sign-required)
+- [x] Parquet metadata reading + merge with LLM extraction
+- [x] Progress tracking in local SQLite (resume support)
+- [x] Rate limiting for Gemini API calls
+- [x] Error logging for failed documents
+- [x] Configurable concurrency (default: 5 parallel)
+- [x] Ingest 1 year of SC judgments (~1000 docs) as initial dataset
 
 #### 1.8 API Endpoints (Phase 1)
-- [ ] `POST /auth/register` — User registration with consent
-- [ ] `POST /auth/login` — JWT token pair
-- [ ] `POST /auth/refresh` — Token refresh with rotation
-- [ ] `POST /ingest/upload` — Single PDF upload (authenticated, admin only)
-- [ ] `GET /cases/{id}` — Case metadata + text
-- [ ] `GET /health` — Health check with dependency status
+- [x] `POST /auth/register` — User registration with consent
+- [x] `POST /auth/login` — JWT token pair
+- [x] `POST /auth/refresh` — Token refresh with rotation
+- [x] `POST /ingest/upload` — Single PDF upload (authenticated, admin only)
+- [x] `GET /cases/{id}` — Case metadata + text
+- [x] `GET /health` — Health check with dependency status
 
 #### 1.9 Tests (Phase 1)
-- [ ] Unit tests: PDF extraction (sample PDFs), chunker (known sections), metadata regex
-- [ ] Unit tests: Auth (JWT creation/validation, password hashing)
+- [x] Unit tests: PDF extraction (sample PDFs), chunker (known sections), metadata regex
+- [x] Unit tests: Auth (JWT creation/validation, password hashing)
 - [ ] Integration test: Full ingest pipeline (PDF → all stores)
-- [ ] Test fixtures: 5 sample SC judgment PDFs with known metadata
+- [x] Test fixtures: 5 sample SC judgment PDFs with known metadata
 
 ### Exit Criteria
 - [ ] 1,000+ SC judgments ingested (PostgreSQL + Pinecone + Neo4j)
-- [ ] All security middleware active (rate limiter, audit log, sanitizer)
-- [ ] API endpoints working with JWT auth
-- [ ] `docker compose up` starts everything locally
-- [ ] All tests pass, ruff + mypy clean
+- [x] All security middleware active (rate limiter, audit log, sanitizer)
+- [x] API endpoints working with JWT auth
+- [x] `docker compose up` starts everything locally
+- [x] All tests pass, ruff + mypy clean
 
 ---
 
@@ -120,48 +120,48 @@ Full hybrid search pipeline. Next.js frontend with search UI, auth pages, and ca
 ### Deliverables
 
 #### 2.1 Search Pipeline
-- [ ] `core/search/query.py` — LLM query understanding (Gemini → structured JSON: intent, entities, filters, expanded_query)
-- [ ] `core/search/fulltext.py` — PostgreSQL ts_rank_cd search with legal term boosting
-- [ ] `core/search/hybrid.py` — Search orchestrator:
+- [x] `core/search/query.py` — LLM query understanding (Gemini → structured JSON: intent, entities, filters, expanded_query)
+- [x] `core/search/fulltext.py` — PostgreSQL ts_rank_cd search with legal term boosting
+- [x] `core/search/hybrid.py` — Search orchestrator:
   - Parallel execution: Pinecone vector + PostgreSQL FTS + metadata exact match
   - Reciprocal Rank Fusion (RRF, k=60) to merge
   - Result deduplication by case_id
-- [ ] `providers/rerankers/cohere.py` — CohereReranker: rerank top 20 → return top 10
-- [ ] Search result enrichment: attach full metadata, section labels, relevance snippets
-- [ ] Query caching in Redis (TTL: 5 minutes for identical queries)
+- [x] `providers/rerankers/cohere.py` — CohereReranker: rerank top 20 → return top 10
+- [x] Search result enrichment: attach full metadata, section labels, relevance snippets
+- [x] Query caching in Redis (TTL: 5 minutes for identical queries)
 
 #### 2.2 Search API
-- [ ] `GET /search` — Main search endpoint
+- [x] `GET /search` — Main search endpoint
   - Query params: `q`, `court`, `year_from`, `year_to`, `case_type`, `bench_type`, `judge`, `act`, `sort_by`, `page`, `page_size`
   - Response: results[], total_count, facets{}, query_understanding{}
   - Rate limited: 100 req/min per user
-- [ ] `GET /search/suggest` — Auto-complete suggestions (Redis-cached)
-- [ ] `GET /search/facets` — Available filter values (cached)
+- [x] `GET /search/suggest` — Auto-complete suggestions (Redis-cached)
+- [x] `GET /search/facets` — Available filter values (cached)
 
 #### 2.3 Cases API
-- [ ] `GET /cases/{id}` — Full case detail with sections
-- [ ] `GET /cases/{id}/pdf` — Serve PDF from storage
-- [ ] `GET /cases/{id}/citations` — Cases cited by this case
-- [ ] `GET /cases/{id}/cited-by` — Cases that cite this case
-- [ ] `GET /cases/{id}/similar` — Semantically similar cases (vector search)
+- [x] `GET /cases/{id}` — Full case detail with sections
+- [x] `GET /cases/{id}/pdf` — Serve PDF from storage
+- [x] `GET /cases/{id}/citations` — Cases cited by this case
+- [x] `GET /cases/{id}/cited-by` — Cases that cite this case
+- [x] `GET /cases/{id}/similar` — Semantically similar cases (vector search)
 
 #### 2.4 Next.js Frontend Setup
-- [ ] Next.js 15 (App Router) + TypeScript strict
-- [ ] Tailwind CSS + shadcn/ui component library
-- [ ] `lib/api.ts` — Typed API client (fetch wrapper with JWT handling)
-- [ ] `lib/types.ts` — Shared TypeScript types matching backend schemas
-- [ ] Auth context: JWT storage (httpOnly cookie preferred), auto-refresh
-- [ ] CSP headers, CORS config in `next.config.ts`
+- [x] Next.js 15 (App Router) + TypeScript strict
+- [x] Tailwind CSS + shadcn/ui component library
+- [x] `lib/api.ts` — Typed API client (fetch wrapper with JWT handling)
+- [x] `lib/types.ts` — Shared TypeScript types matching backend schemas
+- [x] Auth context: JWT storage (httpOnly cookie preferred), auto-refresh
+- [x] CSP headers, CORS config in `next.config.ts`
 
 #### 2.5 Frontend Pages
-- [ ] **Landing page** (`/`) — Search bar, tagline, recent notable cases
-- [ ] **Search results** (`/search`) — Result cards, filter sidebar, pagination, sort
+- [x] **Landing page** (`/`) — Search bar, tagline, recent notable cases
+- [x] **Search results** (`/search`) — Result cards, filter sidebar, pagination, sort
   - Filter sidebar: court, year range, case type, bench type, judge, act
   - Result card: title, citation, court, date, snippet, relevance score
   - Responsive: mobile-first
-- [ ] **Case detail** (`/case/[id]`) — Metadata panel, judgment text (section-tabbed), PDF viewer
-- [ ] **Auth pages** (`/login`, `/register`) — Form with validation, error handling
-- [ ] **Layout** — Header with search bar, nav, user menu, footer with attribution (CC-BY-4.0)
+- [x] **Case detail** (`/case/[id]`) — Metadata panel, judgment text (section-tabbed), PDF viewer
+- [x] **Auth pages** (`/login`, `/register`) — Form with validation, error handling
+- [x] **Layout** — Header with search bar, nav, user menu, footer with attribution (CC-BY-4.0)
 
 #### 2.6 Bulk Ingestion (Scale Up)
 - [ ] Ingest 5,000+ SC judgments (multiple years)

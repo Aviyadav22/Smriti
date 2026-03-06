@@ -82,7 +82,7 @@
                                                              │
                                                              ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                    METADATA EXTRACTION (Gemini 3.1 Pro)                  │
+│                    METADATA EXTRACTION (Gemini 2.5 Pro)                  │
 │                                                                          │
 │  Structured JSON output:                                                 │
 │  {                                                                       │
@@ -147,7 +147,7 @@
                              ▼
                  ┌───────────────────────┐
                  │   Query Understanding │
-                 │   (Gemini 3.1 Pro)    │
+                 │   (Gemini 2.5 Pro)    │
                  │                       │
                  │  Input: raw query     │
                  │  Output: {            │
@@ -243,7 +243,7 @@ User Message
                             │
                             ▼
               ┌──────────────────────────┐
-              │  Gemini 3.1 Pro          │
+              │  Gemini 2.5 Pro          │
               │  (Streaming Generation)  │
               │                          │
               │  temperature: 0.1        │
@@ -332,7 +332,7 @@ This is the core of Smriti's intelligence. The Retrieval-Augmented Generation (R
 
 ### Stage 1: Query Understanding
 
-Gemini 3.1 Pro receives the raw user query and produces structured JSON:
+Gemini 2.5 Pro receives the raw user query and produces structured JSON:
 
 ```json
 {
@@ -956,7 +956,7 @@ Internet ──► HTTPS ────►│  │  Cloud Load Balancer          �
                         │                                     │
                         │  ┌──────────────────────────────┐   │
                         │  │  Vertex AI                    │   │
-                        │  │  - Gemini 3.1 Pro (LLM)      │   │
+                        │  │  - Gemini 2.5 Pro (LLM)      │   │
                         │  │  - gemini-embedding-001 (embed)│   │
                         │  └──────────────────────────────┘   │
                         │                                     │

@@ -16,17 +16,21 @@ import argparse
 import asyncio
 import json
 import logging
+import shutil
 import sqlite3
 import subprocess
 import sys
 import tarfile
 import tempfile
+import urllib.request
 from pathlib import Path
 
 import pyarrow.parquet as pq
 
 # Ensure the backend package is importable when running as a script.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import itertools  # noqa: E402
 
 from app.core.config import settings  # noqa: E402
 from app.core.dependencies import (  # noqa: E402
@@ -37,7 +41,27 @@ from app.core.dependencies import (  # noqa: E402
     get_vector_store,
 )
 from app.core.ingestion.pipeline import ingest_judgment  # noqa: E402
+from app.core.providers.embeddings.gemini import GeminiEmbedder  # noqa: E402
+from app.core.providers.llm.gemini import GeminiLLM  # noqa: E402
 from app.db.postgres import async_session_factory  # noqa: E402
+
+
+def _build_key_pool() -> list[str]:
+    """Build a list of Gemini API keys from env (GEMINI_API_KEYS or GEMINI_API_KEY)."""
+    import os
+
+    from dotenv import load_dotenv
+
+    # Load .env so GEMINI_API_KEYS is available via os.environ
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+    keys_str = os.environ.get("GEMINI_API_KEYS", "")
+    if keys_str:
+        keys = [k.strip() for k in keys_str.split(",") if k.strip()]
+        if keys:
+            return keys
+    # Fallback to single key from settings
+    return [settings.gemini_api_key]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -110,19 +134,41 @@ class IngestTracker:
 
 
 def _s3_download(s3_path: str, local_path: Path) -> bool:
-    """Download a file from S3 using the AWS CLI (no auth required)."""
+    """Download a file from S3 via HTTPS (public bucket, no auth required).
+
+    Falls back to AWS CLI if available.
+    """
     local_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Convert s3:// URL to HTTPS
+    https_url = s3_path.replace(
+        "s3://indian-supreme-court-judgments/",
+        "https://indian-supreme-court-judgments.s3.amazonaws.com/",
+    )
+
+    # Try HTTPS download first (no AWS CLI needed)
     try:
-        subprocess.run(
-            ["aws", "s3", "cp", s3_path, str(local_path), "--no-sign-request"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        logger.info("Downloading %s", https_url)
+        urllib.request.urlretrieve(https_url, str(local_path))
+        logger.info("Downloaded: %s (%.1f MB)", local_path.name, local_path.stat().st_size / 1e6)
         return True
-    except subprocess.CalledProcessError as exc:
-        logger.error("S3 download failed: %s → %s", s3_path, exc.stderr.strip())
-        return False
+    except (urllib.error.URLError, OSError) as exc:
+        logger.warning("HTTPS download failed: %s — %s", https_url, exc)
+
+    # Fallback to AWS CLI if available
+    if shutil.which("aws"):
+        try:
+            subprocess.run(
+                ["aws", "s3", "cp", s3_path, str(local_path), "--no-sign-request"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return True
+        except subprocess.CalledProcessError as exc:
+            logger.error("AWS CLI download failed: %s → %s", s3_path, exc.stderr.strip())
+
+    return False
 
 
 def download_year_data(year: int, data_dir: Path) -> tuple[Path | None, Path | None]:
@@ -151,7 +197,7 @@ def extract_tar(tar_path: Path, extract_dir: Path) -> list[Path]:
     with tarfile.open(tar_path, "r") as tar:
         for member in tar.getmembers():
             if member.name.endswith(".pdf"):
-                tar.extract(member, path=extract_dir)
+                tar.extract(member, path=extract_dir, filter="data")
                 pdf_paths.append(extract_dir / member.name)
 
     logger.info("Extracted %d PDFs from %s", len(pdf_paths), tar_path.name)
@@ -161,17 +207,19 @@ def extract_tar(tar_path: Path, extract_dir: Path) -> list[Path]:
 def load_parquet_metadata(parquet_path: Path) -> dict[str, dict]:
     """Load Parquet metadata into a dict keyed by the 'path' field.
 
+    Uses pandas to handle schema inconsistencies (mixed types) gracefully.
+
     Returns:
         Mapping from S3 path (or title-based key) to metadata dict.
     """
-    table = pq.read_table(parquet_path)
-    df = table.to_pydict()
-    num_rows = len(df.get("title", []))
+    import pandas as pd
 
+    df = pd.read_parquet(parquet_path)
     metadata_map: dict[str, dict] = {}
-    for i in range(num_rows):
-        row = {col: df[col][i] for col in df}
-        key = row.get("path") or row.get("title") or str(i)
+
+    for _, pandas_row in df.iterrows():
+        row = {col: (val if pd.notna(val) else None) for col, val in pandas_row.items()}
+        key = row.get("path") or row.get("title") or str(len(metadata_map))
         metadata_map[str(key)] = row
 
     logger.info("Loaded %d metadata records from %s", len(metadata_map), parquet_path.name)
@@ -236,9 +284,19 @@ async def ingest_year(
     if parquet_path and parquet_path.exists():
         metadata_map = load_parquet_metadata(parquet_path)
 
-    # Initialize providers
-    llm = get_llm()
-    embedder = get_embedder()
+    # Initialize providers — build a pool of LLM+embedder clients for key rotation
+    api_keys = _build_key_pool()
+    logger.info("Using %d Gemini API key(s) for parallel ingestion", len(api_keys))
+
+    llm_pool: list[GeminiLLM] = []
+    embedder_pool: list[GeminiEmbedder] = []
+    for key in api_keys:
+        llm_pool.append(GeminiLLM(api_key=key))
+        embedder_pool.append(GeminiEmbedder(api_key=key))
+
+    # Round-robin iterator over (llm, embedder) pairs
+    provider_cycle = itertools.cycle(zip(llm_pool, embedder_pool))
+
     vector_store = get_vector_store()
     graph_store = get_graph_store()
     storage = get_storage()
@@ -248,7 +306,7 @@ async def ingest_year(
     stats = {"success": 0, "skipped": 0, "failed": 0}
     processed = 0
 
-    async def _process_one(pdf_path: Path) -> None:
+    async def _process_one(pdf_path: Path, llm: GeminiLLM, embedder: GeminiEmbedder) -> None:
         nonlocal processed
         doc_key = f"year={year}/{pdf_path.name}"
 
@@ -283,8 +341,11 @@ async def ingest_year(
     # Apply limit
     pdfs_to_process = pdf_paths[:limit] if limit else pdf_paths
 
-    # Run concurrently
-    tasks = [_process_one(p) for p in pdfs_to_process]
+    # Run concurrently — assign each PDF a (llm, embedder) pair via round-robin
+    tasks = []
+    for p in pdfs_to_process:
+        llm, embedder = next(provider_cycle)
+        tasks.append(_process_one(p, llm, embedder))
     await asyncio.gather(*tasks)
 
     logger.info("Year %d complete: %s", year, stats)

@@ -1,0 +1,6 @@
+node_modules
+.next
+.env
+.env.*
+*.md
+src/__tests__
