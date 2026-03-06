@@ -4,10 +4,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm install --force && npm install lightningcss-linux-x64-gnu @next/swc-linux-x64-gnu --force
+# Copy only package.json (NO lock file) — fresh install ensures native binaries match platform
+COPY package.json ./
+RUN npm install
 
 COPY . .
+# Remove any lock file from host that could interfere
+RUN rm -f package-lock.json
 
 # Build-time env var for API URL (will be set during Cloud Build)
 ARG NEXT_PUBLIC_API_URL

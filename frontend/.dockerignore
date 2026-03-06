@@ -4,3 +4,4 @@ node_modules
 .env.*
 *.md
 src/__tests__
+package-lock.json
