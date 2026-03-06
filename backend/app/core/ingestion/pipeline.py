@@ -237,14 +237,16 @@ async def _insert_case(
                 jurisdiction, bench_type, judge, author_judge, petitioner,
                 respondent, decision_date, disposal_nature, description,
                 keywords, acts_cited, cases_cited, ratio_decidendi,
-                full_text, pdf_storage_path, s3_source_path, source,
-                language, available_languages, chunk_count
+                full_text, searchable_text, pdf_storage_path, s3_source_path,
+                source, language, available_languages, chunk_count
             ) VALUES (
                 :id, :title, :citation, :case_id, :cnr, :court, :year, :case_type,
                 :jurisdiction, :bench_type, :judge, :author_judge, :petitioner,
                 :respondent, :decision_date, :disposal_nature, :description,
                 :keywords, :acts_cited, :cases_cited, :ratio_decidendi,
-                :full_text, :pdf_storage_path, :s3_source_path, :source,
+                :full_text,
+                to_tsvector('english', COALESCE(:title, '') || ' ' || COALESCE(:citation, '') || ' ' || COALESCE(LEFT(:full_text, 50000), '')),
+                :pdf_storage_path, :s3_source_path, :source,
                 :language, :available_languages, 0
             )
             """

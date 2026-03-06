@@ -200,6 +200,11 @@ async def hybrid_search(
     # 8. Build facets from full result set
     facets = await _build_facets(reranked_ids, db)
 
+    # Adjust total_count to reflect actually available results
+    # (vector store may have IDs not yet in PostgreSQL)
+    if len(enriched) < len(page_ids):
+        total_count = len(enriched)
+
     response = SearchResponse(
         results=enriched,
         total_count=total_count,
