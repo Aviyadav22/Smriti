@@ -7,6 +7,7 @@ Provides symmetric encryption/decryption for sensitive database fields
 import base64
 import os
 
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from app.core.config import settings
@@ -106,7 +107,7 @@ def decrypt_field(ciphertext: str) -> str:
 
     try:
         plaintext_bytes = aesgcm.decrypt(nonce, encrypted_data, None)
-    except (ValueError, OverflowError) as exc:
+    except (ValueError, OverflowError, InvalidTag) as exc:
         raise ValueError(f"Decryption failed: {exc}") from exc
 
     return plaintext_bytes.decode("utf-8")

@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # Gemini
     llm_provider: str = "gemini"
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.1-pro"
+    gemini_model: str = "gemini-2.5-pro"
     gemini_embedding_model: str = "gemini-embedding-001"
     gemini_embedding_dimension: int = 1536
     gemini_max_tokens: int = 8192
@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     pinecone_dimension: int = 1536
     pinecone_metric: str = "cosine"
     pinecone_cloud: str = "aws"
+    pinecone_host: str = ""
     pinecone_top_k: int = 20
 
     # Neo4j

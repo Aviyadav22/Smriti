@@ -43,7 +43,7 @@ async def search_fulltext(
 ) -> list[FTSResult]:
     """Run a PostgreSQL FTS query against the ``cases`` table.
 
-    Uses the ``search_vector`` tsvector column and ``ts_rank_cd`` for ranking.
+    Uses the ``searchable_text`` tsvector column and ``ts_rank_cd`` for ranking.
     Dynamically constructs filter clauses from *filters*.
     """
     if not query.strip():
@@ -53,7 +53,7 @@ async def search_fulltext(
 
     # Core FTS clause
     where_clauses.insert(
-        0, "search_vector @@ plainto_tsquery('english', :query)"
+        0, "searchable_text @@ plainto_tsquery('english', :query)"
     )
     params["query"] = query
     params["limit"] = limit
@@ -62,7 +62,7 @@ async def search_fulltext(
 
     sql = text(
         f"SELECT id, title, citation, "
-        f"ts_rank_cd(search_vector, plainto_tsquery('english', :query)) AS rank, "
+        f"ts_rank_cd(searchable_text, plainto_tsquery('english', :query)) AS rank, "
         f"ts_headline('english', COALESCE(description, ''), "
         f"plainto_tsquery('english', :query), "
         f"'StartSel=**, StopSel=**, MaxWords=50, MinWords=20') AS snippet "
@@ -123,11 +123,11 @@ def _build_filter_clauses(
         params["bench_type"] = filters.bench_type
 
     if filters.judge:
-        clauses.append("judge ILIKE :judge")
+        clauses.append("array_to_string(judge, ' ') ILIKE :judge")
         params["judge"] = f"%{filters.judge}%"
 
     if filters.act:
-        clauses.append("acts_cited ILIKE :act")
+        clauses.append("array_to_string(acts_cited, ' ') ILIKE :act")
         params["act"] = f"%{filters.act}%"
 
     return clauses, params

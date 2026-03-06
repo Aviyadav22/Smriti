@@ -56,13 +56,13 @@ class TestBuildFilterClauses:
     def test_judge_filter(self) -> None:
         filters = SearchFilters(judge="Chandrachud")
         clauses, params = _build_filter_clauses(filters)
-        assert "judge ILIKE :judge" in clauses[0]
+        assert "ILIKE :judge" in clauses[0]
         assert "%Chandrachud%" in params["judge"]
 
     def test_act_filter(self) -> None:
         filters = SearchFilters(act="Indian Penal Code")
         clauses, params = _build_filter_clauses(filters)
-        assert "acts_cited ILIKE :act" in clauses[0]
+        assert "ILIKE :act" in clauses[0]
 
     def test_all_filters_combined(self) -> None:
         """All filters produce separate clauses."""

@@ -19,7 +19,11 @@ class PineconeStore:
 
     def __init__(self) -> None:
         self._client = Pinecone(api_key=settings.pinecone_api_key)
-        self._index = self._client.Index(settings.pinecone_index_name)
+        host = getattr(settings, "pinecone_host", "")
+        if host:
+            self._index = self._client.Index(host=host)
+        else:
+            self._index = self._client.Index(settings.pinecone_index_name)
 
     async def upsert(self, vectors: list[dict]) -> None:
         """Insert or update vectors.

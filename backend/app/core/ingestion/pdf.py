@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 import pdfplumber
-from pdfplumber.utils.exceptions import PSException
+from pdfminer.psparser import PSException
 
 logger = logging.getLogger(__name__)
 

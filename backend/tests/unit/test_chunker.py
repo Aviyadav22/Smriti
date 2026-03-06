@@ -96,7 +96,7 @@ class TestChunkJudgment:
     """Tests for chunk_judgment()."""
 
     def test_short_text_single_chunk(self):
-        text = "A short judgment under 2000 characters."
+        text = "A short legal opinion under 2000 characters that is too brief to need splitting."
         chunks = chunk_judgment(text, case_id="test-id")
         assert len(chunks) == 1
         assert chunks[0].case_id == "test-id"
