@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm install --force
+RUN npm install --force && npm install lightningcss-linux-x64-gnu @next/swc-linux-x64-gnu --force
 
 COPY . .
 
