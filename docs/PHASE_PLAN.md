@@ -4,7 +4,7 @@
 
 ## Overview
 
-Four phases, each delivering a usable increment. Each phase builds on the previous. Target: 8 weeks to production MVP.
+Eight phases delivering a full production legal intelligence platform. Phases 1-3 complete. Phases 4-8 take Smriti from "search tool" to "AI-powered legal assistant" with autonomous agents, multilingual support, and production deployment.
 
 **Guiding Principles:**
 - Each phase ends with a deployable artifact
@@ -12,10 +12,19 @@ Four phases, each delivering a usable increment. Each phase builds on the previo
 - Interfaces (Protocols) are defined first, implementations follow
 - Test as you build — no "testing phase" at the end
 - Keep scope tight — the "NOT building" list matters as much as the build list
+- Data is the #1 priority — features on an empty DB are useless
+- Agents are the differentiator — not just search, but autonomous legal workflows
+
+**Vision:** India's AI-powered legal intelligence platform — the Harvey AI for Indian law.
+
+**Three Pillars:**
+1. **Search & Discovery** — Hybrid search, citation graphs, section-aware case viewer
+2. **Intelligence & Agents** — AI agents that do legal work: research, case prep, strategy, drafting
+3. **Accessibility** — Hindi/multilingual, audio digests, mobile-first
 
 ---
 
-## Phase 1: Foundation + Ingestion (Week 1–2)
+## Phase 1: Foundation + Ingestion (Week 1–2) — COMPLETE
 
 ### Goal
 Backend scaffold with security, database, ingestion pipeline. Ingest first 1,000 SC judgments. No frontend yet — test via API.
@@ -112,10 +121,10 @@ Backend scaffold with security, database, ingestion pipeline. Ingest first 1,000
 
 ---
 
-## Phase 2: Search + Frontend (Week 3–4)
+## Phase 2: Search + Frontend (Week 3–4) — COMPLETE
 
 ### Goal
-Full hybrid search pipeline. Next.js frontend with search UI, auth pages, and case viewer. Deploy to Vercel (frontend) + Cloud Run (backend).
+Full hybrid search pipeline. Next.js frontend with search UI, auth pages, and case viewer.
 
 ### Deliverables
 
@@ -156,269 +165,544 @@ Full hybrid search pipeline. Next.js frontend with search UI, auth pages, and ca
 #### 2.5 Frontend Pages
 - [x] **Landing page** (`/`) — Search bar, tagline, recent notable cases
 - [x] **Search results** (`/search`) — Result cards, filter sidebar, pagination, sort
-  - Filter sidebar: court, year range, case type, bench type, judge, act
-  - Result card: title, citation, court, date, snippet, relevance score
-  - Responsive: mobile-first
 - [x] **Case detail** (`/case/[id]`) — Metadata panel, judgment text (section-tabbed), PDF viewer
 - [x] **Auth pages** (`/login`, `/register`) — Form with validation, error handling
-- [x] **Layout** — Header with search bar, nav, user menu, footer with attribution (CC-BY-4.0)
+- [x] **Layout** — Header with search bar, nav, user menu, footer with attribution
 
 #### 2.6 Bulk Ingestion (Scale Up)
-- [ ] Ingest 5,000+ SC judgments (multiple years)
-- [ ] Verify search accuracy: run 10 test queries, check results manually
-- [ ] Fix any chunking/embedding/search issues discovered
+- [ ] Ingest 5,000+ SC judgments (multiple years) — MOVED TO PHASE 4
+- [ ] Verify search accuracy: run 10 test queries, check results manually — MOVED TO PHASE 4
+- [ ] Fix any chunking/embedding/search issues discovered — MOVED TO PHASE 4
 
 #### 2.7 Tests (Phase 2)
-- [ ] Unit tests: query understanding (mock Gemini), RRF merger, fulltext search
-- [ ] Integration test: end-to-end search (query → results with correct metadata)
-- [ ] Frontend: component tests for search bar, result card, filter sidebar
-- [ ] Search accuracy test set: 15 queries with expected results
+- [x] Unit tests: query understanding (mock Gemini), RRF merger, fulltext search
+- [ ] Integration test: end-to-end search (query → results with correct metadata) — MOVED TO PHASE 4
+- [x] Frontend: component tests for search bar, result card, filter sidebar
+- [ ] Search accuracy test set: 15 queries with expected results — MOVED TO PHASE 4
 
 ### Exit Criteria
-- [ ] Search works for citation lookup, topic search, and filtered queries
-- [ ] Frontend deployed to Vercel, backend on Cloud Run
-- [ ] >80% recall@5 for citation queries on test set
-- [ ] Auth flow complete (register → login → search → logout)
-- [ ] Mobile-responsive search experience
+- [x] Search pipeline code complete and tested
+- [x] Frontend deployed locally with all pages
+- [x] Auth flow complete (register → login → search → logout)
+- [x] Mobile-responsive search experience
 
 ---
 
-## Phase 3: Intelligence + Graph Visualization (Week 5–6)
+## Phase 3: Intelligence + Graph Visualization (Week 5–6) — COMPLETE
 
 ### Goal
-RAG chat with streaming, citation graph visualization, judgment section viewer. The platform becomes a research assistant, not just a search engine.
+RAG chat with streaming, citation graph visualization, judgment section viewer.
 
 ### Deliverables
 
 #### 3.1 RAG Chat
-- [ ] `api/routes/chat.py` — Streaming chat endpoint (SSE)
+- [x] `api/routes/chat.py` — Streaming chat endpoint (SSE)
   - `POST /chat` — Start new chat session
   - `POST /chat/{session_id}/message` — Send message, receive streaming response
   - `GET /chat/sessions` — List user's chat sessions
   - `GET /chat/{session_id}/history` — Full chat history
   - `DELETE /chat/{session_id}` — Delete session
-- [ ] RAG pipeline:
-  1. User query → LLM query understanding
-  2. Hybrid search (top 10 chunks)
-  3. Rerank (top 5)
-  4. Construct prompt with retrieved context + chat history
-  5. Stream response from Gemini with inline citations
-- [ ] Citation grounding: every claim in response linked to source chunk
-- [ ] Chat history stored encrypted per-user in PostgreSQL
-- [ ] System prompt with legal research persona (from PROMPT_LIBRARY.md)
+- [x] RAG pipeline: query → hybrid search → rerank → prompt with context + history → stream from Gemini
+- [x] Citation grounding: every claim linked to source chunk
+- [x] Chat history stored encrypted per-user (AES-256-GCM)
+- [x] System prompt with legal research persona
 
 #### 3.2 Citation Graph API
-- [ ] `api/routes/graph.py` — Graph query endpoints
+- [x] `api/routes/graph.py` — Graph query endpoints
   - `GET /graph/{case_id}/neighborhood` — 1-hop citation network
   - `GET /graph/{case_id}/chain` — Citation chain (recursive, max depth 3)
   - `GET /graph/{case_id}/authorities` — Most-cited cases in the network
-  - `GET /graph/stats` — Graph statistics (total nodes, edges, most cited)
-- [ ] Neo4j Cypher queries for:
-  - Forward citations (cases this case cites)
-  - Backward citations (cases that cite this case)
-  - Overruled/affirmed/distinguished relationships
-  - Authority score (PageRank-like: cases with most citations)
-  - Common citations between two cases
+  - `GET /graph/stats` — Graph statistics
+- [x] Neo4j Cypher queries for forward/backward citations, overruled/affirmed/distinguished
 
 #### 3.3 Frontend: Chat Interface
-- [ ] Chat page (`/chat`) — Sidebar with session list, main chat area
-- [ ] Streaming response display with typing indicator
-- [ ] Inline citations: clickable links to source cases/sections
-- [ ] "Sources" panel: retrieved chunks with relevance scores
-- [ ] New session / continue session
-- [ ] Chat input: multi-line, submit on Enter, Shift+Enter for newline
+- [x] Chat page (`/chat`) — Sidebar with session list, main chat area
+- [x] Streaming response display with typing indicator
+- [x] Inline citations: clickable links to source cases
+- [x] Sources panel: retrieved chunks with relevance scores
 
 #### 3.4 Frontend: Citation Graph
-- [ ] Graph page (`/graph`) — Interactive citation network visualization
-- [ ] d3.js or vis.js force-directed graph
-- [ ] Node types: Judgment (circle), Statute (diamond), Court (square)
-- [ ] Edge types: color-coded (CITES=gray, OVERRULES=red, AFFIRMS=green, DISTINGUISHES=orange)
-- [ ] Click node → show case details panel
-- [ ] Zoom, pan, drag nodes
-- [ ] Filter by: year range, court, relationship type
+- [x] Graph page (`/graph`) — Interactive citation network (react-force-graph-2d)
+- [x] Edge types: color-coded (CITES=gray, OVERRULES=red, AFFIRMS=green, DISTINGUISHES=orange)
+- [x] Click node → show case details panel
+- [x] Zoom, pan, depth controls (1-3)
 
 #### 3.5 Frontend: Enhanced Case Viewer
-- [ ] Section-tabbed view: Facts | Arguments | Analysis | Ratio Decidendi | Order
-- [ ] Highlighted key passages (ratio decidendi in yellow)
-- [ ] "Cited Cases" sidebar: list with quick-view popover
-- [ ] "Cited By" tab: cases that reference this judgment
-- [ ] PDF download button
-- [ ] Share/bookmark functionality
+- [x] Section-tabbed view with mini citation graph
+- [x] Cited Cases and Cited By tabs
 
 #### 3.6 Tests (Phase 3)
-- [ ] Unit tests: RAG pipeline (mock LLM, verify prompt construction)
-- [ ] Unit tests: Neo4j graph queries (test with sample graph)
-- [ ] Integration test: chat flow (send message → receive streamed response with citations)
-- [ ] Frontend: chat component tests, graph rendering tests
+- [x] Unit tests: RAG pipeline (17 tests), graph traversal (16 tests)
+- [x] Frontend: chat page tests (6), graph page tests (5)
+- [x] Encryption roundtrip tests (4)
 
 ### Exit Criteria
-- [ ] Chat produces grounded responses with citations for legal queries
-- [ ] Citation graph renders for any ingested case
-- [ ] Section viewer correctly identifies judgment sections
-- [ ] Chat history persists across sessions
-- [ ] 10,000+ SC judgments ingested
+- [x] Chat produces grounded responses with citations
+- [x] Citation graph renders correctly
+- [x] All 190 backend tests pass
+- [x] All 88 frontend tests pass
+- [x] Frontend builds clean
 
 ---
 
-## Phase 4: Production Hardening + Launch (Week 7–8)
+## Phase 4: Data + Judge Analytics
 
 ### Goal
-Production-grade deployment on GCP, performance optimization, DPDP compliance, monitoring. Ready for real users.
+Fill the empty database with all 35K SC judgments. Ship Judge Analytics — the first "intelligence" feature that no free tool offers.
 
 ### Deliverables
 
-#### 4.1 GCP Production Deployment
-- [ ] Cloud Run (backend): auto-scaling, min 1 instance, max 10
-- [ ] Cloud SQL PostgreSQL 16: SSL-only, automated backups, point-in-time recovery
-- [ ] GCP Secret Manager: all API keys, DB passwords, JWT secrets
-- [ ] `providers/storage/gcs.py` — GCSStorage for PDF storage
-- [ ] Cloud CDN for static assets (frontend)
-- [ ] Custom domain + SSL certificate
-- [ ] Cloud Armor: WAF rules for common attacks
+#### 4.1 Full SC Ingestion
+- [ ] Ingest all 35K SC judgments from S3 (max out dataset)
+- [ ] Use Gemini Flash for metadata extraction (conserve Pro credits)
+- [ ] Citation graph integrity verification (Neo4j edges match extracted citations)
+- [ ] Metadata quality audit: sample 100 cases, verify accuracy
+- [ ] Upgrade Pinecone to Starter when free tier exhausts
+- [ ] Progress dashboard: ingestion stats, error rates, quality scores
+- [ ] Verify search accuracy with real data: 10 test queries
+- [ ] Fix any chunking/embedding/search issues found
 
-#### 4.2 Performance Optimization
-- [ ] Redis caching layer:
-  - Search results: 5-min TTL for identical queries
-  - Case metadata: 1-hour TTL
-  - Facet counts: 15-min TTL
-  - User session data: 24-hour TTL
-- [ ] Database query optimization: EXPLAIN ANALYZE on slow queries
-- [ ] Connection pooling: PgBouncer or SQLAlchemy pool tuning
-- [ ] Pinecone query optimization: metadata pre-filtering
-- [ ] Frontend: Image optimization, code splitting, prefetching
+#### 4.2 Judge Analytics API
+- [ ] `GET /judges` — List all judges with case counts
+- [ ] `GET /judges/{name}` — Judge profile:
+  - Cases authored (count by year)
+  - Disposal patterns (dismissed/allowed/remanded percentages)
+  - Most frequent bench combinations
+  - Average case duration (filing → decision)
+  - Most-cited judgments authored
+  - Acts/sections most frequently dealt with
+  - Landmark judgments authored
+- [ ] `GET /judges/{name}/cases` — Paginated case list with filters
+- [ ] `GET /judges/compare` — Compare 2-3 judges side by side
+- [ ] `GET /courts/{court}/stats` — Court-level statistics
+- [ ] Redis caching (judge stats: 1-hour TTL)
 
-#### 4.3 DPDP Act Compliance
-- [ ] Consent flow: explicit consent at registration with purpose listing
-- [ ] Consent versioning: track which version user consented to
-- [ ] Right to erasure: `DELETE /auth/me` — deletes all user data (chat, uploads, consent records, audit entries marked as deleted)
-- [ ] Data retention policy: configurable (default: 2 years inactive)
-- [ ] Breach notification process documented (72-hour requirement)
-- [ ] Privacy policy page on frontend
-- [ ] Cookie consent banner (if using cookies)
+#### 4.3 Judge Analytics UI
+- [ ] Judge directory page (`/judges`) — searchable list with key stats
+- [ ] Judge profile page (`/judge/[name]`) — stats dashboard:
+  - Disposal pattern pie chart
+  - Cases per year bar chart
+  - Bench combination heatmap
+  - Top cited judgments list
+  - Acts/sections word cloud or bar chart
+- [ ] Judge comparison page (`/judges/compare`) — side-by-side stats
+- [ ] Link judges from case detail page (clickable judge names)
+- [ ] Court statistics page (`/courts`) — aggregate stats
 
-#### 4.4 Monitoring + Observability
-- [ ] Structured logging (JSON) with PII redaction
-- [ ] Cloud Logging integration
-- [ ] Health check endpoint with dependency status (DB, Redis, Pinecone, Neo4j, Gemini)
-- [ ] Error tracking: Sentry or GCP Error Reporting
-- [ ] Uptime monitoring: Cloud Monitoring alerts
-- [ ] Key metrics dashboard: search latency (p50/p95/p99), API error rate, LLM token usage, active users
-- [ ] Alert rules: >5% error rate, p95 latency >3s, failed auth spike
-
-#### 4.5 Document Upload (User Documents)
-- [ ] Upload flow: file validation → virus scan (optional) → store → extract → chunk → embed → index
-- [ ] Supported formats: PDF only (MVP)
-- [ ] Size limit: 50MB per file
-- [ ] Documents private to uploading user (row-level security)
-- [ ] Upload status tracking: pending → processing → completed → failed
-- [ ] Upload page (`/upload`) in frontend
-
-#### 4.6 Landing + Onboarding
-- [ ] Landing page redesign: hero, features grid, how-it-works, CTA
-- [ ] Onboarding tour: first-time search walkthrough
-- [ ] About page with dataset attribution (CC-BY-4.0, Dattam Labs)
-- [ ] Credits/licensing page
-
-#### 4.7 Final Quality Assurance
-- [ ] Search accuracy evaluation: 30 test queries across categories
-  - Citation lookup (10 queries): >90% recall@5
-  - Topic search (10 queries): >70% recall@5
-  - Filtered search (5 queries): correct filter application
-  - Complex queries (5 queries): multi-facet, natural language
-- [ ] Security audit checklist:
-  - [ ] OWASP Top 10 review
-  - [ ] JWT implementation review
-  - [ ] SQL injection test (parameterized queries verified)
-  - [ ] XSS test (CSP headers, output escaping)
-  - [ ] Rate limiting verified under load
-  - [ ] Secrets not in code or logs
-  - [ ] CORS restricted to known origins
-- [ ] Load testing: 50 concurrent users, <2s search response
-- [ ] Mobile responsiveness audit
-
-#### 4.8 Scale Ingestion
-- [ ] Ingest remaining SC judgments (target: 20,000+)
-- [ ] Citation graph integrity check: verify edges match extracted citations
-- [ ] Metadata quality audit: sample 100 cases, verify LLM extraction accuracy
+#### 4.4 Tests (Phase 4)
+- [ ] Unit tests: judge analytics SQL queries (mock DB)
+- [ ] Unit tests: ingestion quality metrics
+- [ ] Frontend: judge profile page tests, comparison tests
+- [ ] Data validation: 10 sample judges with manually verified stats
 
 ### Exit Criteria
-- [ ] Production deployment stable on GCP
-- [ ] Search accuracy meets targets on 30-query test set
-- [ ] Security audit passed (no critical/high findings)
-- [ ] DPDP compliance features active
-- [ ] Monitoring + alerting operational
-- [ ] 20,000+ SC judgments searchable
-- [ ] <2s average search response time
+- [ ] 35,000 SC judgments in PostgreSQL + Pinecone + Neo4j
+- [ ] Judge Analytics working for all SC judges in dataset
+- [ ] Search works with real data (10 test queries verified)
+- [ ] Citation graph renders for any ingested case
 
 ---
 
-## What Claude Should Build (Per Phase)
+## Phase 5: Document Upload + Audio Digests
 
-| Phase | Claude Builds | Claude Does NOT Build |
-|-------|--------------|---------------------|
-| 1 | All backend code, security, ingestion pipeline, tests | Frontend, CI/CD, production infra |
-| 2 | Search pipeline, frontend pages, deploy configs | Mobile app, email notifications |
-| 3 | Chat, graph API, graph viz, section viewer | Agent flows, document comparison |
-| 4 | GCS provider, monitoring, DPDP flow, upload | Analytics dashboard, billing, admin panel |
+### Goal
+Two killer features competitors charge for — upload briefs for precedent mapping, listen to judgment summaries on the go.
+
+### Deliverables
+
+#### 5.1 Document Upload Pipeline
+- [ ] Upload endpoint: `POST /documents/upload` (PDF, max 50MB)
+- [ ] File validation (type, size, virus scan optional)
+- [ ] Store to GCS/local storage
+- [ ] Background processing pipeline:
+  1. Text extraction (pdfplumber + OCR fallback)
+  2. Issue identification (Gemini Pro: extract legal issues)
+  3. Per-issue precedent search (hybrid search, parallel)
+  4. Counter-argument identification
+  5. Research memo generation (structured, with citations)
+- [ ] Status tracking: pending → extracting → analyzing → searching → generating → complete → failed
+- [ ] Documents private per-user (row-level security)
+- [ ] `GET /documents` — List user's uploaded documents
+- [ ] `GET /documents/{id}` — Document detail + analysis results
+- [ ] `DELETE /documents/{id}` — Delete document + all analysis
+
+#### 5.2 Document Upload UI
+- [ ] Upload page (`/upload`) — drag-and-drop PDF upload
+- [ ] Processing status with step-by-step progress
+- [ ] Analysis results page:
+  - Extracted issues listed
+  - Per-issue: supporting precedents, opposing precedents, key statutes
+  - Downloadable research memo (PDF export)
+- [ ] Document history in user dashboard
+
+#### 5.3 Audio Digests
+- [ ] Audio generation pipeline:
+  1. Case summary generation (Gemini Pro: 2-3 min summary)
+  2. TTS via Sarvam AI (Hindi + English) or Google Cloud TTS fallback
+  3. Audio file storage (GCS/local, MP3)
+  4. Cache generated audio (don't regenerate)
+- [ ] `GET /cases/{id}/audio` — Stream or download audio digest
+- [ ] `GET /cases/{id}/audio/status` — Check if audio exists
+- [ ] `POST /cases/{id}/audio/generate` — Trigger async generation
+- [ ] Audio player on case detail page:
+  - Play/pause, progress bar, playback speed (0.5x-2x)
+  - Download button, language selector (EN / HI)
+- [ ] Batch audio generation for landmark cases
+
+#### 5.4 Tests (Phase 5)
+- [ ] Unit tests: document processing pipeline (mock Gemini)
+- [ ] Unit tests: audio generation pipeline (mock TTS API)
+- [ ] Frontend: upload page tests, audio player tests
+- [ ] Integration test: upload PDF → receive analysis results
+
+### Exit Criteria
+- [ ] Document upload produces accurate issue mapping for sample briefs
+- [ ] Audio digests play correctly in English and Hindi
+- [ ] Processing status updates in real-time
+- [ ] Documents private per-user
+
+---
+
+## Phase 6: Agent Framework + Research & Case Prep Agents
+
+### Goal
+Build the agent infrastructure and ship the first two agents. Transition from "search tool" to "AI legal assistant."
+
+### Deliverables
+
+#### 6.1 Agent Infrastructure
+- [ ] `core/agents/base.py` — Base agent Protocol:
+  - `plan(input) -> list[Step]` — Break task into steps
+  - `execute(step) -> StepResult` — Execute a single step
+  - `adapt(results) -> list[Step]` — Revise plan based on results
+  - `interact(checkpoint) -> UserInput` — Request human input
+- [ ] `core/agents/orchestrator.py` — Orchestrator agent:
+  - Intent classification (which agent to route to)
+  - Multi-agent coordination (parallel sub-tasks)
+  - Result aggregation and formatting
+- [ ] `core/agents/state.py` — Agent state management:
+  - PostgreSQL-backed state persistence
+  - Step tracking (planned → running → completed → failed)
+  - Intermediate results storage (encrypted)
+  - Execution history and audit trail
+- [ ] LangGraph integration:
+  - Graph-based workflow definitions
+  - Conditional routing (branch on step results)
+  - Parallel node execution
+  - Human-in-the-loop breakpoints
+- [ ] Multi-model routing:
+  - Gemini Pro for reasoning, analysis, synthesis
+  - Gemini Flash for classification, extraction, summarization
+  - Router logic based on task type + complexity
+- [ ] Agent execution API:
+  - `POST /agents/{agent_type}/run` — Start agent execution (SSE streaming)
+  - `GET /agents/executions/{id}` — Execution status and results
+  - `GET /agents/executions` — List user's executions
+  - `POST /agents/executions/{id}/input` — Provide human input at checkpoint
+  - `DELETE /agents/executions/{id}` — Cancel running execution
+
+#### 6.2 Research Agent
+- [ ] `core/agents/research.py`:
+  - Decompose legal question into 3-7 sub-queries
+  - Run parallel hybrid searches per sub-query
+  - Cross-reference results (cases appearing in multiple sub-queries = high relevance)
+  - Contradiction detection (flag conflicting holdings)
+  - Produce structured research memo:
+    - Executive summary
+    - Key findings per sub-query
+    - Supporting precedents (with relevance + confidence scores)
+    - Opposing/distinguishing precedents
+    - Statutory provisions cited
+    - Recommended further research
+  - Handle follow-up questions within session
+  - Citation verification: every cited case exists in DB
+
+#### 6.3 Case Prep Agent
+- [ ] `core/agents/case_prep.py`:
+  - Accept uploaded brief/petition (PDF or text)
+  - Extract legal issues, parties, relief sought, key facts
+  - Per issue: find supporting precedents, opposing precedents, key statutes
+  - Identify likely counter-arguments and responses
+  - Generate structured research memo:
+    - Case overview
+    - Issues identified
+    - Per-issue analysis with precedent mapping
+    - Counter-argument matrix
+    - Recommended strategy points
+  - Export as PDF/Word
+
+#### 6.4 Agent UI
+- [ ] Agent hub page (`/agents`) — agent selector with descriptions
+- [ ] Agent workspace (`/agents/[type]`):
+  - Input panel (text or file upload)
+  - Step-by-step execution visualization
+  - Real-time streaming of intermediate results
+  - Human-in-the-loop input prompts
+  - Final result with citations
+- [ ] Agent history in user dashboard
+- [ ] Share agent results (shareable link)
+
+#### 6.5 Tests (Phase 6)
+- [ ] Unit tests: orchestrator routing, research agent planning, case prep issue extraction
+- [ ] Unit tests: agent state management (persistence, recovery)
+- [ ] Frontend: agent hub tests, workspace tests
+- [ ] Integration test: research agent end-to-end with mock LLM
+
+### Exit Criteria
+- [ ] Research Agent produces coherent memos for 10 test legal questions
+- [ ] Case Prep Agent correctly identifies issues from 5 sample briefs
+- [ ] Agent execution streams progress in real-time
+- [ ] Human-in-the-loop checkpoints work
+- [ ] Agent state persists and can be resumed
+
+---
+
+## Phase 7: Strategy Agent + Drafting Agent + Hindi
+
+### Goal
+Advanced agents for litigation strategy and document drafting. Hindi support to unlock India's mass market.
+
+### Deliverables
+
+#### 7.1 Strategy Agent
+- [ ] `core/agents/strategy.py`:
+  - Input: case facts + target judge/bench (optional) + desired relief
+  - Pull Judge Analytics data (disposal patterns, tendencies)
+  - Find cases with similar fact patterns, track outcomes
+  - Predict likely arguments from opposing side
+  - Identify weak points in user's position
+  - Output:
+    - Case strength assessment (strong/moderate/weak + reasoning)
+    - Recommended legal arguments (ordered by predicted effectiveness)
+    - Key precedents to cite (with relevance explanation)
+    - Anticipated counter-arguments and rebuttals
+    - Judge-specific considerations
+    - Procedural strategy suggestions
+
+#### 7.2 Drafting Agent
+- [ ] `core/agents/drafting.py`:
+  - Input: document type + case facts + relevant precedents
+  - Document types:
+    - Bail applications (Section 439 CrPC)
+    - Writ petitions (Article 226/32)
+    - Written statements
+    - Legal notices
+    - Appeals (civil/criminal)
+    - Applications (interim relief, stay, adjournment)
+  - Grounded in precedents and statutory provisions
+  - Citation verification against DB
+  - Template system (customizable per document type)
+  - Export: Word (.docx) and PDF
+  - Revision: accept feedback, regenerate sections
+
+#### 7.3 Hindi Support
+- [ ] `next-intl` for frontend i18n
+- [ ] Hindi translations for all UI strings
+- [ ] Language toggle in header (EN / HI)
+- [ ] Hindi search: detect language → translate → search → translate back
+- [ ] Hindi judgment summaries (Gemini translation)
+- [ ] Hindi audio digests (Sarvam AI TTS)
+- [ ] Hindi agent responses (when query is in Hindi)
+
+#### 7.4 Document Review Agent (if time permits)
+- [ ] Upload contract/agreement → clause-by-clause analysis
+- [ ] Risk flagging (high/medium/low per clause)
+- [ ] Missing clause detection
+- [ ] Compliance check against relevant statutes
+
+#### 7.5 Tests (Phase 7)
+- [ ] Unit tests: strategy agent, drafting agent, Hindi translation pipeline
+- [ ] Frontend: Hindi UI rendering, drafting workspace tests
+- [ ] Integration test: strategy agent with real judge data
+- [ ] Translation quality: 10 Hindi queries, verify search accuracy
+
+### Exit Criteria
+- [ ] Strategy Agent produces actionable strategy for 5 test cases
+- [ ] Drafting Agent generates valid documents for all 6 types
+- [ ] Hindi search returns relevant results for 10 test queries
+- [ ] Hindi audio digests work
+- [ ] Language toggle works across all pages
+
+---
+
+## Phase 8: Production Hardening + Launch
+
+### Goal
+Production-grade deployment on GCP. Everything needed for real lawyers.
+
+### Deliverables
+
+#### 8.1 GCP Production Deployment
+- [ ] Cloud Run (backend): auto-scaling, min 1, max 10
+- [ ] Cloud SQL PostgreSQL 16: SSL-only, backups, point-in-time recovery
+- [ ] GCP Secret Manager for all secrets
+- [ ] `providers/storage/gcs.py` — GCSStorage for PDFs + audio
+- [ ] Cloud CDN for static assets
+- [ ] Custom domain + SSL (smriti.law or similar)
+- [ ] Cloud Armor WAF
+- [ ] Vercel or Cloud Run for frontend
+
+#### 8.2 Performance Optimization
+- [ ] Redis caching: search (5min), metadata (1hr), judge stats (1hr), facets (15min), agent results (24hr)
+- [ ] DB query optimization (EXPLAIN ANALYZE)
+- [ ] Connection pooling
+- [ ] Pinecone pre-filtering
+- [ ] Frontend: code splitting, prefetching, image optimization
+- [ ] Audio CDN caching (long TTL, immutable)
+
+#### 8.3 DPDP Act Compliance
+- [ ] Consent flow with purpose listing
+- [ ] Consent versioning
+- [ ] Right to erasure (`DELETE /auth/me`)
+- [ ] Data retention policy (2yr default)
+- [ ] Breach notification process (72hr)
+- [ ] Privacy policy page
+- [ ] Cookie consent banner
+
+#### 8.4 Monitoring + Observability
+- [ ] Structured JSON logging with PII redaction
+- [ ] Cloud Logging + Sentry
+- [ ] Health check with all dependencies
+- [ ] Metrics dashboard:
+  - Search: latency p50/p95/p99
+  - API: error rate, request count
+  - LLM: token usage, cost tracking
+  - Agents: execution time, success rate
+  - Users: DAU/WAU/MAU
+- [ ] Alerts: >5% errors, p95 >3s, auth spike, agent failures
+
+#### 8.5 Security Audit
+- [ ] OWASP Top 10 review
+- [ ] JWT review, SQL injection test, XSS test
+- [ ] Rate limiting load test
+- [ ] Secrets audit, CORS verification
+- [ ] Agent prompt injection testing
+
+#### 8.6 Landing Page + Onboarding
+- [ ] Landing redesign: hero, features grid, agent showcase, pricing tiers, testimonials
+- [ ] Onboarding guided tour
+- [ ] About page with attribution (CC-BY-4.0)
+
+#### 8.7 Load Testing + QA
+- [ ] Search accuracy: 30 queries (citation >90%, topic >70%, filtered, complex)
+- [ ] Agent quality: 20 test scenarios across all agents
+- [ ] Load test: 50 concurrent users, <2s search, <5s agent first token
+- [ ] Mobile responsiveness audit
+- [ ] Cross-browser testing
+
+### Exit Criteria
+- [ ] Production stable on GCP
+- [ ] Search and agent accuracy meet targets
+- [ ] Security audit passed
+- [ ] DPDP compliance active
+- [ ] Monitoring operational
+- [ ] <2s search, <5s agent response
+
+---
+
+## Post-Launch Roadmap
+
+### Phase 9: High Court Expansion
+- Indian Kanoon / eCourts data integration
+- 100K+ HC judgments (top 5 HCs by volume)
+- Regional court support
+- State-specific statutes
+- Judge Analytics for HC judges
+
+### Phase 10: Compliance Agent + Enterprise
+- Compliance Agent: regulatory monitoring, gap analysis
+- Multi-tenant workspaces, SSO
+- Admin panel, usage analytics
+- API rate limits per pricing tier
+
+### Phase 11: Mobile + API Platform
+- React Native app (iOS + Android)
+- Offline mode (cached cases, downloaded audio)
+- Public API + webhooks
+- SDK for embedding Smriti search
+
+### Phase 12: Marketplace + Community
+- Workflow marketplace (share agent workflows)
+- Community document templates
+- Lawyer profiles with expertise
+- Legal education modules
+
+---
 
 ## What We're NOT Building (Scope Control)
 
-These items are explicitly deferred:
-
 | Item | Reason | When |
-|------|--------|------|
-| Multiple LLM providers | Gemini covers all needs for MVP | Post-launch if needed |
-| Browser extension | Low priority, complex | Phase 5+ |
-| Multi-tenant workspaces | Single-tenant for MVP | When enterprise customers arrive |
-| Mobile app | Web is sufficient for lawyers | Phase 5+ |
-| TTS / STT | Not core workflow | Never (probably) |
-| Agent flows | Complex, not MVP | Phase 5+ |
-| Automated scraping | S3 dataset is sufficient | Phase 5 (bi-monthly S3 sync) |
-| High Court judgments | Start with SC only | Phase 5 (16.7M docs, different scale) |
-| Analytics dashboard | Not user-facing priority | Phase 5+ |
-| Billing / payments | Free for MVP | When monetizing |
-| Admin panel | API-only admin for MVP | Phase 5+ |
-| Document comparison | Advanced feature | Phase 5+ |
-| Email notifications | Not needed for MVP | Phase 5+ |
-| i18n / Hindi UI | English-first for lawyers | Phase 5+ |
+|---|---|---|
+| Multiple LLM vendors | Gemini family covers all needs | Post-launch if needed |
+| Browser extension | Low priority, complex | Phase 11+ |
+| Automated web scraping | Legal gray area, prefer structured sources | Phase 9 (official data sources) |
+| Custom embedding model | Fine-tuning expensive, Gemini adequate | Post-launch R&D |
+| Real-time court updates | Requires APIs not yet available | Phase 9 (eCourts) |
+| Billing / payments | Free for launch | When monetizing |
+| Video tutorials | Content, not engineering | Marketing team |
+| Arbitration/ADR module | Niche | Phase 12+ |
 
 ---
 
 ## Risk Register
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Gemini API quota exhaustion during bulk ingestion | Ingestion stalls | Rate limiting, batch processing, Flash fallback for non-critical extraction |
-| Poor OCR quality on scanned PDFs | Bad text → bad embeddings → bad search | Detect OCR quality score, flag low-quality docs for review |
-| Pinecone free tier limits (100K vectors) | Can't ingest all SC judgments | Upgrade to Starter ($70/mo) or switch to pgvector |
-| Neo4j AuraDB free tier limits (200K nodes) | Citation graph truncated | Prioritize SC judgments, defer HC graph |
-| LLM hallucination in metadata extraction | Wrong case_type, acts_cited | Regex validation layer, Parquet metadata as ground truth |
-| Search latency >3s for complex queries | Poor UX | Cache, pre-compute facets, optimize Pinecone filters |
-| GCP credits expire before launch | Cost spike | Monitor burn rate weekly, optimize for free tiers |
-| DPDP Act enforcement timeline unclear | Compliance uncertainty | Build consent + erasure from day 1, adapt as regulations clarify |
+| Risk | Severity | Mitigation |
+|---|---|---|
+| Dataset too small (35K vs 16M competitors) | CRITICAL | Max out S3 Phase 4, plan HC expansion Phase 9 |
+| No users / zero distribution | HIGH | Ship early, target law students, free tier |
+| Agent hallucination in legal context | HIGH | Citation verification, human-in-the-loop, confidence scores |
+| Pinecone cost at scale | MEDIUM | Upgrade to Starter ($70/mo), monitor usage |
+| Gemini credit exhaustion | MEDIUM | Flash for ingestion, Pro for agents, monitor burn |
+| LangGraph complexity | MEDIUM | Start simple (2-3 step agents), iterate |
+| Hindi translation quality | MEDIUM | Gemini translation, verify with native speakers |
+| Sarvam AI TTS availability | LOW | Google Cloud TTS as fallback |
+| DPDP enforcement timeline | LOW | Compliance built in from Phase 1 |
+| Neo4j free tier (200K nodes) | LOW | Sufficient for 35K, upgrade for HC |
 
 ---
 
 ## Dependencies Between Phases
 
 ```
-Phase 1 ──────────────────────► Phase 2
-  │ Interfaces + Providers         │ Search uses interfaces
-  │ Security module                │ Frontend uses auth
-  │ Ingestion pipeline             │ Search needs data
-  │ PostgreSQL + Pinecone          │ FTS + vector search
-  │                                │
-  └──────────────────────────────► Phase 3
-                                   │ Chat uses search pipeline
-                                   │ Graph uses Neo4j provider
-                                   │ Section viewer uses chunker
-                                   │
-                                   └──────────► Phase 4
-                                                │ Production deployment
-                                                │ GCS replaces LocalStorage
-                                                │ Monitoring wraps everything
+Phase 1 (DONE) ───► Phase 2 (DONE) ───► Phase 3 (DONE)
+  │                   │                    │
+  │ Interfaces        │ Search pipeline    │ RAG chat
+  │ Security          │ Frontend           │ Graph viz
+  │ Ingestion         │ Auth flow          │ Encryption
+  │                   │                    │
+  └──► Phase 4 ───────┴──► Phase 5 ───────┴──► Phase 6
+       │ Data!              │ Doc upload         │ Agent infra
+       │ Judge Analytics    │ Audio              │ Research agent
+       │                    │                    │ Case prep agent
+       │                    │                    │
+       └────────────────────┴──► Phase 7 ────────┘
+                                  │ Strategy agent
+                                  │ Drafting agent
+                                  │ Hindi support
+                                  │
+                                  └──► Phase 8
+                                       │ GCP deploy
+                                       │ DPDP
+                                       │ Monitoring
+                                       │ Launch!
 ```
 
-**Critical path**: Interfaces → Providers → Ingestion → Search → Chat
+**Critical path**: Data (P4) → Agents (P6) → Production (P8)
 
-If any phase runs behind, the next phase can still start on non-dependent items (e.g., frontend layout while search is being tuned).
+Phases 5 and 7 can partially overlap with 4 and 6 respectively on non-dependent items.
+
+---
+
+## Success Metrics
+
+| Metric | Launch Target | 6-Month Target |
+|---|---|---|
+| Cases ingested | 35,000 SC | 100,000+ (SC + HC) |
+| Registered users | 100 | 5,000 |
+| DAU | 10 | 500 |
+| Search queries/day | 50 | 2,000 |
+| Agent executions/day | 10 | 500 |
+| Search latency (p95) | <2s | <1.5s |
+| Agent first token (p95) | <5s | <3s |
+| Audio digests generated | 1,000 | 10,000 |
+| Hindi queries | 10% | 30% |
