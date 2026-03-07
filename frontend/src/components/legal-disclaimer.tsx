@@ -10,6 +10,7 @@ export function LegalDisclaimer({ className }: LegalDisclaimerProps) {
     <div
       className={cn(
         "flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800",
+        "sm:relative sm:bottom-auto fixed bottom-0 left-0 right-0 z-30 sm:z-auto sm:rounded-md rounded-none",
         className
       )}
     >
