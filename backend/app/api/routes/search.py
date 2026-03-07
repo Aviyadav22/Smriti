@@ -217,6 +217,7 @@ def _serialize_response(response: SearchResponse) -> dict:
                 "case_type": r.case_type,
                 "judge": r.judge,
                 "snippet": r.snippet,
+                "bench_type": r.bench_type,
             }
             for r in response.results
         ],

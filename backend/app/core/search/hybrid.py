@@ -41,6 +41,7 @@ class SearchResultItem:
     case_type: str | None = None
     judge: str | None = None
     snippet: str | None = None
+    bench_type: str | None = None
     relevance_sources: list[str] = field(default_factory=list)
 
 
@@ -65,6 +66,7 @@ def rrf_merge(
     ranked_lists: list[list[tuple[str, float]]],
     *,
     k: int = 60,
+    weights: list[float] | None = None,
 ) -> list[tuple[str, float]]:
     """Merge multiple ranked result lists using Reciprocal Rank Fusion.
 
@@ -72,15 +74,32 @@ def rrf_merge(
     descending score. The *score* values are ignored; only the rank
     position matters.
 
-    Formula: ``RRF(d) = Σ 1 / (k + rank_i(d))`` for each list *i*.
+    Formula: ``RRF(d) = Σ w_i / (k + rank_i(d))`` for each list *i*,
+    where *w_i* defaults to 1.0 when *weights* is ``None``.
+
+    Args:
+        ranked_lists: Ranked result lists to merge.
+        k: RRF constant (default 60).
+        weights: Optional per-list multipliers. Must have the same length
+            as *ranked_lists* if provided.
 
     Returns a list of ``(doc_id, rrf_score)`` sorted by descending RRF score.
+
+    Raises:
+        ValueError: If *weights* length does not match *ranked_lists* length.
     """
+    if weights is not None and len(weights) != len(ranked_lists):
+        raise ValueError(
+            f"weights length ({len(weights)}) must match "
+            f"ranked_lists length ({len(ranked_lists)})"
+        )
+
     scores: dict[str, float] = {}
 
-    for ranked in ranked_lists:
+    for list_idx, ranked in enumerate(ranked_lists):
+        w = weights[list_idx] if weights is not None else 1.0
         for rank_pos, (doc_id, _original_score) in enumerate(ranked, start=1):
-            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank_pos)
+            scores[doc_id] = scores.get(doc_id, 0.0) + w / (k + rank_pos)
 
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
@@ -123,32 +142,73 @@ async def hybrid_search(
     # Merge explicit filters with LLM-extracted filters (explicit wins)
     merged_filters = _merge_filters(filters, qu.filters)
 
-    # 3. Parallel retrieval — vector + FTS
+    # 3. Strategy-based retrieval
     search_query = qu.expanded_query or query
+    strategy = qu.search_strategy
 
-    vector_task = _vector_search(
-        search_query,
-        embedder=embedder,
-        vector_store=vector_store,
-        filters=merged_filters,
-    )
-    fts_task = search_fulltext(
-        search_query,
-        filters=merged_filters,
-        limit=settings.search_fts_top_k,
-        db=db,
-    )
+    # --- exact_match strategy: try citation lookup first ---
+    if strategy == "exact_match":
+        exact_results = await _exact_citation_search(query, db)
+        if exact_results:
+            # Return early — no reranking needed for exact matches
+            total_count = len(exact_results)
+            start = (page - 1) * effective_page_size
+            end = start + effective_page_size
+            page_results = exact_results[start:end]
 
-    vector_results, fts_results = await asyncio.gather(vector_task, fts_task)
+            response = SearchResponse(
+                results=page_results,
+                total_count=total_count,
+                page=page,
+                page_size=effective_page_size,
+                query_understanding=qu,
+            )
+            if redis_client is not None:
+                await _set_cached(redis_client, cache_key, response)
+            return response
+        # Fallback: FTS only for exact_match when no citation found
+        fts_results = await search_fulltext(
+            search_query,
+            filters=merged_filters,
+            limit=settings.search_fts_top_k,
+            db=db,
+        )
+        fts_ranked = [(r.case_id, r.rank) for r in fts_results]
+        merged = rrf_merge([fts_ranked], k=settings.search_rrf_k)
+        vector_results: list[tuple[str, float]] = []
+    else:
+        # Parallel retrieval — vector + FTS
+        vector_task = _vector_search(
+            search_query,
+            embedder=embedder,
+            vector_store=vector_store,
+            filters=merged_filters,
+        )
+        fts_task = search_fulltext(
+            search_query,
+            filters=merged_filters,
+            limit=settings.search_fts_top_k,
+            db=db,
+        )
 
-    # 4. RRF merge
-    vector_ranked = [(r[0], r[1]) for r in vector_results]
-    fts_ranked = [(r.case_id, r.rank) for r in fts_results]
+        vector_results, fts_results = await asyncio.gather(vector_task, fts_task)
 
-    merged = rrf_merge(
-        [vector_ranked, fts_ranked],
-        k=settings.search_rrf_k,
-    )
+        # 4. RRF merge with strategy-specific weights
+        vector_ranked = [(r[0], r[1]) for r in vector_results]
+        fts_ranked = [(r.case_id, r.rank) for r in fts_results]
+
+        strategy_weights: dict[str, list[float]] = {
+            "keyword_heavy": [1.0, 2.0],
+            "vector_heavy": [2.0, 1.0],
+            "balanced": [1.0, 1.0],
+        }
+        weights = strategy_weights.get(strategy)
+
+        merged = rrf_merge(
+            [vector_ranked, fts_ranked],
+            k=settings.search_rrf_k,
+            weights=weights,
+        )
 
     if not merged:
         return SearchResponse(
@@ -224,6 +284,39 @@ async def hybrid_search(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+async def _exact_citation_search(
+    query: str,
+    db: AsyncSession,
+) -> list[SearchResultItem]:
+    """Search for cases by exact citation match (ILIKE)."""
+    sql = text(
+        "SELECT id, title, citation, court, year, decision_date, "
+        "case_type, judge, bench_type "
+        "FROM cases WHERE citation ILIKE :q "
+        "ORDER BY year DESC NULLS LAST "
+        "LIMIT 20"
+    )
+    result = await db.execute(sql, {"q": f"%{query}%"})
+    rows = result.mappings().all()
+
+    return [
+        SearchResultItem(
+            case_id=str(row["id"]),
+            score=1.0,
+            title=row.get("title"),
+            citation=row.get("citation"),
+            court=row.get("court"),
+            year=row.get("year"),
+            date=str(row["decision_date"]) if row.get("decision_date") else None,
+            case_type=row.get("case_type"),
+            judge=row.get("judge"),
+            snippet=None,
+            bench_type=row.get("bench_type"),
+        )
+        for row in rows
+    ]
 
 
 async def _vector_search(
@@ -315,7 +408,7 @@ async def _enrich_results(
 
     sql = text(
         f"SELECT id, title, citation, court, year, decision_date, "
-        f"case_type, judge "
+        f"case_type, judge, bench_type "
         f"FROM cases WHERE id IN ({placeholders})"
     )
 
@@ -339,6 +432,7 @@ async def _enrich_results(
                 case_type=row.get("case_type"),
                 judge=row.get("judge"),
                 snippet=snippets_map.get(cid),
+                bench_type=row.get("bench_type"),
             )
         )
 
