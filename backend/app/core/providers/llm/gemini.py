@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 
 from google import genai
 from google.genai import types
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Default timeout for LLM calls (seconds)
+_LLM_TIMEOUT = 120
 
 
 class GeminiLLM:
@@ -31,8 +38,11 @@ class GeminiLLM:
             temperature=temperature,
             max_output_tokens=max_tokens,
         )
-        response = await self._client.aio.models.generate_content(
-            model=self._model, contents=prompt, config=config
+        response = await asyncio.wait_for(
+            self._client.aio.models.generate_content(
+                model=self._model, contents=prompt, config=config
+            ),
+            timeout=_LLM_TIMEOUT,
         )
         return response.text or ""
 
@@ -50,8 +60,11 @@ class GeminiLLM:
             response_mime_type="application/json",
             response_schema=output_schema,
         )
-        response = await self._client.aio.models.generate_content(
-            model=self._model, contents=prompt, config=config
+        response = await asyncio.wait_for(
+            self._client.aio.models.generate_content(
+                model=self._model, contents=prompt, config=config
+            ),
+            timeout=_LLM_TIMEOUT,
         )
         return json.loads(response.text or "{}")
 
@@ -66,8 +79,12 @@ class GeminiLLM:
             system_instruction=system,
             temperature=temperature,
         )
-        async for chunk in await self._client.aio.models.generate_content_stream(
-            model=self._model, contents=prompt, config=config
-        ):
+        stream = await asyncio.wait_for(
+            self._client.aio.models.generate_content_stream(
+                model=self._model, contents=prompt, config=config
+            ),
+            timeout=_LLM_TIMEOUT,
+        )
+        async for chunk in stream:
             if chunk.text:
                 yield chunk.text

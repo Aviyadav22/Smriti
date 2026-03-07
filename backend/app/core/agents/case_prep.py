@@ -12,7 +12,6 @@ Graph flow:
 """
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
@@ -171,10 +170,8 @@ def build_case_prep_graph(
 
     async def prioritize(state: CasePrepState) -> dict:
         result = await prioritize_issues_node(state, llm)
-        # Increment iteration when looping back through prioritize
-        iteration = state.get("iteration", 0)
-        if iteration > 0:
-            result["iteration"] = iteration + 1
+        # Always increment iteration counter
+        result["iteration"] = state.get("iteration", 0) + 1
         return result
 
     async def deep_search(state: CasePrepState) -> dict:

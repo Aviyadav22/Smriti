@@ -156,10 +156,8 @@ def build_research_graph(
 
     async def decompose(state: ResearchState) -> dict:
         result = await decompose_query_node(state, llm)
-        # Increment iteration when looping back through decompose
-        iteration = state.get("iteration", 0)
-        if iteration > 0:
-            result["iteration"] = iteration + 1
+        # Always increment iteration counter
+        result["iteration"] = state.get("iteration", 0) + 1
         return result
 
     async def search(state: ResearchState) -> dict:

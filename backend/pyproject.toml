@@ -58,14 +58,8 @@ dependencies = [
     # HTTP Client
     "httpx==0.28.1",
 
-    # Logging
-    "structlog==24.4.0",
-
     # Cloud Storage
     "google-cloud-storage==2.19.0",
-
-    # AWS (S3 dataset download)
-    "boto3==1.35.86",
 ]
 
 [project.optional-dependencies]
@@ -105,9 +99,8 @@ select = [
     "RUF",  # ruff-specific
 ]
 ignore = [
-    "S101",  # assert allowed in tests
-    "S105",  # hardcoded password detection (false positives in tests)
-    "S106",  # hardcoded password detection
+    # S105/S106 (hardcoded password detection) are active globally.
+    # S101 (assert) is only suppressed in tests via per-file-ignores.
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -129,8 +122,6 @@ module = [
     "pinecone.*",
     "cohere.*",
     "google.*",
-    "boto3.*",
-    "botocore.*",
 ]
 ignore_missing_imports = true
 

@@ -106,99 +106,107 @@ async def rag_respond(
     else:
         await _verify_session_ownership(db, session_id, user_id)
 
-    # 2. Load chat history
-    chat_history = await _load_chat_history(db, session_id)
+    try:
+        # 2. Load chat history
+        chat_history = await _load_chat_history(db, session_id)
 
-    # 2.5 Reformulate follow-up queries with conversation context
-    search_query = question
-    if chat_history:
-        search_query = await _reformulate_query(question, chat_history, llm)
+        # 2.5 Reformulate follow-up queries with conversation context
+        search_query = question
+        if chat_history:
+            search_query = await _reformulate_query(question, chat_history, llm)
 
-    # 3. Retrieve relevant cases via hybrid search
-    search_response = await hybrid_search(
-        query=search_query,
-        page=1,
-        page_size=MAX_CONTEXT_RESULTS,
-        llm=llm,
-        embedder=embedder,
-        vector_store=vector_store,
-        reranker=reranker,
-        db=db,
-        redis_client=redis_client,
-    )
+        # 3. Retrieve relevant cases via hybrid search
+        search_response = await hybrid_search(
+            query=search_query,
+            page=1,
+            page_size=MAX_CONTEXT_RESULTS,
+            llm=llm,
+            embedder=embedder,
+            vector_store=vector_store,
+            reranker=reranker,
+            db=db,
+            redis_client=redis_client,
+        )
 
-    # 4. Fetch text snippets for context
-    sources = await _build_sources(search_response.results, db)
+        # 4. Fetch text snippets for context
+        sources = await _build_sources(search_response.results, db)
 
-    # 5. Build prompt
-    context_text = _format_context(sources)
-    history_text = _format_history(chat_history)
-    user_prompt = CHAT_USER_WITH_CONTEXT.format(
-        retrieved_context=context_text,
-        chat_history=history_text,
-        question=question,
-    )
-
-    # 5.5 Context size guard — truncate if prompt exceeds safe limit
-    if len(user_prompt) > MAX_PROMPT_CHARS:
-        original_len = len(user_prompt)
-        context_text = _format_context(sources[:3])
-        history_text = _format_history(chat_history[-4:])
+        # 5. Build prompt
+        context_text = _format_context(sources)
+        history_text = _format_history(chat_history)
         user_prompt = CHAT_USER_WITH_CONTEXT.format(
             retrieved_context=context_text,
             chat_history=history_text,
             question=question,
         )
-        logger.warning(
-            "Prompt truncated from %d to %d chars", original_len, len(user_prompt)
-        )
 
-    # 6. Stream response from LLM
-    full_response = []
-    async for chunk in llm.stream(
-        prompt=user_prompt,
-        system=CHAT_SYSTEM_PROMPT,
-        temperature=0.2,
-    ):
-        full_response.append(chunk)
-        yield RAGEvent(type="chunk", data={"content": chunk})
+        # 5.5 Context size guard -- truncate if prompt exceeds safe limit
+        if len(user_prompt) > MAX_PROMPT_CHARS:
+            original_len = len(user_prompt)
+            context_text = _format_context(sources[:3])
+            history_text = _format_history(chat_history[-4:])
+            user_prompt = CHAT_USER_WITH_CONTEXT.format(
+                retrieved_context=context_text,
+                chat_history=history_text,
+                question=question,
+            )
+            logger.warning(
+                "Prompt truncated from %d to %d chars", original_len, len(user_prompt)
+            )
 
-    response_text = "".join(full_response)
+        # 6. Stream response from LLM
+        full_response: list[str] = []
+        async for chunk in llm.stream(
+            prompt=user_prompt,
+            system=CHAT_SYSTEM_PROMPT,
+            temperature=0.2,
+        ):
+            full_response.append(chunk)
+            yield RAGEvent(type="chunk", data={"content": chunk})
 
-    # 7. Yield source events
-    for i, source in enumerate(sources):
+        response_text = "".join(full_response)
+
+        # 7. Yield source events
+        for i, source in enumerate(sources):
+            yield RAGEvent(
+                type="source",
+                data={
+                    "index": i + 1,
+                    "case_id": source.case_id,
+                    "title": source.title,
+                    "citation": source.citation,
+                    "court": source.court,
+                    "year": source.year,
+                    "score": round(source.score, 4),
+                },
+            )
+
+        # 8. Save messages to DB
+        await _save_user_message(db, session_id, question)
+        source_json = [
+            {
+                "case_id": s.case_id,
+                "title": s.title,
+                "citation": s.citation,
+                "court": s.court,
+                "year": s.year,
+                "score": round(s.score, 4),
+            }
+            for s in sources
+        ]
+        await _save_assistant_message(db, session_id, response_text, source_json)
+
         yield RAGEvent(
-            type="source",
-            data={
-                "index": i + 1,
-                "case_id": source.case_id,
-                "title": source.title,
-                "citation": source.citation,
-                "court": source.court,
-                "year": source.year,
-                "score": round(source.score, 4),
-            },
+            type="done",
+            data={"source_count": len(sources)},
         )
 
-    # 8. Save messages to DB
-    await _save_user_message(db, session_id, question)
-    source_json = [
-        {
-            "case_id": s.case_id,
-            "title": s.title,
-            "citation": s.citation,
-            "court": s.court,
-            "year": s.year,
-            "score": round(s.score, 4),
-        }
-        for s in sources
-    ]
-    await _save_assistant_message(db, session_id, response_text, source_json)
-
-    yield RAGEvent(
-        type="done",
-        data={"source_count": len(sources)},
-    )
+    except Exception as exc:
+        logger.exception("RAG pipeline error for session %s", session_id)
+        yield RAGEvent(
+            type="error",
+            data={"message": "An error occurred while processing your request. Please try again."},
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -448,7 +456,6 @@ async def _save_user_message(
         ),
         {"id": msg_id, "session_id": session_id, "content": encrypt_field(content)},
     )
-    await db.commit()
 
 
 async def _save_assistant_message(
@@ -457,7 +464,11 @@ async def _save_assistant_message(
     content: str,
     sources: list[dict],
 ) -> None:
-    """Save the assistant's response and sources to the database (encrypted)."""
+    """Save the assistant's response and sources to the database (encrypted).
+
+    Also updates the session timestamp. All writes are batched into a
+    single commit to avoid partial persistence.
+    """
     msg_id = str(uuid.uuid4())
     await db.execute(
         text(
@@ -471,7 +482,6 @@ async def _save_assistant_message(
             "sources": json.dumps(sources),
         },
     )
-    await db.commit()
 
     # Update session timestamp
     await db.execute(

@@ -8,13 +8,15 @@ from typing import Annotated, TypedDict
 class ResearchState(TypedDict):
     """State for the Research Agent graph."""
     query: str
+    target_court: str
+    target_bench: str
     sub_queries: list[str]
-    search_results: Annotated[list[dict], operator.add]
+    search_results: list[dict]
     cross_references: list[dict]
     contradictions: list[dict]
     draft_memo: str
     confidence: float
-    messages: list[dict]
+    messages: Annotated[list[dict], operator.add]
     iteration: int
 
 
@@ -26,6 +28,6 @@ class CasePrepState(TypedDict):
     argument_order: list[dict]
     strategy_points: list[str]
     enhanced_memo: str
-    messages: list[dict]
+    messages: Annotated[list[dict], operator.add]
     iteration: int
     error: str

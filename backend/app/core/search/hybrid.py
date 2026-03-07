@@ -204,7 +204,23 @@ async def hybrid_search(
             db=db,
         )
 
-        vector_results, fts_results = await asyncio.gather(vector_task, fts_task)
+        gather_results = await asyncio.gather(
+            vector_task, fts_task, return_exceptions=True
+        )
+        vector_results = (
+            gather_results[0]
+            if not isinstance(gather_results[0], Exception)
+            else []
+        )
+        fts_results = (
+            gather_results[1]
+            if not isinstance(gather_results[1], Exception)
+            else []
+        )
+        if isinstance(gather_results[0], Exception):
+            logger.warning("Vector search failed, using FTS only: %s", gather_results[0])
+        if isinstance(gather_results[1], Exception):
+            logger.warning("FTS failed, using vector only: %s", gather_results[1])
 
         # 4. RRF merge with strategy-specific weights
         vector_ranked = [(r[0], r[1]) for r in vector_results]
@@ -329,7 +345,7 @@ async def _exact_citation_search(
                 "SELECT c.id, c.title, c.citation, c.court, c.year, "
                 "c.decision_date, c.case_type, c.judge, c.bench_type "
                 "FROM case_citation_equivalents cce "
-                "JOIN cases c ON c.id::text = cce.case_id "
+                "JOIN cases c ON c.id = cce.case_id "
                 "WHERE cce.citation_text ILIKE :q LIMIT 5"
             ),
             {"q": f"%{query_clean}%"},
@@ -487,7 +503,7 @@ async def _enrich_results(
     equiv_rows = equiv_result.mappings().all()
     equiv_map: dict[str, list[str]] = {}
     for er in equiv_rows:
-        equiv_map.setdefault(er["case_id"], []).append(er["citation_text"])
+        equiv_map.setdefault(str(er["case_id"]), []).append(er["citation_text"])
 
     enriched: list[SearchResultItem] = []
     for cid in case_ids:

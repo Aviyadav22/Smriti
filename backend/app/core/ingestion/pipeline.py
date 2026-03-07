@@ -6,6 +6,7 @@ Follows the architecture defined in DATA_SOURCES.md §3.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -28,7 +29,6 @@ from app.core.interfaces.graph_store import GraphStore
 from app.core.interfaces.llm import LLMProvider
 from app.core.interfaces.storage import FileStorage
 from app.core.interfaces.vector_store import VectorStore
-from app.core.legal.courts import normalize_court_name
 from app.core.legal.extractor import extract_citations
 
 logger = logging.getLogger(__name__)
@@ -99,11 +99,9 @@ async def ingest_judgment(
     # ------------------------------------------------------------------
     # 3. VALIDATE METADATA
     # ------------------------------------------------------------------
+    # Note: validate_with_regex() already normalizes the court name,
+    # so no separate normalize_court_name() call is needed here.
     metadata = validate_with_regex(metadata)
-
-    # Normalize court name
-    if metadata.court:
-        metadata.court = normalize_court_name(metadata.court)
 
     # ------------------------------------------------------------------
     # 4. STORE PDF
@@ -120,34 +118,48 @@ async def ingest_judgment(
     # ------------------------------------------------------------------
     case_id = await _insert_case(db, case_id, metadata, full_text, storage_path, parquet_metadata)
 
-    # ------------------------------------------------------------------
-    # 6. DETECT SECTIONS + CHUNK
-    # ------------------------------------------------------------------
-    sections = detect_judgment_sections(full_text)
-    chunks = chunk_judgment(full_text, sections, case_id=case_id)
-    logger.info("case_id=%s: %d sections, %d chunks", case_id, len(sections), len(chunks))
+    try:
+        # ------------------------------------------------------------------
+        # 6. DETECT SECTIONS + CHUNK
+        # ------------------------------------------------------------------
+        sections = detect_judgment_sections(full_text)
+        chunks = chunk_judgment(full_text, sections, case_id=case_id)
+        logger.info("case_id=%s: %d sections, %d chunks", case_id, len(sections), len(chunks))
 
-    # ------------------------------------------------------------------
-    # 7. GENERATE EMBEDDINGS
-    # ------------------------------------------------------------------
-    embeddings = await _embed_chunks(chunks, embedder)
+        # ------------------------------------------------------------------
+        # 6b. PERSIST SECTIONS + CITATION EQUIVALENTS
+        # ------------------------------------------------------------------
+        await _persist_sections(str(case_id), sections, db)
+        citation_equivalents = _extract_citation_equivalents(full_text, str(case_id))
+        if citation_equivalents:
+            await _persist_citation_equivalents(citation_equivalents, db)
 
-    # ------------------------------------------------------------------
-    # 8. UPSERT TO VECTOR STORE
-    # ------------------------------------------------------------------
-    await _upsert_vectors(case_id, chunks, embeddings, metadata, vector_store)
+        # ------------------------------------------------------------------
+        # 7. GENERATE EMBEDDINGS
+        # ------------------------------------------------------------------
+        embeddings = await _embed_chunks(chunks, embedder)
 
-    # Update chunk_count in PostgreSQL
-    await db.execute(
-        text("UPDATE cases SET chunk_count = :count WHERE id = :id"),
-        {"count": len(chunks), "id": case_id},
-    )
-    await db.commit()
+        # ------------------------------------------------------------------
+        # 8. UPSERT TO VECTOR STORE
+        # ------------------------------------------------------------------
+        await _upsert_vectors(case_id, chunks, embeddings, metadata, vector_store)
 
-    # ------------------------------------------------------------------
-    # 9. BUILD CITATION GRAPH
-    # ------------------------------------------------------------------
-    await _build_citation_graph(case_id, metadata, full_text, graph_store)
+        # Update chunk_count in PostgreSQL
+        await db.execute(
+            text("UPDATE cases SET chunk_count = :count WHERE id = :id"),
+            {"count": len(chunks), "id": case_id},
+        )
+        await db.commit()
+
+        # ------------------------------------------------------------------
+        # 9. BUILD CITATION GRAPH
+        # ------------------------------------------------------------------
+        await _build_citation_graph(case_id, metadata, full_text, graph_store)
+
+    except Exception as exc:
+        logger.exception("Ingestion failed after case insert for case_id=%s", case_id)
+        await _record_ingestion_failure(db, case_id, pdf_path, str(exc)[:2000])
+        raise
 
     logger.info("Ingestion complete: case_id=%s, chunks=%d", case_id, len(chunks))
     return case_id
@@ -217,19 +229,8 @@ async def _insert_case(
         ),
     }
 
-    # Check if a case with this citation already exists
-    if metadata.citation:
-        existing = await db.execute(
-            text("SELECT id FROM cases WHERE citation = :citation"),
-            {"citation": metadata.citation},
-        )
-        row = existing.fetchone()
-        if row:
-            logger.info("Case with citation %s already exists (id=%s), skipping insert", metadata.citation, row[0])
-            await db.commit()
-            return str(row[0])
-
-    await db.execute(
+    # Use INSERT ... ON CONFLICT to handle duplicate citation race condition
+    result = await db.execute(
         text(
             """
             INSERT INTO cases (
@@ -249,11 +250,29 @@ async def _insert_case(
                 :pdf_storage_path, :s3_source_path, :source,
                 :language, :available_languages, 0
             )
+            ON CONFLICT (citation) WHERE citation IS NOT NULL DO NOTHING
+            RETURNING id
             """
         ),
         params,
     )
+    row = result.fetchone()
     await db.commit()
+
+    if row is None and metadata.citation:
+        # Citation already existed -- fetch the existing case ID
+        existing = await db.execute(
+            text("SELECT id FROM cases WHERE citation = :citation"),
+            {"citation": metadata.citation},
+        )
+        existing_row = existing.fetchone()
+        if existing_row:
+            logger.info(
+                "Case with citation %s already exists (id=%s), skipping insert",
+                metadata.citation, existing_row[0],
+            )
+            return str(existing_row[0])
+
     return case_id
 
 
@@ -282,15 +301,28 @@ async def _record_ingestion_failure(
 async def _embed_chunks(
     chunks: list[Chunk],
     embedder: EmbeddingProvider,
+    max_retries: int = 3,
 ) -> list[list[float]]:
-    """Generate embeddings for chunks in batches."""
+    """Generate embeddings for chunks in batches with retry logic."""
     all_embeddings: list[list[float]] = []
     texts = [c.text for c in chunks]
 
     for i in range(0, len(texts), _EMBED_BATCH_SIZE):
         batch = texts[i : i + _EMBED_BATCH_SIZE]
-        batch_embeddings = await embedder.embed_batch(batch)
-        all_embeddings.extend(batch_embeddings)
+        for attempt in range(max_retries):
+            try:
+                batch_embeddings = await embedder.embed_batch(batch)
+                all_embeddings.extend(batch_embeddings)
+                break
+            except (ConnectionError, TimeoutError) as exc:
+                if attempt == max_retries - 1:
+                    raise
+                wait = 2 ** attempt
+                logger.warning(
+                    "Embedding batch %d failed (attempt %d/%d), retrying in %ds: %s",
+                    i // _EMBED_BATCH_SIZE, attempt + 1, max_retries, wait, exc,
+                )
+                await asyncio.sleep(wait)
 
     return all_embeddings
 
@@ -401,6 +433,8 @@ async def _persist_sections(
     db: AsyncSession,
 ) -> None:
     """Persist detected judgment sections to the case_sections table."""
+    if not sections:
+        return
     for idx, section in enumerate(sections):
         await db.execute(
             text(
@@ -410,7 +444,7 @@ async def _persist_sections(
             ),
             {
                 "id": str(uuid.uuid4()),
-                "case_id": case_id,
+                "case_id": str(case_id),
                 "section_type": section.type,
                 "content": section.text,
                 "section_index": idx,
@@ -424,6 +458,8 @@ async def _persist_citation_equivalents(
     db: AsyncSession,
 ) -> None:
     """Persist citation equivalents to the database."""
+    if not equivalents:
+        return
     for eq in equivalents:
         await db.execute(
             text(
@@ -433,7 +469,10 @@ async def _persist_citation_equivalents(
             ),
             {
                 "id": str(uuid.uuid4()),
-                **eq,
+                "case_id": str(eq["case_id"]),
+                "reporter": eq["reporter"],
+                "citation_text": eq["citation_text"],
+                "year": eq["year"],
             },
         )
     await db.commit()

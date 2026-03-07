@@ -10,8 +10,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
-from collections import Counter
 from dataclasses import asdict
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +23,7 @@ from app.core.agents.nodes.citation_verifier import (
 )
 from app.core.legal.precedent_strength import classify_precedent_strength
 from app.core.agents.nodes.common import (
+    UUID_RE,
     enrich_results_with_ratio,
     format_search_results_for_llm,
     safe_json_parse_list,
@@ -46,12 +45,6 @@ from app.core.search.hybrid import SearchResultItem, hybrid_search
 from app.security.sanitizer import sanitize_search_query
 
 logger = logging.getLogger(__name__)
-
-# UUID v4 regex for citation verification
-_UUID_RE = re.compile(
-    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
-    re.IGNORECASE,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +235,9 @@ async def gather_results_node(state: ResearchState) -> dict:
 # ---------------------------------------------------------------------------
 
 
+MAX_RESULTS_FOR_LLM = 30
+
+
 async def detect_contradictions_node(
     state: ResearchState,
     llm: LLMProvider,
@@ -251,7 +247,12 @@ async def detect_contradictions_node(
     if not results:
         return {"contradictions": []}
 
-    context = format_search_results_for_llm(results)
+    # Limit results sent to LLM to avoid context overflow
+    results_for_llm = sorted(results, key=lambda r: r.get("score", 0), reverse=True)[
+        :MAX_RESULTS_FOR_LLM
+    ]
+
+    context = format_search_results_for_llm(results_for_llm)
 
     prompt = (
         "Analyze the following Indian court judgment search results and identify "
@@ -290,7 +291,12 @@ async def synthesize_memo_node(
     cross_refs = state.get("cross_references", [])
     contradictions = state.get("contradictions", [])
 
-    findings = format_search_results_for_llm(results)
+    # Limit results sent to LLM to avoid context overflow
+    results_for_llm = sorted(results, key=lambda r: r.get("score", 0), reverse=True)[
+        :MAX_RESULTS_FOR_LLM
+    ]
+
+    findings = format_search_results_for_llm(results_for_llm)
 
     # Detect overruling language in search results
     treatment_warnings: list[str] = []
@@ -416,7 +422,7 @@ async def verify_citations_node(
         return {"draft_memo": memo}
 
     # --- Step 1: UUID verification (existing logic) ---
-    found_ids = list(set(_UUID_RE.findall(memo)))
+    found_ids = list(set(UUID_RE.findall(memo)))
     if found_ids:
         valid_ids = await verify_case_ids(found_ids, db)
         invalid_ids = [uid for uid in found_ids if uid not in valid_ids]

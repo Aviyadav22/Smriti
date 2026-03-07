@@ -242,6 +242,20 @@ def chunk_judgment(
         pos = 0
         while pos < section_len:
             end = min(pos + CHUNK_SIZE, section_len)
+
+            # Avoid mid-word/mid-sentence breaks: if we are not at the end
+            # of the section, try to break at a sentence boundary (". ")
+            # within the last 200 chars, falling back to a space boundary.
+            if end < section_len:
+                search_start = max(end - 200, pos)
+                last_sentence = section_text.rfind(". ", search_start, end)
+                if last_sentence > search_start:
+                    end = last_sentence + 2  # include the period and space
+                else:
+                    last_space = section_text.rfind(" ", search_start, end)
+                    if last_space > search_start:
+                        end = last_space + 1
+
             chunk_text = section_text[pos:end]
 
             # Only emit non-empty chunks.

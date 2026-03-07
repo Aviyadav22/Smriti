@@ -143,7 +143,7 @@ class TestRegister:
             "/api/v1/auth/register",
             json={
                 "email": "test@example.com",
-                "password": "securepass123",
+                "password": "SecurePass123",
                 "name": "Test User",
                 "consent_given": True,
             },
@@ -155,7 +155,7 @@ class TestRegister:
         assert body["refresh_token"] == "register-refresh-jwt"
         assert body["token_type"] == "bearer"
         assert body["expires_in"] > 0  # Dynamic based on settings
-        mock_hash.assert_called_once_with("securepass123")
+        mock_hash.assert_called_once_with("SecurePass123")
         mock_access.assert_called_once()
         mock_refresh.assert_called_once()
 
@@ -174,7 +174,7 @@ class TestRegister:
             "/api/v1/auth/register",
             json={
                 "email": "existing@example.com",
-                "password": "securepass123",
+                "password": "SecurePass123",
                 "consent_given": True,
             },
         )
@@ -191,7 +191,7 @@ class TestRegister:
             "/api/v1/auth/register",
             json={
                 "email": "not-an-email",
-                "password": "securepass123",
+                "password": "SecurePass123",
                 "consent_given": True,
             },
         )
@@ -223,7 +223,7 @@ class TestRegister:
             "/api/v1/auth/register",
             json={
                 "email": "test@example.com",
-                "password": "securepass123",
+                "password": "SecurePass123",
                 "consent_given": False,
             },
         )

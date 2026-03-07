@@ -146,7 +146,10 @@ async def get_citations(
         )
         neighbors = result.get("neighbors", [])
     except (ConnectionError, RuntimeError) as exc:
-        return {"case_id": case_id, "citations": [], "error": str(exc)}
+        raise HTTPException(
+            status_code=502,
+            detail="Citation graph temporarily unavailable",
+        ) from exc
 
     # Enrich with PostgreSQL metadata
     citations = await _enrich_graph_nodes(neighbors, db)
@@ -178,7 +181,10 @@ async def get_cited_by(
         )
         neighbors = result.get("neighbors", [])
     except (ConnectionError, RuntimeError) as exc:
-        return {"case_id": case_id, "cited_by": [], "error": str(exc)}
+        raise HTTPException(
+            status_code=502,
+            detail="Citation graph temporarily unavailable",
+        ) from exc
 
     cited_by = await _enrich_graph_nodes(neighbors, db)
 

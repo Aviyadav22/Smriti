@@ -185,8 +185,13 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> CaseMetadata:
     for field in parquet_priority:
         parquet_val = parquet_meta.get(field)
         llm_val = getattr(llm_meta, field, None)
-        # Use parquet value if it is truthy, otherwise fall back to LLM.
-        setattr(result, field, parquet_val if parquet_val else llm_val)
+        # Use parquet value if meaningfully present, otherwise fall back to LLM.
+        # For numeric fields (year), use ``is not None`` to preserve valid 0 values.
+        # For string fields, an empty string is treated as missing.
+        if field == "year":
+            setattr(result, field, parquet_val if parquet_val is not None else llm_val)
+        else:
+            setattr(result, field, parquet_val if parquet_val else llm_val)
 
     # -- Judge array (parquet may store as comma-separated string) --
     judge_raw = parquet_meta.get("judge", "")

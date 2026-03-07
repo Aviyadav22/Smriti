@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.security.rate_limiter import rate_limit_dependency
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -108,7 +110,6 @@ async def suggest(
         try:
             cached = await redis_client.get(cache_key)
             if cached is not None:
-                import json
                 return json.loads(cached)
         except (ConnectionError, TimeoutError):
             pass
@@ -138,7 +139,6 @@ async def suggest(
     # Cache for 15 minutes
     if redis_client is not None:
         try:
-            import json
             await redis_client.setex(
                 cache_key,
                 settings.search_facet_cache_ttl,
@@ -168,7 +168,6 @@ async def facets(
         try:
             cached = await redis_client.get(cache_key)
             if cached is not None:
-                import json
                 return json.loads(cached)
         except (ConnectionError, TimeoutError):
             pass
@@ -204,7 +203,6 @@ async def facets(
     # Cache for 15 minutes
     if redis_client is not None:
         try:
-            import json
             await redis_client.setex(
                 cache_key,
                 settings.search_facet_cache_ttl,

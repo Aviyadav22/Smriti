@@ -34,7 +34,7 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     acts_cited: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     cases_cited: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     ratio_decidendi: Mapped[str | None] = mapped_column(Text, nullable=True)
-    full_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    full_text: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
     searchable_text: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
     pdf_storage_path: Mapped[str | None] = mapped_column(String, nullable=True)
     s3_source_path: Mapped[str | None] = mapped_column(String, nullable=True)

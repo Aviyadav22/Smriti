@@ -10,15 +10,15 @@ from typing import AsyncIterator
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.security.rate_limiter import rate_limit_dependency
 from fastapi.responses import StreamingResponse
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.case_prep import build_case_prep_graph
 from app.core.agents.research import build_research_graph
 from app.core.dependencies import (
+    get_checkpointer,
     get_embedder,
     get_graph_store,
     get_llm,
@@ -39,7 +39,7 @@ router = APIRouter()
 # Module-level store for active graph checkpointers (MVP: single-server)
 # ---------------------------------------------------------------------------
 
-_active_checkpointers: dict[str, MemorySaver] = {}
+_active_checkpointers: dict[str, object] = {}
 
 # ---------------------------------------------------------------------------
 # Request / Response schemas
@@ -135,6 +135,9 @@ async def _stream_agent_events(
         execution.error_message = str(exc)[:2000]
         await db.commit()
         yield f"data: {json.dumps({'type': 'error', 'message': 'Agent execution failed. Please try again.', 'recoverable': False})}\n\n"
+    finally:
+        # Clean up checkpointer to prevent memory leak
+        _active_checkpointers.pop(str(execution.id), None)
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +171,7 @@ async def run_agent(
         request_body.query = sanitize_search_query(request_body.query)
 
     # Create checkpointer
-    checkpointer = MemorySaver()
+    checkpointer = get_checkpointer()
     thread_id = str(uuid.uuid4())
 
     # Create execution record
@@ -378,8 +381,19 @@ async def resume_execution(
             detail="Checkpoint expired. Please start a new execution.",
         )
 
-    # Update status back to running
-    execution.status = AgentStatus.running.value
+    # Atomically transition status to prevent concurrent resume race condition
+    result = await db.execute(
+        text(
+            "UPDATE agent_executions SET status = 'running' "
+            "WHERE id = :id AND status = 'waiting_input' RETURNING id"
+        ),
+        {"id": exec_uuid},
+    )
+    if not result.fetchone():
+        raise HTTPException(
+            status_code=409,
+            detail="Execution is not in waiting_input state",
+        )
     await db.commit()
 
     # Rebuild graph with same checkpointer

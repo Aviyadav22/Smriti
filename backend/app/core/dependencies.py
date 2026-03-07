@@ -6,7 +6,6 @@ from functools import lru_cache
 
 from app.core.config import settings
 from app.core.interfaces import (
-    DocumentParser,
     EmbeddingProvider,
     FileStorage,
     GraphStore,
@@ -67,14 +66,6 @@ def get_reranker() -> Reranker:
 
 
 @lru_cache
-def get_document_parser() -> DocumentParser:
-    """Return the configured document parser instance."""
-    from app.core.providers.document_parsers.pdf_parser import PDFParser
-
-    return PDFParser()
-
-
-@lru_cache
 def get_storage() -> FileStorage:
     """Return the configured file storage instance."""
     if settings.storage_provider == "local":
@@ -82,3 +73,19 @@ def get_storage() -> FileStorage:
 
         return LocalStorage()
     raise ValueError(f"Unknown storage provider: {settings.storage_provider}")
+
+
+def get_checkpointer():
+    """Return the appropriate LangGraph checkpointer for the current environment.
+
+    In production/staging, uses AsyncPostgresSaver backed by the main PostgreSQL
+    database. In development/testing, uses an in-memory MemorySaver.
+    """
+    if settings.app_env in ("production", "staging"):
+        from app.core.agents.checkpointer import get_checkpointer_connection_string
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+        return AsyncPostgresSaver.from_conn_string(get_checkpointer_connection_string())
+    from langgraph.checkpoint.memory import MemorySaver
+
+    return MemorySaver()

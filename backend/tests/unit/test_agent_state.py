@@ -18,12 +18,13 @@ class TestResearchState:
         assert state["query"] == "test"
         assert state["iteration"] == 0
 
-    def test_search_results_uses_add_reducer(self) -> None:
-        """Verify the Annotated type hint for search_results accumulation."""
+    def test_search_results_uses_replace_semantics(self) -> None:
+        """Verify search_results uses plain list (replace, not accumulate)."""
         import typing
         hints = typing.get_type_hints(ResearchState, include_extras=True)
         sr_hint = hints["search_results"]
-        assert hasattr(sr_hint, "__metadata__")
+        # search_results should be a plain list[dict], not Annotated
+        assert not hasattr(sr_hint, "__metadata__")
 
 
 class TestCasePrepState:

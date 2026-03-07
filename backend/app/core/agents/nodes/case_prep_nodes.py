@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 from dataclasses import asdict
 
 from sqlalchemy import text
@@ -21,6 +20,7 @@ from app.core.agents.nodes.citation_verifier import (
     verify_citations_against_db,
 )
 from app.core.agents.nodes.common import (
+    UUID_RE,
     enrich_results_with_ratio,
     format_search_results_for_llm,
     safe_json_parse_list,
@@ -39,12 +39,6 @@ from app.core.legal.prompts import (
 from app.core.search.hybrid import hybrid_search
 
 logger = logging.getLogger(__name__)
-
-# UUID v4 regex for citation verification
-_UUID_RE = re.compile(
-    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
-    re.IGNORECASE,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -429,7 +423,7 @@ async def verify_citations_node(
         return {"enhanced_memo": memo}
 
     # --- Step 1: UUID verification (existing logic) ---
-    found_ids = list(set(_UUID_RE.findall(memo)))
+    found_ids = list(set(UUID_RE.findall(memo)))
     if found_ids:
         valid_ids = await verify_case_ids(found_ids, db)
         invalid_ids = [uid for uid in found_ids if uid not in valid_ids]
@@ -505,11 +499,3 @@ async def verify_citations_node(
     return {"enhanced_memo": memo}
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-# Keep a module-level alias so any existing imports of _parse_json_list still
-# work.  New code should use safe_json_parse_list from common.
-_parse_json_list = safe_json_parse_list

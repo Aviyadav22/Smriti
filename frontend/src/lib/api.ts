@@ -23,7 +23,6 @@ import type {
     LoginRequest,
     RegisterRequest,
     SearchResponse,
-    SearchSuggestion,
     SimilarCase,
     StreamEvent,
     TokenResponse,
@@ -109,6 +108,7 @@ async function apiFetch<T>(
                 const err = await retry.json().catch(() => ({ error: "Request failed" }));
                 throw new ApiError(retry.status, err.code || "UNKNOWN", err.error || "Request failed");
             }
+            if (retry.status === 204) return undefined as T;
             return retry.json() as Promise<T>;
         }
         clearTokens();
@@ -120,6 +120,7 @@ async function apiFetch<T>(
         throw new ApiError(res.status, err.code || "UNKNOWN", err.error || "Request failed");
     }
 
+    if (res.status === 204) return undefined as T;
     return res.json() as Promise<T>;
 }
 
@@ -161,7 +162,13 @@ export async function register(req: RegisterRequest): Promise<TokenResponse> {
     return data;
 }
 
-export function logout(): void {
+export async function logout(): Promise<void> {
+    // Best-effort: revoke token server-side before clearing locally
+    try {
+        await apiFetch("/auth/logout", { method: "POST" });
+    } catch {
+        // Intentionally ignored — logout should always succeed locally
+    }
     clearTokens();
 }
 
@@ -195,10 +202,6 @@ export async function search(params: {
     if (params.page) query.set("page", String(params.page));
     if (params.page_size) query.set("page_size", String(params.page_size));
     return apiFetch<SearchResponse>(`/search?${query.toString()}`);
-}
-
-export async function searchSuggest(q: string): Promise<{ suggestions: SearchSuggestion[] }> {
-    return apiFetch(`/search/suggest?q=${encodeURIComponent(q)}`);
 }
 
 export async function searchFacets(): Promise<FacetsResponse> {
@@ -279,14 +282,19 @@ export async function deleteChatSession(sessionId: string): Promise<void> {
     await apiFetch<{ status: string }>(`/chat/${sessionId}`, { method: "DELETE" });
 }
 
+// ---------------------------------------------------------------------------
+// Shared SSE streaming helper
+// ---------------------------------------------------------------------------
+
 /**
- * Internal helper: POST to a chat endpoint and stream SSE events via fetch.
+ * Internal helper: POST to an SSE endpoint, parse the event stream, and
+ * invoke the callback for each parsed event.
  * Returns an AbortController so the caller can cancel the stream.
  */
-function _streamChat(
+function _streamSSE<T>(
     path: string,
-    message: string,
-    onEvent: (event: StreamEvent) => void,
+    body: unknown,
+    onEvent: (event: T) => void,
     onError?: (error: Error) => void,
 ): AbortController {
     const controller = new AbortController();
@@ -298,16 +306,18 @@ function _streamChat(
         headers["Authorization"] = `Bearer ${accessToken}`;
     }
 
-    fetch(`${API_BASE}${path}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ message }),
-        signal: controller.signal,
-    })
-        .then(async (res) => {
+    (async () => {
+        try {
+            const res = await fetch(`${API_BASE}${path}`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify(body),
+                signal: controller.signal,
+            });
+
             if (!res.ok) {
-                const err = await res.json().catch(() => ({ error: "Chat request failed" }));
-                throw new ApiError(res.status, err.code || "UNKNOWN", err.error || "Chat request failed");
+                const err = await res.json().catch(() => ({ error: "Request failed" }));
+                throw new ApiError(res.status, err.code || "UNKNOWN", err.error || err.detail || "Request failed");
             }
 
             const reader = res.body?.getReader();
@@ -327,7 +337,7 @@ function _streamChat(
                 for (const line of lines) {
                     if (line.startsWith("data: ")) {
                         try {
-                            const event = JSON.parse(line.slice(6)) as StreamEvent;
+                            const event = JSON.parse(line.slice(6)) as T;
                             onEvent(event);
                         } catch {
                             // skip malformed SSE lines
@@ -335,13 +345,26 @@ function _streamChat(
                     }
                 }
             }
-        })
-        .catch((err) => {
-            if (err.name === "AbortError") return;
+        } catch (err) {
+            if ((err as Error).name === "AbortError") return;
             onError?.(err instanceof Error ? err : new Error(String(err)));
-        });
+        }
+    })();
 
     return controller;
+}
+
+/**
+ * Internal helper: POST to a chat endpoint and stream SSE events via fetch.
+ * Returns an AbortController so the caller can cancel the stream.
+ */
+function _streamChat(
+    path: string,
+    message: string,
+    onEvent: (event: StreamEvent) => void,
+    onError?: (error: Error) => void,
+): AbortController {
+    return _streamSSE<StreamEvent>(path, { message }, onEvent, onError);
 }
 
 // ---------------------------------------------------------------------------
@@ -369,7 +392,10 @@ export async function getGraphAuthorities(
     caseId: string,
     limit = 20,
 ): Promise<GraphNode[]> {
-    return apiFetch<GraphNode[]>(`/graph/${caseId}/authorities?limit=${limit}`);
+    const res = await apiFetch<{ case_id: string; authorities: GraphNode[]; total: number }>(
+        `/graph/${caseId}/authorities?limit=${limit}`,
+    );
+    return res.authorities;
 }
 
 /** Get global graph statistics. */
@@ -466,10 +492,6 @@ export async function deleteDocument(id: string): Promise<void> {
     await apiFetch<void>(`/documents/${id}`, { method: "DELETE" });
 }
 
-export async function getResearchMemo(id: string): Promise<{ memo: string }> {
-    return apiFetch<{ memo: string }>(`/documents/${id}/memo`);
-}
-
 export async function generateAudioDigest(
     caseId: string,
     language: string = "en",
@@ -501,56 +523,7 @@ function _streamAgent(
     onEvent: (event: AgentStreamEvent) => void,
     onError?: (error: Error) => void,
 ): AbortController {
-    const controller = new AbortController();
-
-    (async () => {
-        try {
-            const res = await fetch(`${API_BASE}${path}`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-                },
-                body: JSON.stringify(body),
-                signal: controller.signal,
-            });
-
-            if (!res.ok) {
-                throw new Error(`Agent request failed: ${res.status}`);
-            }
-
-            const reader = res.body?.getReader();
-            if (!reader) throw new Error("No response body");
-
-            const decoder = new TextDecoder();
-            let buffer = "";
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop() || "";
-
-                for (const line of lines) {
-                    if (line.startsWith("data: ")) {
-                        try {
-                            const event = JSON.parse(line.slice(6)) as AgentStreamEvent;
-                            onEvent(event);
-                        } catch {
-                            // skip malformed
-                        }
-                    }
-                }
-            }
-        } catch (err) {
-            if ((err as Error).name === "AbortError") return;
-            onError?.(err instanceof Error ? err : new Error(String(err)));
-        }
-    })();
-
-    return controller;
+    return _streamSSE<AgentStreamEvent>(path, body, onEvent, onError);
 }
 
 export function runResearchAgent(
@@ -583,14 +556,6 @@ export async function getAgentExecutions(
     pageSize: number = 20,
 ): Promise<{ executions: AgentExecution[]; total: number; page: number; page_size: number }> {
     return apiFetch(`/agents/executions?page=${page}&page_size=${pageSize}`);
-}
-
-export async function getAgentExecution(id: string): Promise<AgentExecution> {
-    return apiFetch(`/agents/executions/${id}`);
-}
-
-export async function cancelAgentExecution(id: string): Promise<void> {
-    await apiFetch(`/agents/executions/${id}`, { method: "DELETE" });
 }
 
 export { ApiError };

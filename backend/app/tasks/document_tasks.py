@@ -28,8 +28,8 @@ async def _analyze_document_async(document_id: str) -> dict:
     from app.core.providers.document_parsers.pdf_parser import PDFParser
     from app.core.providers.llm.gemini import GeminiLLM
     from app.core.providers.embeddings.gemini import GeminiEmbedder
-    from app.core.providers.vector.pinecone import PineconeStore
-    from app.core.providers.rerankers.cohere import CohereReranker
+    from app.core.providers.vector.pinecone_store import PineconeStore
+    from app.core.providers.rerankers.cohere_reranker import CohereReranker
     from app.db.postgres import get_async_session
 
     async with get_async_session() as db:
@@ -98,7 +98,17 @@ async def _analyze_document_async(document_id: str) -> dict:
                 counter_arguments=counter_args_text,
             )
 
-            # Step 6: Store results
+            # Step 6: Chunk, embed, and index for search
+            await _update_doc_status(db, document_id, "indexing", "Indexing for search")
+            await _chunk_embed_and_index(
+                document_id=document_id,
+                extracted_text=extracted_text,
+                embedder=embedder,
+                vector_store=vector_store,
+                db=db,
+            )
+
+            # Step 7: Store results
             analysis_id = str(uuid.uuid4())
             issues_json = [
                 {
@@ -143,6 +153,11 @@ async def _analyze_document_async(document_id: str) -> dict:
 
             return {"status": "completed", "document_id": document_id, "analysis_id": analysis_id}
 
+        except (ConnectionError, TimeoutError) as exc:
+            logger.warning("Transient error during document analysis: %s", exc)
+            await _update_doc_status(db, document_id, "failed", None, error=str(exc))
+            await db.commit()
+            raise
         except Exception as exc:
             logger.exception("Document analysis failed: %s", document_id)
             await _update_doc_status(db, document_id, "failed", None, error=str(exc))
@@ -161,18 +176,108 @@ async def _update_doc_status(
 ) -> None:
     """Update document status and processing step."""
     params: dict = {"id": document_id, "status": status, "step": step}
-    set_clauses = "status = :status, processing_step = :step, updated_at = NOW()"
-    if status == "extracting":
-        set_clauses += ", processing_started_at = NOW()"
-    if completed:
-        set_clauses += ", processing_completed_at = NOW()"
-    if error:
-        params["error"] = error
-        set_clauses += ", error_message = :error"
 
+    if completed and error:
+        params["error"] = error
+        sql = text(
+            "UPDATE documents SET status = :status, processing_step = :step, "
+            "updated_at = NOW(), processing_completed_at = NOW(), error_message = :error "
+            "WHERE id = :id"
+        )
+    elif completed:
+        sql = text(
+            "UPDATE documents SET status = :status, processing_step = :step, "
+            "updated_at = NOW(), processing_completed_at = NOW() "
+            "WHERE id = :id"
+        )
+    elif error and status == "extracting":
+        params["error"] = error
+        sql = text(
+            "UPDATE documents SET status = :status, processing_step = :step, "
+            "updated_at = NOW(), processing_started_at = NOW(), error_message = :error "
+            "WHERE id = :id"
+        )
+    elif status == "extracting":
+        sql = text(
+            "UPDATE documents SET status = :status, processing_step = :step, "
+            "updated_at = NOW(), processing_started_at = NOW() "
+            "WHERE id = :id"
+        )
+    elif error:
+        params["error"] = error
+        sql = text(
+            "UPDATE documents SET status = :status, processing_step = :step, "
+            "updated_at = NOW(), error_message = :error "
+            "WHERE id = :id"
+        )
+    else:
+        sql = text(
+            "UPDATE documents SET status = :status, processing_step = :step, "
+            "updated_at = NOW() "
+            "WHERE id = :id"
+        )
+
+    await db.execute(sql, params)
+
+
+async def _chunk_embed_and_index(
+    document_id: str,
+    extracted_text: str,
+    embedder: object,
+    vector_store: object,
+    db: object,
+) -> None:
+    """Chunk the document text, embed it, and upsert to vector store.
+
+    This bridges the gap between document upload/analysis and search:
+    without this step, uploaded documents would be invisible to semantic
+    search and RAG chat.
+    """
+    from app.core.ingestion.chunker import chunk_judgment, detect_judgment_sections
+
+    sections = detect_judgment_sections(extracted_text)
+    chunks = chunk_judgment(extracted_text, sections, case_id=document_id)
+
+    if not chunks:
+        logger.warning("No chunks produced for document %s", document_id)
+        return
+
+    # Embed in batches of 20 (same as ingestion pipeline)
+    _BATCH_SIZE = 20
+    all_embeddings: list[list[float]] = []
+    for i in range(0, len(chunks), _BATCH_SIZE):
+        batch_texts = [c.text for c in chunks[i : i + _BATCH_SIZE]]
+        batch_embeddings = await embedder.embed_batch(batch_texts)
+        all_embeddings.extend(batch_embeddings)
+
+    # Build vector records and upsert to Pinecone
+    vectors: list[dict] = []
+    for chunk, embedding in zip(chunks, all_embeddings):
+        vector_id = f"doc_{document_id}_{chunk.chunk_index}"
+        vectors.append({
+            "id": vector_id,
+            "values": embedding,
+            "metadata": {
+                "case_id": document_id,
+                "chunk_index": chunk.chunk_index,
+                "section_type": chunk.section_type,
+                "source": "upload",
+                "text": chunk.text[:1000],
+            },
+        })
+
+    for i in range(0, len(vectors), 100):
+        await vector_store.upsert(vectors[i : i + 100])
+
+    # Update the document record with chunk count
     await db.execute(
-        text(f"UPDATE documents SET {set_clauses} WHERE id = :id"),
-        params,
+        text("UPDATE documents SET chunk_count = :count WHERE id = :id"),
+        {"count": len(chunks), "id": document_id},
+    )
+
+    logger.info(
+        "Indexed document %s: %d chunks, %d vectors",
+        document_id, len(chunks), len(vectors),
     )
 
 
