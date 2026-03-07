@@ -220,7 +220,7 @@ async def _reformulate_query(
         reformulated = reformulated.strip().strip('"').strip("'")
         if reformulated:
             return reformulated
-    except Exception:
+    except (ConnectionError, TimeoutError, ValueError) as e:
         logger.warning("Query reformulation failed, using original query")
 
     return question

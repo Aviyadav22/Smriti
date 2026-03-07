@@ -175,7 +175,7 @@ async def delete_document(
     storage = LocalStorage()
     try:
         await storage.delete(doc["storage_path"])
-    except Exception:
+    except OSError as e:
         pass
 
     await db.execute(

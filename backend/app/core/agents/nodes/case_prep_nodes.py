@@ -194,7 +194,7 @@ async def deep_precedent_search_node(
                 db=db,
             )
             search_results = [asdict(item) for item in search_response.results]
-        except Exception:
+        except (asyncio.TimeoutError, ConnectionError, ValueError) as e:
             logger.exception("Hybrid search failed for issue: %s", title)
             search_results = []
 
@@ -217,7 +217,7 @@ async def deep_precedent_search_node(
                     node = entry.get("node", {}) if isinstance(entry, dict) else {}
                     if isinstance(node, dict) and node.get("id") != case_id:
                         neighbor_results.append(node)
-            except Exception:
+            except (ConnectionError, TimeoutError) as e:
                 logger.warning("Graph neighbor query failed for case_id=%s", case_id)
 
         # Step 3: Deduplicate by case_id

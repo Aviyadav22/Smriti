@@ -248,7 +248,7 @@ class TestReformulateQuery:
     async def test_fallback_on_llm_exception(self) -> None:
         """If LLM call fails, should return the original question."""
         mock_llm = AsyncMock()
-        mock_llm.generate.side_effect = RuntimeError("LLM unavailable")
+        mock_llm.generate.side_effect = ConnectionError("LLM unavailable")
 
         chat_history = [{"role": "user", "content": "Tell me about Article 21"}]
 

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import logging
 
+import sqlalchemy
+import sqlalchemy.exc
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -117,7 +119,7 @@ async def verify_citations_against_db(
                 continue
 
             unverified.append(citation)
-        except Exception:
+        except (sqlalchemy.exc.SQLAlchemyError, ConnectionError, TimeoutError) as e:
             logger.warning(
                 "DB lookup failed for citation '%s', treating as unverified",
                 citation,

@@ -139,7 +139,7 @@ class TestVerifyCitationsAgainstDb:
     async def test_db_error_treated_as_unverified(self) -> None:
         """If DB query fails, the citation should be treated as unverified."""
         db = AsyncMock()
-        db.execute.side_effect = RuntimeError("connection lost")
+        db.execute.side_effect = ConnectionError("connection lost")
 
         verified, unverified = await verify_citations_against_db(
             ["(2017) 10 SCC 1"], db
