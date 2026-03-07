@@ -29,6 +29,13 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         String, nullable=False, server_default="pending"
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    processing_step: Mapped[str | None] = mapped_column(String, nullable=True)
+    processing_started_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    processing_completed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
     case_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("cases.id", ondelete="SET NULL"),
@@ -37,7 +44,8 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'processing', 'completed', 'failed')",
+            "status IN ('pending', 'extracting', 'analyzing', 'searching', "
+            "'generating', 'completed', 'failed')",
             name="ck_documents_status",
         ),
     )
