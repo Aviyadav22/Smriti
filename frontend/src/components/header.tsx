@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth-context";
-import { Search, Scale, LogOut, Menu, X, MessageSquare, GitBranch, Gavel } from "lucide-react";
+import { Search, Scale, LogOut, Menu, X, MessageSquare, GitBranch, Gavel, Upload } from "lucide-react";
 
 export function Header() {
     const { isAuthenticated, logout } = useAuth();
@@ -63,6 +63,9 @@ export function Header() {
                             <span className="hidden lg:inline">Judges</span>
                         </Button>
                     </Link>
+                    <Button variant="ghost" size="sm" className="text-xs uppercase tracking-wider font-medium h-8 px-3" asChild>
+                        <Link href="/upload"><Upload className="h-3.5 w-3.5 mr-1" /> Upload</Link>
+                    </Button>
                     {isAuthenticated ? (
                         <Button variant="ghost" size="sm" className="text-xs h-8 px-3" onClick={logout}>
                             <LogOut className="h-3.5 w-3.5 mr-1.5" /> Logout
@@ -106,6 +109,9 @@ export function Header() {
                         </Button>
                         <Button variant="ghost" size="sm" className="justify-start text-xs" asChild onClick={() => setMobileOpen(false)}>
                             <Link href="/judges"><Gavel className="h-3.5 w-3.5 mr-1.5" /> Judges</Link>
+                        </Button>
+                        <Button variant="ghost" size="sm" className="justify-start text-xs" asChild onClick={() => setMobileOpen(false)}>
+                            <Link href="/upload"><Upload className="h-3.5 w-3.5 mr-1.5" /> Upload</Link>
                         </Button>
                         {isAuthenticated ? (
                             <Button variant="ghost" size="sm" className="justify-start text-xs" onClick={() => { logout(); setMobileOpen(false); }}>
