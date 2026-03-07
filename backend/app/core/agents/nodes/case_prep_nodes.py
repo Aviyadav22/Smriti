@@ -71,15 +71,15 @@ async def load_analysis_node(
     if row is None:
         logger.warning("No DocumentAnalysis found for document_id=%s", document_id)
         return {
+            "error": f"No analysis found for document {document_id}. Please upload and analyze the document first.",
             "analysis": {
-                "error": f"No analysis found for document_id={document_id}",
                 "issues": [],
                 "parties": {},
                 "key_facts": [],
                 "relief_sought": None,
                 "counter_arguments": [],
                 "research_memo": "",
-            }
+            },
         }
 
     row_dict = dict(row)

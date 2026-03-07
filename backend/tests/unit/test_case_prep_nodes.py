@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.core.agents.case_prep import route_after_load
 from app.core.agents.nodes.case_prep_nodes import (
     _parse_json_list,
     build_argument_order_node,
@@ -33,6 +34,7 @@ def _make_state(**overrides) -> dict:
         "enhanced_memo": "",
         "messages": [],
         "iteration": 0,
+        "error": "",
     }
     base.update(overrides)
     return base
@@ -110,9 +112,37 @@ class TestLoadAnalysisNode:
 
         result = await load_analysis_node(state, db)
 
+        # Top-level error key must be set
+        assert "error" in result
+        assert "nonexistent" in result["error"]
+        assert "upload and analyze" in result["error"]
+        # Analysis should still have empty defaults
         assert "analysis" in result
-        assert "error" in result["analysis"]
         assert result["analysis"]["issues"] == []
+        assert result["analysis"]["parties"] == {}
+        assert result["analysis"]["key_facts"] == []
+        assert result["analysis"]["relief_sought"] is None
+        assert result["analysis"]["counter_arguments"] == []
+        assert result["analysis"]["research_memo"] == ""
+
+    @pytest.mark.asyncio
+    async def test_no_error_key_when_analysis_exists(self) -> None:
+        """When a row IS found, no top-level error key should be returned."""
+        row = {
+            "issues": "[]",
+            "parties": "{}",
+            "key_facts": "[]",
+            "relief_sought": None,
+            "counter_arguments": "[]",
+            "research_memo": "",
+        }
+        db = _make_db_with_analysis_row(row)
+        state = _make_state(document_id="doc-ok")
+
+        result = await load_analysis_node(state, db)
+
+        assert "error" not in result
+        assert "analysis" in result
 
     @pytest.mark.asyncio
     async def test_handles_dict_fields_already_parsed(self) -> None:
@@ -688,3 +718,25 @@ class TestParseJsonList:
 
     def test_garbage_returns_empty(self) -> None:
         assert _parse_json_list("no json here at all") == []
+
+
+# ---------------------------------------------------------------------------
+# route_after_load
+# ---------------------------------------------------------------------------
+
+
+class TestRouteAfterLoad:
+    def test_routes_to_end_when_error_set(self) -> None:
+        state = _make_state(error="No analysis found for document abc.")
+        result = route_after_load(state)
+        assert result == "__end__"
+
+    def test_routes_to_prioritize_when_no_error(self) -> None:
+        state = _make_state()
+        result = route_after_load(state)
+        assert result == "prioritize"
+
+    def test_routes_to_prioritize_when_error_is_empty_string(self) -> None:
+        state = _make_state(error="")
+        result = route_after_load(state)
+        assert result == "prioritize"

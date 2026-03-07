@@ -37,6 +37,17 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def route_after_load(state: CasePrepState) -> str:
+    """Route after load_analysis.
+
+    If an error was set (e.g. no DocumentAnalysis found), skip straight to END
+    so the user sees the error message instead of empty results.
+    """
+    if state.get("error"):
+        return END
+    return "prioritize"
+
+
 def route_after_issues(state: CasePrepState) -> str:
     """Route after issues checkpoint.
 
@@ -243,7 +254,13 @@ def build_case_prep_graph(
     # -- Edges --------------------------------------------------------------
 
     graph.add_edge(START, "load_analysis")
-    graph.add_edge("load_analysis", "prioritize")
+
+    graph.add_conditional_edges(
+        "load_analysis",
+        route_after_load,
+        {"prioritize": "prioritize", END: END},
+    )
+
     graph.add_edge("prioritize", "checkpoint_issues")
 
     graph.add_conditional_edges(

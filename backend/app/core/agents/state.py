@@ -28,3 +28,4 @@ class CasePrepState(TypedDict):
     enhanced_memo: str
     messages: list[dict]
     iteration: int
+    error: str
