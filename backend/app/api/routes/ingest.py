@@ -53,7 +53,9 @@ async def upload_document(
     )
     await db.commit()
 
-    # TODO: trigger background ingestion task
+    from app.tasks.document_tasks import analyze_document
+
+    analyze_document.delay(doc_id)
 
     return {
         "document_id": doc_id,
