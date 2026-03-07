@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.core.agents.confidence import calculate_confidence
 from app.core.agents.nodes.research_nodes import (
     _parse_json_list,
     classify_query_node,
@@ -401,6 +402,121 @@ class TestSynthesizeMemoNode:
         )
         result = await synthesize_memo_node(state, llm)
         assert result["confidence"] >= 0.6
+
+    @pytest.mark.asyncio
+    async def test_precedent_strengths_populated_from_results(self) -> None:
+        """When results have bench_type and court, calculate_confidence receives non-empty precedent_strengths."""
+        llm = _make_llm()
+        llm.generate.return_value = "Memo with SC precedents."
+
+        state = _make_state(
+            search_results=[
+                {
+                    "title": "Kesavananda Bharati",
+                    "snippet": "basic structure",
+                    "score": 0.95,
+                    "case_id": "id1",
+                    "court": "Supreme Court of India",
+                    "bench_type": "constitutional",
+                },
+                {
+                    "title": "Maneka Gandhi",
+                    "snippet": "right to travel",
+                    "score": 0.90,
+                    "case_id": "id2",
+                    "court": "Supreme Court of India",
+                    "bench_type": "division",
+                },
+                {
+                    "title": "No Bench Info",
+                    "snippet": "unknown bench",
+                    "score": 0.80,
+                    "case_id": "id3",
+                    "court": "Supreme Court of India",
+                    # No bench_type -- should be skipped
+                },
+            ],
+            cross_references=[],
+            contradictions=[],
+        )
+
+        with patch("app.core.agents.nodes.research_nodes.calculate_confidence", wraps=calculate_confidence) as spy:
+            result = await synthesize_memo_node(state, llm)
+
+            spy.assert_called_once()
+            call_kwargs = spy.call_args
+            strengths = call_kwargs.kwargs.get("precedent_strengths") or call_kwargs[1].get("precedent_strengths", [])
+            # If called positionally:
+            if not strengths and call_kwargs.args:
+                strengths = call_kwargs.args[2]  # 3rd positional arg
+
+            assert len(strengths) == 2, f"Expected 2 strengths (skipping result with no bench_type), got {strengths}"
+            assert all(s in ("BINDING", "PERSUASIVE", "DISTINGUISHABLE", "OVERRULED") for s in strengths)
+
+    @pytest.mark.asyncio
+    async def test_sc_constitutional_bench_yields_binding(self) -> None:
+        """A Supreme Court constitutional bench result should produce BINDING strength."""
+        llm = _make_llm()
+        llm.generate.return_value = "Memo."
+
+        state = _make_state(
+            search_results=[
+                {
+                    "title": "Constitution Bench Case",
+                    "snippet": "text",
+                    "score": 0.95,
+                    "case_id": "id1",
+                    "court": "Supreme Court of India",
+                    "bench_type": "constitutional",
+                },
+            ],
+            cross_references=[],
+            contradictions=[],
+        )
+
+        with patch("app.core.agents.nodes.research_nodes.calculate_confidence", wraps=calculate_confidence) as spy:
+            await synthesize_memo_node(state, llm)
+
+            call_kwargs = spy.call_args
+            strengths = call_kwargs.kwargs.get("precedent_strengths") or call_kwargs[1].get("precedent_strengths", [])
+            if not strengths and call_kwargs.args:
+                strengths = call_kwargs.args[2]
+
+            assert strengths == ["BINDING"]
+
+    @pytest.mark.asyncio
+    async def test_confidence_higher_with_binding_precedents(self) -> None:
+        """Confidence with BINDING precedents should be higher than the default 0.3 authority."""
+        llm = _make_llm()
+        llm.generate.return_value = "Memo."
+
+        # Results with bench_type for real precedent strengths
+        results_with_bench = [
+            {"title": f"C{i}", "snippet": "s", "score": 0.85, "case_id": f"id{i}",
+             "court": "Supreme Court of India", "bench_type": "constitutional"}
+            for i in range(5)
+        ]
+        state_with = _make_state(
+            search_results=results_with_bench,
+            cross_references=[],
+            contradictions=[],
+        )
+        result_with = await synthesize_memo_node(state_with, llm)
+
+        # Results without bench_type (falls back to authority=0.3)
+        results_without_bench = [
+            {"title": f"C{i}", "snippet": "s", "score": 0.85, "case_id": f"id{i}"}
+            for i in range(5)
+        ]
+        state_without = _make_state(
+            search_results=results_without_bench,
+            cross_references=[],
+            contradictions=[],
+        )
+        result_without = await synthesize_memo_node(state_without, llm)
+
+        # BINDING (1.0) > default (0.3), so confidence should be higher
+        assert result_with["confidence"] > result_without["confidence"]
 
 
 # ---------------------------------------------------------------------------

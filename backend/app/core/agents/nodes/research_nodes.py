@@ -17,6 +17,7 @@ from dataclasses import asdict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.confidence import calculate_confidence
+from app.core.legal.precedent_strength import classify_precedent_strength
 from app.core.agents.nodes.common import (
     enrich_results_with_ratio,
     format_search_results_for_llm,
@@ -306,8 +307,19 @@ async def synthesize_memo_node(
     sub_query_count = len(state.get("sub_queries", []))
     cross_ref_ratio = cross_ref_count / max(sub_query_count, 1)
 
-    # Precedent strengths (placeholder -- will be enriched later)
+    # Classify precedent strength for each result with court and bench data
     precedent_strengths: list[str] = []
+    for r in results:
+        bench = r.get("bench_type")
+        court = r.get("court", "")
+        if bench and court:
+            strength = classify_precedent_strength(
+                source_court=court,
+                source_bench=bench,
+                target_court="Supreme Court of India",
+                target_bench="division",
+            )
+            precedent_strengths.append(strength.value)
 
     confidence = calculate_confidence(
         reranker_scores=reranker_scores,
