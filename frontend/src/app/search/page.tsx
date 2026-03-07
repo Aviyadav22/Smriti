@@ -9,8 +9,13 @@ import { Card } from "@/components/ui/card";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { search as apiSearch, searchFacets } from "@/lib/api";
-import type { SearchResponse, FacetsResponse } from "@/lib/types";
+import type { SearchResponse, FacetsResponse, JudgmentSection } from "@/lib/types";
 import { Search, ChevronLeft, ChevronRight, Filter, X, Loader2 } from "lucide-react";
+import { PrecedentBadge } from "@/components/precedent-badge";
+import { BenchStrength } from "@/components/bench-strength";
+import { EquivalentCitations } from "@/components/equivalent-citations";
+import { SectionFilter } from "@/components/section-filter";
+import { LegalDisclaimer } from "@/components/legal-disclaimer";
 
 function SearchContent() {
     const searchParams = useSearchParams();
@@ -30,6 +35,7 @@ function SearchContent() {
     const [yearFrom, setYearFrom] = useState<string>("");
     const [yearTo, setYearTo] = useState<string>("");
     const [caseType, setCaseType] = useState<string>("");
+    const [sectionFilter, setSectionFilter] = useState<JudgmentSection | null>(null);
 
     const executeSearch = useCallback(async (q: string, p: number) => {
         if (!q.trim()) return;
@@ -44,6 +50,7 @@ function SearchContent() {
                 year_from: yearFrom ? parseInt(yearFrom) : undefined,
                 year_to: yearTo ? parseInt(yearTo) : undefined,
                 case_type: caseType || undefined,
+                section: sectionFilter || undefined,
             });
             setResults(res);
         } catch (err) {
@@ -51,7 +58,7 @@ function SearchContent() {
         } finally {
             setLoading(false);
         }
-    }, [court, yearFrom, yearTo, caseType]);
+    }, [court, yearFrom, yearTo, caseType, sectionFilter]);
 
     useEffect(() => {
         if (initialQuery) {
@@ -113,7 +120,7 @@ function SearchContent() {
 
                         {/* Filter bar */}
                         {showFilters && (
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 pt-3 border-t">
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-3 pt-3 border-t">
                                 <div>
                                     <label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Court</label>
                                     <select
@@ -137,6 +144,10 @@ function SearchContent() {
                                     </select>
                                 </div>
                                 <div>
+                                    <label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Section</label>
+                                    <SectionFilter value={sectionFilter} onChange={setSectionFilter} />
+                                </div>
+                                <div>
                                     <label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Year From</label>
                                     <Input type="number" value={yearFrom} onChange={(e) => setYearFrom(e.target.value)} placeholder="1950" className="h-8 text-xs" />
                                 </div>
@@ -148,7 +159,7 @@ function SearchContent() {
                         )}
 
                         {/* Active filter pills */}
-                        {(court || caseType || yearFrom || yearTo) && (
+                        {(court || caseType || yearFrom || yearTo || sectionFilter) && (
                             <div className="flex flex-wrap gap-1.5 mt-2">
                                 {court && (
                                     <Badge variant="secondary" className="text-[11px] gap-1 cursor-pointer" onClick={() => setCourt("")}>
@@ -158,6 +169,11 @@ function SearchContent() {
                                 {caseType && (
                                     <Badge variant="secondary" className="text-[11px] gap-1 cursor-pointer" onClick={() => setCaseType("")}>
                                         {caseType} <X className="h-3 w-3" />
+                                    </Badge>
+                                )}
+                                {sectionFilter && (
+                                    <Badge variant="secondary" className="text-[11px] gap-1 cursor-pointer" onClick={() => setSectionFilter(null)}>
+                                        {sectionFilter} <X className="h-3 w-3" />
                                     </Badge>
                                 )}
                                 {yearFrom && (
@@ -234,9 +250,14 @@ function SearchContent() {
                                         >
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="flex-1 min-w-0">
-                                                    <h3 className="text-sm font-semibold leading-snug line-clamp-2 font-[family-name:var(--font-lora)]">
-                                                        {r.title || "Untitled Case"}
-                                                    </h3>
+                                                    <div className="flex items-center gap-2">
+                                                        <h3 className="text-sm font-semibold leading-snug line-clamp-2 font-[family-name:var(--font-lora)]">
+                                                            {r.title || "Untitled Case"}
+                                                        </h3>
+                                                        {r.precedent_strength && (
+                                                            <PrecedentBadge strength={r.precedent_strength} />
+                                                        )}
+                                                    </div>
                                                     <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                                         {r.citation && (
                                                             <Badge variant="outline" className="text-[10px] font-normal">
@@ -246,6 +267,9 @@ function SearchContent() {
                                                         {r.court && (
                                                             <span className="text-[11px] text-muted-foreground">{r.court}</span>
                                                         )}
+                                                        {r.bench_type && (
+                                                            <BenchStrength benchType={r.bench_type} />
+                                                        )}
                                                         {r.year && (
                                                             <span className="text-[11px] text-muted-foreground">· {r.year}</span>
                                                         )}
@@ -253,6 +277,13 @@ function SearchContent() {
                                                             <span className="text-[11px] text-muted-foreground">· {r.case_type}</span>
                                                         )}
                                                     </div>
+                                                    {r.equivalent_citations && r.equivalent_citations.length > 0 && (
+                                                        <EquivalentCitations
+                                                            citations={r.equivalent_citations}
+                                                            primaryCitation={r.citation}
+                                                            className="mt-1"
+                                                        />
+                                                    )}
                                                     {r.snippet && (
                                                         <p className="text-xs text-muted-foreground mt-2 line-clamp-2 leading-relaxed">
                                                             {r.snippet}
@@ -268,6 +299,8 @@ function SearchContent() {
                                     ))}
                                 </div>
                             )}
+
+                            <LegalDisclaimer className="mt-4" />
 
                             {/* Pagination */}
                             {totalPages > 1 && (
