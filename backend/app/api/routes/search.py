@@ -31,6 +31,11 @@ async def search(
     bench_type: str | None = Query(None, description="Filter by bench type"),
     judge: str | None = Query(None, description="Filter by judge name"),
     act: str | None = Query(None, description="Filter by act cited"),
+    judgment_section: str | None = Query(
+        None,
+        description="Filter by judgment section (FACTS, ISSUES, ARGUMENTS, HOLDINGS, REASONING, ORDER)",
+        alias="section",
+    ),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(10, ge=1, le=50, description="Results per page"),
     db: AsyncSession = Depends(get_db),
@@ -44,6 +49,7 @@ async def search(
         bench_type=bench_type,
         judge=judge,
         act=act,
+        judgment_section=judgment_section,
     )
 
     llm = get_llm()

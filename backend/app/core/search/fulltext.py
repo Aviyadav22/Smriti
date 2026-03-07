@@ -49,6 +49,9 @@ async def search_fulltext(
     if not query.strip():
         return []
 
+    if filters and filters.judgment_section:
+        return await _search_sections(query, filters=filters, limit=limit, db=db)
+
     where_clauses, params = _build_filter_clauses(filters)
 
     # Core FTS clause
@@ -90,6 +93,49 @@ async def search_fulltext(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+async def _search_sections(
+    query: str,
+    *,
+    filters: SearchFilters,
+    limit: int = 20,
+    db: AsyncSession,
+) -> list[FTSResult]:
+    """Search within specific judgment sections using case_sections table."""
+    params: dict = {
+        "query": query,
+        "section_type": filters.judgment_section,
+        "limit": limit,
+    }
+
+    sql = text(
+        "SELECT cs.case_id AS id, c.title, c.citation, "
+        "ts_rank_cd(to_tsvector('english', cs.content), plainto_tsquery('english', :query)) AS rank, "
+        "ts_headline('english', LEFT(cs.content, 500), "
+        "plainto_tsquery('english', :query), "
+        "'StartSel=**, StopSel=**, MaxWords=50, MinWords=20') AS snippet "
+        "FROM case_sections cs "
+        "JOIN cases c ON c.id::text = cs.case_id "
+        "WHERE cs.section_type = :section_type "
+        "AND to_tsvector('english', cs.content) @@ plainto_tsquery('english', :query) "
+        "ORDER BY rank DESC "
+        "LIMIT :limit"
+    )
+
+    result = await db.execute(sql, params)
+    rows = result.mappings().all()
+
+    return [
+        FTSResult(
+            case_id=str(row["id"]),
+            rank=float(row["rank"]),
+            title=row.get("title"),
+            citation=row.get("citation"),
+            snippet=row.get("snippet"),
+        )
+        for row in rows
+    ]
 
 
 def _build_filter_clauses(

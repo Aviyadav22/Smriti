@@ -342,6 +342,8 @@ async def _vector_search(
             pinecone_filter["year"]["$lte"] = filters.year_to
         if filters.case_type:
             pinecone_filter["case_type"] = {"$eq": filters.case_type}
+        if filters.judgment_section:
+            pinecone_filter["section_type"] = {"$eq": filters.judgment_section}
 
     results = await vector_store.search(
         query_vector,
@@ -390,6 +392,7 @@ def _merge_filters(
         judge=explicit.judge or llm_extracted.judge,
         act=explicit.act or llm_extracted.act,
         section=explicit.section or llm_extracted.section,
+        judgment_section=explicit.judgment_section or llm_extracted.judgment_section,
     )
 
 

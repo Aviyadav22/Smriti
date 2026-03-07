@@ -101,6 +101,7 @@ class SearchFilters:
     judge: str | None = None
     act: str | None = None
     section: str | None = None
+    judgment_section: str | None = None  # FACTS, HOLDINGS, REASONING, etc.
 
 
 @dataclass(frozen=True, slots=True)
