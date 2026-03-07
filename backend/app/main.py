@@ -111,6 +111,7 @@ from app.api.routes.graph import router as graph_router  # noqa: E402
 from app.api.routes.judges import router as judges_router  # noqa: E402
 from app.api.routes.documents import router as documents_router  # noqa: E402
 from app.api.routes.audio import router as audio_router  # noqa: E402
+from app.api.routes.agents import router as agents_router  # noqa: E402
 
 app.include_router(health_router, tags=["health"])
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
@@ -122,3 +123,4 @@ app.include_router(graph_router, prefix="/api/v1/graph", tags=["graph"])
 app.include_router(judges_router, prefix="/api/v1", tags=["judges"])
 app.include_router(documents_router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(audio_router, prefix="/api/v1/cases", tags=["audio"])
+app.include_router(agents_router, prefix="/api/v1/agents", tags=["agents"])
