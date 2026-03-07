@@ -17,6 +17,7 @@ from dataclasses import asdict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.nodes.common import (
+    enrich_results_with_ratio,
     format_search_results_for_llm,
     verify_case_ids,
 )
@@ -144,6 +145,8 @@ async def parallel_search_node(
             logger.warning("Sub-query search failed: %s", result_or_exc)
             continue
         combined.extend(result_or_exc)
+
+    combined = await enrich_results_with_ratio(combined, db)
 
     return {"search_results": combined}
 

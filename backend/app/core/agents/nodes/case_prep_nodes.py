@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.nodes.common import (
+    enrich_results_with_ratio,
     format_search_results_for_llm,
     verify_case_ids,
 )
@@ -242,6 +243,10 @@ async def deep_precedent_search_node(
         if isinstance(finding, BaseException):
             logger.warning("Deep precedent search failed: %s", finding)
             continue
+        # Enrich each issue's results with ratio_decidendi and bench_type
+        finding["results"] = await enrich_results_with_ratio(
+            finding.get("results", []), db
+        )
         precedent_findings.append(finding)
 
     return {"messages": [{"type": "deep_precedents", "data": precedent_findings}]}

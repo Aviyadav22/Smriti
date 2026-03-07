@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.core.agents.nodes.common import format_search_results_for_llm, verify_case_ids
+from app.core.agents.nodes.common import (
+    enrich_results_with_ratio,
+    format_search_results_for_llm,
+    verify_case_ids,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +68,101 @@ class TestFormatSearchResultsForLlm:
         results = [{"title": "T", "snippet": None}]
         output = format_search_results_for_llm(results)
         assert "T" in output
+
+
+# ---------------------------------------------------------------------------
+# format_search_results_for_llm — enriched fields
+# ---------------------------------------------------------------------------
+
+
+class TestFormatSearchResultsEnriched:
+    def test_includes_ratio_field(self) -> None:
+        results = [
+            {
+                "title": "State v. Kumar",
+                "citation": "(2022) 3 SCC 50",
+                "court": "Supreme Court of India",
+                "year": 2022,
+                "snippet": "Brief passage.",
+                "ratio": "The principle of natural justice must be followed in all quasi-judicial proceedings.",
+            }
+        ]
+        output = format_search_results_for_llm(results)
+        assert "Ratio Decidendi:" in output
+        assert "natural justice" in output
+
+    def test_includes_bench_type(self) -> None:
+        results = [
+            {
+                "title": "Union v. Rao",
+                "citation": "(2021) 1 SCC 200",
+                "court": "Supreme Court of India",
+                "year": 2021,
+                "snippet": "Some text.",
+                "bench_type": "division",
+            }
+        ]
+        output = format_search_results_for_llm(results)
+        assert "Division Bench" in output
+        assert "Supreme Court of India (Division Bench)" in output
+
+    def test_no_ratio_still_works(self) -> None:
+        results = [
+            {
+                "title": "A v. B",
+                "citation": "(2020) 2 SCC 10",
+                "court": "High Court",
+                "year": 2020,
+                "snippet": "The court observed something.",
+            }
+        ]
+        output = format_search_results_for_llm(results)
+        assert "Ratio Decidendi:" not in output
+        assert "Relevant Passage:" in output
+        assert "The court observed something." in output
+
+
+# ---------------------------------------------------------------------------
+# enrich_results_with_ratio
+# ---------------------------------------------------------------------------
+
+
+class TestEnrichResultsWithRatio:
+    @pytest.mark.asyncio
+    async def test_enriches_results_with_ratio(self) -> None:
+        mock_result = MagicMock()
+        mock_result.fetchall.return_value = [
+            ("case-1", "Natural justice applies to all tribunals.", "division"),
+        ]
+        db = AsyncMock()
+        db.execute.return_value = mock_result
+
+        results = [{"case_id": "case-1", "title": "Test Case"}]
+        enriched = await enrich_results_with_ratio(results, db)
+
+        assert enriched[0]["ratio"] == "Natural justice applies to all tribunals."
+        assert enriched[0]["bench_type"] == "division"
+
+    @pytest.mark.asyncio
+    async def test_enriches_bench_type(self) -> None:
+        mock_result = MagicMock()
+        mock_result.fetchall.return_value = [
+            ("case-2", "", "constitutional"),
+        ]
+        db = AsyncMock()
+        db.execute.return_value = mock_result
+
+        results = [{"case_id": "case-2", "title": "Bench Case"}]
+        enriched = await enrich_results_with_ratio(results, db)
+
+        assert enriched[0]["bench_type"] == "constitutional"
+
+    @pytest.mark.asyncio
+    async def test_empty_results_returns_empty(self) -> None:
+        db = AsyncMock()
+        enriched = await enrich_results_with_ratio([], db)
+        assert enriched == []
+        db.execute.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
