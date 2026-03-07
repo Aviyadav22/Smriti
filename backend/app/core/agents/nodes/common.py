@@ -1,7 +1,9 @@
 """Shared utilities for agent node functions."""
 from __future__ import annotations
 
+import json
 import logging
+import re
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -108,3 +110,53 @@ async def verify_case_ids(case_ids: list[str], db: AsyncSession) -> set[str]:
         {"ids": case_ids},
     )
     return {row[0] for row in result.fetchall()}
+
+
+# ---------------------------------------------------------------------------
+# Safe JSON parsing helpers for LLM output
+# ---------------------------------------------------------------------------
+
+
+def safe_json_parse(raw: str, default: dict | list | None = None) -> dict | list:
+    """Best-effort JSON parsing from LLM output with regex fallback.
+
+    Handles common LLM output quirks:
+    - Raw JSON
+    - JSON wrapped in markdown code fences
+    - JSON embedded in surrounding prose text
+    """
+    raw = raw.strip()
+    # Try raw first
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    # Try extracting from markdown code fence
+    fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", raw, re.DOTALL)
+    if fence_match:
+        try:
+            return json.loads(fence_match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+    # Try finding first { or [ to last } or ]
+    for start, end in [("{", "}"), ("[", "]")]:
+        s = raw.find(start)
+        e = raw.rfind(end)
+        if s != -1 and e != -1 and e > s:
+            try:
+                return json.loads(raw[s : e + 1])
+            except json.JSONDecodeError:
+                pass
+    return default if default is not None else {}
+
+
+def safe_json_parse_list(raw: str) -> list[dict]:
+    """Best-effort extraction of a JSON array from LLM output.
+
+    Convenience wrapper around :func:`safe_json_parse` that guarantees a
+    ``list`` return type.
+    """
+    result = safe_json_parse(raw, default=[])
+    if isinstance(result, list):
+        return result
+    return [result]

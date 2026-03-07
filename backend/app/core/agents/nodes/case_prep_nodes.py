@@ -23,6 +23,7 @@ from app.core.agents.nodes.citation_verifier import (
 from app.core.agents.nodes.common import (
     enrich_results_with_ratio,
     format_search_results_for_llm,
+    safe_json_parse_list,
     verify_case_ids,
 )
 from app.core.agents.state import CasePrepState
@@ -339,7 +340,7 @@ async def build_argument_order_node(
         temperature=0.2,
     )
 
-    ordered_args = _parse_json_list(raw)
+    ordered_args = safe_json_parse_list(raw)
 
     # Fallback: if LLM output couldn't be parsed, create order from prioritized issues
     if not ordered_args and prioritized:
@@ -509,34 +510,6 @@ async def verify_citations_node(
 # ---------------------------------------------------------------------------
 
 
-def _parse_json_list(raw: str) -> list[dict]:
-    """Best-effort extraction of a JSON array from LLM output."""
-    raw = raw.strip()
-    try:
-        parsed = json.loads(raw)
-        if isinstance(parsed, list):
-            return parsed
-    except json.JSONDecodeError:
-        pass
-
-    # Try extracting from markdown code fence
-    match = re.search(r"```(?:json)?\s*(\[.*?])\s*```", raw, re.DOTALL)
-    if match:
-        try:
-            parsed = json.loads(match.group(1))
-            if isinstance(parsed, list):
-                return parsed
-        except json.JSONDecodeError:
-            pass
-
-    # Try finding any JSON array in the text
-    match = re.search(r"\[.*]", raw, re.DOTALL)
-    if match:
-        try:
-            parsed = json.loads(match.group(0))
-            if isinstance(parsed, list):
-                return parsed
-        except json.JSONDecodeError:
-            pass
-
-    return []
+# Keep a module-level alias so any existing imports of _parse_json_list still
+# work.  New code should use safe_json_parse_list from common.
+_parse_json_list = safe_json_parse_list

@@ -26,6 +26,7 @@ from app.core.legal.precedent_strength import classify_precedent_strength
 from app.core.agents.nodes.common import (
     enrich_results_with_ratio,
     format_search_results_for_llm,
+    safe_json_parse_list,
     verify_case_ids,
 )
 from app.core.agents.state import ResearchState
@@ -253,7 +254,7 @@ async def detect_contradictions_node(
         temperature=0.1,
     )
 
-    contradictions = _parse_json_list(raw)
+    contradictions = safe_json_parse_list(raw)
     return {"contradictions": contradictions}
 
 
@@ -439,35 +440,6 @@ async def verify_citations_node(
 # ---------------------------------------------------------------------------
 
 
-def _parse_json_list(raw: str) -> list[dict]:
-    """Best-effort extraction of a JSON array from LLM output."""
-    # Try direct parse
-    raw = raw.strip()
-    try:
-        parsed = json.loads(raw)
-        if isinstance(parsed, list):
-            return parsed
-    except json.JSONDecodeError:
-        pass
-
-    # Try extracting from markdown code fence
-    match = re.search(r"```(?:json)?\s*(\[.*?])\s*```", raw, re.DOTALL)
-    if match:
-        try:
-            parsed = json.loads(match.group(1))
-            if isinstance(parsed, list):
-                return parsed
-        except json.JSONDecodeError:
-            pass
-
-    # Try finding any JSON array in the text
-    match = re.search(r"\[.*]", raw, re.DOTALL)
-    if match:
-        try:
-            parsed = json.loads(match.group(0))
-            if isinstance(parsed, list):
-                return parsed
-        except json.JSONDecodeError:
-            pass
-
-    return []
+# Keep a module-level alias so existing imports of _parse_json_list still work
+# (e.g. in tests).  New code should use safe_json_parse_list from common.
+_parse_json_list = safe_json_parse_list

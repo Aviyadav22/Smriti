@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.core.agents.confidence import calculate_confidence
+from app.core.agents.nodes.common import safe_json_parse, safe_json_parse_list
 from app.core.agents.nodes.research_nodes import (
     _parse_json_list,
     classify_query_node,
@@ -661,3 +662,73 @@ class TestParseJsonList:
     def test_json_with_surrounding_text(self) -> None:
         raw = 'Here are the results:\n[{"x": 1}]\nEnd.'
         assert _parse_json_list(raw) == [{"x": 1}]
+
+
+# ---------------------------------------------------------------------------
+# safe_json_parse (common helper)
+# ---------------------------------------------------------------------------
+
+
+class TestSafeJsonParse:
+    def test_valid_json_dict(self) -> None:
+        assert safe_json_parse('{"a": 1}') == {"a": 1}
+
+    def test_valid_json_list(self) -> None:
+        assert safe_json_parse('[1, 2, 3]') == [1, 2, 3]
+
+    def test_json_in_code_fence(self) -> None:
+        raw = '```json\n{"key": "value"}\n```'
+        assert safe_json_parse(raw) == {"key": "value"}
+
+    def test_json_in_code_fence_no_lang(self) -> None:
+        raw = '```\n{"key": "value"}\n```'
+        assert safe_json_parse(raw) == {"key": "value"}
+
+    def test_json_with_surrounding_prose(self) -> None:
+        raw = 'Here is the result:\n{"x": 1}\nHope that helps!'
+        assert safe_json_parse(raw) == {"x": 1}
+
+    def test_garbage_returns_default_dict(self) -> None:
+        assert safe_json_parse("no json here") == {}
+
+    def test_garbage_returns_custom_default(self) -> None:
+        assert safe_json_parse("no json here", default=[]) == []
+
+    def test_whitespace_around_json(self) -> None:
+        assert safe_json_parse('  \n {"a": 1} \n  ') == {"a": 1}
+
+    def test_nested_braces(self) -> None:
+        raw = '{"outer": {"inner": 42}}'
+        assert safe_json_parse(raw) == {"outer": {"inner": 42}}
+
+    def test_array_in_code_fence(self) -> None:
+        raw = '```json\n[{"a": 1}, {"b": 2}]\n```'
+        assert safe_json_parse(raw) == [{"a": 1}, {"b": 2}]
+
+
+# ---------------------------------------------------------------------------
+# safe_json_parse_list (common helper)
+# ---------------------------------------------------------------------------
+
+
+class TestSafeJsonParseList:
+    def test_valid_json_array(self) -> None:
+        assert safe_json_parse_list('[{"a": 1}]') == [{"a": 1}]
+
+    def test_empty_array(self) -> None:
+        assert safe_json_parse_list("[]") == []
+
+    def test_garbage_returns_empty_list(self) -> None:
+        assert safe_json_parse_list("no json here") == []
+
+    def test_dict_returned_as_single_element_list(self) -> None:
+        """If LLM returns a dict instead of a list, wrap it."""
+        assert safe_json_parse_list('{"a": 1}') == [{"a": 1}]
+
+    def test_json_in_code_fence(self) -> None:
+        raw = '```json\n[{"a": 1}]\n```'
+        assert safe_json_parse_list(raw) == [{"a": 1}]
+
+    def test_json_with_surrounding_text(self) -> None:
+        raw = 'Here are the results:\n[{"x": 1}]\nEnd.'
+        assert safe_json_parse_list(raw) == [{"x": 1}]
