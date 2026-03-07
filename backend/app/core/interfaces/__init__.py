@@ -6,6 +6,7 @@ from app.core.interfaces.graph_store import GraphStore
 from app.core.interfaces.llm import LLMProvider
 from app.core.interfaces.reranker import Reranker, RerankResult
 from app.core.interfaces.storage import FileStorage
+from app.core.interfaces.tts import TTSProvider
 from app.core.interfaces.vector_store import SearchResult, VectorStore
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "Reranker",
     "RerankResult",
     "SearchResult",
+    "TTSProvider",
     "VectorStore",
 ]

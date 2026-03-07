@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     cohere_rerank_model: str = "rerank-v4.0-pro"
     cohere_rerank_top_n: int = 10
 
+    # TTS
+    tts_provider: str = "mock"
+    sarvam_api_key: str = ""
+
     # Storage
     storage_provider: str = "local"
     local_storage_path: str = "./data/pdfs"
