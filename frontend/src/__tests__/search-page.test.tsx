@@ -216,10 +216,10 @@ describe("SearchPage", () => {
     renderWithProviders(<SearchPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("No results found.")).toBeInTheDocument();
+      expect(screen.getByText("No results found")).toBeInTheDocument();
     });
     expect(
-      screen.getByText(/try different search terms/i)
+      screen.getByText(/broader search terms/i)
     ).toBeInTheDocument();
   });
 
@@ -281,8 +281,8 @@ describe("SearchPage", () => {
     renderWithProviders(<SearchPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("95%")).toBeInTheDocument();
-      expect(screen.getByText("88%")).toBeInTheDocument();
+      const matches = screen.getAllByText("Strong match");
+      expect(matches.length).toBeGreaterThanOrEqual(2);
     });
   });
 

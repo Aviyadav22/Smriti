@@ -10,21 +10,21 @@ interface ConfidenceMeterProps {
 export function ConfidenceMeter({ score, className }: ConfidenceMeterProps) {
   const percentage = Math.round(score * 100);
   const color =
-    percentage >= 80 ? "bg-green-500" :
-    percentage >= 60 ? "bg-yellow-500" :
-    percentage >= 40 ? "bg-orange-500" :
+    percentage >= 60 ? "bg-green-500" :
+    percentage >= 40 ? "bg-yellow-500" :
+    percentage >= 20 ? "bg-orange-500" :
     "bg-red-500";
 
   const label =
-    percentage >= 80 ? "High confidence" :
-    percentage >= 60 ? "Moderate confidence" :
-    percentage >= 40 ? "Low confidence" :
-    "Very low confidence";
+    percentage >= 60 ? "Strong match" :
+    percentage >= 40 ? "Good match" :
+    percentage >= 20 ? "Partial match" :
+    "Weak match";
 
   return (
     <div
       className={cn("flex items-center gap-2", className)}
-      title={`${label} — based on relevance scores, source authority, coverage, and consistency`}
+      title={`${label} — Based on semantic similarity and keyword matching. Higher scores indicate stronger matches to your query.`}
     >
       <div className="h-2 w-24 rounded-full bg-muted overflow-hidden">
         <div
@@ -32,7 +32,7 @@ export function ConfidenceMeter({ score, className }: ConfidenceMeterProps) {
           style={{ width: `${percentage}%` }}
         />
       </div>
-      <span className="text-xs text-muted-foreground">{percentage}%</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
     </div>
   );
 }

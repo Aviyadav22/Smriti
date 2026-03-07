@@ -16,13 +16,13 @@ describe("LegalDisclaimer", () => {
 });
 
 describe("ConfidenceMeter", () => {
-  it("renders percentage", () => {
+  it("renders strong match label for high score", () => {
     render(<ConfidenceMeter score={0.85} />);
-    expect(screen.getByText("85%")).toBeDefined();
+    expect(screen.getByText("Strong match")).toBeDefined();
   });
 
-  it("renders low score with correct color", () => {
+  it("renders partial match label for low score", () => {
     render(<ConfidenceMeter score={0.25} />);
-    expect(screen.getByText("25%")).toBeDefined();
+    expect(screen.getByText("Partial match")).toBeDefined();
   });
 });
