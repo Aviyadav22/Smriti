@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +28,8 @@ import {
     ExternalLink,
     Menu,
     X,
+    Copy,
+    Check,
 } from "lucide-react";
 import { LegalDisclaimer } from "@/components/legal-disclaimer";
 
@@ -504,6 +508,14 @@ export default function ChatPage() {
 
 function MessageBubble({ message }: { message: DisplayMessage }) {
     const router = useRouter();
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = useCallback(() => {
+        navigator.clipboard.writeText(message.content).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        });
+    }, [message.content]);
 
     if (message.role === "user") {
         return (
@@ -516,13 +528,16 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
     }
 
     return (
-        <div className="flex justify-start">
+        <div className="flex justify-start group/msg">
             <div className="max-w-[85%] space-y-3">
                 {/* Assistant text */}
-                <div className="bg-muted/50 rounded-2xl rounded-bl-sm px-4 py-3">
+                <div className="bg-muted/50 rounded-2xl rounded-bl-sm px-4 py-3 relative">
                     {message.content ? (
-                        <div className="text-sm whitespace-pre-wrap leading-relaxed">
-                            {message.content}
+                        <div className="text-sm leading-relaxed prose prose-sm prose-neutral dark:prose-invert max-w-none prose-headings:text-base prose-headings:font-semibold prose-p:my-1.5 prose-li:my-0.5 prose-ul:my-1 prose-ol:my-1">
+                            <MarkdownWithCitations
+                                content={message.content}
+                                sources={message.sources}
+                            />
                         </div>
                     ) : message.isStreaming ? (
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -533,6 +548,21 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
 
                     {message.isStreaming && message.content && (
                         <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ml-0.5 -mb-0.5" />
+                    )}
+
+                    {/* Copy button */}
+                    {message.content && !message.isStreaming && (
+                        <button
+                            onClick={handleCopy}
+                            className="absolute top-2 right-2 opacity-0 group-hover/msg:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
+                            title="Copy to clipboard"
+                        >
+                            {copied ? (
+                                <Check className="h-3.5 w-3.5 text-green-500" />
+                            ) : (
+                                <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                        </button>
                     )}
                 </div>
 
@@ -549,9 +579,20 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
                                     variant="outline"
                                     className="text-[10px] cursor-pointer hover:bg-muted/50 transition-colors gap-1"
                                     onClick={() => router.push(`/case/${source.case_id}`)}
+                                    id={`source-${i + 1}`}
                                 >
                                     <span className="text-[var(--gold)] font-semibold">[{i + 1}]</span>
-                                    {source.citation || source.title || "Case"}
+                                    <span className="truncate max-w-[180px]">
+                                        {source.citation || source.title || "Case"}
+                                    </span>
+                                    {source.court && (
+                                        <span className="text-muted-foreground">
+                                            {source.court.replace("Supreme Court of India", "SC").replace("High Court", "HC")}
+                                        </span>
+                                    )}
+                                    {source.year && (
+                                        <span className="text-muted-foreground">{source.year}</span>
+                                    )}
                                     <ExternalLink className="h-2.5 w-2.5 text-muted-foreground" />
                                 </Badge>
                             ))}
@@ -560,5 +601,73 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
                 )}
             </div>
         </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Markdown with inline citation links
+// ---------------------------------------------------------------------------
+
+function MarkdownWithCitations({
+    content,
+    sources,
+}: {
+    content: string;
+    sources: ChatSource[];
+}) {
+    // Replace [N] patterns with clickable links that scroll to the source badge
+    const processedContent = content.replace(
+        /\[(\d+)\]/g,
+        (match, num) => {
+            const idx = parseInt(num, 10);
+            if (idx >= 1 && idx <= sources.length) {
+                return `[${match}](#source-${idx})`;
+            }
+            return match;
+        },
+    );
+
+    return (
+        <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+                a: ({ href, children, ...props }) => {
+                    // Handle internal citation anchor links
+                    if (href?.startsWith("#source-")) {
+                        const sourceId = href.replace("#", "");
+                        return (
+                            <a
+                                {...props}
+                                href={href}
+                                className="text-[var(--gold)] font-semibold no-underline hover:underline cursor-pointer text-xs align-super"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    document.getElementById(sourceId)?.scrollIntoView({
+                                        behavior: "smooth",
+                                        block: "nearest",
+                                    });
+                                    // Briefly highlight the source badge
+                                    const el = document.getElementById(sourceId);
+                                    if (el) {
+                                        el.classList.add("ring-2", "ring-[var(--gold)]");
+                                        setTimeout(() => el.classList.remove("ring-2", "ring-[var(--gold)]"), 1500);
+                                    }
+                                }}
+                            >
+                                {children}
+                            </a>
+                        );
+                    }
+                    // External links
+                    return (
+                        <a {...props} href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                            {children}
+                        </a>
+                    );
+                },
+            }}
+        >
+            {processedContent}
+        </ReactMarkdown>
     );
 }
