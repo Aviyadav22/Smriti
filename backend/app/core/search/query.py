@@ -93,7 +93,7 @@ QUERY_UNDERSTANDING_SCHEMA: dict = {
 class SearchFilters:
     """Structured search filters extracted from query or explicit params."""
 
-    court: str | None = None
+    court: list[str] | None = None
     year_from: int | None = None
     year_to: int | None = None
     case_type: str | None = None
@@ -163,12 +163,16 @@ def _parse_llm_result(raw_query: str, data: dict) -> QueryUnderstanding:
     filters_raw = data.get("filters", {})
     entities_raw = data.get("entities", {})
 
+    # LLM returns court as a single string; wrap in a list for SearchFilters
+    llm_court_raw = filters_raw.get("court")
+    llm_court = [llm_court_raw] if llm_court_raw else None
+
     return QueryUnderstanding(
         intent=data.get("intent", "general"),
         original_query=raw_query,
         expanded_query=data.get("expanded_query", raw_query),
         filters=SearchFilters(
-            court=filters_raw.get("court"),
+            court=llm_court,
             year_from=filters_raw.get("year_from"),
             year_to=filters_raw.get("year_to"),
             case_type=filters_raw.get("case_type"),

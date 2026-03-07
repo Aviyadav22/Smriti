@@ -149,8 +149,16 @@ def _build_filter_clauses(
         return clauses, params
 
     if filters.court:
-        clauses.append("court ILIKE :court")
-        params["court"] = f"%{filters.court}%"
+        if len(filters.court) == 1:
+            clauses.append("court ILIKE :court_0")
+            params["court_0"] = f"%{filters.court[0]}%"
+        else:
+            court_clauses = []
+            for i, c in enumerate(filters.court):
+                key = f"court_{i}"
+                court_clauses.append(f"court ILIKE :{key}")
+                params[key] = f"%{c}%"
+            clauses.append(f"({' OR '.join(court_clauses)})")
 
     if filters.year_from is not None:
         clauses.append("year >= :year_from")

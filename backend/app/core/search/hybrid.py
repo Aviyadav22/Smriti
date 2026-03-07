@@ -360,7 +360,10 @@ async def _vector_search(
     pinecone_filter: dict = {}
     if filters:
         if filters.court:
-            pinecone_filter["court"] = {"$eq": filters.court}
+            if len(filters.court) == 1:
+                pinecone_filter["court"] = {"$eq": filters.court[0]}
+            else:
+                pinecone_filter["court"] = {"$in": filters.court}
         if filters.year_from is not None:
             pinecone_filter["year"] = pinecone_filter.get("year", {})
             pinecone_filter["year"]["$gte"] = filters.year_from
@@ -423,8 +426,11 @@ def _merge_filters(
     if explicit is None:
         return llm_extracted
 
+    # For court lists, explicit always wins if provided
+    merged_court = explicit.court if explicit.court else llm_extracted.court
+
     return SearchFilters(
-        court=explicit.court or llm_extracted.court,
+        court=merged_court,
         year_from=explicit.year_from if explicit.year_from is not None else llm_extracted.year_from,
         year_to=explicit.year_to if explicit.year_to is not None else llm_extracted.year_to,
         case_type=explicit.case_type or llm_extracted.case_type,

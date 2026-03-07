@@ -24,7 +24,7 @@ router = APIRouter()
 @router.get("")
 async def search(
     q: str = Query(..., min_length=1, max_length=2000, description="Search query"),
-    court: str | None = Query(None, description="Filter by court name"),
+    court: str | None = Query(None, description="Filter by court name (comma-separated for multiple)"),
     year_from: int | None = Query(None, ge=1900, le=2100, description="Filter from year"),
     year_to: int | None = Query(None, ge=1900, le=2100, description="Filter to year"),
     case_type: str | None = Query(None, description="Filter by case type"),
@@ -41,8 +41,13 @@ async def search(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Execute hybrid search: LLM query understanding → vector + FTS → RRF → rerank."""
+    # Split comma-separated court string into list, stripping whitespace
+    court_list = (
+        [c.strip() for c in court.split(",") if c.strip()] if court else None
+    )
+
     filters = SearchFilters(
-        court=court,
+        court=court_list,
         year_from=year_from,
         year_to=year_to,
         case_type=case_type,

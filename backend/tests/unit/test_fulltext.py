@@ -22,11 +22,11 @@ class TestBuildFilterClauses:
         assert params == {}
 
     def test_court_filter(self) -> None:
-        filters = SearchFilters(court="Supreme Court")
+        filters = SearchFilters(court=["Supreme Court"])
         clauses, params = _build_filter_clauses(filters)
         assert len(clauses) == 1
-        assert "court ILIKE :court" in clauses[0]
-        assert "%Supreme Court%" in params["court"]
+        assert "court ILIKE :court_0" in clauses[0]
+        assert "%Supreme Court%" in params["court_0"]
 
     def test_year_range_filter(self) -> None:
         filters = SearchFilters(year_from=2015, year_to=2024)
@@ -67,7 +67,7 @@ class TestBuildFilterClauses:
     def test_all_filters_combined(self) -> None:
         """All filters produce separate clauses."""
         filters = SearchFilters(
-            court="Supreme Court",
+            court=["Supreme Court"],
             year_from=2015,
             year_to=2024,
             case_type="Criminal Appeal",

@@ -61,7 +61,7 @@ class TestParseLLMResult:
         result = _parse_llm_result("dowry death SC after 2020", data)
 
         assert result.intent == "topic_search"
-        assert result.filters.court == "Supreme Court of India"
+        assert result.filters.court == ["Supreme Court of India"]
         assert result.filters.year_from == 2020
         assert result.filters.case_type == "Criminal Appeal"
         assert result.entities.statutes == ["Indian Penal Code, 1860 - Section 304B"]
@@ -154,5 +154,5 @@ class TestUnderstandQuery:
 
         result = await understand_query("murder SC", MockLLM())
         assert result.intent == "topic_search"
-        assert result.filters.court == "Supreme Court of India"
+        assert result.filters.court == ["Supreme Court of India"]
         assert len(result.entities.statutes) == 1
