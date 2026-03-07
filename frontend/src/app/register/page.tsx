@@ -19,14 +19,26 @@ export default function RegisterPage() {
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
+
+    function validate(): boolean {
+        const newErrors: { email?: string; password?: string } = {};
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            newErrors.email = "Please enter a valid email address";
+        }
+        if (password.length < 8) {
+            newErrors.password = "Password must be at least 8 characters";
+        }
+        setFieldErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+    }
+
+    const isFormValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && password.length >= 8;
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         setError("");
-        if (password.length < 8) {
-            setError("Password must be at least 8 characters");
-            return;
-        }
+        if (!validate()) return;
         setLoading(true);
         try {
             await register({ name, email, password });
@@ -70,6 +82,7 @@ export default function RegisterPage() {
                                 required
                                 className="h-9 text-sm rounded-md"
                             />
+                            {fieldErrors.email && <p className="text-xs text-red-500 mt-1">{fieldErrors.email}</p>}
                         </div>
                         <div>
                             <label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Password</label>
@@ -82,6 +95,8 @@ export default function RegisterPage() {
                                 minLength={8}
                                 className="h-9 text-sm rounded-md"
                             />
+                            <p className="text-[10px] text-muted-foreground mt-1">Passwords must be at least 8 characters</p>
+                            {fieldErrors.password && <p className="text-xs text-red-500 mt-1">{fieldErrors.password}</p>}
                         </div>
 
                         <div className="flex items-start gap-2 text-xs text-muted-foreground pt-1">
@@ -94,7 +109,7 @@ export default function RegisterPage() {
 
                         {error && <p className="text-xs text-destructive">{error}</p>}
 
-                        <Button type="submit" className="w-full h-9 text-xs rounded-md" disabled={loading}>
+                        <Button type="submit" className="w-full h-9 text-xs rounded-md" disabled={loading || !isFormValid}>
                             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Create Account"}
                         </Button>
                     </form>
