@@ -4,6 +4,10 @@
 // Search
 // ---------------------------------------------------------------------------
 
+export type PrecedentStrengthLevel = 'BINDING' | 'PERSUASIVE' | 'DISTINGUISHABLE' | 'OVERRULED';
+
+export type JudgmentSection = 'FACTS' | 'ISSUES' | 'ARGUMENTS' | 'HOLDINGS' | 'REASONING' | 'ORDER';
+
 export interface SearchFilters {
     court?: string | null;
     year_from?: number | null;
@@ -12,6 +16,7 @@ export interface SearchFilters {
     bench_type?: string | null;
     judge?: string | null;
     act?: string | null;
+    section?: JudgmentSection | null;
 }
 
 export interface QueryUnderstanding {
@@ -40,6 +45,9 @@ export interface SearchResultItem {
     case_type: string | null;
     judge: string | null;
     snippet: string | null;
+    bench_type: string | null;
+    equivalent_citations: string[];
+    precedent_strength?: PrecedentStrengthLevel;
 }
 
 export interface SearchResponse {
@@ -60,6 +68,14 @@ export interface SearchSuggestion {
     case_id: string;
     title: string | null;
     citation: string | null;
+}
+
+export interface ConfidenceBreakdown {
+    overall: number;
+    relevance: number;
+    coverage: number;
+    authority: number;
+    contradiction_penalty: number;
 }
 
 export interface FacetsResponse {

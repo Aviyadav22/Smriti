@@ -178,6 +178,7 @@ export async function search(params: {
     bench_type?: string;
     judge?: string;
     act?: string;
+    section?: string;
     page?: number;
     page_size?: number;
 }): Promise<SearchResponse> {
@@ -190,6 +191,7 @@ export async function search(params: {
     if (params.bench_type) query.set("bench_type", params.bench_type);
     if (params.judge) query.set("judge", params.judge);
     if (params.act) query.set("act", params.act);
+    if (params.section) query.set("section", params.section);
     if (params.page) query.set("page", String(params.page));
     if (params.page_size) query.set("page_size", String(params.page_size));
     return apiFetch<SearchResponse>(`/search?${query.toString()}`);
