@@ -1,6 +1,8 @@
 /* Centralized API client with JWT handling. All fetch calls go through here. */
 
 import type {
+    AgentExecution,
+    AgentStreamEvent,
     AudioDigestStatus,
     CaseDetail,
     ChatMessage,
@@ -481,6 +483,112 @@ export async function getAudioStatus(caseId: string): Promise<AudioDigestStatus>
 
 export function getAudioUrl(caseId: string, language: string = "en"): string {
     return `${API_BASE}/cases/${caseId}/audio?language=${language}`;
+}
+
+// ---------------------------------------------------------------------------
+// Agent API
+// ---------------------------------------------------------------------------
+
+/**
+ * Internal helper: POST to an agent endpoint and stream SSE events via fetch.
+ * Returns an AbortController so the caller can cancel the stream.
+ */
+function _streamAgent(
+    path: string,
+    body: Record<string, unknown>,
+    onEvent: (event: AgentStreamEvent) => void,
+    onError?: (error: Error) => void,
+): AbortController {
+    const controller = new AbortController();
+
+    (async () => {
+        try {
+            const res = await fetch(`${API_BASE}${path}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+                },
+                body: JSON.stringify(body),
+                signal: controller.signal,
+            });
+
+            if (!res.ok) {
+                throw new Error(`Agent request failed: ${res.status}`);
+            }
+
+            const reader = res.body?.getReader();
+            if (!reader) throw new Error("No response body");
+
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        try {
+                            const event = JSON.parse(line.slice(6)) as AgentStreamEvent;
+                            onEvent(event);
+                        } catch {
+                            // skip malformed
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            if ((err as Error).name === "AbortError") return;
+            onError?.(err instanceof Error ? err : new Error(String(err)));
+        }
+    })();
+
+    return controller;
+}
+
+export function runResearchAgent(
+    query: string,
+    onEvent: (event: AgentStreamEvent) => void,
+    onError?: (error: Error) => void,
+): AbortController {
+    return _streamAgent("/agents/research/run", { query }, onEvent, onError);
+}
+
+export function runCasePrepAgent(
+    documentId: string,
+    onEvent: (event: AgentStreamEvent) => void,
+    onError?: (error: Error) => void,
+): AbortController {
+    return _streamAgent("/agents/case_prep/run", { document_id: documentId }, onEvent, onError);
+}
+
+export function resumeAgentExecution(
+    executionId: string,
+    input: string,
+    onEvent: (event: AgentStreamEvent) => void,
+    onError?: (error: Error) => void,
+): AbortController {
+    return _streamAgent(`/agents/executions/${executionId}/resume`, { input }, onEvent, onError);
+}
+
+export async function getAgentExecutions(
+    page: number = 1,
+    pageSize: number = 20,
+): Promise<{ executions: AgentExecution[]; total: number; page: number; page_size: number }> {
+    return apiFetch(`/agents/executions?page=${page}&page_size=${pageSize}`);
+}
+
+export async function getAgentExecution(id: string): Promise<AgentExecution> {
+    return apiFetch(`/agents/executions/${id}`);
+}
+
+export async function cancelAgentExecution(id: string): Promise<void> {
+    await apiFetch(`/agents/executions/${id}`, { method: "DELETE" });
 }
 
 export { ApiError };

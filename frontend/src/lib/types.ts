@@ -407,3 +407,47 @@ export interface AudioDigestStatus {
     generating: string[];
     digests: AudioDigestInfo[];
 }
+
+// ---------------------------------------------------------------------------
+// Agent Types
+// ---------------------------------------------------------------------------
+
+export type AgentType = "research" | "case_prep";
+
+export type AgentStatus = "running" | "waiting_input" | "completed" | "failed" | "cancelled";
+
+export interface AgentExecution {
+    id: string;
+    agent_type: AgentType;
+    status: AgentStatus;
+    input_data: Record<string, unknown>;
+    result_data: Record<string, unknown> | null;
+    current_step: string | null;
+    steps_completed: number;
+    total_steps: number | null;
+    created_at: string;
+    updated_at: string;
+    completed_at: string | null;
+    error_message: string | null;
+}
+
+export interface AgentStreamEvent {
+    type: "status" | "progress" | "result" | "checkpoint" | "memo" | "done" | "error";
+    step?: string;
+    message?: string;
+    steps_completed?: number;
+    total_steps?: number;
+    data?: unknown;
+    question?: string;
+    context?: Record<string, unknown>;
+    content?: string;
+    execution_id?: string;
+    status?: string;
+    recoverable?: boolean;
+}
+
+export interface AgentStep {
+    name: string;
+    status: "pending" | "active" | "completed" | "error";
+    message?: string;
+}
