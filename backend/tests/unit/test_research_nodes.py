@@ -566,6 +566,78 @@ class TestVerifyCitationsNode:
         result = await verify_citations_node(state, db)
         assert result["draft_memo"] == ""
 
+    @pytest.mark.asyncio
+    async def test_human_citation_unverified_appends_warning(self) -> None:
+        """A human-readable citation not in the DB should trigger a warning."""
+        state = _make_state(
+            draft_memo="The court relied on (2099) 1 SCC 999 in this matter."
+        )
+
+        # All DB queries return no match
+        no_match = MagicMock()
+        no_match.first.return_value = None
+        db = AsyncMock()
+        db.execute.return_value = no_match
+
+        result = await verify_citations_node(state, db)
+        assert "Human-Readable Citation Warning" in result["draft_memo"]
+        assert "(2099) 1 SCC 999" in result["draft_memo"]
+
+    @pytest.mark.asyncio
+    async def test_human_citation_verified_no_warning(self) -> None:
+        """A human-readable citation found in the DB should NOT trigger a warning."""
+        state = _make_state(
+            draft_memo="The court relied on (2017) 10 SCC 1 in this matter.",
+            search_results=[{"citation": "(2017) 10 SCC 1", "snippet": ""}],
+        )
+
+        # DB query returns a match
+        match_result = MagicMock()
+        match_result.first.return_value = (1,)
+        db = AsyncMock()
+        db.execute.return_value = match_result
+
+        result = await verify_citations_node(state, db)
+        assert "Human-Readable Citation Warning" not in result["draft_memo"]
+
+    @pytest.mark.asyncio
+    async def test_ungrounded_citation_appends_warning(self) -> None:
+        """A citation in memo but not in search results should trigger ungrounded warning."""
+        state = _make_state(
+            draft_memo="The court relied on (2017) 10 SCC 1 in this matter.",
+            search_results=[
+                {"citation": "(2020) 5 SCC 200", "snippet": "different case"},
+            ],
+        )
+
+        # DB verifies the citation exists
+        match_result = MagicMock()
+        match_result.first.return_value = (1,)
+        db = AsyncMock()
+        db.execute.return_value = match_result
+
+        result = await verify_citations_node(state, db)
+        assert "Ungrounded Citation Warning" in result["draft_memo"]
+        assert "(2017) 10 SCC 1" in result["draft_memo"]
+
+    @pytest.mark.asyncio
+    async def test_grounded_citation_no_ungrounded_warning(self) -> None:
+        """A citation present in both memo and search results should not be flagged."""
+        state = _make_state(
+            draft_memo="The court relied on (2017) 10 SCC 1 in this matter.",
+            search_results=[
+                {"citation": "(2017) 10 SCC 1", "snippet": ""},
+            ],
+        )
+
+        match_result = MagicMock()
+        match_result.first.return_value = (1,)
+        db = AsyncMock()
+        db.execute.return_value = match_result
+
+        result = await verify_citations_node(state, db)
+        assert "Ungrounded Citation Warning" not in result["draft_memo"]
+
 
 # ---------------------------------------------------------------------------
 # _parse_json_list helper

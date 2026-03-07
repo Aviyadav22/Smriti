@@ -15,6 +15,11 @@ from dataclasses import asdict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.agents.nodes.citation_verifier import (
+    check_grounding,
+    extract_citations_from_text,
+    verify_citations_against_db,
+)
 from app.core.agents.nodes.common import (
     enrich_results_with_ratio,
     format_search_results_for_llm,
@@ -365,36 +370,94 @@ async def verify_citations_node(
     state: CasePrepState,
     db: AsyncSession,
 ) -> dict:
-    """Verify that case IDs referenced in the strategy memo exist in the database.
+    """Verify that case IDs and human-readable citations in the strategy memo exist.
 
-    Appends a warning section if any IDs cannot be verified.
+    Performs three checks:
+    1. UUID-based verification (existing) -- checks case IDs against the DB.
+    2. Human-readable citation verification -- checks SCC/AIR/etc. citations
+       against ``cases.citation`` and ``case_citation_equivalents.citation_text``.
+    3. Grounding check -- flags citations that appear in the memo but were NOT
+       in the search results (potentially hallucinated from LLM training data).
+
+    Appends warning sections to the memo for any issues found.
     """
     memo = state.get("enhanced_memo", "")
     if not memo:
         return {"enhanced_memo": memo}
 
-    # Extract UUID-like patterns from the memo
+    # --- Step 1: UUID verification (existing logic) ---
     found_ids = list(set(_UUID_RE.findall(memo)))
-    if not found_ids:
-        return {"enhanced_memo": memo}
+    if found_ids:
+        valid_ids = await verify_case_ids(found_ids, db)
+        invalid_ids = [uid for uid in found_ids if uid not in valid_ids]
 
-    valid_ids = await verify_case_ids(found_ids, db)
-    invalid_ids = [uid for uid in found_ids if uid not in valid_ids]
+        if invalid_ids:
+            warning = (
+                "\n\n---\n"
+                "**Citation Verification Warning**\n"
+                "The following case identifiers referenced in this memo could not "
+                "be verified against the database:\n"
+            )
+            for uid in invalid_ids:
+                warning += f"- {uid}\n"
+            warning += (
+                "These references may be hallucinated or refer to cases not yet "
+                "ingested. Please verify independently.\n"
+            )
+            memo += warning
 
-    if invalid_ids:
-        warning = (
-            "\n\n---\n"
-            "**Citation Verification Warning**\n"
-            "The following case identifiers referenced in this memo could not "
-            "be verified against the database:\n"
-        )
-        for uid in invalid_ids:
-            warning += f"- {uid}\n"
-        warning += (
-            "These references may be hallucinated or refer to cases not yet "
-            "ingested. Please verify independently.\n"
-        )
-        memo += warning
+    # --- Step 2: Human-readable citation verification ---
+    memo_citations = extract_citations_from_text(memo)
+    if memo_citations:
+        _verified, unverified = await verify_citations_against_db(memo_citations, db)
+
+        if unverified:
+            warning = (
+                "\n\n---\n"
+                "**Human-Readable Citation Warning**\n"
+                "The following citations could not be verified against the database:\n"
+            )
+            for cite in unverified:
+                warning += f"- {cite}\n"
+            warning += (
+                "These may be fabricated citations. Please verify independently "
+                "before relying on them.\n"
+            )
+            memo += warning
+
+    # --- Step 3: Grounding check ---
+    if memo_citations:
+        # Collect citations from deep precedent search results in messages
+        search_citation_strings: list[str] = []
+        for msg in state.get("messages", []):
+            if isinstance(msg, dict) and msg.get("type") == "deep_precedents":
+                for finding in msg.get("data", []):
+                    for result in finding.get("results", []):
+                        citation = result.get("citation", "")
+                        if citation:
+                            search_citation_strings.append(citation)
+                        snippet = result.get("snippet", "")
+                        if snippet:
+                            search_citation_strings.extend(
+                                extract_citations_from_text(snippet)
+                            )
+
+        ungrounded = check_grounding(memo_citations, search_citation_strings)
+        if ungrounded:
+            warning = (
+                "\n\n---\n"
+                "**Ungrounded Citation Warning**\n"
+                "The following citations appear in the memo but were NOT found "
+                "in the search results. They may have been hallucinated from "
+                "the LLM's training data:\n"
+            )
+            for cite in ungrounded:
+                warning += f"- {cite}\n"
+            warning += (
+                "Exercise extra caution with these citations and verify them "
+                "against primary sources.\n"
+            )
+            memo += warning
 
     return {"enhanced_memo": memo}
 
