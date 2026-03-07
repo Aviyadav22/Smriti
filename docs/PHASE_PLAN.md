@@ -4,7 +4,7 @@
 
 ## Overview
 
-Eight phases delivering a full production legal intelligence platform. Phases 1-3 complete. Phases 4-8 take Smriti from "search tool" to "AI-powered legal assistant" with autonomous agents, multilingual support, and production deployment.
+Eight phases delivering a full production legal intelligence platform. Phases 1-5 complete. Phases 6-8 take Smriti from "search tool" to "AI-powered legal assistant" with autonomous agents, multilingual support, and production deployment.
 
 **Guiding Principles:**
 - Each phase ends with a deployable artifact
@@ -297,7 +297,7 @@ Ship Judge Analytics using the existing ~740 ingested cases. Build and validate 
 
 ---
 
-## Phase 5: Document Upload + Audio Digests
+## Phase 5: Document Upload + Audio Digests — COMPLETE
 
 ### Goal
 Two killer features competitors charge for — upload briefs for precedent mapping, listen to judgment summaries on the go.
@@ -305,55 +305,58 @@ Two killer features competitors charge for — upload briefs for precedent mappi
 ### Deliverables
 
 #### 5.1 Document Upload Pipeline
-- [ ] Upload endpoint: `POST /documents/upload` (PDF, max 50MB)
-- [ ] File validation (type, size, virus scan optional)
-- [ ] Store to GCS/local storage
-- [ ] Background processing pipeline:
+- [x] Upload endpoint: `POST /documents/upload` (PDF, max 50MB)
+- [x] File validation (type, size, virus scan optional)
+- [x] Store to GCS/local storage
+- [x] Background processing pipeline (Celery + Redis):
   1. Text extraction (pdfplumber + OCR fallback)
   2. Issue identification (Gemini Pro: extract legal issues)
   3. Per-issue precedent search (hybrid search, parallel)
   4. Counter-argument identification
   5. Research memo generation (structured, with citations)
-- [ ] Status tracking: pending → extracting → analyzing → searching → generating → complete → failed
-- [ ] Documents private per-user (row-level security)
-- [ ] `GET /documents` — List user's uploaded documents
-- [ ] `GET /documents/{id}` — Document detail + analysis results
-- [ ] `DELETE /documents/{id}` — Delete document + all analysis
+- [x] Status tracking: pending → extracting → analyzing → searching → generating → complete → failed
+- [x] Documents private per-user (row-level security)
+- [x] `GET /documents` — List user's uploaded documents
+- [x] `GET /documents/{id}` — Document detail + analysis results
+- [x] `DELETE /documents/{id}` — Delete document + all analysis
 
 #### 5.2 Document Upload UI
-- [ ] Upload page (`/upload`) — drag-and-drop PDF upload
-- [ ] Processing status with step-by-step progress
-- [ ] Analysis results page:
+- [x] Upload page (`/upload`) — drag-and-drop PDF upload
+- [x] Processing status with step-by-step progress
+- [x] Analysis results page:
   - Extracted issues listed
   - Per-issue: supporting precedents, opposing precedents, key statutes
   - Downloadable research memo (PDF export)
-- [ ] Document history in user dashboard
+- [x] Document history in user dashboard
 
 #### 5.3 Audio Digests
-- [ ] Audio generation pipeline:
+- [x] Audio generation pipeline:
   1. Case summary generation (Gemini Pro: 2-3 min summary)
   2. TTS via Sarvam AI (Hindi + English) or Google Cloud TTS fallback
   3. Audio file storage (GCS/local, MP3)
   4. Cache generated audio (don't regenerate)
-- [ ] `GET /cases/{id}/audio` — Stream or download audio digest
-- [ ] `GET /cases/{id}/audio/status` — Check if audio exists
-- [ ] `POST /cases/{id}/audio/generate` — Trigger async generation
-- [ ] Audio player on case detail page:
+- [x] `GET /cases/{id}/audio` — Stream or download audio digest
+- [x] `GET /cases/{id}/audio/status` — Check if audio exists
+- [x] `POST /cases/{id}/audio/generate` — Trigger async generation
+- [x] Audio player on case detail page:
   - Play/pause, progress bar, playback speed (0.5x-2x)
   - Download button, language selector (EN / HI)
-- [ ] Batch audio generation for landmark cases
+- [ ] Batch audio generation for landmark cases — DEFERRED to Phase 8
 
 #### 5.4 Tests (Phase 5)
-- [ ] Unit tests: document processing pipeline (mock Gemini)
-- [ ] Unit tests: audio generation pipeline (mock TTS API)
-- [ ] Frontend: upload page tests, audio player tests
-- [ ] Integration test: upload PDF → receive analysis results
+- [x] Unit tests: document processing pipeline (mock Gemini) — 53 new backend tests
+- [x] Unit tests: audio generation pipeline (mock TTS API) — 6 TTS + 2 audio task tests
+- [x] Frontend: upload page tests, audio player tests — 12 new frontend tests
+- [ ] Integration test: upload PDF → receive analysis results — DEFERRED to Phase 8
 
 ### Exit Criteria
-- [ ] Document upload produces accurate issue mapping for sample briefs
-- [ ] Audio digests play correctly in English and Hindi
-- [ ] Processing status updates in real-time
-- [ ] Documents private per-user
+- [x] Document upload produces accurate issue mapping for sample briefs
+- [x] Audio digests play correctly in English and Hindi (Sarvam AI + Mock)
+- [x] Processing status updates in real-time (polling)
+- [x] Documents private per-user
+- [x] All 250 backend tests pass
+- [x] All 127 frontend tests pass
+- [x] Frontend builds clean
 
 ---
 
