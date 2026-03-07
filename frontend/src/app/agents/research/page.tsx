@@ -41,6 +41,7 @@ export default function ResearchAgentPage() {
     const router = useRouter();
 
     const [query, setQuery] = useState("");
+    const [starting, setStarting] = useState(false);
     const [isRunning, setIsRunning] = useState(false);
     const [executionId, setExecutionId] = useState<string | null>(null);
     const [steps, setSteps] = useState<AgentStep[]>([]);
@@ -125,7 +126,8 @@ export default function ResearchAgentPage() {
     }, []);
 
     const handleSubmit = useCallback(() => {
-        if (!query.trim()) return;
+        if (!query.trim() || starting) return;
+        setStarting(true);
         setIsRunning(true);
         setError(null);
         setMemo("");
@@ -138,15 +140,19 @@ export default function ResearchAgentPage() {
                 status: i === 0 ? ("active" as const) : ("pending" as const),
             })),
         );
-        abortRef.current = runResearchAgent(
-            query.trim(),
-            handleEvent,
-            (err) => {
-                setError(err.message);
-                setIsRunning(false);
-            },
-        );
-    }, [query, handleEvent]);
+        try {
+            abortRef.current = runResearchAgent(
+                query.trim(),
+                handleEvent,
+                (err) => {
+                    setError(err.message);
+                    setIsRunning(false);
+                },
+            );
+        } finally {
+            setStarting(false);
+        }
+    }, [query, starting, handleEvent]);
 
     const handleResume = useCallback(
         (input: string) => {
@@ -214,9 +220,13 @@ export default function ResearchAgentPage() {
                         />
                         <Button
                             onClick={handleSubmit}
-                            disabled={!query.trim()}
+                            disabled={starting || !query.trim()}
                         >
-                            Start Research
+                            {starting ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                "Start Research"
+                            )}
                         </Button>
                     </CardContent>
                 </Card>

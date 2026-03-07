@@ -50,8 +50,15 @@ export default function CasePrepAgentPage() {
     const [documents, setDocuments] = useState<DocumentListItem[]>([]);
     const [documentsLoading, setDocumentsLoading] = useState(true);
     const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+    const [docSearch, setDocSearch] = useState("");
+
+    // Filtered documents for search
+    const filteredDocuments = documents.filter((d) =>
+        d.filename.toLowerCase().includes(docSearch.toLowerCase()),
+    );
 
     // Agent state
+    const [starting, setStarting] = useState(false);
     const [isRunning, setIsRunning] = useState(false);
     const [executionId, setExecutionId] = useState<string | null>(null);
     const [steps, setSteps] = useState<AgentStep[]>([]);
@@ -153,7 +160,8 @@ export default function CasePrepAgentPage() {
     }, []);
 
     const handleStart = useCallback(() => {
-        if (!selectedDocId) return;
+        if (!selectedDocId || starting) return;
+        setStarting(true);
         setIsRunning(true);
         setError(null);
         setMemo("");
@@ -166,15 +174,19 @@ export default function CasePrepAgentPage() {
                 status: i === 0 ? ("active" as const) : ("pending" as const),
             })),
         );
-        abortRef.current = runCasePrepAgent(
-            selectedDocId,
-            handleEvent,
-            (err) => {
-                setError(err.message);
-                setIsRunning(false);
-            },
-        );
-    }, [selectedDocId, handleEvent]);
+        try {
+            abortRef.current = runCasePrepAgent(
+                selectedDocId,
+                handleEvent,
+                (err) => {
+                    setError(err.message);
+                    setIsRunning(false);
+                },
+            );
+        } finally {
+            setStarting(false);
+        }
+    }, [selectedDocId, starting, handleEvent]);
 
     const handleResume = useCallback(
         (input: string) => {
@@ -284,9 +296,13 @@ export default function CasePrepAgentPage() {
                                 </select>
                                 <Button
                                     onClick={handleStart}
-                                    disabled={!selectedDocId}
+                                    disabled={starting || !selectedDocId}
                                 >
-                                    Start Case Prep
+                                    {starting ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        "Start Case Prep"
+                                    )}
                                 </Button>
                             </>
                         )}
