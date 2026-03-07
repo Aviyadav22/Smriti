@@ -254,4 +254,61 @@ describe("CaseDetailPage", () => {
 
     expect(screen.queryByRole("tab", { name: /^pdf$/i })).not.toBeInTheDocument();
   });
+
+  it("navigates to chat with case title when 'Open in Chat' is clicked", async () => {
+    mockGetCase.mockResolvedValue(makeCaseDetail());
+    renderWithProviders(<CaseDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Open in Chat")).toBeInTheDocument();
+    });
+
+    const openInChatBtn = screen.getByText("Open in Chat").closest("button")!;
+    openInChatBtn.click();
+
+    expect(pushMock).toHaveBeenCalledWith(
+      expect.stringContaining("/chat?q=")
+    );
+    // Verify the URL contains the encoded case title
+    const callArg = pushMock.mock.calls[0][0] as string;
+    expect(decodeURIComponent(callArg)).toContain("K.S. Puttaswamy v. Union of India");
+  });
+
+  it("calculates estimated pages correctly from chunk_count", async () => {
+    // chunk_count = 15 => Math.max(1, Math.round(15 * 0.67)) = Math.round(10.05) = 10
+    mockGetCase.mockResolvedValue(makeCaseDetail({ chunk_count: 15 }));
+    renderWithProviders(<CaseDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("10")).toBeInTheDocument();
+    });
+
+    // Verify the label is present
+    expect(screen.getByText("Est. Pages:")).toBeInTheDocument();
+  });
+
+  it("shows minimum 1 estimated page for small chunk counts", async () => {
+    // chunk_count = 1 => Math.max(1, Math.round(1 * 0.67)) = Math.max(1, 1) = 1
+    mockGetCase.mockResolvedValue(makeCaseDetail({ chunk_count: 1 }));
+    renderWithProviders(<CaseDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Est. Pages:")).toBeInTheDocument();
+    });
+
+    // With chunk_count=1, Math.round(0.67)=1, Math.max(1,1)=1
+    const detailsCard = screen.getByText("Est. Pages:").closest("div")!;
+    expect(detailsCard.textContent).toContain("1");
+  });
+
+  it("does not show estimated pages when chunk_count is 0", async () => {
+    mockGetCase.mockResolvedValue(makeCaseDetail({ chunk_count: 0 }));
+    renderWithProviders(<CaseDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("K.S. Puttaswamy v. Union of India")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Est. Pages:")).not.toBeInTheDocument();
+  });
 });
