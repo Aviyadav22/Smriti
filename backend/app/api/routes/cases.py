@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid as _uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -104,7 +105,9 @@ async def get_case_pdf(
             status_code=404, detail="PDF file not found in storage"
         ) from exc
 
-    filename = f"{row.get('title', case_id)}.pdf"
+    raw_title = row.get("title", case_id) or case_id
+    safe_title = re.sub(r'[^\w\s\-.]', '', str(raw_title))[:100]
+    filename = f"{safe_title}.pdf"
 
     return Response(
         content=pdf_bytes,

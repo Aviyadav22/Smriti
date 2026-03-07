@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
+from app.security.rate_limiter import rate_limit_dependency
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
@@ -12,6 +13,7 @@ from app.core.search.hybrid import SearchResponse, hybrid_search
 from app.core.search.query import SearchFilters
 from app.db.postgres import get_db
 from app.db.redis_client import get_redis
+from app.security.sanitizer import sanitize_search_query
 
 router = APIRouter()
 
@@ -21,7 +23,7 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def search(
     q: str = Query(..., min_length=1, max_length=2000, description="Search query"),
     court: str | None = Query(None, description="Filter by court name (comma-separated for multiple)"),
@@ -41,6 +43,8 @@ async def search(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Execute hybrid search: LLM query understanding → vector + FTS → RRF → rerank."""
+    q = sanitize_search_query(q)
+
     # Split comma-separated court string into list, stripping whitespace
     court_list = (
         [c.strip() for c in court.split(",") if c.strip()] if court else None
@@ -104,6 +108,7 @@ async def suggest(
         except (ConnectionError, TimeoutError):
             pass
 
+    escaped_q = q.replace("%", "\\%").replace("_", "\\_")
     sql = text(
         "SELECT id, title, citation "
         "FROM cases "
@@ -111,7 +116,7 @@ async def suggest(
         "ORDER BY year DESC NULLS LAST "
         "LIMIT :limit"
     )
-    result = await db.execute(sql, {"prefix": f"%{q}%", "limit": limit})
+    result = await db.execute(sql, {"prefix": f"%{escaped_q}%", "limit": limit})
     rows = result.mappings().all()
 
     response = {
@@ -230,6 +235,7 @@ def _serialize_response(response: SearchResponse) -> dict:
                 "snippet": r.snippet,
                 "bench_type": r.bench_type,
                 "equivalent_citations": r.equivalent_citations,
+                "treatment_warning": r.treatment_warning,
             }
             for r in response.results
         ],
