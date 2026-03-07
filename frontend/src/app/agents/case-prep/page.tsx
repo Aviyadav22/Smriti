@@ -271,6 +271,15 @@ export default function CasePrepAgentPage() {
                                 >
                                     Select a document
                                 </label>
+                                <input
+                                    type="text"
+                                    placeholder="Search documents..."
+                                    value={docSearch}
+                                    onChange={(e) =>
+                                        setDocSearch(e.target.value)
+                                    }
+                                    className="w-full px-3 py-2 text-sm border rounded-md mb-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                                />
                                 <select
                                     id="doc-select"
                                     value={selectedDocId || ""}
@@ -284,7 +293,7 @@ export default function CasePrepAgentPage() {
                                     <option value="">
                                         Choose a document...
                                     </option>
-                                    {documents.map((doc) => (
+                                    {filteredDocuments.map((doc) => (
                                         <option key={doc.id} value={doc.id}>
                                             {doc.filename} (
                                             {new Date(
