@@ -19,6 +19,7 @@ import { AgentMemoViewer } from "@/components/agent-memo-viewer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft, RotateCcw, FileText } from "lucide-react";
+import { LegalDisclaimer } from "@/components/legal-disclaimer";
 import Link from "next/link";
 
 // ---------------------------------------------------------------------------
@@ -372,14 +373,17 @@ export default function CasePrepAgentPage() {
 
                         {/* New Case Prep button after completion */}
                         {!isRunning && (memo || error) && (
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleReset}
-                            >
-                                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />{" "}
-                                New Case Prep
-                            </Button>
+                            <>
+                                <LegalDisclaimer className="mt-2" />
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleReset}
+                                >
+                                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />{" "}
+                                    New Case Prep
+                                </Button>
+                            </>
                         )}
                     </div>
                 </div>

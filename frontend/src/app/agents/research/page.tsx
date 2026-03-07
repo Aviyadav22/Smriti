@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, ArrowLeft, RotateCcw } from "lucide-react";
+import { LegalDisclaimer } from "@/components/legal-disclaimer";
 import Link from "next/link";
 
 // ---------------------------------------------------------------------------
@@ -290,14 +291,17 @@ export default function ResearchAgentPage() {
 
                         {/* New Research button after completion */}
                         {!isRunning && (memo || error) && (
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleReset}
-                            >
-                                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />{" "}
-                                New Research
-                            </Button>
+                            <>
+                                <LegalDisclaimer className="mt-2" />
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleReset}
+                                >
+                                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />{" "}
+                                    New Research
+                                </Button>
+                            </>
                         )}
                     </div>
                 </div>
