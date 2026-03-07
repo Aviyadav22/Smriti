@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -22,6 +23,30 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+
+def _sanitize_filename(filename: str | None) -> str:
+    """Sanitize uploaded filename to prevent path traversal and injection."""
+    if not filename:
+        return "upload.pdf"
+    safe = Path(filename).name
+    safe = re.sub(r"[^\w\-. ]", "_", safe)
+    if not safe.lower().endswith(".pdf"):
+        safe += ".pdf"
+    return safe[:200]
+
+
+def _validate_pdf_content(content: bytes) -> None:
+    """Validate that content is actually a PDF via magic bytes and size."""
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="File is not a valid PDF")
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File exceeds {MAX_FILE_SIZE // (1024 * 1024)}MB limit",
+        )
+
 
 @router.post("/upload", status_code=202)
 async def upload_document(
@@ -33,25 +58,32 @@ async def upload_document(
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
 
-    if file.size and file.size > 50 * 1024 * 1024:
+    if file.size and file.size > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File size exceeds 50MB limit")
 
     doc_id = str(uuid.uuid4())
     content = await file.read()
 
+    # Validate PDF magic bytes and enforce size limit on actual content
+    _validate_pdf_content(content)
+
+    safe_filename = _sanitize_filename(file.filename)
     storage = get_storage()
-    with NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    storage_path = await storage.store(
-        tmp_path, f"documents/{doc_id}/{file.filename or 'upload.pdf'}"
-    )
-
+    tmp_path: str | None = None
     try:
-        Path(tmp_path).unlink(missing_ok=True)
-    except OSError:
-        pass
+        with NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        storage_path = await storage.store(
+            tmp_path, f"documents/{doc_id}/{safe_filename}"
+        )
+    finally:
+        if tmp_path:
+            try:
+                Path(tmp_path).unlink(missing_ok=True)
+            except OSError:
+                pass
 
     await db.execute(
         text(
@@ -61,7 +93,7 @@ async def upload_document(
         {
             "id": doc_id,
             "user_id": current_user.sub,
-            "filename": file.filename or "upload.pdf",
+            "filename": safe_filename,
             "storage_path": storage_path,
             "file_size": len(content),
         },
@@ -74,7 +106,7 @@ async def upload_document(
 
     return {
         "document_id": doc_id,
-        "filename": file.filename,
+        "filename": safe_filename,
         "status": "pending",
         "message": "Document uploaded and queued for analysis",
     }
