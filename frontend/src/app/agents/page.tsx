@@ -11,14 +11,14 @@ import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 
 export default function AgentsPage() {
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, isLoading: authLoading } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
-        if (!isAuthenticated) router.push("/login");
-    }, [isAuthenticated, router]);
+        if (!authLoading && !isAuthenticated) router.push("/login");
+    }, [authLoading, isAuthenticated, router]);
 
-    if (!isAuthenticated) return null;
+    if (authLoading || !isAuthenticated) return null;
 
     return (
         <div className="min-h-screen flex flex-col">

@@ -43,6 +43,7 @@ from app.core.legal.prompts import (
     RESEARCH_SYNTHESIZE_USER,
 )
 from app.core.search.hybrid import SearchResultItem, hybrid_search
+from app.security.sanitizer import sanitize_search_query
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +122,11 @@ async def decompose_query_node(
     )
 
     if user_feedback:
+        sanitized_feedback = sanitize_search_query(user_feedback)
         prompt += (
-            f"\n\nIMPORTANT — The user has reviewed the previous sub-queries and "
-            f"requested the following adjustments:\n\"{user_feedback}\"\n"
-            f"Incorporate this feedback into your sub-query decomposition."
+            "\n\nThe user has provided feedback on the previous sub-queries. "
+            "Incorporate this feedback:\n"
+            f"<user_feedback>{sanitized_feedback}</user_feedback>"
         )
 
     result = await llm.generate_structured(
@@ -486,11 +488,3 @@ async def verify_citations_node(
     return {"draft_memo": memo}
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-# Keep a module-level alias so existing imports of _parse_json_list still work
-# (e.g. in tests).  New code should use safe_json_parse_list from common.
-_parse_json_list = safe_json_parse_list

@@ -6,13 +6,18 @@ using bcrypt.
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import logging
+import time
 import uuid
 
 import bcrypt
 import jwt
+import redis.asyncio as aioredis
 
 from app.core.config import settings
 from app.security.exceptions import AuthenticationError
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -31,25 +36,43 @@ class TokenPayload:
 
 
 # ---------------------------------------------------------------------------
-# Token revocation (in-memory; swap to Redis in production)
+# Token revocation (Redis-backed with auto-expiry)
 # ---------------------------------------------------------------------------
 
-_revoked_tokens: set[str] = set()
+_REVOKED_PREFIX = "revoked:jti:"
+_redis_client: aioredis.Redis | None = None
 
 
-def revoke_token(jti: str) -> None:
-    """Add a token's JTI to the revocation blacklist."""
-    _revoked_tokens.add(jti)
+async def _get_revocation_redis() -> aioredis.Redis:
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
+    return _redis_client
 
 
-def is_token_revoked(jti: str) -> bool:
-    """Check if a token has been revoked."""
-    return jti in _revoked_tokens
+async def revoke_token(jti: str, exp_timestamp: int | None = None) -> None:
+    """Add token JTI to Redis revocation list with auto-expiry."""
+    r = await _get_revocation_redis()
+    if exp_timestamp:
+        remaining = exp_timestamp - int(time.time())
+        if remaining > 0:
+            await r.set(f"{_REVOKED_PREFIX}{jti}", "1", ex=remaining)
+    else:
+        await r.set(f"{_REVOKED_PREFIX}{jti}", "1", ex=7 * 24 * 3600)
+
+
+async def is_token_revoked(jti: str) -> bool:
+    """Check if token is in the Redis revocation list."""
+    try:
+        r = await _get_revocation_redis()
+        return await r.exists(f"{_REVOKED_PREFIX}{jti}") == 1
+    except Exception:
+        return False
 
 
 def clear_revoked_tokens() -> None:
-    """Clear the revocation blacklist (for testing only)."""
-    _revoked_tokens.clear()
+    """For tests only."""
+    pass  # No-op -- tests should use mock Redis
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +153,7 @@ def create_refresh_token(
 # ---------------------------------------------------------------------------
 
 
-def _decode_token(token: str, secret: str, expected_type: str) -> TokenPayload:
+async def _decode_token(token: str, secret: str, expected_type: str) -> TokenPayload:
     """Decode and validate a JWT token.
 
     Args:
@@ -158,9 +181,9 @@ def _decode_token(token: str, secret: str, expected_type: str) -> TokenPayload:
     if token_type != expected_type:
         raise AuthenticationError("Invalid token type")
 
-    # Check revocation blacklist
+    # Check revocation blacklist (Redis-backed)
     jti = decoded.get("jti")
-    if jti and is_token_revoked(str(jti)):
+    if jti and await is_token_revoked(str(jti)):
         raise AuthenticationError("Token has been revoked")
 
     sub = decoded.get("sub")
@@ -177,7 +200,7 @@ def _decode_token(token: str, secret: str, expected_type: str) -> TokenPayload:
     )
 
 
-def verify_access_token(token: str) -> TokenPayload:
+async def verify_access_token(token: str) -> TokenPayload:
     """Decode and validate an access token.
 
     Args:
@@ -189,10 +212,10 @@ def verify_access_token(token: str) -> TokenPayload:
     Raises:
         AuthenticationError: If the token is invalid or expired.
     """
-    return _decode_token(token, settings.jwt_secret_key, "access")
+    return await _decode_token(token, settings.jwt_secret_key, "access")
 
 
-def verify_refresh_token(token: str) -> TokenPayload:
+async def verify_refresh_token(token: str) -> TokenPayload:
     """Decode and validate a refresh token.
 
     Args:
@@ -204,7 +227,7 @@ def verify_refresh_token(token: str) -> TokenPayload:
     Raises:
         AuthenticationError: If the token is invalid or expired.
     """
-    return _decode_token(token, settings.jwt_refresh_secret_key, "refresh")
+    return await _decode_token(token, settings.jwt_refresh_secret_key, "refresh")
 
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ import json
 import urllib.parse
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from app.security.rate_limiter import rate_limit_dependency
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.analytics.judge_analytics import JudgeAnalyticsService
@@ -61,7 +62,7 @@ async def _get_cached_or_compute(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/judges")
+@router.get("/judges", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def list_judges(
     search: str | None = Query(None, description="Filter by judge name"),
     page: int = Query(1, ge=1, description="Page number"),
@@ -88,7 +89,7 @@ async def list_judges(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/judges/compare")
+@router.get("/judges/compare", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def compare_judges(
     names: str = Query(..., description="Comma-separated judge names (2-3)"),
     db: AsyncSession = Depends(get_db),
@@ -116,7 +117,7 @@ async def compare_judges(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/judges/{judge_name}")
+@router.get("/judges/{judge_name}", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def get_judge_profile(
     judge_name: str,
     db: AsyncSession = Depends(get_db),
@@ -151,7 +152,7 @@ async def get_judge_profile(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/judges/{judge_name}/cases")
+@router.get("/judges/{judge_name}/cases", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def get_judge_cases(
     judge_name: str,
     page: int = Query(1, ge=1, description="Page number"),
@@ -193,7 +194,7 @@ async def get_judge_cases(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/courts/{court_name}/stats")
+@router.get("/courts/{court_name}/stats", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def get_court_stats(
     court_name: str,
     db: AsyncSession = Depends(get_db),

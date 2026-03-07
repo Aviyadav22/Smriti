@@ -7,6 +7,7 @@ import uuid as _uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
+from app.security.rate_limiter import rate_limit_dependency
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +19,8 @@ from app.core.dependencies import (
 )
 from app.core.ingestion.chunker import detect_judgment_sections
 from app.db.postgres import get_db
+from app.security.auth import TokenPayload
+from app.security.rbac import get_current_user_optional
 
 router = APIRouter()
 
@@ -27,7 +30,7 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{case_id}")
+@router.get("/{case_id}", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def get_case(
     case_id: str,
     db: AsyncSession = Depends(get_db),
@@ -78,7 +81,7 @@ async def get_case(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{case_id}/pdf")
+@router.get("/{case_id}/pdf", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def get_case_pdf(
     case_id: str,
     db: AsyncSession = Depends(get_db),
@@ -123,7 +126,7 @@ async def get_case_pdf(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{case_id}/citations")
+@router.get("/{case_id}/citations", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def get_citations(
     case_id: str,
     db: AsyncSession = Depends(get_db),
@@ -156,7 +159,7 @@ async def get_citations(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{case_id}/cited-by")
+@router.get("/{case_id}/cited-by", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def get_cited_by(
     case_id: str,
     db: AsyncSession = Depends(get_db),
@@ -187,11 +190,12 @@ async def get_cited_by(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{case_id}/similar")
+@router.get("/{case_id}/similar", dependencies=[Depends(rate_limit_dependency("20/minute"))])
 async def get_similar(
     case_id: str,
     limit: int = 5,
     db: AsyncSession = Depends(get_db),
+    _current_user: TokenPayload | None = Depends(get_current_user_optional),
 ) -> dict:
     """Find semantically similar cases using vector similarity on ratio_decidendi."""
     result = await db.execute(

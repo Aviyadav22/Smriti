@@ -22,6 +22,7 @@ from app.core.legal.treatment import has_overruling_language
 from app.core.search.hybrid import hybrid_search
 from app.core.search.query import SearchFilters
 from app.security.encryption import encrypt_field, safe_decrypt
+from app.security.sanitizer import sanitize_search_query
 
 logger = logging.getLogger(__name__)
 
@@ -419,14 +420,18 @@ def _format_context(sources: list[ChatSource]) -> str:
 
 
 def _format_history(messages: list[dict]) -> str:
-    """Format chat history for the prompt."""
+    """Format chat history for the prompt, sanitizing user messages."""
     if not messages:
         return ""
 
     parts = []
     for msg in messages:
         role = "User" if msg["role"] == "user" else "Assistant"
-        parts.append(f"{role}: {msg['content']}")
+        content = msg["content"]
+        # Sanitize user messages to prevent prompt injection via history
+        if msg["role"] == "user":
+            content = sanitize_search_query(content)
+        parts.append(f"{role}: {content}")
 
     return "Previous conversation:\n" + "\n\n".join(parts) + "\n\n"
 

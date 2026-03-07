@@ -209,9 +209,17 @@ class TestSendMessage:
         mock_get_vs: MagicMock,
         mock_get_reranker: MagicMock,
         authed_client: TestClient,
+        mock_db: AsyncMock,
     ) -> None:
         """POST /chat/{session_id}/message streams SSE with session_id forwarded."""
         sid = str(uuid.uuid4())
+
+        # Set up DB mock for IDOR ownership check
+        session_result = MagicMock()
+        session_result.mappings.return_value.one_or_none.return_value = {
+            "user_id": _TEST_USER_ID,
+        }
+        mock_db.execute = AsyncMock(return_value=session_result)
 
         async def _fake_rag(**kwargs):
             # Verify session_id is forwarded

@@ -80,7 +80,7 @@ function getInputSummary(execution: AgentExecution): string {
 // ---------------------------------------------------------------------------
 
 export default function AgentHistoryPage() {
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, isLoading: authLoading } = useAuth();
     const router = useRouter();
 
     const [executions, setExecutions] = useState<AgentExecution[]>([]);
@@ -91,8 +91,8 @@ export default function AgentHistoryPage() {
     const [viewingMemo, setViewingMemo] = useState<AgentExecution | null>(null);
 
     useEffect(() => {
-        if (!isAuthenticated) router.push("/login");
-    }, [isAuthenticated, router]);
+        if (!authLoading && !isAuthenticated) router.push("/login");
+    }, [authLoading, isAuthenticated, router]);
 
     const fetchExecutions = useCallback(async (p: number) => {
         setLoading(true);
@@ -121,7 +121,7 @@ export default function AgentHistoryPage() {
         }
     }, [isAuthenticated, fetchExecutions]);
 
-    if (!isAuthenticated) return null;
+    if (authLoading || !isAuthenticated) return null;
 
     const memoContent =
         viewingMemo?.result_data &&

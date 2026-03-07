@@ -39,7 +39,7 @@ const RESEARCH_STEPS = [
 // ---------------------------------------------------------------------------
 
 export default function ResearchAgentPage() {
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, isLoading: authLoading } = useAuth();
     const router = useRouter();
 
     const [query, setQuery] = useState("");
@@ -57,8 +57,8 @@ export default function ResearchAgentPage() {
     const abortRef = useRef<AbortController | null>(null);
 
     useEffect(() => {
-        if (!isAuthenticated) router.push("/login");
-    }, [isAuthenticated, router]);
+        if (!authLoading && !isAuthenticated) router.push("/login");
+    }, [authLoading, isAuthenticated, router]);
 
     // Cleanup on unmount
     useEffect(() => {
@@ -186,7 +186,7 @@ export default function ResearchAgentPage() {
         setError(null);
     }, []);
 
-    if (!isAuthenticated) return null;
+    if (authLoading || !isAuthenticated) return null;
 
     const showInputForm = !isRunning && !memo && !checkpoint && steps.length === 0;
     const showWorkspace = isRunning || memo || checkpoint || steps.length > 0;

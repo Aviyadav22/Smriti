@@ -45,7 +45,7 @@ const CASE_PREP_STEPS = [
 // ---------------------------------------------------------------------------
 
 export default function CasePrepAgentPage() {
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, isLoading: authLoading } = useAuth();
     const router = useRouter();
 
     // Document selection
@@ -74,8 +74,8 @@ export default function CasePrepAgentPage() {
     const abortRef = useRef<AbortController | null>(null);
 
     useEffect(() => {
-        if (!isAuthenticated) router.push("/login");
-    }, [isAuthenticated, router]);
+        if (!authLoading && !isAuthenticated) router.push("/login");
+    }, [authLoading, isAuthenticated, router]);
 
     // Fetch completed documents
     useEffect(() => {
@@ -220,7 +220,7 @@ export default function CasePrepAgentPage() {
         setError(null);
     }, []);
 
-    if (!isAuthenticated) return null;
+    if (authLoading || !isAuthenticated) return null;
 
     const selectedDoc = documents.find((d) => d.id === selectedDocId);
     const showSelector = !isRunning && !memo && !checkpoint && steps.length === 0;

@@ -7,11 +7,15 @@ factory that parses human-readable rate limit strings (e.g., "100/minute").
 from collections.abc import Callable, Coroutine
 from typing import Any
 
+import logging
+
 import redis.asyncio as aioredis
 from fastapi import Depends, Request
 
 from app.core.config import settings
 from app.security.exceptions import RateLimitExceededError
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Time unit mappings
@@ -181,18 +185,25 @@ def rate_limit_dependency(
     max_requests, window_seconds = _parse_rate_limit(limit)
 
     async def _check_rate(request: Request) -> None:
-        limiter = await _get_rate_limiter()
+        try:
+            limiter = await _get_rate_limiter()
 
-        # Build a rate-limit key from the client's IP and the endpoint path
-        client_ip = request.client.host if request.client else "unknown"
-        endpoint = request.url.path
-        key = f"rate:{client_ip}:{endpoint}"
+            # Build a rate-limit key from the client's IP and the endpoint path
+            client_ip = request.client.host if request.client else "unknown"
+            endpoint = request.url.path
+            key = f"rate:{client_ip}:{endpoint}"
 
-        allowed = await limiter.check_rate_limit(key, max_requests, window_seconds)
-        if not allowed:
-            raise RateLimitExceededError(
-                detail=f"Rate limit exceeded: {limit}",
-                retry_after=window_seconds,
-            )
+            allowed = await limiter.check_rate_limit(key, max_requests, window_seconds)
+            if not allowed:
+                raise RateLimitExceededError(
+                    detail=f"Rate limit exceeded: {limit}",
+                    retry_after=window_seconds,
+                )
+        except RateLimitExceededError:
+            raise
+        except Exception as exc:
+            # If Redis is unavailable, allow the request through rather than
+            # blocking all traffic. Rate limiting is a best-effort safeguard.
+            logger.warning("Rate limiter Redis unavailable, allowing request: %s", exc)
 
     return _check_rate

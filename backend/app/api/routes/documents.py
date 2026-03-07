@@ -9,6 +9,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from app.security.rate_limiter import rate_limit_dependency
 from fastapi.responses import Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,7 +49,7 @@ def _validate_pdf_content(content: bytes) -> None:
         )
 
 
-@router.post("/upload", status_code=202)
+@router.post("/upload", status_code=202, dependencies=[Depends(rate_limit_dependency("10/minute"))])
 async def upload_document(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),

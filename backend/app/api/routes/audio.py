@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from app.security.rate_limiter import rate_limit_dependency
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -80,7 +81,7 @@ async def get_audio_status(
     }
 
 
-@router.get("/{case_id}/audio")
+@router.get("/{case_id}/audio", dependencies=[Depends(rate_limit_dependency("10/minute"))])
 async def stream_audio(
     case_id: str,
     language: str = Query("en", pattern="^(en|hi)$"),

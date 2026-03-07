@@ -14,6 +14,7 @@ from app.security.auth import verify_access_token, TokenPayload
 from app.security.exceptions import AuthenticationError, AuthorizationError
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 
 async def get_current_user(
@@ -33,7 +34,23 @@ async def get_current_user(
     Raises:
         AuthenticationError: If the token is invalid or expired.
     """
-    return verify_access_token(token)
+    return await verify_access_token(token)
+
+
+async def get_current_user_optional(
+    token: str | None = Depends(oauth2_scheme_optional),
+) -> TokenPayload | None:
+    """FastAPI dependency that optionally extracts the current user.
+
+    Returns None if no token is provided or if the token is invalid.
+    Useful for public endpoints that want to track authenticated users.
+    """
+    if not token:
+        return None
+    try:
+        return await verify_access_token(token)
+    except Exception:
+        return None
 
 
 def require_role(

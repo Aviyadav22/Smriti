@@ -1,15 +1,23 @@
 """Health check endpoint with dependency status."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.core.config import settings
+from app.security.auth import TokenPayload
+from app.security.rbac import get_current_user_optional
 
 router = APIRouter()
 
 
 @router.get("/health")
-async def health_check() -> dict:
-    """Health check with dependency status."""
+async def health_check(
+    current_user: TokenPayload | None = Depends(get_current_user_optional),
+) -> dict:
+    """Health check with dependency status.
+
+    Returns minimal info for unauthenticated callers. Authenticated
+    callers receive full dependency health details.
+    """
     checks: dict[str, str] = {}
 
     # PostgreSQL
@@ -34,6 +42,12 @@ async def health_check() -> dict:
         checks["redis"] = "unhealthy"
 
     all_healthy = all(v == "healthy" for v in checks.values())
+
+    # Minimal info for unauthenticated callers
+    if current_user is None:
+        return {
+            "status": "healthy" if all_healthy else "degraded",
+        }
 
     return {
         "status": "healthy" if all_healthy else "degraded",

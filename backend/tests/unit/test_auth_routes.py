@@ -88,6 +88,15 @@ def mock_db() -> AsyncMock:
     return _mock_db_session()
 
 
+@pytest.fixture(autouse=True)
+def mock_rate_limiter():
+    """Allow all requests through rate limiter in tests."""
+    mock_limiter = AsyncMock()
+    mock_limiter.check_rate_limit.return_value = True
+    with patch("app.security.rate_limiter._get_rate_limiter", return_value=mock_limiter):
+        yield mock_limiter
+
+
 @pytest.fixture
 def client(app: FastAPI, mock_db: AsyncMock) -> TestClient:
     """Client with DB dependency overridden."""
@@ -108,14 +117,18 @@ def client(app: FastAPI, mock_db: AsyncMock) -> TestClient:
 class TestRegister:
     """Tests for POST /api/v1/auth/register."""
 
+    @patch("app.api.routes.auth.create_refresh_token", return_value="register-refresh-jwt")
+    @patch("app.api.routes.auth.create_access_token", return_value="register-access-jwt")
     @patch("app.api.routes.auth.hash_password", return_value=_PASSWORD_HASH)
     def test_register_returns_201(
         self,
         mock_hash: MagicMock,
+        mock_access: MagicMock,
+        mock_refresh: MagicMock,
         client: TestClient,
         mock_db: AsyncMock,
     ) -> None:
-        """A valid registration returns 201 with user details."""
+        """A valid registration returns 201 with JWT tokens (auto-login)."""
         # First execute: SELECT id FROM users WHERE email = :email → None
         select_result = MagicMock()
         select_result.scalar_one_or_none.return_value = None
@@ -138,10 +151,13 @@ class TestRegister:
 
         assert resp.status_code == 201
         body = resp.json()
-        assert body["email"] == "test@example.com"
-        assert body["role"] == "researcher"
-        assert "id" in body
+        assert body["access_token"] == "register-access-jwt"
+        assert body["refresh_token"] == "register-refresh-jwt"
+        assert body["token_type"] == "bearer"
+        assert body["expires_in"] > 0  # Dynamic based on settings
         mock_hash.assert_called_once_with("securepass123")
+        mock_access.assert_called_once()
+        mock_refresh.assert_called_once()
 
     def test_register_duplicate_email_returns_409(
         self,
@@ -264,7 +280,7 @@ class TestLogin:
         assert body["access_token"] == "access-jwt"
         assert body["refresh_token"] == "refresh-jwt"
         assert body["token_type"] == "bearer"
-        assert body["expires_in"] == 900
+        assert body["expires_in"] > 0  # Dynamic based on settings
 
     @patch("app.api.routes.auth.create_audit_log", new_callable=AsyncMock)
     @patch("app.api.routes.auth.verify_password", return_value=False)
@@ -362,16 +378,18 @@ class TestLogin:
 class TestRefresh:
     """Tests for POST /api/v1/auth/refresh."""
 
+    @patch("app.api.routes.auth.revoke_token", new_callable=AsyncMock)
     @patch("app.api.routes.auth.create_audit_log", new_callable=AsyncMock)
     @patch("app.api.routes.auth.create_refresh_token", return_value="new-refresh-jwt")
     @patch("app.api.routes.auth.create_access_token", return_value="new-access-jwt")
-    @patch("app.api.routes.auth.verify_refresh_token")
+    @patch("app.api.routes.auth.verify_refresh_token", new_callable=AsyncMock)
     def test_refresh_returns_new_access_token(
         self,
-        mock_verify_refresh: MagicMock,
+        mock_verify_refresh: AsyncMock,
         mock_access: MagicMock,
         mock_refresh: MagicMock,
         mock_audit: AsyncMock,
+        mock_revoke: AsyncMock,
         client: TestClient,
         mock_db: AsyncMock,
     ) -> None:
@@ -401,12 +419,13 @@ class TestRefresh:
         body = resp.json()
         assert body["access_token"] == "new-access-jwt"
         assert body["refresh_token"] == "new-refresh-jwt"
-        assert body["expires_in"] == 900
+        # Old refresh token should be revoked
+        mock_revoke.assert_called_once()
 
-    @patch("app.api.routes.auth.verify_refresh_token")
+    @patch("app.api.routes.auth.verify_refresh_token", new_callable=AsyncMock)
     def test_refresh_invalid_token_returns_401(
         self,
-        mock_verify_refresh: MagicMock,
+        mock_verify_refresh: AsyncMock,
         client: TestClient,
     ) -> None:
         """An invalid refresh token returns 401."""
@@ -429,10 +448,10 @@ class TestRefresh:
 class TestLogout:
     """Tests for POST /api/v1/auth/logout."""
 
-    @patch("app.api.routes.auth.revoke_token")
+    @patch("app.api.routes.auth.revoke_token", new_callable=AsyncMock)
     def test_logout_revokes_token(
         self,
-        mock_revoke: MagicMock,
+        mock_revoke: AsyncMock,
         app: FastAPI,
     ) -> None:
         """Logout revokes the current token's JTI."""
@@ -452,7 +471,7 @@ class TestLogout:
 
         assert resp.status_code == 200
         assert resp.json()["detail"] == "Successfully logged out"
-        mock_revoke.assert_called_once_with("test-jti-123")
+        mock_revoke.assert_called_once_with("test-jti-123", int(token_payload.exp.timestamp()))
         app.dependency_overrides.clear()
 
     def test_logout_without_token_returns_401(

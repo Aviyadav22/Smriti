@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from app.security.rate_limiter import rate_limit_dependency
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -13,7 +13,9 @@ from app.core.search.hybrid import SearchResponse, hybrid_search
 from app.core.search.query import SearchFilters
 from app.db.postgres import get_db
 from app.db.redis_client import get_redis
-from app.security.sanitizer import sanitize_search_query
+from app.security.auth import TokenPayload
+from app.security.rbac import get_current_user_optional
+from app.security.sanitizer import detect_prompt_injection, sanitize_search_query
 
 router = APIRouter()
 
@@ -41,8 +43,11 @@ async def search(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(10, ge=1, le=50, description="Results per page"),
     db: AsyncSession = Depends(get_db),
+    _current_user: TokenPayload | None = Depends(get_current_user_optional),
 ) -> dict:
     """Execute hybrid search: LLM query understanding → vector + FTS → RRF → rerank."""
+    if detect_prompt_injection(q):
+        raise HTTPException(status_code=400, detail="Query contains disallowed patterns")
     q = sanitize_search_query(q)
 
     # Split comma-separated court string into list, stripping whitespace
@@ -88,7 +93,7 @@ async def search(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/suggest")
+@router.get("/suggest", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def suggest(
     q: str = Query(..., min_length=3, max_length=200, description="Search prefix"),
     limit: int = Query(10, ge=1, le=20, description="Max suggestions"),
@@ -150,7 +155,7 @@ async def suggest(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/facets")
+@router.get("/facets", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def facets(
     db: AsyncSession = Depends(get_db),
 ) -> dict:

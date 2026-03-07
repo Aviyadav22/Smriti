@@ -1,7 +1,7 @@
 """Unit tests for JWT authentication and password hashing."""
 
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -27,6 +27,7 @@ _TEST_SETTINGS = {
     "jwt_access_token_expire_minutes": 15,
     "jwt_refresh_token_expire_days": 7,
     "bcrypt_cost_factor": 4,  # Low cost for fast tests
+    "redis_url": "redis://localhost:6379/0",
 }
 
 
@@ -39,96 +40,106 @@ def mock_settings():
         yield mock
 
 
+@pytest.fixture(autouse=True)
+def mock_redis():
+    """Mock Redis for revocation tests."""
+    mock_r = AsyncMock()
+    mock_r.set = AsyncMock()
+    mock_r.exists = AsyncMock(return_value=0)
+    with patch("app.security.auth._get_revocation_redis", return_value=mock_r):
+        yield mock_r
+
+
 class TestAccessToken:
     """Tests for access token creation and verification."""
 
-    def test_create_and_verify(self):
+    @pytest.mark.asyncio
+    async def test_create_and_verify(self):
         token = create_access_token("user-123", "admin")
-        payload = verify_access_token(token)
+        payload = await verify_access_token(token)
         assert payload.sub == "user-123"
         assert payload.role == "admin"
         assert payload.jti  # should have a unique ID
 
-    def test_custom_expiry(self):
+    @pytest.mark.asyncio
+    async def test_custom_expiry(self):
         token = create_access_token("user-123", "user", expires_delta=timedelta(hours=1))
-        payload = verify_access_token(token)
+        payload = await verify_access_token(token)
         assert payload.sub == "user-123"
 
-    def test_expired_token_raises(self):
+    @pytest.mark.asyncio
+    async def test_expired_token_raises(self):
         token = create_access_token("user-123", "user", expires_delta=timedelta(seconds=-1))
         with pytest.raises(AuthenticationError, match="expired"):
-            verify_access_token(token)
+            await verify_access_token(token)
 
-    def test_invalid_token_raises(self):
+    @pytest.mark.asyncio
+    async def test_invalid_token_raises(self):
         with pytest.raises(AuthenticationError):
-            verify_access_token("not-a-valid-token")
+            await verify_access_token("not-a-valid-token")
 
-    def test_refresh_token_rejected_as_access(self):
+    @pytest.mark.asyncio
+    async def test_refresh_token_rejected_as_access(self):
         token = create_refresh_token("user-123")
         with pytest.raises(AuthenticationError, match="Invalid"):
-            verify_access_token(token)
+            await verify_access_token(token)
 
 
 class TestRefreshToken:
     """Tests for refresh token creation and verification."""
 
-    def test_create_and_verify(self):
+    @pytest.mark.asyncio
+    async def test_create_and_verify(self):
         token = create_refresh_token("user-456")
-        payload = verify_refresh_token(token)
+        payload = await verify_refresh_token(token)
         assert payload.sub == "user-456"
 
-    def test_access_token_rejected_as_refresh(self):
+    @pytest.mark.asyncio
+    async def test_access_token_rejected_as_refresh(self):
         token = create_access_token("user-123", "admin")
         with pytest.raises(AuthenticationError, match="Invalid"):
-            verify_refresh_token(token)
+            await verify_refresh_token(token)
 
 
 class TestTokenRevocation:
-    """Tests for token revocation (blacklisting)."""
+    """Tests for Redis-backed token revocation."""
 
-    def setup_method(self):
-        """Clear the revocation blacklist before each test."""
-        clear_revoked_tokens()
-
-    def teardown_method(self):
-        """Clear the revocation blacklist after each test."""
-        clear_revoked_tokens()
-
-    def test_revoke_token_blocks_verification(self):
+    @pytest.mark.asyncio
+    async def test_revoke_token_blocks_verification(self, mock_redis: AsyncMock):
         token = create_access_token("user-123", "admin")
-        payload = verify_access_token(token)
-        revoke_token(payload.jti)
+        payload = await verify_access_token(token)
+        await revoke_token(payload.jti)
+        # After revocation, exists returns 1
+        mock_redis.exists.return_value = 1
         with pytest.raises(AuthenticationError, match="revoked"):
-            verify_access_token(token)
+            await verify_access_token(token)
 
-    def test_revoke_refresh_token(self):
+    @pytest.mark.asyncio
+    async def test_revoke_refresh_token(self, mock_redis: AsyncMock):
         token = create_refresh_token("user-123")
-        payload = verify_refresh_token(token)
-        revoke_token(payload.jti)
+        payload = await verify_refresh_token(token)
+        await revoke_token(payload.jti)
+        mock_redis.exists.return_value = 1
         with pytest.raises(AuthenticationError, match="revoked"):
-            verify_refresh_token(token)
+            await verify_refresh_token(token)
 
-    def test_is_token_revoked(self):
-        assert not is_token_revoked("some-jti")
-        revoke_token("some-jti")
-        assert is_token_revoked("some-jti")
+    @pytest.mark.asyncio
+    async def test_is_token_revoked(self, mock_redis: AsyncMock):
+        mock_redis.exists.return_value = 0
+        assert not await is_token_revoked("some-jti")
+        mock_redis.exists.return_value = 1
+        assert await is_token_revoked("some-jti")
 
-    def test_unrevoked_token_still_works(self):
+    @pytest.mark.asyncio
+    async def test_unrevoked_token_still_works(self, mock_redis: AsyncMock):
         token = create_access_token("user-123", "admin")
-        payload = verify_access_token(token)
-        # Revoke a different JTI
-        revoke_token("different-jti")
-        # Original token should still work
-        result = verify_access_token(token)
+        mock_redis.exists.return_value = 0
+        result = await verify_access_token(token)
         assert result.sub == "user-123"
 
-    def test_clear_revoked_tokens(self):
-        revoke_token("jti-1")
-        revoke_token("jti-2")
-        assert is_token_revoked("jti-1")
-        clear_revoked_tokens()
-        assert not is_token_revoked("jti-1")
-        assert not is_token_revoked("jti-2")
+    def test_clear_revoked_tokens_is_noop(self):
+        """clear_revoked_tokens is a no-op for Redis-backed revocation."""
+        clear_revoked_tokens()  # Should not raise
 
 
 class TestPasswordHashing:

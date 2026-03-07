@@ -3,11 +3,13 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from app.security.rate_limiter import rate_limit_dependency
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.postgres import get_db
 from app.security.auth import (
     create_access_token,
@@ -17,6 +19,7 @@ from app.security.auth import (
     verify_password,
     verify_refresh_token,
 )
+from app.security.audit import create_audit_log
 from app.security.rbac import get_current_user
 from app.security.auth import TokenPayload
 
@@ -40,6 +43,10 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class LogoutRequest(BaseModel):
+    refresh_token: str | None = None
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
@@ -47,12 +54,12 @@ class TokenResponse(BaseModel):
     expires_in: int
 
 
-@router.post("/register", status_code=201)
+@router.post("/register", status_code=201, dependencies=[Depends(rate_limit_dependency("5/minute"))])
 async def register(
     body: RegisterRequest,
     db: AsyncSession = Depends(get_db),
-) -> dict:
-    """Register a new user with consent."""
+) -> TokenResponse:
+    """Register a new user with consent and return JWT tokens (auto-login)."""
     if not body.consent_given:
         raise HTTPException(status_code=400, detail="Consent is required for registration")
 
@@ -98,12 +105,21 @@ async def register(
 
     await db.commit()
 
-    return {"id": user_id, "email": body.email, "role": "researcher"}
+    # Auto-login: generate tokens just like the login endpoint
+    access_token = create_access_token(user_id, "researcher")
+    refresh_token = create_refresh_token(user_id)
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=settings.jwt_access_token_expire_minutes * 60,
+    )
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(rate_limit_dependency("5/minute"))])
 async def login(
     body: LoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
     """Authenticate and return JWT token pair."""
@@ -140,6 +156,16 @@ async def login(
             {"count": new_count, "lock": lock_until, "id": str(user["id"])},
         )
         await db.commit()
+        await create_audit_log(
+            db=db,
+            action="login.failure",
+            user_id=str(user["id"]),
+            resource_type="auth",
+            resource_id=None,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            metadata={"reason": "invalid_password", "attempt": new_count},
+        )
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     # Reset failed count, update last login
@@ -155,20 +181,31 @@ async def login(
     access_token = create_access_token(str(user["id"]), user["role"])
     refresh_token = create_refresh_token(str(user["id"]))
 
+    await create_audit_log(
+        db=db,
+        action="login.success",
+        user_id=str(user["id"]),
+        resource_type="auth",
+        resource_id=None,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        expires_in=900,  # 15 minutes
+        expires_in=settings.jwt_access_token_expire_minutes * 60,
     )
 
 
-@router.post("/refresh")
+@router.post("/refresh", dependencies=[Depends(rate_limit_dependency("10/minute"))])
 async def refresh_token(
     body: RefreshRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
     """Refresh access token using refresh token with rotation."""
-    payload = verify_refresh_token(body.refresh_token)
+    payload = await verify_refresh_token(body.refresh_token)
 
     # Fetch the user's actual role from the database (refresh token has role="refresh")
     result = await db.execute(
@@ -182,21 +219,41 @@ async def refresh_token(
     access_token = create_access_token(payload.sub, user["role"])
     new_refresh_token = create_refresh_token(payload.sub)
 
+    # Revoke the old refresh token (rotation)
+    await revoke_token(payload.jti, int(payload.exp.timestamp()))
+
+    await create_audit_log(
+        db=db,
+        action="token.refresh",
+        user_id=payload.sub,
+        resource_type="auth",
+        resource_id=None,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
     return TokenResponse(
         access_token=access_token,
         refresh_token=new_refresh_token,
-        expires_in=900,
+        expires_in=settings.jwt_access_token_expire_minutes * 60,
     )
 
 
 @router.post("/logout", status_code=200)
 async def logout(
+    body: LogoutRequest | None = None,
     current_user: TokenPayload = Depends(get_current_user),
 ) -> dict[str, str]:
-    """Revoke the current access token (logout).
+    """Revoke the current access token and optional refresh token (logout).
 
-    Adds the token's JTI to the revocation blacklist so it can no longer
+    Adds the token JTIs to the Redis revocation list so they can no longer
     be used for authentication.
     """
-    revoke_token(current_user.jti)
+    await revoke_token(current_user.jti, int(current_user.exp.timestamp()))
+    if body and body.refresh_token:
+        try:
+            refresh_payload = await verify_refresh_token(body.refresh_token)
+            await revoke_token(refresh_payload.jti, int(refresh_payload.exp.timestamp()))
+        except Exception:
+            pass
     return {"detail": "Successfully logged out"}

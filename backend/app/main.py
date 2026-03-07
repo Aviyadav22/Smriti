@@ -35,8 +35,9 @@ def _run_migrations() -> None:
                 text=True,
             )
         except Exception as e:
-            import logging
-            logging.getLogger("smriti").warning(f"Auto-migration skipped: {e}")
+            logger.error("Auto-migration failed: %s", e, exc_info=True)
+            if settings.app_env == "production":
+                raise
 
 
 @asynccontextmanager
@@ -58,8 +59,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             graph_store = get_graph_store()
             if hasattr(graph_store, "close"):
                 await graph_store.close()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Error closing graph store during shutdown: %s", exc)
 
 
 app = FastAPI(
