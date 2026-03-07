@@ -1,5 +1,6 @@
 """Application configuration using pydantic-settings."""
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,7 +15,7 @@ class Settings(BaseSettings):
     # App
     app_name: str = "smriti"
     app_env: str = "development"
-    app_debug: bool = True
+    app_debug: bool = False
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     app_version: str = "0.1.0"
@@ -30,7 +31,6 @@ class Settings(BaseSettings):
 
     # PostgreSQL
     database_url: str = "postgresql+asyncpg://smriti:smriti_dev@localhost:5432/smriti"
-    database_ssl_mode: str = "disable"
     database_pool_size: int = 10
     database_max_overflow: int = 20
 
@@ -47,20 +47,12 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-pro"
     gemini_embedding_model: str = "gemini-embedding-001"
     gemini_embedding_dimension: int = 1536
-    gemini_max_tokens: int = 8192
-    gemini_temperature: float = 0.1
-    gemini_rate_limit_rpm: int = 60
 
     # Pinecone
     vector_provider: str = "pinecone"
     pinecone_api_key: str = ""
     pinecone_index_name: str = "smriti-legal"
-    pinecone_environment: str = "us-east-1"
-    pinecone_dimension: int = 1536
-    pinecone_metric: str = "cosine"
-    pinecone_cloud: str = "aws"
     pinecone_host: str = ""
-    pinecone_top_k: int = 20
 
     # Neo4j
     graph_provider: str = "neo4j"
@@ -84,8 +76,6 @@ class Settings(BaseSettings):
     local_storage_path: str = "./data/pdfs"
 
     # Ingestion
-    ingestion_batch_size: int = 10
-    ingestion_concurrency: int = 5
     ingestion_tracker_db: str = "./data/ingestion_tracker.db"
 
     # Search
@@ -103,16 +93,46 @@ class Settings(BaseSettings):
     chat_max_context_results: int = 5
     chat_max_snippet_chars: int = 3000
 
-    # Rate Limiting
-    rate_limit_default: str = "100/minute"
-    rate_limit_search: str = "60/minute"
-    rate_limit_chat: str = "10/minute"
-    rate_limit_ingest: str = "5/minute"
-
     # Logging
     log_level: str = "INFO"
-    log_format: str = "json"
-    log_pii_redaction: bool = True
+
+    @model_validator(mode="after")
+    def validate_critical_settings(self) -> "Settings":
+        if self.app_env == "test":
+            return self
+
+        secret_fields = {
+            "jwt_secret_key": self.jwt_secret_key,
+            "jwt_refresh_secret_key": self.jwt_refresh_secret_key,
+        }
+
+        if self.app_env == "production":
+            # Enforce non-empty and minimum length for JWT secrets
+            for name, value in secret_fields.items():
+                if not value:
+                    raise ValueError(
+                        f"{name} must not be empty in production"
+                    )
+                if len(value) < 32:
+                    raise ValueError(
+                        f"{name} must be at least 32 characters in production"
+                    )
+            # Enforce non-empty encryption key
+            if not self.encryption_key:
+                raise ValueError(
+                    "encryption_key must not be empty in production"
+                )
+        else:
+            # Development: warn but allow empty
+            import warnings
+
+            for name, value in secret_fields.items():
+                if not value:
+                    warnings.warn(
+                        f"{name} is empty — using insecure defaults",
+                        stacklevel=2,
+                    )
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:
