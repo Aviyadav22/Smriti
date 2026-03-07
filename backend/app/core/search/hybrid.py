@@ -41,6 +41,7 @@ class SearchResultItem:
     case_type: str | None = None
     judge: str | None = None
     snippet: str | None = None
+    chunk_text: str | None = None
     bench_type: str | None = None
     equivalent_citations: list[str] = field(default_factory=list)
     relevance_sources: list[str] = field(default_factory=list)
@@ -176,7 +177,7 @@ async def hybrid_search(
         )
         fts_ranked = [(r.case_id, r.rank) for r in fts_results]
         merged = rrf_merge([fts_ranked], k=settings.search_rrf_k)
-        vector_results: list[tuple[str, float]] = []
+        vector_results: list[tuple[str, float, str]] = []
     else:
         # Parallel retrieval — vector + FTS
         vector_task = _vector_search(
@@ -256,7 +257,10 @@ async def hybrid_search(
         )
 
     # 7. Enrich from PostgreSQL
-    enriched = await _enrich_results(page_ids, reranked_scores, snippets_map, db)
+    vector_chunk_map = {cid: text for cid, _score, text in vector_results if text}
+    enriched = await _enrich_results(
+        page_ids, reranked_scores, snippets_map, db, vector_chunk_map
+    )
 
     # 8. Build facets from full result set
     facets = await _build_facets(reranked_ids, db)
@@ -348,8 +352,8 @@ async def _vector_search(
     embedder: EmbeddingProvider,
     vector_store: VectorStore,
     filters: SearchFilters | None,
-) -> list[tuple[str, float]]:
-    """Embed query and search Pinecone, returning (case_id, score) pairs."""
+) -> list[tuple[str, float, str]]:
+    """Embed query and search Pinecone, returning (case_id, score, chunk_text) triples."""
     query_vector = await embedder.embed_text(query)
 
     # Build Pinecone metadata filter
@@ -374,27 +378,40 @@ async def _vector_search(
         filters=pinecone_filter if pinecone_filter else None,
     )
 
-    # Deduplicate by case_id (chunks map to same case)
-    seen: dict[str, float] = {}
+    # Deduplicate by case_id (chunks map to same case), keeping best chunk text
+    seen: dict[str, tuple[float, str]] = {}
     for r in results:
         case_id = r.metadata.get("case_id", r.id)
-        if case_id not in seen or r.score > seen[case_id]:
-            seen[case_id] = r.score
+        chunk_text = r.metadata.get("text", "") or r.metadata.get("chunk_text", "")
+        if case_id not in seen or r.score > seen[case_id][0]:
+            seen[case_id] = (r.score, chunk_text)
 
-    return sorted(seen.items(), key=lambda x: x[1], reverse=True)
+    return sorted(
+        [(cid, score, text) for cid, (score, text) in seen.items()],
+        key=lambda x: x[1],
+        reverse=True,
+    )
 
 
 def _build_snippets_map(
     fts_results: list[FTSResult],
-    vector_results: list[tuple[str, float]],
+    vector_results: list[tuple[str, float, str]],
 ) -> dict[str, str]:
-    """Build a map of case_id → text snippet for reranking."""
+    """Build a map of case_id -> text snippet for reranking.
+
+    FTS headlines take priority. For cases found only via vector search,
+    the Pinecone chunk text is used as fallback (instead of the case_id UUID).
+    """
     snippets: dict[str, str] = {}
     for r in fts_results:
         if r.snippet:
             snippets[r.case_id] = r.snippet
         elif r.title:
             snippets[r.case_id] = r.title
+    # Fill in vector chunk text for cases not already covered by FTS
+    for case_id, _score, chunk_text in vector_results:
+        if case_id not in snippets and chunk_text:
+            snippets[case_id] = chunk_text
     return snippets
 
 
@@ -424,6 +441,7 @@ async def _enrich_results(
     scores: dict[str, float],
     snippets_map: dict[str, str],
     db: AsyncSession,
+    vector_chunk_map: dict[str, str] | None = None,
 ) -> list[SearchResultItem]:
     """Fetch full metadata from PostgreSQL for the given case IDs."""
     if not case_ids:
@@ -471,6 +489,7 @@ async def _enrich_results(
                 case_type=row.get("case_type"),
                 judge=row.get("judge"),
                 snippet=snippets_map.get(cid),
+                chunk_text=(vector_chunk_map or {}).get(cid),
                 bench_type=row.get("bench_type"),
                 equivalent_citations=equiv_map.get(cid, []),
             )

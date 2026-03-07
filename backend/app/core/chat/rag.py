@@ -279,8 +279,12 @@ async def _build_sources(
         else:
             judge_names = None
 
-        # Chunk text: prefer search result snippet, fall back to description
-        chunk_text = getattr(sr, "snippet", None) or row.get("description")
+        # Chunk text: prefer vector chunk (semantic match), then FTS snippet, then description
+        chunk_text = (
+            getattr(sr, "chunk_text", None)
+            or getattr(sr, "snippet", None)
+            or row.get("description")
+        )
 
         sources.append(
             ChatSource(
