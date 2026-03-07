@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.dependencies import get_storage
 from app.db.postgres import get_db
+from app.security.audit import create_audit_log
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -34,9 +39,7 @@ async def upload_document(
     doc_id = str(uuid.uuid4())
     content = await file.read()
 
-    from app.core.providers.storage.local_storage import LocalStorage
-
-    storage = LocalStorage()
+    storage = get_storage()
     with NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(content)
         tmp_path = tmp.name
@@ -155,6 +158,7 @@ async def get_document(
 @router.delete("/{document_id}", status_code=204, response_class=Response)
 async def delete_document(
     document_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: TokenPayload = Depends(get_current_user),
 ) -> Response:
@@ -170,19 +174,29 @@ async def delete_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    from app.core.providers.storage.local_storage import LocalStorage
-
-    storage = LocalStorage()
+    storage = get_storage()
     try:
         await storage.delete(doc["storage_path"])
     except OSError as e:
-        pass
+        logger.error("Failed to delete storage file %s: %s", doc["storage_path"], e)
+        # Continue with database deletion — orphaned file is better than orphaned DB record
 
     await db.execute(
         text("DELETE FROM documents WHERE id = :id"),
         {"id": document_id},
     )
     await db.commit()
+
+    await create_audit_log(
+        db=db,
+        action="document.delete",
+        user_id=current_user.sub,
+        resource_type="document",
+        resource_id=document_id,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
     return Response(status_code=204)
 
 
