@@ -205,10 +205,10 @@ class TestPromptHardening:
         from app.core.legal.prompts import CHAT_SYSTEM_PROMPT
         assert "bench" in CHAT_SYSTEM_PROMPT.lower()
 
-    def test_chat_system_has_disclaimer(self):
-        """Chat system prompt must include legal disclaimer instruction."""
+    def test_chat_system_has_anti_supplementation_rule(self):
+        """Chat system prompt must forbid supplementing from training data."""
         from app.core.legal.prompts import CHAT_SYSTEM_PROMPT
-        assert "not legal advice" in CHAT_SYSTEM_PROMPT.lower()
+        assert "do not supplement" in CHAT_SYSTEM_PROMPT.lower()
 
     def test_research_synthesize_has_precedent_strength(self):
         """Research synthesis prompt must classify precedent strength."""
