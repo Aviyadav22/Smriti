@@ -740,3 +740,233 @@ class TestRouteAfterLoad:
         state = _make_state(error="")
         result = route_after_load(state)
         assert result == "prioritize"
+
+
+# ---------------------------------------------------------------------------
+# Issue Score Labeling (Task 10)
+# ---------------------------------------------------------------------------
+
+
+class TestIssueScoreLabeling:
+    """Tests for Task 10: AI-estimated score labeling."""
+
+    @pytest.mark.asyncio
+    async def test_prioritize_adds_score_note(self) -> None:
+        """prioritize_issues_node should add score_note to each issue."""
+        llm = _make_llm()
+        llm.generate_structured.return_value = {
+            "prioritized_issues": [
+                {"title": "Issue 1", "composite_score": 8, "legal_strength": 7},
+                {"title": "Issue 2", "composite_score": 5, "legal_strength": 4},
+            ]
+        }
+
+        state = _make_state(analysis={
+            "issues": [
+                {"title": "Issue 1", "description": "test"},
+                {"title": "Issue 2", "description": "test 2"},
+            ],
+            "parties": {},
+            "relief_sought": "Damages",
+        })
+
+        result = await prioritize_issues_node(state, llm)
+        issues = result["prioritized_issues"]
+        assert len(issues) == 2
+        for issue in issues:
+            assert "score_note" in issue
+            assert "AI-estimated" in issue["score_note"]
+
+    @pytest.mark.asyncio
+    async def test_deep_search_updates_score_note_no_results(self) -> None:
+        """Issues with no matching precedents get a warning score_note."""
+        state = _make_state(
+            prioritized_issues=[
+                {"title": "Unmatched Issue", "composite_score": 8, "legal_strength": 6,
+                 "score_note": "AI-estimated"},
+            ],
+        )
+
+        result = await deep_precedent_search_node(
+            state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock()
+        )
+
+        issues = result["prioritized_issues"]
+        assert len(issues) == 1
+        # No precedent findings match this issue title, so score_note warns
+        assert "No supporting precedents found" in issues[0]["score_note"]
+
+    @pytest.mark.asyncio
+    async def test_deep_search_boosts_legal_strength_with_binding(self) -> None:
+        """3+ binding (Supreme Court) precedents should boost legal_strength."""
+        from dataclasses import dataclass
+
+        @dataclass(frozen=True, slots=True)
+        class FakeItem:
+            case_id: str
+            score: float
+            title: str | None = None
+            citation: str | None = None
+            court: str | None = None
+            year: int | None = None
+            date: str | None = None
+            case_type: str | None = None
+            judge: str | None = None
+            snippet: str | None = None
+            relevance_sources: list[str] | None = None
+
+        mock_response = MagicMock()
+        mock_response.results = [
+            FakeItem(case_id=f"c{i}", score=0.9, title=f"Case {i}",
+                     court="Supreme Court of India")
+            for i in range(4)
+        ]
+
+        graph_store = AsyncMock()
+        graph_store.get_neighbors.return_value = {"center": "c0", "neighbors": []}
+
+        with patch(
+            "app.core.agents.nodes.case_prep_nodes.hybrid_search",
+            new_callable=AsyncMock,
+        ) as mock_search, patch(
+            "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
+            new_callable=AsyncMock,
+            side_effect=lambda results, db, **kw: results,
+        ):
+            mock_search.return_value = mock_response
+
+            state = _make_state(prioritized_issues=[
+                {"title": "Constitutional validity", "description": "Art 14 challenge",
+                 "composite_score": 8, "legal_strength": 6,
+                 "score_note": "AI-estimated"},
+            ])
+
+            result = await deep_precedent_search_node(
+                state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(),
+                graph_store, AsyncMock(),
+            )
+
+        issues = result["prioritized_issues"]
+        assert issues[0]["legal_strength"] == 7  # boosted from 6 to 7
+        assert "Validated" in issues[0]["score_note"]
+        assert "binding precedents found" in issues[0]["score_note"]
+
+    @pytest.mark.asyncio
+    async def test_deep_search_partial_validation(self) -> None:
+        """3+ results but fewer than 3 binding should give partial validation."""
+        from dataclasses import dataclass
+
+        @dataclass(frozen=True, slots=True)
+        class FakeItem:
+            case_id: str
+            score: float
+            title: str | None = None
+            citation: str | None = None
+            court: str | None = None
+            year: int | None = None
+            date: str | None = None
+            case_type: str | None = None
+            judge: str | None = None
+            snippet: str | None = None
+            relevance_sources: list[str] | None = None
+
+        mock_response = MagicMock()
+        mock_response.results = [
+            FakeItem(case_id="c1", score=0.9, court="Supreme Court of India"),
+            FakeItem(case_id="c2", score=0.8, court="High Court of Delhi"),
+            FakeItem(case_id="c3", score=0.7, court="High Court of Bombay"),
+        ]
+
+        graph_store = AsyncMock()
+        graph_store.get_neighbors.return_value = {"center": "c1", "neighbors": []}
+
+        with patch(
+            "app.core.agents.nodes.case_prep_nodes.hybrid_search",
+            new_callable=AsyncMock,
+        ) as mock_search, patch(
+            "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
+            new_callable=AsyncMock,
+            side_effect=lambda results, db, **kw: results,
+        ):
+            mock_search.return_value = mock_response
+
+            state = _make_state(prioritized_issues=[
+                {"title": "Contract breach", "description": "Breach of contract",
+                 "composite_score": 7, "legal_strength": 5,
+                 "score_note": "AI-estimated"},
+            ])
+
+            result = await deep_precedent_search_node(
+                state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(),
+                graph_store, AsyncMock(),
+            )
+
+        issues = result["prioritized_issues"]
+        assert "Partially validated" in issues[0]["score_note"]
+        assert issues[0]["legal_strength"] == 5  # not boosted (only 1 binding)
+
+    @pytest.mark.asyncio
+    async def test_deep_search_limited_validation(self) -> None:
+        """Fewer than 3 total results should give limited validation."""
+        from dataclasses import dataclass
+
+        @dataclass(frozen=True, slots=True)
+        class FakeItem:
+            case_id: str
+            score: float
+            title: str | None = None
+            citation: str | None = None
+            court: str | None = None
+            year: int | None = None
+            date: str | None = None
+            case_type: str | None = None
+            judge: str | None = None
+            snippet: str | None = None
+            relevance_sources: list[str] | None = None
+
+        mock_response = MagicMock()
+        mock_response.results = [
+            FakeItem(case_id="c1", score=0.9, court="High Court of Delhi"),
+        ]
+
+        graph_store = AsyncMock()
+        graph_store.get_neighbors.return_value = {"center": "c1", "neighbors": []}
+
+        with patch(
+            "app.core.agents.nodes.case_prep_nodes.hybrid_search",
+            new_callable=AsyncMock,
+        ) as mock_search, patch(
+            "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
+            new_callable=AsyncMock,
+            side_effect=lambda results, db, **kw: results,
+        ):
+            mock_search.return_value = mock_response
+
+            state = _make_state(prioritized_issues=[
+                {"title": "Tort claim", "description": "Negligence",
+                 "composite_score": 6, "legal_strength": 4,
+                 "score_note": "AI-estimated"},
+            ])
+
+            result = await deep_precedent_search_node(
+                state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(),
+                graph_store, AsyncMock(),
+            )
+
+        issues = result["prioritized_issues"]
+        assert "Limited validation" in issues[0]["score_note"]
+
+    @pytest.mark.asyncio
+    async def test_deep_search_returns_prioritized_issues_in_result(self) -> None:
+        """deep_precedent_search_node should include prioritized_issues in its return dict."""
+        state = _make_state(prioritized_issues=[
+            {"title": "Issue X", "composite_score": 5, "legal_strength": 5,
+             "score_note": "AI-estimated"},
+        ])
+
+        result = await deep_precedent_search_node(
+            state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock()
+        )
+
+        assert "prioritized_issues" in result
+        assert "messages" in result

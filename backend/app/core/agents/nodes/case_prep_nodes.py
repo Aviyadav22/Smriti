@@ -142,6 +142,10 @@ async def prioritize_issues_node(
     # Sort by composite_score descending
     prioritized.sort(key=lambda x: x.get("composite_score", 0), reverse=True)
 
+    # Label scores as AI estimates — they haven't been validated against actual precedents yet
+    for issue in prioritized:
+        issue["score_note"] = "AI-estimated scores — will be validated against actual precedents in next step"
+
     return {"prioritized_issues": prioritized}
 
 
@@ -255,7 +259,45 @@ async def deep_precedent_search_node(
         )
         precedent_findings.append(finding)
 
-    return {"messages": [{"type": "deep_precedents", "data": precedent_findings}]}
+    # Update prioritized issue scores based on actual precedent findings
+    prioritized = state.get("prioritized_issues", [])
+    for issue in prioritized:
+        issue_title = issue.get("title", "")
+        # Find matching precedent findings for this issue
+        matched_results: list[dict] = []
+        for finding in precedent_findings:
+            if finding.get("issue_title", "") == issue_title:
+                matched_results = finding.get("results", [])
+                break
+
+        result_count = len(matched_results)
+        # Count binding precedents (Supreme Court cases)
+        binding_count = sum(
+            1 for r in matched_results
+            if "supreme" in (r.get("court", "") or "").lower()
+        )
+
+        # Update the score note based on actual findings
+        if result_count == 0:
+            issue["score_note"] = (
+                "\u26a0 No supporting precedents found — scores are AI estimates only"
+            )
+        elif binding_count >= 3:
+            # Boost legal_strength if we found strong binding precedents
+            old_strength = issue.get("legal_strength", 5)
+            issue["legal_strength"] = min(10, old_strength + 1)
+            issue["score_note"] = f"Validated: {binding_count} binding precedents found"
+        elif result_count >= 3:
+            issue["score_note"] = (
+                f"Partially validated: {result_count} precedents found ({binding_count} binding)"
+            )
+        else:
+            issue["score_note"] = f"Limited validation: only {result_count} precedent(s) found"
+
+    return {
+        "messages": [{"type": "deep_precedents", "data": precedent_findings}],
+        "prioritized_issues": prioritized,
+    }
 
 
 # ---------------------------------------------------------------------------
