@@ -202,9 +202,10 @@ async def deep_precedent_search_node(
                     direction="both",
                     depth=2,
                 )
-                # neighbors is a dict; extract neighbor node data
-                neighbor_nodes = neighbors.get("nodes", [])
-                for node in neighbor_nodes:
+                # neighbors is {"center": ..., "neighbors": [{"node": {...}, "relationship": ...}]}
+                neighbor_entries = neighbors.get("neighbors", [])
+                for entry in neighbor_entries:
+                    node = entry.get("node", {}) if isinstance(entry, dict) else {}
                     if isinstance(node, dict) and node.get("id") != case_id:
                         neighbor_results.append(node)
             except Exception:

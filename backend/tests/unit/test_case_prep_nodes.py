@@ -242,7 +242,7 @@ class TestDeepPrecedentSearchNode:
         ]
 
         graph_store = AsyncMock()
-        graph_store.get_neighbors.return_value = {"nodes": []}
+        graph_store.get_neighbors.return_value = {"center": "c1", "neighbors": []}
 
         with patch(
             "app.core.agents.nodes.case_prep_nodes.hybrid_search",
@@ -306,10 +306,12 @@ class TestDeepPrecedentSearchNode:
         ]
 
         graph_store = AsyncMock()
+        # Use the ACTUAL Neo4j return format: {"center": ..., "neighbors": [{"node": {...}, "relationship": ...}]}
         graph_store.get_neighbors.return_value = {
-            "nodes": [
-                {"id": "c2", "title": "Neighbor Case", "citation": "SCC 2"},
-                {"id": "c1", "title": "Case One"},  # duplicate - should be filtered
+            "center": "c1",
+            "neighbors": [
+                {"node": {"id": "c2", "title": "Neighbor Case", "citation": "SCC 2"}, "relationship": "CITES"},
+                {"node": {"id": "c1", "title": "Case One"}, "relationship": "CITES"},  # duplicate - should be filtered
             ]
         }
 
@@ -340,6 +342,80 @@ class TestDeepPrecedentSearchNode:
         case_ids = {r.get("case_id") for r in issue_results}
         assert "c1" in case_ids
         assert "c2" in case_ids
+
+    @pytest.mark.asyncio
+    async def test_graph_neighbor_metadata_extracted_correctly(self) -> None:
+        """Verify metadata (title, citation, court) is correctly extracted from nested Neo4j format."""
+        from dataclasses import dataclass
+
+        @dataclass(frozen=True, slots=True)
+        class FakeItem:
+            case_id: str
+            score: float
+            title: str | None = None
+            citation: str | None = None
+            court: str | None = None
+            year: int | None = None
+            date: str | None = None
+            case_type: str | None = None
+            judge: str | None = None
+            snippet: str | None = None
+            relevance_sources: list[str] | None = None
+
+        mock_response = MagicMock()
+        mock_response.results = [
+            FakeItem(case_id="c1", score=0.9, title="Case One"),
+        ]
+
+        graph_store = AsyncMock()
+        graph_store.get_neighbors.return_value = {
+            "center": "c1",
+            "neighbors": [
+                {
+                    "node": {
+                        "id": "c2",
+                        "title": "State of Punjab v. Singh",
+                        "citation": "(2023) 5 SCC 100",
+                        "court": "Supreme Court of India",
+                        "year": 2023,
+                    },
+                    "relationship": "CITES",
+                },
+            ],
+        }
+
+        with patch(
+            "app.core.agents.nodes.case_prep_nodes.hybrid_search",
+            new_callable=AsyncMock,
+        ) as mock_search, patch(
+            "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
+            new_callable=AsyncMock,
+            side_effect=lambda results, db, **kw: results,
+        ):
+            mock_search.return_value = mock_response
+
+            state = _make_state(prioritized_issues=[
+                {"title": "Issue 1", "description": "Desc 1"},
+            ])
+
+            result = await deep_precedent_search_node(
+                state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(),
+                graph_store, AsyncMock(),
+            )
+
+        findings = result["messages"][0]["data"]
+        issue_results = findings[0]["results"]
+        # Find the graph-sourced result
+        graph_results = [r for r in issue_results if r.get("source") == "citation_graph"]
+        assert len(graph_results) == 1
+        gr = graph_results[0]
+        assert gr["case_id"] == "c2"
+        assert gr["title"] == "State of Punjab v. Singh"
+        assert gr["citation"] == "(2023) 5 SCC 100"
+        assert gr["court"] == "Supreme Court of India"
+        assert gr["year"] == 2023
+        assert gr["score"] == 0.0
+        assert gr["source"] == "citation_graph"
 
 
 # ---------------------------------------------------------------------------
