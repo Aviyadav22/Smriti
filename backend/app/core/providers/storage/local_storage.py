@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 from app.core.config import settings
@@ -23,6 +24,20 @@ class LocalStorage:
 
     async def retrieve(self, storage_path: str) -> bytes:
         return Path(storage_path).read_bytes()
+
+    async def retrieve_chunked(
+        self, storage_path: str, chunk_size: int = 8192
+    ) -> AsyncIterator[bytes]:
+        """Yield file contents in chunks to avoid loading entire file into memory."""
+        full_path = Path(storage_path)
+        if not full_path.exists():
+            raise FileNotFoundError(f"File not found: {storage_path}")
+        with open(full_path, "rb") as f:
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
 
     async def delete(self, storage_path: str) -> None:
         path = Path(storage_path)

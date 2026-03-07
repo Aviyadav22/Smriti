@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Protocol, runtime_checkable
 
 
@@ -14,6 +15,12 @@ class FileStorage(Protocol):
         ...
 
     async def retrieve(self, storage_path: str) -> bytes: ...
+
+    def retrieve_chunked(
+        self, storage_path: str, chunk_size: int = 8192
+    ) -> AsyncIterator[bytes]:
+        """Yield file contents in chunks to avoid loading entire file into memory."""
+        ...
 
     async def delete(self, storage_path: str) -> None: ...
 

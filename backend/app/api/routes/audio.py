@@ -107,16 +107,8 @@ async def stream_audio(
     if not await storage.exists(row["audio_storage_path"]):
         raise HTTPException(status_code=404, detail="Audio file not found")
 
-    audio_bytes = await storage.retrieve(row["audio_storage_path"])
-
     async def audio_generator():
-        yield audio_bytes
+        async for chunk in storage.retrieve_chunked(row["audio_storage_path"]):
+            yield chunk
 
-    return StreamingResponse(
-        audio_generator(),
-        media_type="audio/mpeg",
-        headers={
-            "Content-Length": str(len(audio_bytes)),
-            "Accept-Ranges": "bytes",
-        },
-    )
+    return StreamingResponse(audio_generator(), media_type="audio/mpeg")
