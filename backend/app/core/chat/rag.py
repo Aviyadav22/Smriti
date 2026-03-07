@@ -24,9 +24,9 @@ from app.security.encryption import encrypt_field, safe_decrypt
 
 logger = logging.getLogger(__name__)
 
-MAX_HISTORY_MESSAGES = 10
-MAX_CONTEXT_RESULTS = 5
-MAX_SNIPPET_CHARS = 3000
+MAX_HISTORY_MESSAGES = settings.chat_max_history
+MAX_CONTEXT_RESULTS = settings.chat_max_context_results
+MAX_SNIPPET_CHARS = settings.chat_max_snippet_chars
 MAX_RATIO_CHARS = 2000
 MAX_CHUNK_CHARS = 1000
 MAX_PROMPT_CHARS = 100_000  # ~25K tokens, safe for Gemini 2.5 Pro

@@ -98,6 +98,11 @@ class Settings(BaseSettings):
     search_default_page_size: int = 10
     search_max_page_size: int = 50
 
+    # Chat / RAG
+    chat_max_history: int = 10
+    chat_max_context_results: int = 5
+    chat_max_snippet_chars: int = 3000
+
     # Rate Limiting
     rate_limit_default: str = "100/minute"
     rate_limit_search: str = "60/minute"
