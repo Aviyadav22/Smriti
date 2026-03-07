@@ -106,9 +106,15 @@ from app.api.routes.auth import router as auth_router  # noqa: E402
 from app.api.routes.cases import router as cases_router  # noqa: E402
 from app.api.routes.ingest import router as ingest_router  # noqa: E402
 from app.api.routes.search import router as search_router  # noqa: E402
+from app.api.routes.chat import router as chat_router  # noqa: E402
+from app.api.routes.graph import router as graph_router  # noqa: E402
+from app.api.routes.judges import router as judges_router  # noqa: E402
 
 app.include_router(health_router, tags=["health"])
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(cases_router, prefix="/api/v1/cases", tags=["cases"])
 app.include_router(ingest_router, prefix="/api/v1/ingest", tags=["ingest"])
 app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
+app.include_router(chat_router, prefix="/api/v1/chat", tags=["chat"])
+app.include_router(graph_router, prefix="/api/v1/graph", tags=["graph"])
+app.include_router(judges_router, prefix="/api/v1", tags=["judges"])

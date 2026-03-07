@@ -2,13 +2,24 @@
 
 import type {
     CaseDetail,
+    ChatMessage,
+    ChatSession,
     CitationItem,
+    CourtStats,
     FacetsResponse,
+    GraphData,
+    GraphNode,
+    GraphStats,
+    JudgeCasesResponse,
+    JudgeCompareResponse,
+    JudgeListResponse,
+    JudgeProfile,
     LoginRequest,
     RegisterRequest,
     SearchResponse,
     SearchSuggestion,
     SimilarCase,
+    StreamEvent,
     TokenResponse,
 } from "./types";
 
@@ -220,6 +231,187 @@ export async function getCaseSimilar(id: string, limit = 5): Promise<{
 
 export function getCasePdfUrl(id: string): string {
     return `${API_BASE}/cases/${id}/pdf`;
+}
+
+// ---------------------------------------------------------------------------
+// Chat API
+// ---------------------------------------------------------------------------
+
+/** Start a new chat session with the first message. Returns an SSE stream. */
+export function createChatSession(
+    message: string,
+    onEvent: (event: StreamEvent) => void,
+    onError?: (error: Error) => void,
+): AbortController {
+    return _streamChat("/chat", message, onEvent, onError);
+}
+
+/** Send a follow-up message in an existing session. Returns an SSE stream. */
+export function sendChatMessage(
+    sessionId: string,
+    message: string,
+    onEvent: (event: StreamEvent) => void,
+    onError?: (error: Error) => void,
+): AbortController {
+    return _streamChat(`/chat/${sessionId}/message`, message, onEvent, onError);
+}
+
+/** List all chat sessions for the current user. */
+export async function getChatSessions(): Promise<ChatSession[]> {
+    return apiFetch<ChatSession[]>("/chat/sessions");
+}
+
+/** Get full message history for a session. */
+export async function getChatHistory(sessionId: string): Promise<ChatMessage[]> {
+    return apiFetch<ChatMessage[]>(`/chat/${sessionId}/history`);
+}
+
+/** Delete a chat session and all its messages. */
+export async function deleteChatSession(sessionId: string): Promise<void> {
+    await apiFetch<{ status: string }>(`/chat/${sessionId}`, { method: "DELETE" });
+}
+
+/**
+ * Internal helper: POST to a chat endpoint and stream SSE events via fetch.
+ * Returns an AbortController so the caller can cancel the stream.
+ */
+function _streamChat(
+    path: string,
+    message: string,
+    onEvent: (event: StreamEvent) => void,
+    onError?: (error: Error) => void,
+): AbortController {
+    const controller = new AbortController();
+
+    const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+    };
+    if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+    }
+
+    fetch(`${API_BASE}${path}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ message }),
+        signal: controller.signal,
+    })
+        .then(async (res) => {
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ error: "Chat request failed" }));
+                throw new ApiError(res.status, err.code || "UNKNOWN", err.error || "Chat request failed");
+            }
+
+            const reader = res.body?.getReader();
+            if (!reader) throw new Error("No response body");
+
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        try {
+                            const event = JSON.parse(line.slice(6)) as StreamEvent;
+                            onEvent(event);
+                        } catch {
+                            // skip malformed SSE lines
+                        }
+                    }
+                }
+            }
+        })
+        .catch((err) => {
+            if (err.name === "AbortError") return;
+            onError?.(err instanceof Error ? err : new Error(String(err)));
+        });
+
+    return controller;
+}
+
+// ---------------------------------------------------------------------------
+// Graph API
+// ---------------------------------------------------------------------------
+
+/** Get the citation neighborhood for a case. */
+export async function getGraphNeighborhood(
+    caseId: string,
+    depth = 1,
+): Promise<GraphData> {
+    return apiFetch<GraphData>(`/graph/${caseId}/neighborhood?depth=${depth}`);
+}
+
+/** Get the forward citation chain for a case. */
+export async function getGraphChain(
+    caseId: string,
+    maxDepth = 3,
+): Promise<GraphData> {
+    return apiFetch<GraphData>(`/graph/${caseId}/chain?max_depth=${maxDepth}`);
+}
+
+/** Get the most-cited authorities in a case's network. */
+export async function getGraphAuthorities(
+    caseId: string,
+    limit = 20,
+): Promise<GraphNode[]> {
+    return apiFetch<GraphNode[]>(`/graph/${caseId}/authorities?limit=${limit}`);
+}
+
+/** Get global graph statistics. */
+export async function getGraphStats(): Promise<GraphStats> {
+    return apiFetch<GraphStats>("/graph/stats");
+}
+
+// ---------------------------------------------------------------------------
+// Judge Analytics API
+// ---------------------------------------------------------------------------
+
+export async function getJudges(params?: {
+    search?: string;
+    page?: number;
+    page_size?: number;
+}): Promise<JudgeListResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set("search", params.search);
+    if (params?.page) searchParams.set("page", String(params.page));
+    if (params?.page_size) searchParams.set("page_size", String(params.page_size));
+    const qs = searchParams.toString();
+    return apiFetch<JudgeListResponse>(`/judges${qs ? `?${qs}` : ""}`);
+}
+
+export async function getJudgeProfile(name: string): Promise<JudgeProfile> {
+    return apiFetch<JudgeProfile>(`/judges/${encodeURIComponent(name)}`);
+}
+
+export async function getJudgeCases(
+    name: string,
+    params?: { page?: number; page_size?: number; year?: number; case_type?: string },
+): Promise<JudgeCasesResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set("page", String(params.page));
+    if (params?.page_size) searchParams.set("page_size", String(params.page_size));
+    if (params?.year) searchParams.set("year", String(params.year));
+    if (params?.case_type) searchParams.set("case_type", params.case_type);
+    const qs = searchParams.toString();
+    return apiFetch<JudgeCasesResponse>(
+        `/judges/${encodeURIComponent(name)}/cases${qs ? `?${qs}` : ""}`,
+    );
+}
+
+export async function compareJudges(names: string[]): Promise<JudgeCompareResponse> {
+    const namesParam = names.map((n) => encodeURIComponent(n)).join(",");
+    return apiFetch<JudgeCompareResponse>(`/judges/compare?names=${namesParam}`);
+}
+
+export async function getCourtStats(court: string): Promise<CourtStats> {
+    return apiFetch<CourtStats>(`/courts/${encodeURIComponent(court)}/stats`);
 }
 
 export { ApiError };

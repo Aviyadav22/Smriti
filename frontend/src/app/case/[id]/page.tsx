@@ -6,12 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
-import { getCase, getCaseCitations, getCaseCitedBy, getCaseSimilar, getCasePdfUrl } from "@/lib/api";
-import type { CaseDetail, CitationItem, SimilarCase } from "@/lib/types";
-import { ArrowLeft, FileText, BookOpen, Link2, Scale, ExternalLink, Loader2 } from "lucide-react";
+import dynamic from "next/dynamic";
+import { getCase, getCaseCitations, getCaseCitedBy, getCaseSimilar, getCasePdfUrl, getGraphNeighborhood } from "@/lib/api";
+import type { CaseDetail, CitationItem, GraphData, SimilarCase } from "@/lib/types";
+import Link from "next/link";
+import { ArrowLeft, FileText, BookOpen, Link2, Scale, ExternalLink, Loader2, GitBranch } from "lucide-react";
+
+const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 
 export default function CaseDetailPage() {
     const params = useParams();
@@ -22,6 +25,7 @@ export default function CaseDetailPage() {
     const [citations, setCitations] = useState<CitationItem[]>([]);
     const [citedBy, setCitedBy] = useState<CitationItem[]>([]);
     const [similar, setSimilar] = useState<SimilarCase[]>([]);
+    const [graphData, setGraphData] = useState<GraphData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -29,17 +33,19 @@ export default function CaseDetailPage() {
         async function load() {
             setLoading(true);
             try {
-                const [c, cit, cb, sim] = await Promise.allSettled([
+                const [c, cit, cb, sim, graph] = await Promise.allSettled([
                     getCase(caseId),
                     getCaseCitations(caseId),
                     getCaseCitedBy(caseId),
                     getCaseSimilar(caseId),
+                    getGraphNeighborhood(caseId, 1),
                 ]);
                 if (c.status === "fulfilled") setCaseData(c.value);
                 else throw new Error("Case not found");
                 if (cit.status === "fulfilled") setCitations(cit.value.citations);
                 if (cb.status === "fulfilled") setCitedBy(cb.value.cited_by);
                 if (sim.status === "fulfilled") setSimilar(sim.value.similar);
+                if (graph.status === "fulfilled") setGraphData(graph.value);
             } catch (err) {
                 setError(err instanceof Error ? err.message : "Failed to load case");
             } finally {
@@ -129,6 +135,11 @@ export default function CaseDetailPage() {
                                     <TabsTrigger value="citations" className="text-[11px] uppercase tracking-wider h-7 px-3 rounded-md">
                                         Citations
                                     </TabsTrigger>
+                                    {graphData && graphData.nodes.length > 0 && (
+                                        <TabsTrigger value="graph" className="text-[11px] uppercase tracking-wider h-7 px-3 rounded-md">
+                                            <GitBranch className="h-3 w-3 mr-1" /> Graph
+                                        </TabsTrigger>
+                                    )}
                                 </TabsList>
 
                                 {/* Section content tabs */}
@@ -220,6 +231,59 @@ export default function CaseDetailPage() {
                                         </Card>
                                     </div>
                                 </TabsContent>
+
+                                {/* Mini citation graph */}
+                                {graphData && graphData.nodes.length > 0 && (
+                                    <TabsContent value="graph">
+                                        <Card className="p-4 rounded-md">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <h3 className="text-xs uppercase tracking-wider font-medium text-muted-foreground flex items-center gap-1.5">
+                                                    <GitBranch className="h-3 w-3" /> Citation Network
+                                                </h3>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-6 text-[10px] rounded-md gap-1"
+                                                    onClick={() => router.push(`/graph?case=${caseId}`)}
+                                                >
+                                                    Full Graph <ExternalLink className="h-2.5 w-2.5" />
+                                                </Button>
+                                            </div>
+                                            <div className="h-[350px] border rounded-md overflow-hidden bg-background">
+                                                <ForceGraph2D
+                                                    graphData={{
+                                                        nodes: graphData.nodes.map((n) => ({
+                                                            ...n,
+                                                            val: n.id === caseId ? 6 : Math.max(2, Math.log2((n.cited_by_count || 0) + 1) * 2),
+                                                        })),
+                                                        links: graphData.edges.map((e) => ({
+                                                            source: e.from,
+                                                            target: e.to,
+                                                            type: e.type,
+                                                        })),
+                                                    }}
+                                                    nodeLabel={(node: Record<string, unknown>) =>
+                                                        (node.title as string) || (node.citation as string) || (node.id as string)
+                                                    }
+                                                    nodeColor={(node: Record<string, unknown>) =>
+                                                        node.id === caseId ? "#B89B6A" : "#6B7280"
+                                                    }
+                                                    linkColor={() => "#9CA3AF"}
+                                                    linkDirectionalArrowLength={3}
+                                                    linkDirectionalArrowRelPos={0.9}
+                                                    onNodeClick={(node: Record<string, unknown>) => {
+                                                        if (node.id !== caseId) router.push(`/case/${node.id}`);
+                                                    }}
+                                                    enableZoomInteraction={true}
+                                                    enablePanInteraction={true}
+                                                />
+                                            </div>
+                                            <p className="text-[10px] text-muted-foreground mt-2 text-center">
+                                                {graphData.nodes.length} nodes · {graphData.edges.length} edges · Click a node to view that case
+                                            </p>
+                                        </Card>
+                                    </TabsContent>
+                                )}
                             </Tabs>
                         </div>
 
@@ -242,10 +306,22 @@ export default function CaseDetailPage() {
                             {caseData.judge && (
                                 <Card className="p-4 rounded-md">
                                     <h4 className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground mb-2">Bench</h4>
-                                    <p className="text-sm">{caseData.judge}</p>
-                                    {caseData.author_judge && (
-                                        <p className="text-xs text-muted-foreground mt-1">Author: {caseData.author_judge}</p>
-                                    )}
+                                    <div className="space-y-1">
+                                        {(Array.isArray(caseData.judge) ? caseData.judge : String(caseData.judge).split(", ")).map(
+                                            (judgeName: string) => (
+                                                <Link
+                                                    key={judgeName}
+                                                    href={`/judge/${encodeURIComponent(judgeName.trim())}`}
+                                                    className="block text-sm hover:underline text-primary"
+                                                >
+                                                    {judgeName.trim()}
+                                                    {caseData.author_judge && judgeName.trim() === caseData.author_judge && (
+                                                        <span className="text-xs text-muted-foreground ml-1">(Author)</span>
+                                                    )}
+                                                </Link>
+                                            )
+                                        )}
+                                    </div>
                                 </Card>
                             )}
 

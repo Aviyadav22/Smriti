@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth-context";
-import { Search, Scale, LogOut, Menu, X } from "lucide-react";
+import { Search, Scale, LogOut, Menu, X, MessageSquare, GitBranch, Gavel } from "lucide-react";
 
 export function Header() {
     const { isAuthenticated, logout } = useAuth();
@@ -51,6 +51,18 @@ export function Header() {
                     <Button variant="ghost" size="sm" className="text-xs uppercase tracking-wider font-medium h-8 px-3" asChild>
                         <Link href="/search">Search</Link>
                     </Button>
+                    <Button variant="ghost" size="sm" className="text-xs uppercase tracking-wider font-medium h-8 px-3" asChild>
+                        <Link href="/chat"><MessageSquare className="h-3.5 w-3.5 mr-1" /> Chat</Link>
+                    </Button>
+                    <Button variant="ghost" size="sm" className="text-xs uppercase tracking-wider font-medium h-8 px-3" asChild>
+                        <Link href="/graph"><GitBranch className="h-3.5 w-3.5 mr-1" /> Graph</Link>
+                    </Button>
+                    <Link href="/judges">
+                        <Button variant="ghost" size="sm" className="gap-1.5 text-xs">
+                            <Gavel className="h-3.5 w-3.5" />
+                            <span className="hidden lg:inline">Judges</span>
+                        </Button>
+                    </Link>
                     {isAuthenticated ? (
                         <Button variant="ghost" size="sm" className="text-xs h-8 px-3" onClick={logout}>
                             <LogOut className="h-3.5 w-3.5 mr-1.5" /> Logout
@@ -85,6 +97,15 @@ export function Header() {
                     <div className="flex flex-col gap-0.5 pt-1">
                         <Button variant="ghost" size="sm" className="justify-start text-xs" asChild onClick={() => setMobileOpen(false)}>
                             <Link href="/search">Search</Link>
+                        </Button>
+                        <Button variant="ghost" size="sm" className="justify-start text-xs" asChild onClick={() => setMobileOpen(false)}>
+                            <Link href="/chat"><MessageSquare className="h-3.5 w-3.5 mr-1.5" /> Chat</Link>
+                        </Button>
+                        <Button variant="ghost" size="sm" className="justify-start text-xs" asChild onClick={() => setMobileOpen(false)}>
+                            <Link href="/graph"><GitBranch className="h-3.5 w-3.5 mr-1.5" /> Graph</Link>
+                        </Button>
+                        <Button variant="ghost" size="sm" className="justify-start text-xs" asChild onClick={() => setMobileOpen(false)}>
+                            <Link href="/judges"><Gavel className="h-3.5 w-3.5 mr-1.5" /> Judges</Link>
                         </Button>
                         {isAuthenticated ? (
                             <Button variant="ghost" size="sm" className="justify-start text-xs" onClick={() => { logout(); setMobileOpen(false); }}>

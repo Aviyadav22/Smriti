@@ -152,3 +152,182 @@ export interface User {
     name: string;
     role: string;
 }
+
+// ---------------------------------------------------------------------------
+// Chat
+// ---------------------------------------------------------------------------
+
+export interface ChatSession {
+    id: string;
+    title: string;
+    created_at: string;
+    updated_at: string;
+    message_count: number;
+}
+
+export interface ChatSource {
+    case_id: string;
+    title: string | null;
+    citation: string | null;
+    court: string | null;
+    year: number | null;
+    score: number;
+}
+
+export interface ChatMessage {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    sources: ChatSource[];
+    created_at: string;
+}
+
+export interface StreamEvent {
+    type: "session" | "chunk" | "source" | "done";
+    session_id?: string;
+    title?: string;
+    content?: string;
+    index?: number;
+    case_id?: string;
+    citation?: string;
+    court?: string;
+    year?: number;
+    score?: number;
+    source_count?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Graph
+// ---------------------------------------------------------------------------
+
+export interface GraphNode {
+    id: string;
+    title: string | null;
+    citation: string | null;
+    court: string | null;
+    year: number | null;
+    cited_by_count: number;
+}
+
+export interface GraphEdge {
+    from: string;
+    to: string;
+    type: string;
+    context?: string | null;
+}
+
+export interface GraphData {
+    nodes: GraphNode[];
+    edges: GraphEdge[];
+}
+
+export interface GraphStats {
+    total_judgments: number;
+    total_edges: number;
+    most_cited: {
+        id: string;
+        title: string | null;
+        citation: string | null;
+        cited_by_count: number;
+    }[];
+}
+
+// ---------------------------------------------------------------------------
+// Judge Analytics
+// ---------------------------------------------------------------------------
+
+export interface JudgeListItem {
+    name: string;
+    total_cases: number;
+    cases_authored: number;
+}
+
+export interface JudgeListResponse {
+    judges: JudgeListItem[];
+    total: number;
+    page: number;
+    page_size: number;
+    total_pages: number;
+}
+
+export interface YearCount {
+    year: number;
+    count: number;
+}
+
+export interface DisposalPattern {
+    disposal_nature: string;
+    count: number;
+}
+
+export interface BenchCombination {
+    judge: string;
+    cases_together: number;
+}
+
+export interface JudgmentSummary {
+    id: string;
+    title: string;
+    citation: string | null;
+    year: number | null;
+    citation_count?: number;
+}
+
+export interface ActFrequency {
+    act: string;
+    count: number;
+}
+
+export interface CaseTypeCount {
+    case_type: string;
+    count: number;
+}
+
+export interface JudgeProfile {
+    name: string;
+    total_cases: number;
+    cases_authored: number;
+    cases_by_year: Record<string, number>;
+    disposal_patterns: Record<string, number>;
+    bench_combinations: BenchCombination[];
+    top_cited_judgments: JudgmentSummary[];
+    acts_frequency: Record<string, number>;
+    case_types: Record<string, number>;
+}
+
+export interface JudgeCaseItem {
+    id: string;
+    title: string;
+    citation: string | null;
+    year: number | null;
+    case_type: string | null;
+    court: string;
+    decision_date: string | null;
+    is_author: boolean;
+}
+
+export interface JudgeCasesResponse {
+    items: JudgeCaseItem[];
+    total: number;
+    page: number;
+    page_size: number;
+    total_pages: number;
+}
+
+export interface JudgeCompareResponse {
+    judges: (JudgeProfile | null)[];
+}
+
+export interface CourtJudge {
+    judge: string;
+    cases: number;
+}
+
+export interface CourtStats {
+    court: string;
+    total_cases: number;
+    cases_by_year: Record<string, number>;
+    case_types: Record<string, number>;
+    disposal_patterns: Record<string, number>;
+    top_judges: CourtJudge[];
+}
