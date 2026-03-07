@@ -532,6 +532,38 @@ judicial trend alignment, strategic value), a composite score, and a brief \
 justification citing relevant Indian legal principles.
 """
 
+CASE_PREP_PRIORITIZE_SCHEMA: Final[dict] = {
+    "type": "object",
+    "properties": {
+        "prioritized_issues": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "description": {"type": "string"},
+                    "strength_score": {"type": "integer"},
+                    "relevance_score": {"type": "integer"},
+                    "trend_score": {"type": "integer"},
+                    "strategic_value": {"type": "integer"},
+                    "composite_score": {"type": "number"},
+                    "reasoning": {"type": "string"},
+                    "risk_factors": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "nullable": True,
+                    },
+                },
+                "required": [
+                    "title", "description", "strength_score", "relevance_score",
+                    "trend_score", "strategic_value", "composite_score", "reasoning",
+                ],
+            },
+        },
+    },
+    "required": ["prioritized_issues"],
+}
+
 CASE_PREP_ARGUMENT_ORDER_SYSTEM: Final[str] = """\
 You are an expert Indian courtroom strategist advising on the optimal sequence of \
 legal arguments for presentation before Indian courts.
