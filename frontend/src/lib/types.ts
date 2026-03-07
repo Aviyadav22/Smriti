@@ -48,6 +48,7 @@ export interface SearchResultItem {
     bench_type: string | null;
     equivalent_citations: string[];
     precedent_strength?: PrecedentStrengthLevel;
+    section_type?: JudgmentSection | null;
 }
 
 export interface SearchResponse {

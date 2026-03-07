@@ -274,15 +274,60 @@ describe("SearchPage", () => {
     });
   });
 
-  it("shows score for each result", async () => {
+  it("shows confidence meter for each result", async () => {
     mockSearch.mockResolvedValue(makeSearchResponse());
     mockSearchParams = new URLSearchParams("q=test");
 
     renderWithProviders(<SearchPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("0.95")).toBeInTheDocument();
-      expect(screen.getByText("0.88")).toBeInTheDocument();
+      expect(screen.getByText("95%")).toBeInTheDocument();
+      expect(screen.getByText("88%")).toBeInTheDocument();
+    });
+  });
+
+  it("shows section pill tabs above results", async () => {
+    mockSearch.mockResolvedValue(makeSearchResponse());
+    mockSearchParams = new URLSearchParams("q=test");
+
+    renderWithProviders(<SearchPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("All Sections")).toBeInTheDocument();
+      expect(screen.getByText("Holdings")).toBeInTheDocument();
+      expect(screen.getByText("Reasoning")).toBeInTheDocument();
+    });
+  });
+
+  it("shows low-relevance banner when all scores below 0.3", async () => {
+    mockSearch.mockResolvedValue(
+      makeSearchResponse({
+        results: [
+          {
+            case_id: "case-low",
+            score: 0.2,
+            title: "Low Relevance Case",
+            citation: null,
+            court: null,
+            year: null,
+            date: null,
+            case_type: null,
+            judge: null,
+            snippet: "Some text",
+            bench_type: null,
+            equivalent_citations: [],
+          },
+        ],
+      })
+    );
+    mockSearchParams = new URLSearchParams("q=test");
+
+    renderWithProviders(<SearchPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/no highly relevant results found/i)
+      ).toBeInTheDocument();
     });
   });
 });

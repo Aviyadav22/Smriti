@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -10,12 +10,21 @@ import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { search as apiSearch, searchFacets } from "@/lib/api";
 import type { SearchResponse, FacetsResponse, JudgmentSection } from "@/lib/types";
-import { Search, ChevronLeft, ChevronRight, Filter, X, Loader2 } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Filter, X, Loader2, AlertTriangle } from "lucide-react";
 import { PrecedentBadge } from "@/components/precedent-badge";
 import { BenchStrength } from "@/components/bench-strength";
 import { EquivalentCitations } from "@/components/equivalent-citations";
-import { SectionFilter } from "@/components/section-filter";
+import { ConfidenceMeter } from "@/components/confidence-meter";
 import { LegalDisclaimer } from "@/components/legal-disclaimer";
+
+const SECTION_TABS: { value: JudgmentSection; label: string }[] = [
+    { value: "FACTS", label: "Facts" },
+    { value: "ISSUES", label: "Issues" },
+    { value: "ARGUMENTS", label: "Arguments" },
+    { value: "HOLDINGS", label: "Holdings" },
+    { value: "REASONING", label: "Reasoning" },
+    { value: "ORDER", label: "Order" },
+];
 
 function SearchContent() {
     const searchParams = useSearchParams();
@@ -36,6 +45,8 @@ function SearchContent() {
     const [yearTo, setYearTo] = useState<string>("");
     const [caseType, setCaseType] = useState<string>("");
     const [sectionFilter, setSectionFilter] = useState<JudgmentSection | null>(null);
+
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const executeSearch = useCallback(async (q: string, p: number) => {
         if (!q.trim()) return;
@@ -60,6 +71,7 @@ function SearchContent() {
         }
     }, [court, yearFrom, yearTo, caseType, sectionFilter]);
 
+    // Initial search from URL params
     useEffect(() => {
         if (initialQuery) {
             executeSearch(initialQuery, 1);
@@ -70,6 +82,28 @@ function SearchContent() {
     useEffect(() => {
         searchFacets().then(setFacets).catch(() => { });
     }, []);
+
+    // Auto-apply filters with 300ms debounce (Gap 3)
+    const isInitialMount = useRef(true);
+    useEffect(() => {
+        if (isInitialMount.current) {
+            isInitialMount.current = false;
+            return;
+        }
+        if (!query.trim()) return;
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+            setPage(1);
+            executeSearch(query.trim(), 1);
+        }, 300);
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+        };
+    }, [court, yearFrom, yearTo, caseType, sectionFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Compute low-relevance signal (Gap 12)
+    const allLowRelevance = results && results.results.length > 0 &&
+        results.results.every((r) => r.score < 0.3);
 
     function handleSearch(e: React.FormEvent) {
         e.preventDefault();
@@ -118,9 +152,42 @@ function SearchContent() {
                             </Button>
                         </form>
 
-                        {/* Filter bar */}
+                        {/* Section pill tabs — always visible (Gap 2) */}
+                        <div className="flex flex-wrap items-center gap-1.5 mt-3" role="tablist" aria-label="Filter by judgment section">
+                            <button
+                                type="button"
+                                role="tab"
+                                aria-selected={!sectionFilter}
+                                onClick={() => setSectionFilter(null)}
+                                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                                    !sectionFilter
+                                        ? "bg-primary text-primary-foreground border-primary"
+                                        : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                                }`}
+                            >
+                                All Sections
+                            </button>
+                            {SECTION_TABS.map((s) => (
+                                <button
+                                    key={s.value}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={sectionFilter === s.value}
+                                    onClick={() => setSectionFilter(sectionFilter === s.value ? null : s.value)}
+                                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                                        sectionFilter === s.value
+                                            ? "bg-primary text-primary-foreground border-primary"
+                                            : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                                    }`}
+                                >
+                                    {s.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Filter bar (court, case type, years) */}
                         {showFilters && (
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-3 pt-3 border-t">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 pt-3 border-t">
                                 <div>
                                     <label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Court</label>
                                     <select
@@ -142,10 +209,6 @@ function SearchContent() {
                                         <option value="">All types</option>
                                         {facets?.case_types.map((t) => <option key={t} value={t}>{t}</option>)}
                                     </select>
-                                </div>
-                                <div>
-                                    <label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Section</label>
-                                    <SectionFilter value={sectionFilter} onChange={setSectionFilter} />
                                 </div>
                                 <div>
                                     <label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Year From</label>
@@ -234,6 +297,16 @@ function SearchContent() {
                                 </span>
                             </div>
 
+                            {/* Low-relevance banner (Gap 12) */}
+                            {allLowRelevance && (
+                                <div className="flex items-center gap-2 mb-4 p-3 rounded-md border border-yellow-500/30 bg-yellow-50 dark:bg-yellow-950/20 text-yellow-800 dark:text-yellow-200">
+                                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                                    <p className="text-xs">
+                                        No highly relevant results found. Try broadening your search terms or adjusting filters.
+                                    </p>
+                                </div>
+                            )}
+
                             {/* Result cards */}
                             {results.results.length === 0 ? (
                                 <div className="text-center py-16">
@@ -286,13 +359,19 @@ function SearchContent() {
                                                     )}
                                                     {r.snippet && (
                                                         <p className="text-xs text-muted-foreground mt-2 line-clamp-2 leading-relaxed">
+                                                            {/* Section label pill (Gap 5) */}
+                                                            {r.section_type && (
+                                                                <span className="inline-flex items-center mr-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-muted text-muted-foreground/80 align-middle">
+                                                                    {r.section_type}
+                                                                </span>
+                                                            )}
                                                             {r.snippet}
                                                         </p>
                                                     )}
                                                 </div>
-                                                <div className="text-right shrink-0">
-                                                    <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">Score</div>
-                                                    <div className="text-sm font-medium tabular-nums">{r.score.toFixed(2)}</div>
+                                                {/* ConfidenceMeter replacing raw score (Gap 18) */}
+                                                <div className="shrink-0 pt-0.5">
+                                                    <ConfidenceMeter score={r.score} />
                                                 </div>
                                             </div>
                                         </Card>
