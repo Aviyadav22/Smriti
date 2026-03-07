@@ -119,6 +119,50 @@ class TestDetectTreatmentInText:
         assert CitationTreatment.OVERRULED in treatments
         assert CitationTreatment.FOLLOWED in treatments
 
+    def test_detects_not_followed(self):
+        """Should detect 'not followed' as NOT_FOLLOWED treatment."""
+        text = "The ratio in the earlier judgment was not followed by this Court."
+        results = detect_treatment_in_text(text)
+        treatments = [r.treatment for r in results]
+        assert CitationTreatment.NOT_FOLLOWED in treatments
+
+    def test_detects_declined_to_follow(self):
+        """Should detect 'declined to follow' as NOT_FOLLOWED treatment."""
+        text = "The Division Bench declined to follow the single judge's view."
+        results = detect_treatment_in_text(text)
+        treatments = [r.treatment for r in results]
+        assert CitationTreatment.NOT_FOLLOWED in treatments
+
+    def test_detects_refused_to_follow(self):
+        """Should detect 'refused to follow' as NOT_FOLLOWED treatment."""
+        text = "The High Court refused to follow the earlier precedent."
+        results = detect_treatment_in_text(text)
+        treatments = [r.treatment for r in results]
+        assert CitationTreatment.NOT_FOLLOWED in treatments
+
+    def test_detects_never_followed(self):
+        """Should detect 'never been followed' as NOT_FOLLOWED treatment."""
+        text = "This obiter dictum has never been followed by any court."
+        results = detect_treatment_in_text(text)
+        treatments = [r.treatment for r in results]
+        assert CitationTreatment.NOT_FOLLOWED in treatments
+
+    def test_not_followed_excludes_false_positive_followed(self):
+        """'not followed' should NOT also produce a FOLLOWED result."""
+        text = "The principle was not followed in subsequent decisions."
+        results = detect_treatment_in_text(text)
+        treatments = [r.treatment for r in results]
+        assert CitationTreatment.NOT_FOLLOWED in treatments
+        assert CitationTreatment.FOLLOWED not in treatments
+
+    def test_not_followed_has_high_confidence(self):
+        """NOT_FOLLOWED results should have confidence of 0.7."""
+        text = "The court declined to follow the earlier ratio."
+        results = detect_treatment_in_text(text)
+        not_followed = [r for r in results if r.treatment == CitationTreatment.NOT_FOLLOWED]
+        assert len(not_followed) >= 1
+        assert not_followed[0].confidence == 0.7
+
 
 class TestHasOverrulingLanguage:
     def test_returns_true_for_overruled(self):

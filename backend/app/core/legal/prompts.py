@@ -267,7 +267,9 @@ the opposing side might raise and suggest responses.
 
 Rules:
 - For each issue, identify 1-3 plausible counter-arguments.
-- Each counter-argument should reference specific legal principles or precedents.
+- Each counter-argument should reference specific legal principles or precedents \
+FROM THE PROVIDED CONTEXT ONLY. Do NOT fabricate or supplement with case names, \
+citations, or legal principles from your training data.
 - Suggest a response or rebuttal for each counter-argument.
 - Be specific and grounded — do not fabricate case citations.
 """
@@ -361,6 +363,13 @@ Rules:
 novel questions, constitutional challenges, or conflicts between precedents.
 - jurisdiction: identify any specific court or territorial jurisdiction hinted at (e.g., \
 "Supreme Court", "Bombay High Court", "Delhi"), or null if not determinable.
+- target_court: the court where the user's matter will be heard or is being prepared for. \
+Look for phrases like "filing in", "arguing before", "matter before", "preparing for \
+[court name]", "appeal to [court name]". Use the full canonical name (e.g., \
+"Supreme Court of India", "High Court of Bombay", "High Court of Madhya Pradesh"). \
+If no target court is mentioned or determinable, return null.
+- target_bench: the bench type the user's matter will be heard by (single, division, full, \
+or constitutional). If not mentioned, return null.
 - key_entities: extract party names, statute names, section numbers, legal concepts, \
 and landmark case names mentioned in the query.
 - search_hints: generate 3-5 alternative phrasings or related legal terms that would \
@@ -383,6 +392,12 @@ RESEARCH_CLASSIFY_SCHEMA: Final[dict] = {
             "enum": ["simple", "moderate", "complex"],
         },
         "jurisdiction": {"type": "string", "nullable": True},
+        "target_court": {"type": "string", "nullable": True},
+        "target_bench": {
+            "type": "string",
+            "enum": ["single", "division", "full", "constitutional"],
+            "nullable": True,
+        },
         "key_entities": {
             "type": "array",
             "items": {"type": "string"},

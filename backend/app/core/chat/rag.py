@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
 from app.core.legal.prompts import CHAT_SYSTEM_PROMPT, CHAT_USER_WITH_CONTEXT
+from app.core.legal.treatment import has_overruling_language
 from app.core.search.hybrid import hybrid_search
 from app.core.search.query import SearchFilters
 from app.security.encryption import encrypt_field, safe_decrypt
@@ -217,12 +218,15 @@ async def _reformulate_query(
     )
 
     prompt = (
-        "Given this conversation context:\n"
+        "You are reformulating a legal research query. Given this conversation context:\n"
         f"{history_summary}\n\n"
         f"The user now asks: \"{question}\"\n\n"
-        "Rewrite the user's question as a self-contained search query that includes "
-        "all necessary context from the conversation. Return ONLY the reformulated query, "
-        "nothing else. If the question is already self-contained, return it as-is."
+        "Rewrite the user's question as a self-contained legal search query that:\n"
+        "1. Preserves ALL legal terminology (section numbers, act names, case names, legal concepts)\n"
+        "2. Resolves pronouns and references to specific legal entities from the conversation\n"
+        "3. Maintains the Indian legal context (IPC/BNS, CrPC/BNSS, specific courts mentioned)\n"
+        "4. Is suitable for searching a database of Indian court judgments\n"
+        "Return ONLY the reformulated query, nothing else."
     )
 
     try:
@@ -400,6 +404,14 @@ def _format_context(sources: list[ChatSource]) -> str:
             if len(s.chunk_text) > MAX_CHUNK_CHARS:
                 chunk += "..."
             lines.append(f"\n    Relevant Passage:\n    \"{chunk}\"")
+
+        # Check for overruling language and add treatment warning
+        check_text = (s.ratio or "") + " " + (s.chunk_text or "")
+        if check_text.strip() and has_overruling_language(check_text):
+            lines.append(
+                "\n    WARNING: This case contains language suggesting it may have "
+                "been overruled or distinguished. Verify current status."
+            )
 
         parts.append("\n".join(lines))
 
