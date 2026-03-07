@@ -36,6 +36,7 @@ def classify_precedent_strength(
     source_bench: str | None,
     target_court: str | None = None,
     target_bench: str | None = None,
+    overruled: bool = False,
 ) -> PrecedentStrength:
     """Classify the binding strength of a precedent.
 
@@ -48,6 +49,10 @@ def classify_precedent_strength(
     Returns:
         PrecedentStrength indicating how strongly the precedent applies.
     """
+    # If the case is known to be overruled, return immediately
+    if overruled:
+        return PrecedentStrength.OVERRULED
+
     source_canonical = normalize_court_name(source_court)
     source_level = get_court_level(source_canonical)
 
