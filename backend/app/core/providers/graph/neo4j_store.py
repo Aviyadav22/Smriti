@@ -6,6 +6,29 @@ from neo4j import AsyncGraphDatabase
 
 from app.core.config import settings
 
+# ---------------------------------------------------------------------------
+# Input validation allowlists
+# ---------------------------------------------------------------------------
+
+_VALID_LABELS = frozenset({"Case", "Statute", "Section", "Judge", "Court", "Act"})
+_VALID_RELATIONSHIPS = frozenset({
+    "CITES", "CITED_BY", "OVERRULES", "OVERRULED_BY",
+    "DISTINGUISHES", "FOLLOWS", "REFERS_TO", "APPLIES",
+    "DECIDED_BY", "HEARD_IN",
+})
+
+
+def _validate_label(label: str) -> str:
+    if label not in _VALID_LABELS:
+        raise ValueError(f"Invalid node label: '{label}'. Allowed: {sorted(_VALID_LABELS)}")
+    return label
+
+
+def _validate_relationship(rel_type: str) -> str:
+    if rel_type not in _VALID_RELATIONSHIPS:
+        raise ValueError(f"Invalid relationship: '{rel_type}'. Allowed: {sorted(_VALID_RELATIONSHIPS)}")
+    return rel_type
+
 
 class Neo4jGraph:
     """Neo4j graph database implementing GraphStore protocol."""
@@ -18,6 +41,7 @@ class Neo4jGraph:
         self._database = settings.neo4j_database
 
     async def create_node(self, label: str, properties: dict) -> str:
+        _validate_label(label)
         async with self._driver.session(database=self._database) as session:
             result = await session.run(
                 f"CREATE (n:{label} $props) RETURN n.id AS id",
@@ -25,26 +49,6 @@ class Neo4jGraph:
             )
             record = await result.single()
             return str(record["id"]) if record else ""
-
-    async def create_edge(
-        self,
-        from_id: str,
-        to_id: str,
-        relationship: str,
-        *,
-        properties: dict | None = None,
-    ) -> None:
-        query = (
-            "MATCH (a {id: $from_id}), (b {id: $to_id}) "
-            f"CREATE (a)-[r:{relationship} $props]->(b)"
-        )
-        async with self._driver.session(database=self._database) as session:
-            await session.run(
-                query,
-                from_id=from_id,
-                to_id=to_id,
-                props=properties or {},
-            )
 
     async def get_node(self, node_id: str) -> dict | None:
         async with self._driver.session(database=self._database) as session:
@@ -73,6 +77,11 @@ class Neo4jGraph:
         direction: str = "both",
         depth: int = 1,
     ) -> dict:
+        if relationship is not None:
+            _validate_relationship(relationship)
+        # Clamp depth to 1-5 to prevent expensive traversals
+        depth = max(1, min(depth, 5))
+
         rel_filter = f":{relationship}" if relationship else ""
 
         if direction == "outgoing":
