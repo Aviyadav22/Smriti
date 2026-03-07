@@ -124,6 +124,64 @@ class TestDecomposeQueryNode:
         assert result["sub_queries"] == []
 
     @pytest.mark.asyncio
+    async def test_includes_user_feedback_in_prompt(self) -> None:
+        """When user_feedback with step='plan' exists, the prompt sent to the LLM must contain it."""
+        llm = _make_llm()
+        llm.generate_structured.return_value = {
+            "sub_queries": [{"query": "criminal law 498A", "aspect": "criminal", "rationale": "r"}]
+        }
+
+        state = _make_state(
+            messages=[
+                {"type": "classification", "data": {"topic": "criminal", "complexity": "moderate"}},
+                {"type": "user_feedback", "step": "plan", "content": "Focus on criminal law only"},
+            ]
+        )
+        result = await decompose_query_node(state, llm)
+
+        # Verify the LLM received the feedback in the prompt
+        call_kwargs = llm.generate_structured.call_args
+        prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        assert "Focus on criminal law only" in prompt_sent
+
+    @pytest.mark.asyncio
+    async def test_no_user_feedback_prompt_unchanged(self) -> None:
+        """Without user_feedback, the prompt should NOT contain feedback instructions."""
+        llm = _make_llm()
+        llm.generate_structured.return_value = {
+            "sub_queries": [{"query": "test", "aspect": "general", "rationale": "r"}]
+        }
+
+        state = _make_state(
+            messages=[{"type": "classification", "data": {"topic": "criminal"}}]
+        )
+        await decompose_query_node(state, llm)
+
+        call_kwargs = llm.generate_structured.call_args
+        prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        assert "user has reviewed" not in prompt_sent
+
+    @pytest.mark.asyncio
+    async def test_ignores_feedback_for_other_steps(self) -> None:
+        """user_feedback with step != 'plan' should be ignored by decompose_query_node."""
+        llm = _make_llm()
+        llm.generate_structured.return_value = {
+            "sub_queries": [{"query": "test", "aspect": "general", "rationale": "r"}]
+        }
+
+        state = _make_state(
+            messages=[
+                {"type": "classification", "data": {"topic": "criminal"}},
+                {"type": "user_feedback", "step": "findings", "content": "This should be ignored"},
+            ]
+        )
+        await decompose_query_node(state, llm)
+
+        call_kwargs = llm.generate_structured.call_args
+        prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        assert "This should be ignored" not in prompt_sent
+
+    @pytest.mark.asyncio
     async def test_handles_missing_classification_gracefully(self) -> None:
         llm = _make_llm()
         llm.generate_structured.return_value = {

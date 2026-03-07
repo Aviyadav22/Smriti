@@ -85,12 +85,26 @@ async def decompose_query_node(
         if isinstance(msg, dict) and msg.get("type") == "classification":
             classification = msg.get("data", {})
 
+    # Retrieve user feedback from HITL checkpoint (if user revised the plan)
+    user_feedback = ""
+    for msg in state.get("messages", []):
+        if isinstance(msg, dict) and msg.get("type") == "user_feedback" and msg.get("step") == "plan":
+            user_feedback = msg.get("content", "")
+
     classification_str = json.dumps(classification) if classification else "N/A"
 
     prompt = RESEARCH_DECOMPOSE_USER.format(
         query=query,
         classification=classification_str,
     )
+
+    if user_feedback:
+        prompt += (
+            f"\n\nIMPORTANT — The user has reviewed the previous sub-queries and "
+            f"requested the following adjustments:\n\"{user_feedback}\"\n"
+            f"Incorporate this feedback into your sub-query decomposition."
+        )
+
     result = await llm.generate_structured(
         prompt=prompt,
         system=RESEARCH_DECOMPOSE_SYSTEM,
