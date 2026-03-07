@@ -13,9 +13,12 @@ from app.security.auth import (
     create_access_token,
     create_refresh_token,
     hash_password,
+    revoke_token,
     verify_password,
     verify_refresh_token,
 )
+from app.security.rbac import get_current_user
+from app.security.auth import TokenPayload
 
 router = APIRouter()
 
@@ -184,3 +187,16 @@ async def refresh_token(
         refresh_token=new_refresh_token,
         expires_in=900,
     )
+
+
+@router.post("/logout", status_code=200)
+async def logout(
+    current_user: TokenPayload = Depends(get_current_user),
+) -> dict[str, str]:
+    """Revoke the current access token (logout).
+
+    Adds the token's JTI to the revocation blacklist so it can no longer
+    be used for authentication.
+    """
+    revoke_token(current_user.jti)
+    return {"detail": "Successfully logged out"}

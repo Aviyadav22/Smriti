@@ -7,9 +7,12 @@ import pytest
 
 from app.security.auth import (
     TokenPayload,
+    clear_revoked_tokens,
     create_access_token,
     create_refresh_token,
     hash_password,
+    is_token_revoked,
+    revoke_token,
     verify_access_token,
     verify_password,
     verify_refresh_token,
@@ -78,6 +81,54 @@ class TestRefreshToken:
         token = create_access_token("user-123", "admin")
         with pytest.raises(AuthenticationError, match="Invalid token"):
             verify_refresh_token(token)
+
+
+class TestTokenRevocation:
+    """Tests for token revocation (blacklisting)."""
+
+    def setup_method(self):
+        """Clear the revocation blacklist before each test."""
+        clear_revoked_tokens()
+
+    def teardown_method(self):
+        """Clear the revocation blacklist after each test."""
+        clear_revoked_tokens()
+
+    def test_revoke_token_blocks_verification(self):
+        token = create_access_token("user-123", "admin")
+        payload = verify_access_token(token)
+        revoke_token(payload.jti)
+        with pytest.raises(AuthenticationError, match="revoked"):
+            verify_access_token(token)
+
+    def test_revoke_refresh_token(self):
+        token = create_refresh_token("user-123")
+        payload = verify_refresh_token(token)
+        revoke_token(payload.jti)
+        with pytest.raises(AuthenticationError, match="revoked"):
+            verify_refresh_token(token)
+
+    def test_is_token_revoked(self):
+        assert not is_token_revoked("some-jti")
+        revoke_token("some-jti")
+        assert is_token_revoked("some-jti")
+
+    def test_unrevoked_token_still_works(self):
+        token = create_access_token("user-123", "admin")
+        payload = verify_access_token(token)
+        # Revoke a different JTI
+        revoke_token("different-jti")
+        # Original token should still work
+        result = verify_access_token(token)
+        assert result.sub == "user-123"
+
+    def test_clear_revoked_tokens(self):
+        revoke_token("jti-1")
+        revoke_token("jti-2")
+        assert is_token_revoked("jti-1")
+        clear_revoked_tokens()
+        assert not is_token_revoked("jti-1")
+        assert not is_token_revoked("jti-2")
 
 
 class TestPasswordHashing:

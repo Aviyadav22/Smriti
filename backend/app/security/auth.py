@@ -31,6 +31,28 @@ class TokenPayload:
 
 
 # ---------------------------------------------------------------------------
+# Token revocation (in-memory; swap to Redis in production)
+# ---------------------------------------------------------------------------
+
+_revoked_tokens: set[str] = set()
+
+
+def revoke_token(jti: str) -> None:
+    """Add a token's JTI to the revocation blacklist."""
+    _revoked_tokens.add(jti)
+
+
+def is_token_revoked(jti: str) -> bool:
+    """Check if a token has been revoked."""
+    return jti in _revoked_tokens
+
+
+def clear_revoked_tokens() -> None:
+    """Clear the revocation blacklist (for testing only)."""
+    _revoked_tokens.clear()
+
+
+# ---------------------------------------------------------------------------
 # Token creation
 # ---------------------------------------------------------------------------
 
@@ -138,9 +160,13 @@ def _decode_token(token: str, secret: str, expected_type: str) -> TokenPayload:
             f"Expected {expected_type} token, got {token_type}"
         )
 
+    # Check revocation blacklist
+    jti = decoded.get("jti")
+    if jti and is_token_revoked(str(jti)):
+        raise AuthenticationError("Token has been revoked")
+
     sub = decoded.get("sub")
     role = decoded.get("role")
-    jti = decoded.get("jti")
     if not sub or not role or not jti:
         raise AuthenticationError("Token missing required claims")
 
