@@ -12,7 +12,7 @@ import dynamic from "next/dynamic";
 import { getCase, getCaseCitations, getCaseCitedBy, getCaseSimilar, getCasePdfUrl, getGraphNeighborhood } from "@/lib/api";
 import type { CaseDetail, CitationItem, GraphData, SimilarCase } from "@/lib/types";
 import Link from "next/link";
-import { ArrowLeft, FileText, BookOpen, Link2, Scale, ExternalLink, Loader2, GitBranch } from "lucide-react";
+import { ArrowLeft, FileText, BookOpen, Link2, Scale, ExternalLink, Loader2, GitBranch, MessageSquare } from "lucide-react";
 import AudioPlayer from "@/components/audio-player";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
@@ -111,6 +111,14 @@ export default function CaseDetailPage() {
                             {caseData.bench_type && (
                                 <Badge variant="secondary" className="text-[11px] font-normal capitalize">{caseData.bench_type} bench</Badge>
                             )}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 text-[11px] rounded-md gap-1 ml-auto"
+                                onClick={() => router.push(`/chat?q=${encodeURIComponent(`Explain the case "${caseData.title}" and its key legal principles`)}`)}
+                            >
+                                <MessageSquare className="h-3 w-3" /> Open in Chat
+                            </Button>
                         </div>
                     </div>
                 </div>
@@ -230,6 +238,9 @@ export default function CaseDetailPage() {
                                                         >
                                                             <span className="font-medium font-[family-name:var(--font-lora)]">{c.title || "Unknown"}</span>
                                                             {c.citation && <span className="text-muted-foreground ml-2 text-xs">{c.citation}</span>}
+                                                            <div className="text-xs text-muted-foreground mt-0.5">
+                                                                {[c.court, c.year].filter(Boolean).join(" · ")}
+                                                            </div>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -399,7 +410,7 @@ export default function CaseDetailPage() {
                                     {caseData.jurisdiction && <div>Jurisdiction: <span className="text-foreground capitalize">{caseData.jurisdiction}</span></div>}
                                     {caseData.decision_date && <div>Decision: <span className="text-foreground">{caseData.decision_date}</span></div>}
                                     {caseData.source && <div>Source: <span className="text-foreground">{caseData.source}</span></div>}
-                                    {caseData.chunk_count !== null && <div>Chunks: <span className="text-foreground">{caseData.chunk_count}</span></div>}
+                                    {caseData.chunk_count != null && caseData.chunk_count > 0 && <div>Est. Pages: <span className="text-foreground">{Math.max(1, Math.round(caseData.chunk_count * 0.67))}</span></div>}
                                 </div>
                             </Card>
                         </aside>

@@ -240,7 +240,7 @@ describe("CaseDetailPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Allowed")).toBeInTheDocument();
       expect(screen.getByText("2017-08-24")).toBeInTheDocument();
-      expect(screen.getByText("42")).toBeInTheDocument();
+      expect(screen.getByText("28")).toBeInTheDocument();
     });
   });
 
