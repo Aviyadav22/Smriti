@@ -4,6 +4,7 @@ from app.models.agent_execution import AgentExecution
 from app.models.audit import AuditLog
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.case import Case
+from app.models.case_citation_equivalent import CaseCitationEquivalent
 from app.models.chat import ChatMessage, ChatSession
 from app.models.consent import Consent
 from app.models.document import Document
@@ -14,6 +15,7 @@ __all__ = [
     "AuditLog",
     "Base",
     "Case",
+    "CaseCitationEquivalent",
     "ChatMessage",
     "ChatSession",
     "Consent",
