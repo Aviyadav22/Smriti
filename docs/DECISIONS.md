@@ -415,3 +415,85 @@ Need Indian court judgment data. Options: scrape from ecourts.gov.in, use Indian
 - (-) Only SC judgments initially (HCs in Phase 2)
 - (-) Dataset may lag 1-2 months behind live court orders
 - (-) Must display attribution: "Indian Supreme Court Judgments dataset by Dattam Labs, licensed under CC-BY-4.0"
+
+---
+
+## ADR-016: Celery + Redis for Background Task Processing
+
+**Status**: Accepted
+**Date**: 2026-03
+
+### Context
+Phase 5 requires background processing for document analysis (6-step pipeline, ~30-60s) and audio generation (TTS synthesis, ~10-20s). These cannot run synchronously in API request handlers.
+
+### Decision
+**Celery with Redis** as the message broker (DB 1, separate from cache on DB 0). JSON serialization for task payloads.
+
+### Alternatives Considered
+1. **Direct asyncio background tasks**: No persistence, lost on crash, no retry
+2. **Temporal**: Overkill for current scale, complex setup
+3. **APScheduler**: No distributed support, single-process
+4. **FastAPI BackgroundTasks**: No retry, no persistence, no monitoring
+
+### Consequences
+- (+) Job persistence: tasks survive worker restarts
+- (+) Automatic retry with configurable backoff
+- (+) Task monitoring via Flower dashboard
+- (+) Horizontal scaling: add more workers as load increases
+- (+) Redis already in stack for caching (just use a separate DB)
+- (-) Adds operational complexity (separate worker process to manage)
+- (-) JSON serialization limits payload types (no complex Python objects)
+
+---
+
+## ADR-017: Sarvam AI as Primary TTS Provider
+
+**Status**: Accepted
+**Date**: 2026-03
+
+### Context
+Audio digests need text-to-speech in English and Indian languages (Hindi priority). Indian legal terminology requires natural-sounding speech.
+
+### Decision
+**Sarvam AI** as primary TTS provider (supports 22 Indian languages including Hindi, Bengali, Tamil, Telugu). MockTTS for dev/testing. Google Cloud TTS as future fallback.
+
+### Alternatives Considered
+1. **Google Cloud TTS**: Good English, limited Indian language quality
+2. **Amazon Polly**: Limited Indian language support
+3. **ElevenLabs**: Expensive, no Indian language focus
+
+### Consequences
+- (+) Best Indian language coverage (22 languages)
+- (+) Natural-sounding speech for legal terminology
+- (+) Cost-effective: ~$0.003/minute
+- (+) TTSProvider Protocol allows swapping without code changes
+- (+) MockTTS enables offline development and testing
+- (-) Newer service, less proven at scale than Google/Amazon
+- (-) Dependency on a single vendor for core feature (mitigated by Protocol pattern and planned Google TTS fallback)
+
+---
+
+## ADR-018: Document Analysis as Multi-Step Pipeline
+
+**Status**: Accepted
+**Date**: 2026-03
+
+### Context
+Uploaded legal documents need comprehensive analysis: issue extraction, precedent finding, counter-arguments, and research memo. Each step depends on the previous.
+
+### Decision
+**6-step sequential pipeline** in a single Celery task with status tracking at each step. Steps: text extraction → issue extraction (Gemini structured) → precedent search (parallel hybrid search per issue) → counter-arguments (Gemini) → research memo (Gemini) → store results.
+
+### Alternatives Considered
+1. **Chained Celery tasks (one per step)**: Complex error handling, harder to track overall status
+2. **Single monolithic LLM call**: Too much for one prompt, poor quality
+3. **LangGraph workflow**: Planned for Phase 6, premature for Phase 5
+
+### Consequences
+- (+) Simple implementation: one task function with clear sequential steps
+- (+) Clear status tracking per step (frontend can show progress)
+- (+) Easy to debug: each step's output is inspectable
+- (+) Can migrate to LangGraph agent in Phase 6 if needed
+- (+) Status visible to frontend via polling endpoint
+- (-) Single task failure requires restarting entire pipeline (mitigated by Celery retry)
+- (-) No parallelism between steps (acceptable since steps are dependent)

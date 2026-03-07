@@ -167,6 +167,51 @@ CREATE INDEX idx_documents_user ON documents(user_id);
 CREATE INDEX idx_documents_status ON documents(status);
 ```
 
+> **Phase 5 expansion:** The `documents` table gains three columns for pipeline tracking:
+> - `processing_step VARCHAR(100)` — current pipeline step (e.g. `extracting_text`, `finding_arguments`)
+> - `processing_started_at TIMESTAMPTZ`
+> - `processing_completed_at TIMESTAMPTZ`
+>
+> The `status` CHECK constraint is expanded to:
+> `CHECK (status IN ('pending', 'extracting', 'analyzing', 'searching', 'generating', 'completed', 'failed'))`
+
+#### `document_analyses` — Document Analysis (Phase 5)
+
+```sql
+CREATE TABLE document_analyses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE UNIQUE,
+    extracted_text TEXT,
+    issues JSONB,          -- [{title, description}]
+    parties JSONB,         -- {petitioner, respondent}
+    key_facts TEXT[],
+    relief_sought TEXT,
+    counter_arguments JSONB,  -- [{issue_title, arguments: [{argument, response}]}]
+    research_memo TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+#### `audio_digests` — Audio Digests (Phase 5)
+
+```sql
+CREATE TABLE audio_digests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    case_id UUID NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+    language VARCHAR(10) NOT NULL DEFAULT 'en',
+    summary_text TEXT,
+    audio_storage_path TEXT,
+    duration_seconds INTEGER,
+    status VARCHAR(20) NOT NULL DEFAULT 'generating'
+        CHECK (status IN ('generating', 'completed', 'failed')),
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (case_id, language)
+);
+```
+
 #### `audit_logs` — Security Audit Trail
 
 ```sql
@@ -480,7 +525,125 @@ data: {"type": "done", "tokens_used": 1250, "sources": [...]}
 
 Deletes: user record, chat history, uploaded documents, audit logs (anonymized), consent records.
 
-### 2.7 Error Format (All Endpoints)
+### 2.7 Document Upload API (Phase 5)
+
+#### `POST /api/v1/documents/upload` — Upload PDF for analysis
+
+Upload a PDF document (multipart/form-data, max 50 MB) to trigger the analysis pipeline.
+
+**Response (202):**
+```json
+{
+    "id": "uuid",
+    "filename": "arbitration_clause_dispute.pdf",
+    "status": "pending"
+}
+```
+
+#### `GET /api/v1/documents` — List user's documents (paginated)
+
+**Query parameters:** `page` (default 1), `page_size` (default 20)
+
+**Response (200):**
+```json
+{
+    "items": [
+        {
+            "id": "uuid",
+            "filename": "arbitration_clause_dispute.pdf",
+            "status": "completed",
+            "created_at": "2026-03-07T10:30:00Z"
+        }
+    ],
+    "total": 5,
+    "page": 1,
+    "page_size": 20
+}
+```
+
+#### `GET /api/v1/documents/{id}` — Document detail + analysis
+
+**Response (200):**
+```json
+{
+    "id": "uuid",
+    "filename": "arbitration_clause_dispute.pdf",
+    "status": "completed",
+    "analysis": {
+        "issues": [
+            {"title": "Validity of arbitration clause", "description": "Whether the arbitration clause in the agreement is enforceable..."}
+        ],
+        "parties": {"petitioner": "ABC Corp", "respondent": "XYZ Ltd"},
+        "key_facts": ["Agreement executed on 2024-01-15", "Clause 12 contains arbitration provision"],
+        "counter_arguments": [
+            {
+                "issue_title": "Validity of arbitration clause",
+                "arguments": [
+                    {"argument": "Clause is unconscionable", "response": "Supreme Court in Centrotrade held..."}
+                ]
+            }
+        ]
+    }
+}
+```
+
+#### `DELETE /api/v1/documents/{id}` — Delete document + analysis
+
+**Response:** `204 No Content`
+
+#### `GET /api/v1/documents/{id}/memo` — Get research memo
+
+**Response (200):**
+```json
+{
+    "memo": "# Research Memo\n\n## Issues Identified\n\n..."
+}
+```
+
+### 2.8 Audio Digest API (Phase 5)
+
+#### `POST /api/v1/cases/{id}/audio/generate` — Trigger audio generation
+
+**Request:**
+```json
+{
+    "language": "en"
+}
+```
+
+**Response (202):**
+```json
+{
+    "status": "generating",
+    "case_id": "uuid",
+    "language": "en"
+}
+```
+
+Supported languages: `"en"` (English), `"hi"` (Hindi). Additional Indian languages available via Sarvam AI TTS.
+
+#### `GET /api/v1/cases/{id}/audio/status` — Check audio availability
+
+**Response (200):**
+```json
+{
+    "available": true,
+    "languages": [
+        {"language": "en", "status": "completed", "duration_seconds": 187},
+        {"language": "hi", "status": "generating", "duration_seconds": null}
+    ]
+}
+```
+
+#### `GET /api/v1/cases/{id}/audio` — Stream audio MP3
+
+**Query parameters:** `language` (default `"en"`)
+
+**Response:** `audio/mpeg` stream (binary MP3 data)
+
+Returns `404` if audio not yet generated for the requested language.
+
+### 2.9 Error Format (All Endpoints)
 
 ```json
 {

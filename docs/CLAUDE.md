@@ -26,6 +26,8 @@ Smriti is a purpose-built Indian legal research platform — think Harvey AI but
 | Reranker | Cohere rerank-v4.0-pro | Native reranker API, free tier |
 | Cache | Redis (Upstash) | Session, query caching, rate limiting |
 | Storage | Google Cloud Storage | PDF documents |
+| Background Jobs | Celery + Redis (broker on DB 1) | Async document processing, audio generation |
+| TTS | Sarvam AI (22 Indian languages) / MockTTS (dev) | Audio digest generation |
 | Deploy | Google Cloud Run | Serverless containers |
 
 ---
@@ -36,8 +38,8 @@ Smriti is a purpose-built Indian legal research platform — think Harvey AI but
 smriti/
 ├── docs/                          # You are here — project documentation
 ├── frontend/                      # Next.js 15 App Router
-│   ├── app/                       # Pages (search, case, chat, graph, upload)
-│   ├── components/                # UI components (search, case, chat, graph, ui)
+│   ├── app/                       # Pages (search, case, chat, graph, upload, documents, judges, judge, courts)
+│   ├── components/                # UI components (header, footer, audio-player, file-upload, processing-status, ui/)
 │   └── lib/                       # API client, types, utils
 ├── backend/                       # FastAPI Python
 │   ├── app/
@@ -48,7 +50,12 @@ smriti/
 │   │   │   ├── search/            # Hybrid search, RRF, query understanding
 │   │   │   ├── ingestion/         # PDF processing, chunking, embedding
 │   │   │   ├── legal/             # Indian legal patterns, courts, citations
-│   │   │   └── graph/             # Citation graph operations
+│   │   │   ├── graph/             # Citation graph operations
+│   │   │   ├── analysis/          # Document analyzer, precedent mapper
+│   │   │   ├── analytics/         # Judge analytics
+│   │   │   └── chat/              # RAG chat pipeline
+│   │   ├── tasks/                 # Celery async tasks (document, audio)
+│   │   ├── worker.py              # Celery worker entry point
 │   │   ├── security/              # Auth, RBAC, encryption, audit, consent
 │   │   ├── models/                # SQLAlchemy ORM models
 │   │   └── db/                    # Database connections
@@ -160,6 +167,10 @@ npm run dev                    # http://localhost:3000
 # 5. Ingest sample data
 cd backend
 python scripts/ingest_s3.py --year 2024 --limit 100
+
+# 6. Start Celery worker (for document processing & audio generation)
+cd backend
+celery -A app.worker:celery_app worker --loglevel=info
 ```
 
 ### Key URLs (Local Dev)
@@ -169,14 +180,15 @@ python scripts/ingest_s3.py --year 2024 --limit 100
 - PostgreSQL: `localhost:5432`
 - Redis: `localhost:6379`
 - Neo4j Browser: `http://localhost:7474`
+- Celery Flower (optional): `http://localhost:5555`
 
 ---
 
 ## Current Phase
 
-**Phase 2: Search + Frontend (in progress)**
+**Phase 6: Agent Framework (next)**
 
-Phase 1 (Foundation + Ingestion) is complete — all backend code, security, DB, interfaces, providers, ingestion pipeline, and tests are built. Phase 2 search pipeline and frontend are built; currently ingesting SC judgments and validating search quality. See `PHASE_PLAN.md` for full status.
+Phases 1-5 complete — backend, security, search pipeline, frontend, RAG chat, citation graph, judge analytics, document upload + analysis, audio digests all built. 250 backend tests, 127 frontend tests, all passing. See `PHASE_PLAN.md` for full status.
 
 ---
 

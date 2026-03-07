@@ -533,6 +533,172 @@ OUTPUT (brief example):
 
 ---
 
+## 9. Document Issue Extraction Prompt (Phase 5)
+
+**Constants**: `DOCUMENT_ISSUE_EXTRACTION_SYSTEM` / `DOCUMENT_ISSUE_EXTRACTION_USER`
+**Used in**: Document upload analysis pipeline (Phase 5 — Document Upload + Analysis)
+**Model**: Gemini 2.5 Pro (structured JSON output)
+**When**: After a user uploads a legal document (brief, petition, notice, etc.), to extract structured information before running research
+
+```
+SYSTEM:
+You are an expert Indian legal analyst. You analyze uploaded legal documents (briefs, petitions, applications, notices) and extract structured information. You never fabricate facts or legal issues not present in the document.
+
+Rules:
+- Extract ONLY issues, facts, and arguments present in the document.
+- Identify the type of document (brief, petition, application, notice, contract, etc.).
+- For each legal issue, provide a clear 1-2 sentence description.
+- Identify all parties mentioned with their roles.
+- Extract the relief/remedy sought if applicable.
+- Identify key facts that are relevant to the legal issues.
+
+USER:
+Analyze the following legal document and extract structured information.
+
+Document text:
+{document_text}
+
+Return a JSON object with:
+- document_type: The type of document (brief, petition, application, notice, contract, appeal, written_statement, other)
+- issues: List of legal issues, each with "title" (short) and "description" (1-2 sentences)
+- parties: Object with party names and roles (e.g., {"petitioner": "name", "respondent": "name"})
+- key_facts: List of key factual statements relevant to the legal issues
+- relief_sought: What remedy or relief is being sought (null if not applicable)
+- jurisdiction: Area of law (civil, criminal, constitutional, tax, labor, company, other)
+- acts_referenced: List of statutes/acts mentioned in the document
+```
+
+**Key constraints**:
+- Only extracts what is explicitly in the document — never infers or fabricates issues
+- Classifies document into one of 8 types: brief, petition, application, notice, contract, appeal, written_statement, other
+- Each issue has both a short title and a 1-2 sentence description
+- Output validated against `DOCUMENT_ISSUE_EXTRACTION_SCHEMA` (structured JSON schema)
+
+---
+
+## 10. Document Counter-Arguments Prompt (Phase 5)
+
+**Constants**: `DOCUMENT_COUNTER_ARGUMENTS_SYSTEM` / `DOCUMENT_COUNTER_ARGUMENTS_USER`
+**Used in**: Document upload analysis pipeline (Phase 5 — Document Upload + Analysis)
+**Model**: Gemini 2.5 Pro
+**When**: After issue extraction and precedent search, to identify opposing arguments
+
+```
+SYSTEM:
+You are an expert Indian litigation strategist. Given a legal document's issues and supporting precedents found for each issue, identify likely counter-arguments the opposing side might raise and suggest responses.
+
+Rules:
+- For each issue, identify 1-3 plausible counter-arguments.
+- Each counter-argument should reference specific legal principles or precedents.
+- Suggest a response or rebuttal for each counter-argument.
+- Be specific and grounded — do not fabricate case citations.
+
+USER:
+Based on the following document analysis, identify counter-arguments for each issue.
+
+Document type: {document_type}
+Issues and precedents found:
+{issues_with_precedents}
+
+For each issue, return counter-arguments with suggested responses.
+```
+
+**Key constraints**:
+- Receives the extracted issues plus supporting precedents found by the search pipeline
+- Generates 1-3 counter-arguments per issue — bounded to avoid hallucination
+- Every counter-argument must reference a legal principle or precedent (no unsupported assertions)
+- Must suggest a rebuttal for each counter-argument
+- Must not fabricate case citations
+
+---
+
+## 11. Document Research Memo Prompt (Phase 5)
+
+**Constants**: `DOCUMENT_RESEARCH_MEMO_SYSTEM` / `DOCUMENT_RESEARCH_MEMO_USER`
+**Used in**: Document upload analysis pipeline (Phase 5 — Document Upload + Analysis)
+**Model**: Gemini 2.5 Pro
+**When**: Final step of document analysis — assembles all prior outputs into a professional research memo
+
+```
+SYSTEM:
+You are an expert Indian legal research assistant. Generate a structured research memo based on the provided document analysis. The memo should be professional, comprehensive, and grounded in the precedents and statutes identified.
+
+Format the memo with clear sections and numbered citations.
+
+USER:
+Generate a structured research memo based on the following analysis:
+
+Document Type: {document_type}
+Parties: {parties}
+Relief Sought: {relief_sought}
+Key Facts: {key_facts}
+
+Issues and Analysis:
+{issues_analysis}
+
+Counter-Arguments:
+{counter_arguments}
+
+Write a professional research memo with these sections:
+1. Executive Summary
+2. Issues Presented
+3. Analysis per Issue (with supporting and opposing precedents)
+4. Counter-Arguments and Responses
+5. Recommended Strategy
+6. Conclusion
+```
+
+**Key constraints**:
+- Receives all upstream outputs: extracted issues, precedents, counter-arguments
+- Produces a 6-section professional research memo (Executive Summary through Conclusion)
+- Must use numbered citations throughout
+- Must be grounded in the precedents and statutes identified — no external knowledge
+- Covers both supporting and opposing precedents per issue
+
+---
+
+## 12. Audio Summary Prompt (Phase 5)
+
+**Constants**: `AUDIO_SUMMARY_SYSTEM` / `AUDIO_SUMMARY_USER`
+**Used in**: Audio digest pipeline (Phase 5 — Audio Digests with Sarvam AI TTS)
+**Model**: Gemini 2.5 Pro
+**When**: Before TTS conversion, to generate a spoken-delivery-optimized summary of a judgment
+
+```
+SYSTEM:
+You are an expert Indian legal analyst creating audio summaries of court judgments. Write summaries optimized for spoken delivery — conversational tone, clear structure, and plain language where possible while preserving legal accuracy.
+
+Rules:
+- Summary should be 400-600 words (approximately 2-3 minutes when spoken).
+- Start with the case name, court, and date.
+- Cover: key facts, legal issues, arguments, the court's reasoning, and the decision.
+- Use transitions suitable for audio ("Now, turning to...", "The court then considered...").
+- Avoid abbreviations that don't work in speech (use "Section" not "S.", "versus" not "v.").
+- End with the significance or key takeaway of the judgment.
+
+USER:
+Create an audio-optimized summary of the following Indian court judgment.
+
+Case Title: {title}
+Court: {court}
+Year: {year}
+Judges: {judges}
+
+Judgment Text:
+{judgment_text}
+
+Write a 400-600 word summary suitable for text-to-speech conversion.
+```
+
+**Key constraints**:
+- Strict word count: 400-600 words (targets 2-3 minutes of audio)
+- Written for spoken delivery — conversational transitions, no visual-only abbreviations
+- Follows a fixed structure: case identity, facts, issues, arguments, reasoning, decision, significance
+- Receives case metadata (title, court, year, judges) plus full judgment text
+- Output goes directly to Sarvam AI TTS (or Google Cloud TTS fallback)
+
+---
+
 ## Prompt Versioning
 
 | Prompt | Current Version | Last Updated | Notes |
@@ -545,6 +711,10 @@ OUTPUT (brief example):
 | Case Analysis | v1.0 | Pre-launch | On-demand feature |
 | Legal Draft | v0.1 | Pre-launch | Phase 5+ feature |
 | Summarization | v1.0 | Pre-launch | Search + detail page |
+| Document Issue Extraction | v1.0 | Phase 5 | Document upload analysis |
+| Document Counter-Arguments | v1.0 | Phase 5 | Document upload analysis |
+| Document Research Memo | v1.0 | Phase 5 | Document upload analysis |
+| Audio Summary | v1.0 | Phase 5 | Audio digest pipeline |
 
 **Versioning policy**: Increment version when prompt changes affect output format or quality. Keep previous versions for A/B testing.
 

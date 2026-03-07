@@ -14,6 +14,9 @@
 5. [Security Architecture](#security-architecture)
 6. [Modular Interface Pattern](#modular-interface-pattern)
 7. [Infrastructure (GCP)](#infrastructure-gcp)
+8. [Document Upload Pipeline](#document-upload-pipeline)
+9. [Audio Digest Pipeline](#audio-digest-pipeline)
+10. [Background Task Architecture (Celery)](#background-task-architecture-celery)
 
 ---
 
@@ -38,20 +41,22 @@
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                     FASTAPI BACKEND (Python 3.12)                           │
 │                                                                              │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────┐  │
-│  │  Search   │ │ Ingest   │ │  Chat    │ │  Auth    │ │ Citation Graph   │  │
-│  │  Router   │ │ Router   │ │  Router  │ │  Router  │ │ Router           │  │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └────────┬─────────┘  │
-│       │             │            │             │                │            │
-│  ┌────▼─────────────▼────────────▼─────────────▼────────────────▼────────┐  │
-│  │                        CORE SERVICE LAYER                             │  │
-│  │  HybridSearchOrchestrator / IngestionPipeline / ChatEngine / RBAC     │  │
-│  └────┬─────────────┬────────────┬─────────────┬────────────────┬────────┘  │
-│       │             │            │             │                │            │
-│  ┌────▼─────────────▼────────────▼─────────────▼────────────────▼────────┐  │
-│  │                     PROVIDER INTERFACE LAYER                           │  │
-│  │  LLMProvider / VectorStore / EmbeddingProvider / Reranker / GraphStore │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌──────────┐ ┌────────┐ ┌──────────┐ ┌────────┐ │
+│  │ Search │ │ Ingest │ │  Chat  │ │  Auth  │ │ Citation │ │ Judges │ │Documents │ │ Audio  │ │
+│  │ Router │ │ Router │ │ Router │ │ Router │ │ Graph    │ │ Router │ │ Router   │ │ Router │ │
+│  └───┬────┘ └───┬────┘ └───┬────┘ └───┬────┘ └────┬─────┘ └───┬────┘ └────┬─────┘ └───┬────┘ │
+│      │          │          │          │           │           │           │           │      │
+│  ┌───▼──────────▼──────────▼──────────▼───────────▼───────────▼───────────▼───────────▼───┐  │
+│  │                             CORE SERVICE LAYER                                         │  │
+│  │  HybridSearchOrchestrator / IngestionPipeline / ChatEngine / RBAC                      │  │
+│  │  JudgeAnalytics / DocumentAnalyzer / AudioDigest                                       │  │
+│  └───┬──────────┬──────────┬──────────┬───────────┬───────────┬───────────┬───────────┬───┘  │
+│      │          │          │          │           │           │           │           │      │
+│  ┌───▼──────────▼──────────▼──────────▼───────────▼───────────▼───────────▼───────────▼───┐  │
+│  │                          PROVIDER INTERFACE LAYER                                      │  │
+│  │  LLMProvider / VectorStore / EmbeddingProvider / Reranker / GraphStore                 │  │
+│  │  TTSProvider / FileStorage                                                             │  │
+│  └───────────────────────────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────┬───────────────────────────────────────────────────┘
                            │
           ┌────────────────┼────────────────┬──────────────┬───────────────┐
@@ -64,7 +69,19 @@
 │ - FTS index  │ │   embeddings │ │   edges      │ │ - sessions│ │   PDFs     │
 │ - users      │ │ - cosine     │ │ - traversals │ │ - rate    │ │ - sharded  │
 │ - audit log  │ │   similarity │ │              │ │   limits  │ │   storage  │
-└──────────────┘ └──────────────┘ └──────────────┘ └───────────┘ └────────────┘
+└──────────────┘ └──────────────┘ └──────────────┘ └─────┬─────┘ └────────────┘
+                                                         │ (broker, DB 1)
+                                                         ▼
+                                                  ┌──────────────┐
+                                                  │ Celery Worker │
+                                                  │              │
+                                                  │ - document   │
+                                                  │   analysis   │
+                                                  │ - audio      │
+                                                  │   generation │
+                                                  │ - future     │
+                                                  │   async tasks│
+                                                  └──────────────┘
 ```
 
 ---
@@ -1034,6 +1051,67 @@ spec:
 | Cohere Rerank | Pay-per-request | $5-20 |
 | Cloud Load Balancer | Per-rule + traffic | $20 |
 | **Total** | | **$116-290/month** |
+
+---
+
+## Document Upload Pipeline
+
+```
+User uploads PDF → POST /documents/upload → Store file (GCS/local) → Queue Celery task
+                                                                         │
+  ┌──────────────────────────────────────────────────────────────────────┘
+  ▼
+Celery Worker (analyze_document task):
+  1. Extract text (PDFParser + OCR fallback)
+  2. Issue extraction (Gemini structured output → JSONB)
+  3. Precedent mapping (parallel hybrid search per issue)
+  4. Counter-argument generation (Gemini)
+  5. Research memo generation (Gemini)
+  6. Store results in DocumentAnalysis table
+
+Status tracked: pending → extracting → analyzing → searching → generating → completed/failed
+Frontend polls GET /documents/{id} for status updates
+```
+
+---
+
+## Audio Digest Pipeline
+
+```
+POST /cases/{id}/audio/generate → Queue Celery task
+                                       │
+  ┌────────────────────────────────────┘
+  ▼
+Celery Worker (generate_audio task):
+  1. Generate case summary (Gemini, 400-600 words, audio-optimized)
+  2. Synthesize speech (Sarvam AI TTS, supports 22 Indian languages)
+  3. Store MP3 (GCS/local)
+  4. Update AudioDigest record (status, duration, storage_path)
+
+GET /cases/{id}/audio/status — Check if audio exists + languages available
+GET /cases/{id}/audio — Stream MP3 file
+
+Cache: audio_digests has UNIQUE(case_id, language) — never regenerates existing
+```
+
+---
+
+## Background Task Architecture (Celery)
+
+```
+┌─────────────┐     ┌──────────────┐     ┌──────────────┐
+│  FastAPI     │────►│  Redis       │────►│  Celery      │
+│  (enqueue)   │     │  (broker,    │     │  Worker      │
+│              │     │   DB 1)      │     │              │
+└─────────────┘     └──────────────┘     └──────┬───────┘
+                                                │
+                          ┌─────────────────────┼─────────────────┐
+                          ▼                     ▼                 ▼
+                    analyze_document      generate_audio     (future tasks)
+                    (6-step pipeline)     (summary + TTS)
+```
+
+FastAPI enqueues background tasks via Celery, using Redis (DB 1) as the message broker. Each task type runs as a self-contained pipeline within the Celery worker process. Task status is persisted to PostgreSQL so the frontend can poll for progress. Failed tasks are retried up to 3 times with exponential backoff.
 
 ---
 
