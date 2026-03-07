@@ -16,6 +16,7 @@ from dataclasses import asdict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.agents.confidence import calculate_confidence
 from app.core.agents.nodes.common import (
     enrich_results_with_ratio,
     format_search_results_for_llm,
@@ -280,19 +281,27 @@ async def synthesize_memo_node(
         max_tokens=8192,
     )
 
-    # Simple confidence heuristic based on result count and cross-references
-    result_count = len(results)
+    # Collect reranker scores from results
+    reranker_scores = sorted(
+        [r.get("score", 0.0) for r in results if r.get("score")],
+        reverse=True,
+    )
+
+    # Cross-reference ratio
     cross_ref_count = len(cross_refs)
-    if result_count == 0:
-        confidence = 0.0
-    elif result_count < 3:
-        confidence = 0.3
-    elif result_count < 10:
-        confidence = 0.6
-    else:
-        confidence = 0.8
-    # Boost for cross-references (max +0.2)
-    confidence = min(1.0, confidence + min(cross_ref_count * 0.05, 0.2))
+    sub_query_count = len(state.get("sub_queries", []))
+    cross_ref_ratio = cross_ref_count / max(sub_query_count, 1)
+
+    # Precedent strengths (placeholder -- will be enriched later)
+    precedent_strengths: list[str] = []
+
+    confidence = calculate_confidence(
+        reranker_scores=reranker_scores,
+        cross_ref_ratio=cross_ref_ratio,
+        precedent_strengths=precedent_strengths,
+        contradiction_count=len(contradictions),
+        total_results=len(results),
+    )
 
     return {"draft_memo": memo, "confidence": confidence}
 
