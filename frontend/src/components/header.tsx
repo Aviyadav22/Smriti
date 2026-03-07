@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth-context";
-import { Search, Scale, LogOut, Menu, X, MessageSquare, GitBranch, Gavel, Upload } from "lucide-react";
+import { Search, Scale, LogOut, Menu, X, MessageSquare, GitBranch, Gavel, Upload, Bot } from "lucide-react";
 
 export function Header() {
     const { isAuthenticated, logout } = useAuth();
@@ -57,6 +57,9 @@ export function Header() {
                     <Button variant="ghost" size="sm" className="text-xs uppercase tracking-wider font-medium h-8 px-3" asChild>
                         <Link href="/graph"><GitBranch className="h-3.5 w-3.5 mr-1" /> Graph</Link>
                     </Button>
+                    <Button variant="ghost" size="sm" className="text-xs uppercase tracking-wider font-medium h-8 px-3" asChild>
+                        <Link href="/agents"><Bot className="h-3.5 w-3.5 mr-1" /> Agents</Link>
+                    </Button>
                     <Link href="/judges">
                         <Button variant="ghost" size="sm" className="gap-1.5 text-xs">
                             <Gavel className="h-3.5 w-3.5" />
@@ -106,6 +109,9 @@ export function Header() {
                         </Button>
                         <Button variant="ghost" size="sm" className="justify-start text-xs" asChild onClick={() => setMobileOpen(false)}>
                             <Link href="/graph"><GitBranch className="h-3.5 w-3.5 mr-1.5" /> Graph</Link>
+                        </Button>
+                        <Button variant="ghost" size="sm" className="justify-start text-xs" asChild onClick={() => setMobileOpen(false)}>
+                            <Link href="/agents"><Bot className="h-3.5 w-3.5 mr-1.5" /> Agents</Link>
                         </Button>
                         <Button variant="ghost" size="sm" className="justify-start text-xs" asChild onClick={() => setMobileOpen(false)}>
                             <Link href="/judges"><Gavel className="h-3.5 w-3.5 mr-1.5" /> Judges</Link>
