@@ -377,3 +377,63 @@ async def _build_citation_graph(
             )
         except (OSError, ConnectionError, RuntimeError):
             logger.warning("Failed to create citation edge: %s -> %s", case_id, cited_ref)
+
+
+def _extract_citation_equivalents(full_text: str, case_id: str) -> list[dict]:
+    """Extract all citation formats from judgment text for the equivalents table."""
+    if not full_text:
+        return []
+    citations = extract_citations(full_text)
+    results = []
+    for c in citations:
+        results.append({
+            "case_id": case_id,
+            "reporter": c.reporter,
+            "citation_text": c.raw_text,
+            "year": c.year,
+        })
+    return results
+
+
+async def _persist_sections(
+    case_id: str,
+    sections: list,
+    db: AsyncSession,
+) -> None:
+    """Persist detected judgment sections to the case_sections table."""
+    for idx, section in enumerate(sections):
+        await db.execute(
+            text(
+                "INSERT INTO case_sections (id, case_id, section_type, content, section_index) "
+                "VALUES (:id, :case_id, :section_type, :content, :section_index) "
+                "ON CONFLICT DO NOTHING"
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "case_id": case_id,
+                "section_type": section.type,
+                "content": section.text,
+                "section_index": idx,
+            },
+        )
+    await db.commit()
+
+
+async def _persist_citation_equivalents(
+    equivalents: list[dict],
+    db: AsyncSession,
+) -> None:
+    """Persist citation equivalents to the database."""
+    for eq in equivalents:
+        await db.execute(
+            text(
+                "INSERT INTO case_citation_equivalents (id, case_id, reporter, citation_text, year) "
+                "VALUES (:id, :case_id, :reporter, :citation_text, :year) "
+                "ON CONFLICT DO NOTHING"
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                **eq,
+            },
+        )
+    await db.commit()

@@ -651,3 +651,31 @@ with supporting and distinguishable precedents
 6. Risk Assessment — key risks and mitigation strategies for each argument
 7. Action Items — prioritized next steps for case preparation
 """
+
+# ---------------------------------------------------------------------------
+# Holdings extraction — for structured judgment decomposition
+# ---------------------------------------------------------------------------
+
+HOLDINGS_EXTRACTION_SYSTEM: Final[str] = """\
+You are an expert Indian legal analyst. Extract the specific holdings \
+(what the court actually decided) from the provided judgment sections. \
+Return a clear, concise summary of each holding.
+
+Rules:
+- Focus on what the court decided, not the reasoning behind it.
+- Include the specific order (allowed, dismissed, remanded, etc.).
+- Note any conditions or directions attached to the order.
+- Do not fabricate holdings not present in the text.
+"""
+
+HOLDINGS_EXTRACTION_USER: Final[str] = """\
+Extract the holdings from these judgment sections:
+
+Ratio/Analysis:
+{ratio_text}
+
+Order:
+{order_text}
+
+Return a concise summary of what the court held and ordered.
+"""
