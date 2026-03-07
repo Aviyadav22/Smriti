@@ -10,7 +10,7 @@ import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { search as apiSearch, searchFacets } from "@/lib/api";
 import type { SearchResponse, FacetsResponse, JudgmentSection } from "@/lib/types";
-import { Search, ChevronLeft, ChevronRight, Filter, X, Loader2, AlertTriangle } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Filter, X, Loader2, AlertTriangle, Download } from "lucide-react";
 import { PrecedentBadge } from "@/components/precedent-badge";
 import { BenchStrength } from "@/components/bench-strength";
 import { EquivalentCitations } from "@/components/equivalent-citations";
@@ -119,6 +119,33 @@ function SearchContent() {
         setPage(newPage);
         executeSearch(query, newPage);
         window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function exportResults() {
+        if (!results || results.results.length === 0) return;
+
+        let md = `# Search Results: "${query}"\n\n`;
+        md += `*${results.results.length} of ${results.total_count} results shown*\n\n---\n\n`;
+
+        results.results.forEach((r, i) => {
+            md += `## ${i + 1}. ${r.title || "Untitled"}\n\n`;
+            if (r.citation) md += `**Citation:** ${r.citation}\n`;
+            if (r.court) md += `**Court:** ${r.court}\n`;
+            if (r.year || r.date) md += `**Year:** ${r.year || r.date}\n`;
+            if (r.case_type) md += `**Case Type:** ${r.case_type}\n`;
+            if (r.score) md += `**Relevance:** ${(r.score * 100).toFixed(0)}%\n`;
+            md += `\n`;
+            if (r.snippet) md += `> ${r.snippet}\n\n`;
+            md += `---\n\n`;
+        });
+
+        const blob = new Blob([md], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `smriti-search-${new Date().toISOString().slice(0, 10)}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
     }
 
     const totalPages = results ? Math.ceil(results.total_count / results.page_size) : 0;
@@ -291,6 +318,17 @@ function SearchContent() {
                                 <span className="text-xs text-muted-foreground">
                                     {results.total_count} result{results.total_count !== 1 && "s"}
                                 </span>
+                                {results.results.length > 0 && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 text-xs gap-1.5"
+                                        onClick={exportResults}
+                                    >
+                                        <Download className="h-3 w-3" />
+                                        Export Results
+                                    </Button>
+                                )}
                             </div>
 
                             {/* Low-relevance banner (Gap 12) */}
