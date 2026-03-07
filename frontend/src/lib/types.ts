@@ -331,3 +331,79 @@ export interface CourtStats {
     disposal_patterns: Record<string, number>;
     top_judges: CourtJudge[];
 }
+
+// ---------------------------------------------------------------------------
+// Phase 5: Document Upload + Audio Digests
+// ---------------------------------------------------------------------------
+
+export interface DocumentUploadResponse {
+    document_id: string;
+    filename: string;
+    status: string;
+    message: string;
+}
+
+export interface DocumentListItem {
+    id: string;
+    filename: string;
+    status: string;
+    processing_step: string | null;
+    file_size: number | null;
+    created_at: string;
+    updated_at: string;
+    error_message: string | null;
+}
+
+export interface DocumentListResponse {
+    documents: DocumentListItem[];
+    total: number;
+    page: number;
+    page_size: number;
+    total_pages: number;
+}
+
+export interface DocumentIssue {
+    title: string;
+    description: string;
+    supporting_precedents: {
+        case_id: string;
+        title: string | null;
+        citation: string | null;
+        score: number;
+    }[];
+    statutes: string[];
+}
+
+export interface DocumentCounterArgument {
+    issue_title: string;
+    argument: string;
+    response: string;
+}
+
+export interface DocumentAnalysis {
+    issues: DocumentIssue[];
+    parties: Record<string, string | null>;
+    key_facts: string;
+    relief_sought: string | null;
+    counter_arguments: DocumentCounterArgument[];
+    research_memo: string;
+}
+
+export interface DocumentDetail extends DocumentListItem {
+    processing_started_at: string | null;
+    processing_completed_at: string | null;
+    analysis?: DocumentAnalysis;
+}
+
+export interface AudioDigestInfo {
+    language: string;
+    status: string;
+    duration_seconds: number | null;
+}
+
+export interface AudioDigestStatus {
+    case_id: string;
+    available: string[];
+    generating: string[];
+    digests: AudioDigestInfo[];
+}

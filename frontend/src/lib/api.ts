@@ -1,11 +1,15 @@
 /* Centralized API client with JWT handling. All fetch calls go through here. */
 
 import type {
+    AudioDigestStatus,
     CaseDetail,
     ChatMessage,
     ChatSession,
     CitationItem,
     CourtStats,
+    DocumentDetail,
+    DocumentListResponse,
+    DocumentUploadResponse,
     FacetsResponse,
     GraphData,
     GraphNode,
@@ -412,6 +416,71 @@ export async function compareJudges(names: string[]): Promise<JudgeCompareRespon
 
 export async function getCourtStats(court: string): Promise<CourtStats> {
     return apiFetch<CourtStats>(`/courts/${encodeURIComponent(court)}/stats`);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5: Document Upload + Audio Digests
+// ---------------------------------------------------------------------------
+
+export async function uploadDocument(file: File): Promise<DocumentUploadResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const headers: Record<string, string> = {};
+    if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+    }
+
+    const res = await fetch(`${API_BASE}/documents/upload`, {
+        method: "POST",
+        headers,
+        body: formData,
+    });
+
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Upload failed" }));
+        throw new ApiError(res.status, "UPLOAD_ERROR", err.detail || err.error || "Upload failed");
+    }
+
+    return res.json();
+}
+
+export async function getDocuments(
+    page: number = 1,
+    pageSize: number = 20,
+): Promise<DocumentListResponse> {
+    return apiFetch<DocumentListResponse>(
+        `/documents?page=${page}&page_size=${pageSize}`,
+    );
+}
+
+export async function getDocument(id: string): Promise<DocumentDetail> {
+    return apiFetch<DocumentDetail>(`/documents/${id}`);
+}
+
+export async function deleteDocument(id: string): Promise<void> {
+    await apiFetch<void>(`/documents/${id}`, { method: "DELETE" });
+}
+
+export async function getResearchMemo(id: string): Promise<{ memo: string }> {
+    return apiFetch<{ memo: string }>(`/documents/${id}/memo`);
+}
+
+export async function generateAudioDigest(
+    caseId: string,
+    language: string = "en",
+): Promise<{ status: string; case_id: string; language: string }> {
+    return apiFetch(`/cases/${caseId}/audio/generate?language=${language}`, {
+        method: "POST",
+    });
+}
+
+export async function getAudioStatus(caseId: string): Promise<AudioDigestStatus> {
+    return apiFetch<AudioDigestStatus>(`/cases/${caseId}/audio/status`);
+}
+
+export function getAudioUrl(caseId: string, language: string = "en"): string {
+    return `${API_BASE}/cases/${caseId}/audio?language=${language}`;
 }
 
 export { ApiError };
