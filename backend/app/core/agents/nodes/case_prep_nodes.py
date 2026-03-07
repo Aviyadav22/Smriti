@@ -63,7 +63,7 @@ async def load_analysis_node(
     document_id = state["document_id"]
 
     result = await db.execute(
-        text("SELECT * FROM document_analyses WHERE document_id = :doc_id"),
+        text("SELECT issues, parties, key_facts, relief_sought, counter_arguments, research_memo FROM document_analyses WHERE document_id = :doc_id"),
         {"doc_id": document_id},
     )
     row = result.mappings().first()
