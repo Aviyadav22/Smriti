@@ -17,6 +17,7 @@ from dataclasses import asdict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.confidence import calculate_confidence
+from app.core.legal.treatment import has_overruling_language
 from app.core.agents.nodes.citation_verifier import (
     check_grounding,
     extract_citations_from_text,
@@ -64,6 +65,8 @@ async def classify_query_node(
     """Classify the research query by topic, complexity, and entities.
 
     Stores the classification in messages so downstream nodes can read it.
+    Also extracts target_court and target_bench from the classification
+    for accurate precedent strength labelling.
     """
     query = state["query"]
     classification = await llm.generate_structured(
@@ -71,7 +74,19 @@ async def classify_query_node(
         system=RESEARCH_CLASSIFY_SYSTEM,
         output_schema=RESEARCH_CLASSIFY_SCHEMA,
     )
-    return {"messages": [{"type": "classification", "data": classification}]}
+
+    # Extract target court/bench from classification, falling back to defaults
+    result: dict = {"messages": [{"type": "classification", "data": classification}]}
+
+    target_court = classification.get("target_court")
+    target_bench = classification.get("target_bench")
+
+    if target_court:
+        result["target_court"] = target_court
+    if target_bench:
+        result["target_bench"] = target_bench
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +290,22 @@ async def synthesize_memo_node(
 
     findings = format_search_results_for_llm(results)
 
+    # Detect overruling language in search results
+    treatment_warnings: list[str] = []
+    overruled_case_ids: set[str] = set()
+    for r in results:
+        check_text = (r.get("snippet", "") or "") + " " + (r.get("ratio", "") or "") + " " + (r.get("chunk_text", "") or "")
+        if check_text.strip() and has_overruling_language(check_text):
+            title = r.get("title", "Unknown")
+            citation = r.get("citation", "N/A")
+            treatment_warnings.append(
+                f"- {title} ({citation}): Contains language suggesting this case "
+                f"may have been overruled or declared per incuriam."
+            )
+            cid = r.get("case_id", "")
+            if cid:
+                overruled_case_ids.add(cid)
+
     cross_ref_text = ""
     if cross_refs:
         parts: list[str] = []
@@ -289,11 +320,23 @@ async def synthesize_memo_node(
 
     contradictions_text = json.dumps(contradictions, indent=2) if contradictions else "None identified."
 
+    treatment_text = ""
+    if treatment_warnings:
+        treatment_text = (
+            "\n\nTREATMENT WARNINGS — The following cases contain language "
+            "suggesting they may have been overruled or declared per incuriam. "
+            "Highlight these warnings prominently in the memo:\n"
+            + "\n".join(treatment_warnings)
+        )
+
     prompt = RESEARCH_SYNTHESIZE_USER.format(
         query=query,
         findings=findings,
         contradictions=contradictions_text,
     )
+
+    if treatment_text:
+        prompt += treatment_text
 
     memo = await llm.generate(
         prompt=prompt,
@@ -313,17 +356,25 @@ async def synthesize_memo_node(
     sub_query_count = len(state.get("sub_queries", []))
     cross_ref_ratio = cross_ref_count / max(sub_query_count, 1)
 
-    # Classify precedent strength for each result with court and bench data
+    # Classify precedent strength for each result with court and bench data.
+    # Use the target court/bench from the state (extracted during query
+    # classification) with sensible defaults if the user didn't specify.
+    target_court = state.get("target_court") or "Supreme Court of India"
+    target_bench = state.get("target_bench") or "division"
+
     precedent_strengths: list[str] = []
     for r in results:
         bench = r.get("bench_type")
         court = r.get("court", "")
         if bench and court:
+            cid = r.get("case_id", "")
+            is_overruled = cid in overruled_case_ids
             strength = classify_precedent_strength(
                 source_court=court,
                 source_bench=bench,
-                target_court="Supreme Court of India",
-                target_bench="division",
+                target_court=target_court,
+                target_bench=target_bench,
+                overruled=is_overruled,
             )
             precedent_strengths.append(strength.value)
 

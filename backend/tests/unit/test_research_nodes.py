@@ -30,6 +30,8 @@ def _make_state(**overrides) -> dict:
     """Create a minimal ResearchState dict with defaults."""
     base = {
         "query": "Is Section 498A IPC constitutional?",
+        "target_court": "",
+        "target_bench": "",
         "sub_queries": [],
         "search_results": [],
         "cross_references": [],
@@ -484,6 +486,101 @@ class TestSynthesizeMemoNode:
                 strengths = call_kwargs.args[2]
 
             assert strengths == ["BINDING"]
+
+    @pytest.mark.asyncio
+    async def test_overruled_language_passes_warning_to_llm(self) -> None:
+        """When search results contain overruling language, the prompt should include warnings."""
+        llm = _make_llm()
+        llm.generate.return_value = "Memo with overruled warning."
+
+        state = _make_state(
+            search_results=[
+                {
+                    "title": "Overruled Case",
+                    "snippet": "This judgment was expressly overruled by the Supreme Court.",
+                    "score": 0.90,
+                    "case_id": "id1",
+                    "citation": "(2010) 5 SCC 100",
+                    "court": "Supreme Court of India",
+                    "bench_type": "division",
+                },
+                {
+                    "title": "Normal Case",
+                    "snippet": "The appeal is dismissed.",
+                    "score": 0.85,
+                    "case_id": "id2",
+                    "court": "Supreme Court of India",
+                    "bench_type": "division",
+                },
+            ],
+            cross_references=[],
+            contradictions=[],
+        )
+        result = await synthesize_memo_node(state, llm)
+
+        # Verify the LLM received treatment warnings in the prompt
+        call_kwargs = llm.generate.call_args
+        prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        assert "TREATMENT WARNINGS" in prompt_sent
+        assert "Overruled Case" in prompt_sent
+        assert "(2010) 5 SCC 100" in prompt_sent
+
+    @pytest.mark.asyncio
+    async def test_overruled_case_gets_overruled_strength(self) -> None:
+        """When a case has overruling language, classify_precedent_strength gets overruled=True."""
+        llm = _make_llm()
+        llm.generate.return_value = "Memo."
+
+        state = _make_state(
+            search_results=[
+                {
+                    "title": "Overruled Case",
+                    "snippet": "This judgment stands overruled.",
+                    "score": 0.90,
+                    "case_id": "id1",
+                    "court": "Supreme Court of India",
+                    "bench_type": "constitutional",
+                },
+            ],
+            cross_references=[],
+            contradictions=[],
+        )
+
+        with patch("app.core.agents.nodes.research_nodes.classify_precedent_strength") as mock_classify:
+            from app.core.legal.precedent_strength import PrecedentStrength
+            mock_classify.return_value = PrecedentStrength.OVERRULED
+
+            result = await synthesize_memo_node(state, llm)
+
+            mock_classify.assert_called_once()
+            call_kwargs = mock_classify.call_args
+            assert call_kwargs.kwargs.get("overruled") is True
+
+    @pytest.mark.asyncio
+    async def test_no_treatment_warnings_for_neutral_results(self) -> None:
+        """When no results have overruling language, no treatment warnings in prompt."""
+        llm = _make_llm()
+        llm.generate.return_value = "Memo."
+
+        state = _make_state(
+            search_results=[
+                {
+                    "title": "Normal Case",
+                    "snippet": "The appeal is dismissed on merits.",
+                    "score": 0.85,
+                    "case_id": "id1",
+                    "court": "Supreme Court of India",
+                    "bench_type": "division",
+                },
+            ],
+            cross_references=[],
+            contradictions=[],
+        )
+        result = await synthesize_memo_node(state, llm)
+
+        call_kwargs = llm.generate.call_args
+        prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        assert "TREATMENT WARNINGS" not in prompt_sent
 
     @pytest.mark.asyncio
     async def test_confidence_higher_with_binding_precedents(self) -> None:

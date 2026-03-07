@@ -80,6 +80,68 @@ class TestFormatContext:
         assert "Unknown year" in result
 
 
+class TestFormatContextTreatmentWarning:
+    """Test treatment warning integration in RAG context formatting."""
+
+    def test_overruled_language_triggers_warning(self) -> None:
+        """Context should include warning when ratio contains overruling language."""
+        sources = [
+            ChatSource(
+                case_id="123",
+                title="State v. Kumar",
+                citation="(2020) 1 SCC 1",
+                court="Supreme Court of India",
+                year=2020,
+                score=0.95,
+                ratio="The decision in ABC v. XYZ was expressly overruled by this Court.",
+            ),
+        ]
+        result = _format_context(sources)
+        assert "WARNING" in result
+        assert "overruled" in result.lower()
+
+    def test_per_incuriam_triggers_warning(self) -> None:
+        """Context should include warning when chunk text contains per incuriam."""
+        sources = [
+            ChatSource(
+                case_id="456",
+                title="State v. Rajan",
+                citation="(2021) 2 SCC 50",
+                court="Supreme Court of India",
+                year=2021,
+                score=0.90,
+                chunk_text="This judgment was rendered per incuriam and cannot be relied upon.",
+            ),
+        ]
+        result = _format_context(sources)
+        assert "WARNING" in result
+
+    def test_no_warning_for_neutral_text(self) -> None:
+        """Context should NOT include warning when text is neutral."""
+        sources = [
+            ChatSource(
+                case_id="789",
+                title="State v. Normal",
+                citation="(2019) 5 SCC 100",
+                court="Supreme Court of India",
+                year=2019,
+                score=0.85,
+                ratio="The appeal is hereby dismissed on merits.",
+                chunk_text="The parties entered into a contract.",
+            ),
+        ]
+        result = _format_context(sources)
+        assert "WARNING" not in result
+
+    def test_no_warning_when_no_text(self) -> None:
+        """Context should NOT include warning when ratio and chunk are empty."""
+        sources = [
+            ChatSource(case_id="000", title="Empty Case"),
+        ]
+        result = _format_context(sources)
+        assert "WARNING" not in result
+
+
 class TestFormatHistory:
     """Test chat history formatting for the prompt."""
 

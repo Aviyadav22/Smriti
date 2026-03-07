@@ -543,3 +543,95 @@ async def test_filters_applied_to_fts(
     assert fts_filters.year_to == 2024
     # LLM case_type fills in
     assert fts_filters.case_type == "civil"
+
+
+# ---------------------------------------------------------------------------
+# 11. test_treatment_warning_in_search_results
+# ---------------------------------------------------------------------------
+
+
+class TestTreatmentWarningInSearchResults:
+    """Tests for treatment warning detection in _enrich_results."""
+
+    def test_search_result_item_has_treatment_warning_field(self) -> None:
+        """SearchResultItem should have a treatment_warning field."""
+        item = SearchResultItem(case_id="test", score=0.9)
+        assert item.treatment_warning is None
+
+    def test_treatment_warning_set_when_present(self) -> None:
+        """SearchResultItem can hold a treatment_warning string."""
+        item = SearchResultItem(
+            case_id="test",
+            score=0.9,
+            treatment_warning="This case may have been overruled.",
+        )
+        assert item.treatment_warning == "This case may have been overruled."
+
+    @pytest.mark.asyncio
+    @patch("app.core.search.hybrid.understand_query")
+    @patch("app.core.search.hybrid.search_fulltext")
+    async def test_overruled_snippet_triggers_warning(
+        self, mock_fts, mock_uq, mock_llm, mock_embedder, mock_vector_store, mock_reranker, mock_db
+    ):
+        """A snippet containing 'overruled' should produce a treatment_warning."""
+        mock_uq.return_value = _make_qu(strategy="balanced")
+
+        mock_vector_store.search.return_value = [
+            _vector_result("case_a", 0.95, "This judgment was expressly overruled by the Supreme Court."),
+        ]
+        mock_fts.return_value = [
+            _fts_result("case_a", 5.0, "expressly overruled by the Supreme Court"),
+        ]
+        mock_reranker.rerank.return_value = [
+            RerankResult(index=0, score=0.9, text="a"),
+        ]
+
+        db_rows = [_db_row("case_a")]
+        mock_db.execute = AsyncMock(side_effect=_mock_db_execute(db_rows))
+
+        response = await hybrid_search(
+            "test query",
+            llm=mock_llm,
+            embedder=mock_embedder,
+            vector_store=mock_vector_store,
+            reranker=mock_reranker,
+            db=mock_db,
+        )
+
+        assert len(response.results) >= 1
+        assert response.results[0].treatment_warning is not None
+        assert "overruled" in response.results[0].treatment_warning.lower()
+
+    @pytest.mark.asyncio
+    @patch("app.core.search.hybrid.understand_query")
+    @patch("app.core.search.hybrid.search_fulltext")
+    async def test_neutral_snippet_no_warning(
+        self, mock_fts, mock_uq, mock_llm, mock_embedder, mock_vector_store, mock_reranker, mock_db
+    ):
+        """A neutral snippet should NOT produce a treatment_warning."""
+        mock_uq.return_value = _make_qu(strategy="balanced")
+
+        mock_vector_store.search.return_value = [
+            _vector_result("case_b", 0.90, "The appeal is dismissed on merits."),
+        ]
+        mock_fts.return_value = [
+            _fts_result("case_b", 4.0, "The appeal is dismissed."),
+        ]
+        mock_reranker.rerank.return_value = [
+            RerankResult(index=0, score=0.85, text="b"),
+        ]
+
+        db_rows = [_db_row("case_b")]
+        mock_db.execute = AsyncMock(side_effect=_mock_db_execute(db_rows))
+
+        response = await hybrid_search(
+            "test query",
+            llm=mock_llm,
+            embedder=mock_embedder,
+            vector_store=mock_vector_store,
+            reranker=mock_reranker,
+            db=mock_db,
+        )
+
+        assert len(response.results) >= 1
+        assert response.results[0].treatment_warning is None
