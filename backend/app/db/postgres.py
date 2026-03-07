@@ -2,6 +2,7 @@
 
 import ssl
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -32,3 +33,19 @@ async_session_factory = async_sessionmaker(
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_factory() as session:
         yield session
+
+
+@asynccontextmanager
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    """Create a standalone async session for use outside FastAPI requests."""
+    standalone_engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(
+        standalone_engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async with session_factory() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+    await standalone_engine.dispose()
