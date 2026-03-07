@@ -29,6 +29,7 @@ MAX_CONTEXT_RESULTS = 5
 MAX_SNIPPET_CHARS = 3000
 MAX_RATIO_CHARS = 2000
 MAX_CHUNK_CHARS = 1000
+MAX_PROMPT_CHARS = 100_000  # ~25K tokens, safe for Gemini 2.5 Pro
 
 BENCH_LABELS: dict[str, str] = {
     "single": "Single Judge",
@@ -135,6 +136,20 @@ async def rag_respond(
         chat_history=history_text,
         question=question,
     )
+
+    # 5.5 Context size guard — truncate if prompt exceeds safe limit
+    if len(user_prompt) > MAX_PROMPT_CHARS:
+        original_len = len(user_prompt)
+        context_text = _format_context(sources[:3])
+        history_text = _format_history(chat_history[-4:])
+        user_prompt = CHAT_USER_WITH_CONTEXT.format(
+            retrieved_context=context_text,
+            chat_history=history_text,
+            question=question,
+        )
+        logger.warning(
+            "Prompt truncated from %d to %d chars", original_len, len(user_prompt)
+        )
 
     # 6. Stream response from LLM
     full_response = []

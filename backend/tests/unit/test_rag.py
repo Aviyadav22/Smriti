@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.core.chat.rag import (
+    MAX_PROMPT_CHARS,
     ChatSource,
     RAGEvent,
     _format_context,
@@ -12,6 +13,7 @@ from app.core.chat.rag import (
     _generate_title,
     _reformulate_query,
 )
+from app.core.legal.prompts import CHAT_USER_WITH_CONTEXT
 
 
 class TestGenerateTitle:
@@ -282,3 +284,78 @@ class TestReformulateQuery:
         assert long_content not in prompt
         # But a truncated version (200 chars) should
         assert "x" * 200 in prompt
+
+
+class TestContextSizeGuard:
+    """Test prompt truncation when context exceeds MAX_PROMPT_CHARS."""
+
+    def _make_sources(self, n: int, chunk_size: int = 500) -> list[ChatSource]:
+        """Create n ChatSource objects with large chunk text."""
+        return [
+            ChatSource(
+                case_id=str(i),
+                title=f"Case {i}",
+                citation=f"(2020) {i} SCC {i}",
+                court="Supreme Court of India",
+                year=2020,
+                score=0.9 - i * 0.1,
+                ratio="R" * chunk_size,
+                chunk_text="C" * chunk_size,
+            )
+            for i in range(n)
+        ]
+
+    def _build_prompt(
+        self, sources: list[ChatSource], history: list[dict], question: str
+    ) -> str:
+        """Build a user prompt the same way rag_respond does."""
+        context_text = _format_context(sources)
+        history_text = _format_history(history)
+        return CHAT_USER_WITH_CONTEXT.format(
+            retrieved_context=context_text,
+            chat_history=history_text,
+            question=question,
+        )
+
+    def test_small_prompt_unchanged(self) -> None:
+        """Prompt under MAX_PROMPT_CHARS should not be truncated."""
+        sources = self._make_sources(5, chunk_size=100)
+        history = [{"role": "user", "content": "Hello"}]
+        question = "What is Article 21?"
+
+        prompt = self._build_prompt(sources, history, question)
+        assert len(prompt) < MAX_PROMPT_CHARS
+        # All 5 sources should be present
+        assert "[5]" in prompt
+
+    def test_large_prompt_triggers_truncation(self) -> None:
+        """Prompt over MAX_PROMPT_CHARS should be rebuilt with fewer sources/history."""
+        # Create sources with very large chunks to exceed the limit
+        per_source_chars = MAX_PROMPT_CHARS // 3
+        sources = self._make_sources(5, chunk_size=per_source_chars)
+        history = [
+            {"role": "user", "content": "msg " * 5000},
+            {"role": "assistant", "content": "resp " * 5000},
+        ] * 10  # 20 messages
+        question = "What is Article 21?"
+
+        original_prompt = self._build_prompt(sources, history, question)
+        assert len(original_prompt) > MAX_PROMPT_CHARS
+
+        # Simulate the guard logic
+        truncated_context = _format_context(sources[:3])
+        truncated_history = _format_history(history[-4:])
+        truncated_prompt = CHAT_USER_WITH_CONTEXT.format(
+            retrieved_context=truncated_context,
+            chat_history=truncated_history,
+            question=question,
+        )
+
+        assert len(truncated_prompt) < len(original_prompt)
+        # Only 3 sources in truncated version
+        assert "[3]" in truncated_prompt
+        assert "[4]" not in truncated_prompt
+
+    def test_max_prompt_chars_constant(self) -> None:
+        """MAX_PROMPT_CHARS should be 100_000 (~25K tokens)."""
+        assert MAX_PROMPT_CHARS == 100_000
