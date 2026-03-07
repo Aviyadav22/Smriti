@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
-import { getCourtStats } from "@/lib/api";
+import { getCourtStats, searchFacets } from "@/lib/api";
 import type { CourtStats } from "@/lib/types";
 import {
     BarChart,
@@ -18,7 +18,7 @@ import {
     Cell,
     Legend,
 } from "recharts";
-import { Building2, FileText, Loader2, Users } from "lucide-react";
+import { Building2, ChevronDown, FileText, Loader2, Users } from "lucide-react";
 
 const CHART_COLORS = [
     "hsl(var(--chart-1))",
@@ -28,18 +28,44 @@ const CHART_COLORS = [
     "hsl(var(--chart-5))",
 ];
 
-const DEFAULT_COURT = "Supreme Court of India";
+const FALLBACK_COURTS = [
+    "Supreme Court of India",
+    "High Court of Delhi",
+    "High Court of Bombay",
+    "High Court of Madras",
+    "High Court of Calcutta",
+    "High Court of Karnataka",
+];
 
 export default function CourtsPage() {
+    const [selectedCourt, setSelectedCourt] = useState("Supreme Court of India");
+    const [courts, setCourts] = useState<string[]>(FALLBACK_COURTS);
     const [stats, setStats] = useState<CourtStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Fetch available courts from facets API
+    useEffect(() => {
+        async function loadCourts() {
+            try {
+                const facets = await searchFacets();
+                if (facets.courts && facets.courts.length > 0) {
+                    setCourts(facets.courts);
+                }
+            } catch {
+                // Keep fallback courts on error
+            }
+        }
+        loadCourts();
+    }, []);
+
+    // Fetch stats when selected court changes
     useEffect(() => {
         async function load() {
             setLoading(true);
+            setError(null);
             try {
-                const data = await getCourtStats(DEFAULT_COURT);
+                const data = await getCourtStats(selectedCourt);
                 setStats(data);
             } catch (err) {
                 setError(err instanceof Error ? err.message : "Failed to load court statistics");
@@ -48,7 +74,7 @@ export default function CourtsPage() {
             }
         }
         load();
-    }, []);
+    }, [selectedCourt]);
 
     if (loading) return (
         <div className="min-h-screen flex flex-col">
@@ -84,10 +110,26 @@ export default function CourtsPage() {
 
             <main className="flex-1">
                 <div className="max-w-6xl mx-auto px-4 py-8">
-                    {/* Title */}
-                    <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-6 flex items-center gap-2">
-                        <Building2 className="h-7 w-7" /> Court Statistics
-                    </h1>
+                    {/* Title + Court Selector */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight flex items-center gap-2">
+                            <Building2 className="h-7 w-7" /> Court Statistics
+                        </h1>
+                        <div className="relative">
+                            <select
+                                value={selectedCourt}
+                                onChange={(e) => setSelectedCourt(e.target.value)}
+                                className="appearance-none border rounded-md bg-card px-3 py-2 pr-8 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer min-w-[240px]"
+                            >
+                                {courts.map((court) => (
+                                    <option key={court} value={court}>
+                                        {court}
+                                    </option>
+                                ))}
+                            </select>
+                            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none text-muted-foreground" />
+                        </div>
+                    </div>
 
                     {/* Stats cards */}
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
