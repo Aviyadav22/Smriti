@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, ArrowLeft, RotateCcw } from "lucide-react";
 import { LegalDisclaimer } from "@/components/legal-disclaimer";
+import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
 import Link from "next/link";
 
 // ---------------------------------------------------------------------------
@@ -190,7 +192,11 @@ export default function ResearchAgentPage() {
     const showWorkspace = isRunning || memo || checkpoint || steps.length > 0;
 
     return (
-        <div className="mx-auto max-w-6xl px-4 py-8">
+        <div className="min-h-screen flex flex-col">
+            <Header />
+
+            <main className="flex-1">
+                <div className="mx-auto max-w-6xl px-4 py-8">
             <div className="flex items-center gap-3 mb-6">
                 <Button variant="ghost" size="sm" asChild>
                     <Link href="/agents">
@@ -318,6 +324,10 @@ export default function ResearchAgentPage() {
                     </div>
                 </div>
             )}
+                </div>
+            </main>
+
+            <Footer />
         </div>
     );
 }

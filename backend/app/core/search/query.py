@@ -7,9 +7,15 @@ structured search components: intent, entities, filters, and an expanded query.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 from app.core.interfaces import LLMProvider
+from app.core.legal.constants import (
+    CRPC_TO_BNSS_MAP,
+    EVIDENCE_TO_BSA_MAP,
+    IPC_TO_BNS_MAP,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +131,85 @@ class QueryUnderstanding:
     filters: SearchFilters
     entities: QueryEntities
     search_strategy: str
+
+
+# ---------------------------------------------------------------------------
+# Statute cross-reference expansion
+# ---------------------------------------------------------------------------
+
+# Maps: (pattern_keywords, full_name, old_map, new_abbreviation, reverse_abbreviation)
+_STATUTE_EXPANSION_RULES: list[
+    tuple[list[str], str, dict[str, str], str, str]
+] = [
+    (
+        ["IPC", "Indian Penal Code"],
+        "Indian Penal Code",
+        IPC_TO_BNS_MAP,
+        "BNS",
+        "IPC",
+    ),
+    (
+        ["CrPC", "Code of Criminal Procedure", "Cr.P.C."],
+        "Code of Criminal Procedure",
+        CRPC_TO_BNSS_MAP,
+        "BNSS",
+        "CrPC",
+    ),
+    (
+        ["Indian Evidence Act", "Evidence Act", "IEA"],
+        "Indian Evidence Act",
+        EVIDENCE_TO_BSA_MAP,
+        "BSA",
+        "IEA",
+    ),
+]
+
+
+def expand_statute_references(query: str) -> str:
+    """Expand old-law statute references to include new-law equivalents and vice versa.
+
+    For example, "Section 302 IPC" is expanded to also include "Section 103 BNS",
+    and "Section 103 BNS" is expanded to also include "Section 302 IPC".
+    This ensures search results cover both pre- and post-July 2024 case law.
+
+    Returns the original query with " OR <expanded terms>" appended if any
+    statute references were detected, otherwise returns the query unchanged.
+    """
+    expanded_terms: list[str] = []
+
+    for keywords, _full_name, old_to_new, new_abbr, old_abbr in _STATUTE_EXPANSION_RULES:
+        # Forward: old law -> new law
+        keyword_pattern = "|".join(re.escape(kw) for kw in keywords)
+        for old_section, new_section in old_to_new.items():
+            pattern = (
+                rf"\b(?:Section\s+)?{re.escape(old_section)}"
+                rf"\s+(?:of\s+)?(?:the\s+)?(?:{keyword_pattern})\b"
+            )
+            if re.search(pattern, query, re.IGNORECASE):
+                expanded_terms.append(f"Section {new_section} {new_abbr}")
+
+        # Reverse: new law -> old law
+        new_keywords = [new_abbr]
+        if new_abbr == "BNS":
+            new_keywords.append("Bharatiya Nyaya Sanhita")
+        elif new_abbr == "BNSS":
+            new_keywords.append("Bharatiya Nagarik Suraksha Sanhita")
+        elif new_abbr == "BSA":
+            new_keywords.append("Bharatiya Sakshya Adhiniyam")
+
+        new_keyword_pattern = "|".join(re.escape(kw) for kw in new_keywords)
+        reverse_map = {v: k for k, v in old_to_new.items()}
+        for new_section, old_section in reverse_map.items():
+            pattern = (
+                rf"\b(?:Section\s+)?{re.escape(new_section)}"
+                rf"\s+(?:of\s+)?(?:the\s+)?(?:{new_keyword_pattern})\b"
+            )
+            if re.search(pattern, query, re.IGNORECASE):
+                expanded_terms.append(f"Section {old_section} {old_abbr}")
+
+    if expanded_terms:
+        return f"{query} OR {' OR '.join(expanded_terms)}"
+    return query
 
 
 # ---------------------------------------------------------------------------

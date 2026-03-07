@@ -17,8 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
+from app.core.legal.treatment import has_overruling_language
 from app.core.search.fulltext import FTSResult, search_fulltext
-from app.core.search.query import QueryUnderstanding, SearchFilters, understand_query
+from app.core.search.query import (
+    QueryUnderstanding,
+    SearchFilters,
+    expand_statute_references,
+    understand_query,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +51,7 @@ class SearchResultItem:
     bench_type: str | None = None
     equivalent_citations: list[str] = field(default_factory=list)
     relevance_sources: list[str] = field(default_factory=list)
+    treatment_warning: str | None = None
 
 
 @dataclass(slots=True)
@@ -146,6 +153,10 @@ async def hybrid_search(
 
     # 3. Strategy-based retrieval
     search_query = qu.expanded_query or query
+
+    # Expand old-law / new-law statute references (IPC<->BNS, CrPC<->BNSS, IEA<->BSA)
+    search_query = expand_statute_references(search_query)
+
     strategy = qu.search_strategy
 
     # --- exact_match strategy: try citation lookup first ---
@@ -483,6 +494,18 @@ async def _enrich_results(
         row = rows.get(cid)
         if row is None:
             continue
+
+        # Check snippet and chunk text for overruling language
+        snippet = snippets_map.get(cid)
+        chunk = (vector_chunk_map or {}).get(cid)
+        treatment_warning: str | None = None
+        check_text = (snippet or "") + " " + (chunk or "")
+        if check_text.strip() and has_overruling_language(check_text):
+            treatment_warning = (
+                "This case may have been overruled or declared per incuriam. "
+                "Verify current status before relying on it."
+            )
+
         enriched.append(
             SearchResultItem(
                 case_id=cid,
@@ -494,10 +517,11 @@ async def _enrich_results(
                 date=str(row["decision_date"]) if row.get("decision_date") else None,
                 case_type=row.get("case_type"),
                 judge=row.get("judge"),
-                snippet=snippets_map.get(cid),
-                chunk_text=(vector_chunk_map or {}).get(cid),
+                snippet=snippet,
+                chunk_text=chunk,
                 bench_type=row.get("bench_type"),
                 equivalent_citations=equiv_map.get(cid, []),
+                treatment_warning=treatment_warning,
             )
         )
 

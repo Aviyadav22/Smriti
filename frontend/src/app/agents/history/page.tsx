@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, X } from "lucide-react";
+import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
 import Link from "next/link";
 
 // ---------------------------------------------------------------------------
@@ -129,7 +131,11 @@ export default function AgentHistoryPage() {
             : null;
 
     return (
-        <div className="mx-auto max-w-4xl px-4 py-8">
+        <div className="min-h-screen flex flex-col">
+            <Header />
+
+            <main className="flex-1">
+                <div className="mx-auto max-w-4xl px-4 py-8">
             <div className="flex items-center gap-3 mb-6">
                 <Button variant="ghost" size="sm" asChild>
                     <Link href="/agents">
@@ -280,6 +286,10 @@ export default function AgentHistoryPage() {
                     </div>
                 </div>
             )}
+                </div>
+            </main>
+
+            <Footer />
         </div>
     );
 }
