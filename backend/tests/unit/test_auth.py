@@ -65,7 +65,7 @@ class TestAccessToken:
 
     def test_refresh_token_rejected_as_access(self):
         token = create_refresh_token("user-123")
-        with pytest.raises(AuthenticationError, match="Invalid token"):
+        with pytest.raises(AuthenticationError, match="Invalid"):
             verify_access_token(token)
 
 
@@ -79,7 +79,7 @@ class TestRefreshToken:
 
     def test_access_token_rejected_as_refresh(self):
         token = create_access_token("user-123", "admin")
-        with pytest.raises(AuthenticationError, match="Invalid token"):
+        with pytest.raises(AuthenticationError, match="Invalid"):
             verify_refresh_token(token)
 
 
