@@ -14,6 +14,7 @@ import type { CaseDetail, CitationItem, GraphData, SimilarCase } from "@/lib/typ
 import Link from "next/link";
 import { ArrowLeft, FileText, BookOpen, Link2, Scale, ExternalLink, Loader2, GitBranch, MessageSquare } from "lucide-react";
 import AudioPlayer from "@/components/audio-player";
+import { CaseDetailSkeleton } from "@/components/skeleton";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 
@@ -59,8 +60,8 @@ export default function CaseDetailPage() {
     if (loading) return (
         <div className="min-h-screen flex flex-col">
             <Header />
-            <div className="flex-1 flex items-center justify-center">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <div className="flex-1 mx-auto max-w-5xl px-4 py-6 w-full">
+                <CaseDetailSkeleton />
             </div>
         </div>
     );

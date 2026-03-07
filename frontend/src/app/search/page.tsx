@@ -16,6 +16,7 @@ import { BenchStrength } from "@/components/bench-strength";
 import { EquivalentCitations } from "@/components/equivalent-citations";
 import { ConfidenceMeter } from "@/components/confidence-meter";
 import { LegalDisclaimer } from "@/components/legal-disclaimer";
+import { SearchResultSkeleton } from "@/components/skeleton";
 
 const SECTION_TABS: { value: JudgmentSection; label: string }[] = [
     { value: "FACTS", label: "Facts" },
@@ -271,12 +272,7 @@ function SearchContent() {
                     )}
 
                     {/* Loading */}
-                    {loading && (
-                        <div className="flex items-center justify-center py-20">
-                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                            <span className="ml-2 text-sm text-muted-foreground">Searching…</span>
-                        </div>
-                    )}
+                    {loading && <SearchResultSkeleton />}
 
                     {/* Error */}
                     {error && (
@@ -428,8 +424,11 @@ function SearchContent() {
 export default function SearchPage() {
     return (
         <Suspense fallback={
-            <div className="min-h-screen flex items-center justify-center">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <div className="min-h-screen flex flex-col">
+                <Header />
+                <div className="mx-auto max-w-5xl px-4 py-6 flex-1">
+                    <SearchResultSkeleton />
+                </div>
             </div>
         }>
             <SearchContent />
