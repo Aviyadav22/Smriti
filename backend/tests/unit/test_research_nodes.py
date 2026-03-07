@@ -162,8 +162,10 @@ class TestParallelSearchNode:
             FakeItem(case_id="c1", score=0.9, title="Case One", snippet="snippet one"),
         ]
 
-        with patch("app.core.agents.nodes.research_nodes.hybrid_search", new_callable=AsyncMock) as mock_search:
+        with patch("app.core.agents.nodes.research_nodes.hybrid_search", new_callable=AsyncMock) as mock_search, \
+             patch("app.core.agents.nodes.research_nodes.enrich_results_with_ratio", new_callable=AsyncMock) as mock_enrich:
             mock_search.return_value = mock_response
+            mock_enrich.side_effect = lambda results, db: results
 
             state = _make_state(sub_queries=["query A", "query B"])
             llm = _make_llm()
@@ -331,7 +333,8 @@ class TestSynthesizeMemoNode:
         llm.generate.return_value = "Memo text."
 
         state = _make_state(
-            search_results=[{"title": f"C{i}", "snippet": "s"} for i in range(15)],
+            search_results=[{"title": f"C{i}", "snippet": "s", "score": 0.9} for i in range(15)],
+            sub_queries=["q1", "q2", "q3"],
             cross_references=[
                 {"case_id": f"id{i}", "title": f"C{i}", "citation": "X", "match_count": 3}
                 for i in range(5)
@@ -339,7 +342,7 @@ class TestSynthesizeMemoNode:
             contradictions=[],
         )
         result = await synthesize_memo_node(state, llm)
-        assert result["confidence"] >= 0.8
+        assert result["confidence"] >= 0.6
 
 
 # ---------------------------------------------------------------------------

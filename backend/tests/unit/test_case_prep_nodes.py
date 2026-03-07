@@ -247,7 +247,11 @@ class TestDeepPrecedentSearchNode:
         with patch(
             "app.core.agents.nodes.case_prep_nodes.hybrid_search",
             new_callable=AsyncMock,
-        ) as mock_search:
+        ) as mock_search, patch(
+            "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
+            new_callable=AsyncMock,
+            side_effect=lambda results, db, **kw: results,
+        ):
             mock_search.return_value = mock_response
 
             state = _make_state(prioritized_issues=[
@@ -312,7 +316,11 @@ class TestDeepPrecedentSearchNode:
         with patch(
             "app.core.agents.nodes.case_prep_nodes.hybrid_search",
             new_callable=AsyncMock,
-        ) as mock_search:
+        ) as mock_search, patch(
+            "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
+            new_callable=AsyncMock,
+            side_effect=lambda results, db, **kw: results,
+        ):
             mock_search.return_value = mock_response
 
             state = _make_state(prioritized_issues=[

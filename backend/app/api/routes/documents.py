@@ -7,6 +7,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -151,12 +152,12 @@ async def get_document(
     return response
 
 
-@router.delete("/{document_id}", status_code=204)
+@router.delete("/{document_id}", status_code=204, response_class=Response)
 async def delete_document(
     document_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: TokenPayload = Depends(get_current_user),
-) -> None:
+) -> Response:
     """Delete a document and its analysis. Owner only."""
     result = await db.execute(
         text(
@@ -182,6 +183,7 @@ async def delete_document(
         {"id": document_id},
     )
     await db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/{document_id}/memo")

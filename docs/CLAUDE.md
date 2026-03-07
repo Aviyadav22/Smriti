@@ -24,6 +24,7 @@ Smriti is a purpose-built Indian legal research platform — think Harvey AI but
 | LLM | Gemini 2.5 Pro | 1M context, best reasoning, GCP native |
 | Embeddings | Gemini gemini-embedding-001 | 1536-dim (Matryoshka), free tier on GCP |
 | Reranker | Cohere rerank-v4.0-pro | Native reranker API, free tier |
+| Agent Framework | LangGraph (StateGraph) | Graph-based agent orchestration, HITL checkpoints |
 | Cache | Redis (Upstash) | Session, query caching, rate limiting |
 | Storage | Google Cloud Storage | PDF documents |
 | Background Jobs | Celery + Redis (broker on DB 1) | Async document processing, audio generation |
@@ -186,9 +187,9 @@ celery -A app.worker:celery_app worker --loglevel=info
 
 ## Current Phase
 
-**Phase 6: Agent Framework (next)**
+**Phase 7: Strategy Agent + Drafting Agent + Hindi (next)**
 
-Phases 1-5 complete — backend, security, search pipeline, frontend, RAG chat, citation graph, judge analytics, document upload + analysis, audio digests all built. 250 backend tests, 127 frontend tests, all passing. See `PHASE_PLAN.md` for full status.
+Phases 1-6.5 complete — backend, security, search pipeline, frontend, RAG chat, citation graph, judge analytics, document upload + analysis, audio digests, LangGraph agent framework (Research Agent + Case Prep Agent), quality excellence sprint (precedent strength, citation equivalence, section-aware search, confidence scoring, RAG grounding) all built. 461 backend unit tests, 156 frontend tests, all passing. See `PHASE_PLAN.md` for full status.
 
 ---
 

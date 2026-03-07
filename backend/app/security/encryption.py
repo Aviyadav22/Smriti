@@ -111,3 +111,15 @@ def decrypt_field(ciphertext: str) -> str:
         raise ValueError(f"Decryption failed: {exc}") from exc
 
     return plaintext_bytes.decode("utf-8")
+
+
+def safe_decrypt(value: str) -> str:
+    """Decrypt if encrypted, return as-is if plaintext.
+
+    Provides migration safety: pre-existing plaintext messages in the DB
+    won't crash when read after encryption is enabled.
+    """
+    try:
+        return decrypt_field(value)
+    except (ValueError, Exception):
+        return value
