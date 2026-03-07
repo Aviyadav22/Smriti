@@ -537,6 +537,7 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
                             <MarkdownWithCitations
                                 content={message.content}
                                 sources={message.sources}
+                                messageId={message.id}
                             />
                         </div>
                     ) : message.isStreaming ? (
@@ -579,7 +580,7 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
                                     variant="outline"
                                     className="text-[10px] cursor-pointer hover:bg-muted/50 transition-colors gap-1"
                                     onClick={() => router.push(`/case/${source.case_id}`)}
-                                    id={`source-${i + 1}`}
+                                    id={`source-${message.id}-${i + 1}`}
                                 >
                                     <span className="text-[var(--gold)] font-semibold">[{i + 1}]</span>
                                     <span className="truncate max-w-[180px]">
@@ -611,9 +612,11 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
 function MarkdownWithCitations({
     content,
     sources,
+    messageId,
 }: {
     content: string;
     sources: ChatSource[];
+    messageId: string;
 }) {
     // Replace [N] patterns with clickable links that scroll to the source badge
     const processedContent = content.replace(
@@ -621,7 +624,7 @@ function MarkdownWithCitations({
         (match, num) => {
             const idx = parseInt(num, 10);
             if (idx >= 1 && idx <= sources.length) {
-                return `[${match}](#source-${idx})`;
+                return `[${match}](#source-${messageId}-${idx})`;
             }
             return match;
         },
