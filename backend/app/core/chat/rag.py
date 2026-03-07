@@ -106,9 +106,14 @@ async def rag_respond(
     # 2. Load chat history
     chat_history = await _load_chat_history(db, session_id)
 
+    # 2.5 Reformulate follow-up queries with conversation context
+    search_query = question
+    if chat_history:
+        search_query = await _reformulate_query(question, chat_history, llm)
+
     # 3. Retrieve relevant cases via hybrid search
     search_response = await hybrid_search(
-        query=question,
+        query=search_query,
         page=1,
         page_size=MAX_CONTEXT_RESULTS,
         llm=llm,
@@ -182,6 +187,43 @@ async def rag_respond(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+async def _reformulate_query(
+    question: str,
+    chat_history: list[dict],
+    llm: LLMProvider,
+) -> str:
+    """Reformulate a follow-up question using conversation context."""
+    # Take last few messages for context
+    recent = chat_history[-4:]
+    history_summary = "\n".join(
+        f"{m['role'].title()}: {m['content'][:200]}" for m in recent
+    )
+
+    prompt = (
+        "Given this conversation context:\n"
+        f"{history_summary}\n\n"
+        f"The user now asks: \"{question}\"\n\n"
+        "Rewrite the user's question as a self-contained search query that includes "
+        "all necessary context from the conversation. Return ONLY the reformulated query, "
+        "nothing else. If the question is already self-contained, return it as-is."
+    )
+
+    try:
+        reformulated = await llm.generate(
+            prompt=prompt,
+            system="You are a query reformulation assistant. Output only the reformulated search query.",
+            temperature=0.0,
+            max_tokens=200,
+        )
+        reformulated = reformulated.strip().strip('"').strip("'")
+        if reformulated:
+            return reformulated
+    except Exception:
+        logger.warning("Query reformulation failed, using original query")
+
+    return question
 
 
 def _generate_title(question: str) -> str:
