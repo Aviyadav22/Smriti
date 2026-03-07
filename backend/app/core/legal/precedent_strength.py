@@ -9,10 +9,13 @@ as applied in Indian courts:
 """
 from __future__ import annotations
 
+import logging
 from enum import Enum
 from typing import Final
 
 from app.core.legal.courts import get_court_level, normalize_court_name
+
+logger = logging.getLogger(__name__)
 
 BENCH_HIERARCHY: Final[dict[str, int]] = {
     "constitutional": 4,
@@ -55,6 +58,8 @@ def classify_precedent_strength(
 
     source_canonical = normalize_court_name(source_court)
     source_level = get_court_level(source_canonical)
+    if source_level == "unknown":
+        logger.warning("Unknown court level for: %s (normalized: %s)", source_court, source_canonical)
 
     # Supreme Court binds everything
     if source_level == "supreme":
@@ -63,6 +68,8 @@ def classify_precedent_strength(
 
         target_canonical = normalize_court_name(target_court)
         target_level = get_court_level(target_canonical)
+        if target_level == "unknown":
+            logger.warning("Unknown court level for: %s (normalized: %s)", target_court, target_canonical)
 
         # SC citing SC — check bench strength
         if target_level == "supreme" and target_bench and source_bench:
@@ -81,6 +88,8 @@ def classify_precedent_strength(
 
         target_canonical = normalize_court_name(target_court)
         target_level = get_court_level(target_canonical)
+        if target_level == "unknown":
+            logger.warning("Unknown court level for: %s (normalized: %s)", target_court, target_canonical)
 
         # Same High Court
         if source_canonical == target_canonical:
