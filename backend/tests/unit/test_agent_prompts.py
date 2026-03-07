@@ -186,3 +186,36 @@ class TestResearchAgentSchemas:
         assert "aspect" in items["properties"]
         assert "rationale" in items["properties"]
         assert set(items["required"]) == {"query", "aspect", "rationale"}
+
+
+# ---------------------------------------------------------------------------
+# Prompt hardening — anti-sycophancy, bench strength, disclaimer
+# ---------------------------------------------------------------------------
+
+
+class TestPromptHardening:
+    def test_chat_system_has_anti_sycophancy(self):
+        """Chat system prompt must instruct model to flag incorrect assumptions."""
+        from app.core.legal.prompts import CHAT_SYSTEM_PROMPT
+        assert "incorrect" in CHAT_SYSTEM_PROMPT.lower() or "wrong" in CHAT_SYSTEM_PROMPT.lower()
+        assert "flag" in CHAT_SYSTEM_PROMPT.lower() or "correct" in CHAT_SYSTEM_PROMPT.lower()
+
+    def test_chat_system_has_bench_strength(self):
+        """Chat system prompt must request bench strength in citations."""
+        from app.core.legal.prompts import CHAT_SYSTEM_PROMPT
+        assert "bench" in CHAT_SYSTEM_PROMPT.lower()
+
+    def test_chat_system_has_disclaimer(self):
+        """Chat system prompt must include legal disclaimer instruction."""
+        from app.core.legal.prompts import CHAT_SYSTEM_PROMPT
+        assert "not legal advice" in CHAT_SYSTEM_PROMPT.lower()
+
+    def test_research_synthesize_has_precedent_strength(self):
+        """Research synthesis prompt must classify precedent strength."""
+        from app.core.legal.prompts import RESEARCH_SYNTHESIZE_SYSTEM
+        assert "BINDING" in RESEARCH_SYNTHESIZE_SYSTEM or "binding" in RESEARCH_SYNTHESIZE_SYSTEM.lower()
+
+    def test_case_prep_has_time_bar_check(self):
+        """Case prep prompt must flag time-barred arguments."""
+        from app.core.legal.prompts import CASE_PREP_PRIORITIZE_SYSTEM
+        assert "time-bar" in CASE_PREP_PRIORITIZE_SYSTEM.lower() or "limitation" in CASE_PREP_PRIORITIZE_SYSTEM.lower()

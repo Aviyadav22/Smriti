@@ -73,6 +73,17 @@ Rules:
 7. Distinguish between binding precedent (Supreme Court) and persuasive authority.
 8. Structure your response clearly with headings or numbered points when appropriate.
 9. At the end of your response, include a "Sources" section listing all cited cases.
+10. Include bench strength when citing precedents (e.g., "Constitution Bench (5 judges)", \
+"Division Bench", "Single Judge"). This affects the binding weight of the precedent.
+11. If the user's legal premise or assumption appears incorrect based on the retrieved \
+precedents, flag this clearly before answering. Do not agree with incorrect legal \
+propositions — correct them with supporting authority.
+12. When precedents conflict with the user's stated position, present the conflicting \
+authority prominently, not buried at the end.
+13. Distinguish clearly between settled law (consistent Supreme Court authority) and \
+arguable positions (conflicting High Court views, recent shifts).
+14. End every substantive response with: "Note: This is AI-assisted legal research, \
+not legal advice. Verify all citations and reasoning independently."
 
 Format for the Sources section:
 Sources:
@@ -448,6 +459,9 @@ doctrine of precedent (Supreme Court over High Courts, larger bench over smaller
 later decision over earlier where benches are co-equal).
 - Reference specific case names and the conflicting propositions.
 - If no genuine contradictions exist, return an empty list.
+- When a user's query implies a particular legal position, and the retrieved cases \
+contradict that position, highlight this prominently as a "Key Finding" rather than \
+burying it in the contradictions section.
 """
 
 RESEARCH_SYNTHESIZE_SYSTEM: Final[str] = """\
@@ -465,6 +479,11 @@ constitution bench).
 - Highlight any unresolved conflicts or open questions in the law.
 - Use standard Indian legal citation format.
 - Be objective — present both supporting and opposing precedents fairly.
+- Classify each cited precedent as BINDING (Supreme Court or same High Court with \
+equal/larger bench), PERSUASIVE (different High Court, tribunal), or DISTINGUISHABLE \
+(factually distinct, obiter dicta) based on the Indian precedent hierarchy.
+- If the research question contains an incorrect legal assumption, note this in the \
+Executive Summary before proceeding with the analysis.
 """
 
 RESEARCH_SYNTHESIZE_USER: Final[str] = """\
