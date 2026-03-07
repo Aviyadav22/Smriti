@@ -1,7 +1,10 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Check, Clipboard, Download } from "lucide-react";
 
 interface AgentMemoViewerProps {
     content: string;
@@ -40,18 +43,66 @@ function renderTextWithCitations(text: string): React.ReactNode[] {
 }
 
 export function AgentMemoViewer({ content, confidence }: AgentMemoViewerProps) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = useCallback(async () => {
+        try {
+            await navigator.clipboard.writeText(content);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch {
+            // Fallback for older browsers
+            const ta = document.createElement("textarea");
+            ta.value = content;
+            ta.style.position = "fixed";
+            ta.style.left = "-9999px";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    }, [content]);
+
+    const handleDownload = useCallback(() => {
+        const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "research-memo.md";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, [content]);
+
     // Split content by ## headings to render as sections
     const sections = content.split(/^## /m);
 
     return (
         <div className="space-y-4">
-            {confidence !== undefined && (
-                <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+                {confidence !== undefined && (
                     <Badge variant={confidence >= 0.8 ? "default" : confidence >= 0.5 ? "secondary" : "outline"}>
                         Confidence: {Math.round(confidence * 100)}%
                     </Badge>
+                )}
+                <div className="ml-auto flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={handleCopy}>
+                        {copied ? (
+                            <Check className="h-3.5 w-3.5 mr-1.5" />
+                        ) : (
+                            <Clipboard className="h-3.5 w-3.5 mr-1.5" />
+                        )}
+                        {copied ? "Copied" : "Copy"}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleDownload}>
+                        <Download className="h-3.5 w-3.5 mr-1.5" />
+                        Download MD
+                    </Button>
                 </div>
-            )}
+            </div>
 
             {sections.map((section, i) => {
                 if (i === 0 && !section.trim()) return null;

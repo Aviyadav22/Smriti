@@ -57,6 +57,24 @@ export function AgentCheckpointPrompt({ question, context, onSubmit, disabled }:
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-3">
+                    {/* Quick suggestion chips */}
+                    <div className="flex flex-wrap gap-2">
+                        {[
+                            "Looks good, proceed",
+                            "Focus more on constitutional aspects",
+                            "Add cases from the last 5 years",
+                        ].map((suggestion) => (
+                            <button
+                                key={suggestion}
+                                type="button"
+                                disabled={disabled}
+                                onClick={() => setInput(suggestion)}
+                                className="rounded-full border border-border bg-muted/50 px-3 py-1 text-xs text-foreground hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {suggestion}
+                            </button>
+                        ))}
+                    </div>
                     <Textarea
                         placeholder="Type your response..."
                         value={input}
