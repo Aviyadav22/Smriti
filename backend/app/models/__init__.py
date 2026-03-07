@@ -1,5 +1,6 @@
 """SQLAlchemy models for the Smriti application."""
 
+from app.models.agent_execution import AgentExecution
 from app.models.audit import AuditLog
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.case import Case
@@ -9,6 +10,7 @@ from app.models.document import Document
 from app.models.user import User
 
 __all__ = [
+    "AgentExecution",
     "AuditLog",
     "Base",
     "Case",
