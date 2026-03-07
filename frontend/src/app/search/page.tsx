@@ -160,8 +160,10 @@ function SearchContent() {
                     <div className="mx-auto max-w-5xl px-4 py-4">
                         <form onSubmit={handleSearch} className="flex gap-2">
                             <div className="relative flex-1">
+                                <label htmlFor="search-input" className="sr-only">Search Indian case law</label>
                                 <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                                 <Input
+                                    id="search-input"
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
                                     placeholder="Search Indian case law…"
@@ -175,6 +177,7 @@ function SearchContent() {
                                 size="icon"
                                 className="h-10 w-10 shrink-0 rounded-md"
                                 onClick={() => setShowFilters(!showFilters)}
+                                aria-label={showFilters ? "Hide filters" : "Show filters"}
                             >
                                 <Filter className="h-3.5 w-3.5" />
                             </Button>
@@ -303,7 +306,7 @@ function SearchContent() {
 
                     {/* Error */}
                     {error && (
-                        <div className="text-center py-20">
+                        <div className="text-center py-20" role="alert">
                             <p className="text-sm text-destructive">{error}</p>
                             <Button variant="outline" size="sm" className="mt-3 text-xs" onClick={() => executeSearch(query, page)}>
                                 Retry
@@ -343,9 +346,16 @@ function SearchContent() {
 
                             {/* Result cards */}
                             {results.results.length === 0 ? (
-                                <div className="text-center py-16">
-                                    <p className="text-sm text-muted-foreground">No results found.</p>
-                                    <p className="text-xs text-muted-foreground/60 mt-1">Try different search terms or adjust filters.</p>
+                                <div className="text-center py-12">
+                                    <Search className="h-8 w-8 mx-auto text-muted-foreground/30 mb-3" />
+                                    <h3 className="text-lg font-medium mb-2">No results found</h3>
+                                    <p className="text-sm text-muted-foreground mb-4">Try these suggestions:</p>
+                                    <ul className="text-sm text-muted-foreground space-y-1">
+                                        <li>Use broader search terms (e.g., &ldquo;right to privacy&rdquo; instead of specific case names)</li>
+                                        <li>Remove filters to widen your search</li>
+                                        <li>Check spelling of legal terms</li>
+                                        <li>Try searching by citation number (e.g., &ldquo;AIR 2017 SC 4161&rdquo;)</li>
+                                    </ul>
                                 </div>
                             ) : (
                                 <div className="space-y-3">
@@ -358,7 +368,7 @@ function SearchContent() {
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2">
-                                                        <h3 className="text-sm font-semibold leading-snug line-clamp-2 font-[family-name:var(--font-lora)]">
+                                                        <h3 className="text-sm font-semibold leading-snug line-clamp-2 font-[family-name:var(--font-lora)]" title={r.title || "Untitled Case"}>
                                                             {r.title || "Untitled Case"}
                                                         </h3>
                                                         {r.precedent_strength && (
@@ -424,6 +434,7 @@ function SearchContent() {
                                         className="h-8 text-xs"
                                         onClick={() => handlePageChange(page - 1)}
                                         disabled={page <= 1}
+                                        aria-label="Previous page"
                                     >
                                         <ChevronLeft className="h-3.5 w-3.5" />
                                     </Button>
@@ -436,6 +447,7 @@ function SearchContent() {
                                         className="h-8 text-xs"
                                         onClick={() => handlePageChange(page + 1)}
                                         disabled={page >= totalPages}
+                                        aria-label="Next page"
                                     >
                                         <ChevronRight className="h-3.5 w-3.5" />
                                     </Button>

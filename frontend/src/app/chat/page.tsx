@@ -80,6 +80,9 @@ export default function ChatPage() {
     const [isStreaming, setIsStreaming] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
 
+    // Error state
+    const [networkError, setNetworkError] = useState<string | null>(null);
+
     // UI state
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -181,6 +184,7 @@ export default function ChatPage() {
             if (!text || isStreaming) return;
 
             setInput("");
+            setNetworkError(null);
 
             // Add user message to display
             const userMsg: DisplayMessage = {
@@ -291,6 +295,7 @@ export default function ChatPage() {
                     return updated;
                 });
                 setIsStreaming(false);
+                setNetworkError("Connection error. Please check your network and try again.");
             };
 
             if (currentSessionId) {
@@ -492,6 +497,16 @@ export default function ChatPage() {
                             </div>
                         )}
                     </div>
+
+                    {/* Network error banner */}
+                    {networkError && (
+                        <div className="mx-4 p-3 rounded-md bg-red-50 border border-red-200 text-red-800 dark:bg-red-950/20 dark:border-red-800 dark:text-red-200 text-sm flex items-center justify-between">
+                            <span>{networkError}</span>
+                            <button onClick={() => setNetworkError(null)} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-200 ml-2 shrink-0">
+                                Dismiss
+                            </button>
+                        </div>
+                    )}
 
                     {/* Input area */}
                     <div className="border-t bg-card/50">
