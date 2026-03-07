@@ -13,6 +13,7 @@ import { getCase, getCaseCitations, getCaseCitedBy, getCaseSimilar, getCasePdfUr
 import type { CaseDetail, CitationItem, GraphData, SimilarCase } from "@/lib/types";
 import Link from "next/link";
 import { ArrowLeft, FileText, BookOpen, Link2, Scale, ExternalLink, Loader2, GitBranch } from "lucide-react";
+import AudioPlayer from "@/components/audio-player";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 
@@ -115,6 +116,13 @@ export default function CaseDetailPage() {
                 </div>
 
                 <div className="mx-auto max-w-5xl px-4 py-6">
+                    {/* Audio Digest */}
+                    {sectionKeys.length > 0 && (
+                        <div className="mb-6">
+                            <AudioPlayer caseId={caseId} />
+                        </div>
+                    )}
+
                     <div className="grid lg:grid-cols-[1fr_280px] gap-6">
                         {/* Main content */}
                         <div>
