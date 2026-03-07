@@ -62,8 +62,10 @@ export default function HomePage() {
             {/* Main search */}
             <form onSubmit={handleSearch} className="max-w-xl mx-auto mb-8">
               <div className="relative">
+                <label htmlFor="home-search" className="sr-only">Search judgments, statutes, or legal principles</label>
                 <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                  id="home-search"
                   placeholder="Search judgments, statutes, or legal principles…"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}

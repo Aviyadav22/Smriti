@@ -72,7 +72,7 @@ export default function UploadPage() {
             </div>
           )}
           {error && (
-            <p className="text-sm text-destructive font-medium">{error}</p>
+            <p className="text-sm text-destructive font-medium" role="alert">{error}</p>
           )}
         </CardContent>
       </Card>

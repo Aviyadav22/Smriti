@@ -336,7 +336,7 @@ function SearchContent() {
 
                             {/* Low-relevance banner (Gap 12) */}
                             {allLowRelevance && (
-                                <div className="flex items-center gap-2 mb-4 p-3 rounded-md border border-yellow-500/30 bg-yellow-50 dark:bg-yellow-950/20 text-yellow-800 dark:text-yellow-200">
+                                <div className="flex items-center gap-2 mb-4 p-3 rounded-md border border-yellow-500/30 bg-yellow-50 dark:bg-yellow-950/20 text-yellow-800 dark:text-yellow-200" role="alert">
                                     <AlertTriangle className="h-4 w-4 shrink-0" />
                                     <p className="text-xs">
                                         No highly relevant results found. Try broadening your search terms or adjusting filters.

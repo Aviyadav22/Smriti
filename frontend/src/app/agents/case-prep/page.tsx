@@ -271,7 +271,9 @@ export default function CasePrepAgentPage() {
                                 >
                                     Select a document
                                 </label>
+                                <label htmlFor="doc-search" className="sr-only">Search documents</label>
                                 <input
+                                    id="doc-search"
                                     type="text"
                                     placeholder="Search documents..."
                                     value={docSearch}
@@ -383,7 +385,7 @@ export default function CasePrepAgentPage() {
 
                         {/* Error */}
                         {error && (
-                            <div className="text-sm text-red-500 p-3 rounded-md bg-red-50 dark:bg-red-950/20">
+                            <div className="text-sm text-red-500 p-3 rounded-md bg-red-50 dark:bg-red-950/20" role="alert">
                                 {error}
                             </div>
                         )}

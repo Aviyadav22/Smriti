@@ -63,8 +63,9 @@ export default function RegisterPage() {
 
                     <form onSubmit={handleSubmit} className="space-y-3">
                         <div>
-                            <label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Full Name</label>
+                            <label htmlFor="register-name" className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Full Name</label>
                             <Input
+                                id="register-name"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder="Advocate Name"
@@ -73,8 +74,9 @@ export default function RegisterPage() {
                             />
                         </div>
                         <div>
-                            <label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Email</label>
+                            <label htmlFor="register-email" className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Email</label>
                             <Input
+                                id="register-email"
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
@@ -82,11 +84,12 @@ export default function RegisterPage() {
                                 required
                                 className="h-9 text-sm rounded-md"
                             />
-                            {fieldErrors.email && <p className="text-xs text-red-500 mt-1">{fieldErrors.email}</p>}
+                            {fieldErrors.email && <p className="text-xs text-red-500 mt-1" role="alert">{fieldErrors.email}</p>}
                         </div>
                         <div>
-                            <label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Password</label>
+                            <label htmlFor="register-password" className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Password</label>
                             <Input
+                                id="register-password"
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
@@ -96,7 +99,7 @@ export default function RegisterPage() {
                                 className="h-9 text-sm rounded-md"
                             />
                             <p className="text-[10px] text-muted-foreground mt-1">Passwords must be at least 8 characters</p>
-                            {fieldErrors.password && <p className="text-xs text-red-500 mt-1">{fieldErrors.password}</p>}
+                            {fieldErrors.password && <p className="text-xs text-red-500 mt-1" role="alert">{fieldErrors.password}</p>}
                         </div>
 
                         <div className="flex items-start gap-2 text-xs text-muted-foreground pt-1">
@@ -107,7 +110,7 @@ export default function RegisterPage() {
                             </label>
                         </div>
 
-                        {error && <p className="text-xs text-destructive">{error}</p>}
+                        {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
 
                         <Button type="submit" className="w-full h-9 text-xs rounded-md" disabled={loading || !isFormValid}>
                             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Create Account"}

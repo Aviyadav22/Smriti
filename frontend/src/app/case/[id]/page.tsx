@@ -71,7 +71,7 @@ export default function CaseDetailPage() {
             <Header />
             <div className="flex-1 flex items-center justify-center">
                 <div className="text-center">
-                    <p className="text-sm text-destructive">{error || "Case not found"}</p>
+                    <p className="text-sm text-destructive" role="alert">{error || "Case not found"}</p>
                     <Button variant="outline" size="sm" className="mt-3 text-xs" onClick={() => router.back()}>Go Back</Button>
                 </div>
             </div>

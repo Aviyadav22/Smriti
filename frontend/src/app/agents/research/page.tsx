@@ -212,7 +212,9 @@ export default function ResearchAgentPage() {
             {showInputForm && (
                 <Card>
                     <CardContent className="pt-6 space-y-4">
+                        <label htmlFor="research-query" className="sr-only">Enter your legal research question</label>
                         <Textarea
+                            id="research-query"
                             placeholder="Enter your legal research question..."
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
@@ -286,7 +288,7 @@ export default function ResearchAgentPage() {
 
                         {/* Error */}
                         {error && (
-                            <div className="text-sm text-red-500 p-3 rounded-md bg-red-50 dark:bg-red-950/20">
+                            <div className="text-sm text-red-500 p-3 rounded-md bg-red-50 dark:bg-red-950/20" role="alert">
                                 {error}
                             </div>
                         )}

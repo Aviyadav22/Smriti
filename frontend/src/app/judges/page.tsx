@@ -66,8 +66,10 @@ export default function JudgesPage() {
 
                     {/* Search bar */}
                     <div className="relative mb-6">
+                        <label htmlFor="judge-search" className="sr-only">Search judges</label>
                         <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                         <input
+                            id="judge-search"
                             type="text"
                             value={searchInput}
                             onChange={(e) => handleSearchChange(e.target.value)}
@@ -110,7 +112,7 @@ export default function JudgesPage() {
                                                 href={`/judge/${encodeURIComponent(judge.name)}`}
                                                 className="grid grid-cols-[1fr,80px,80px,32px] gap-2 px-3 py-3 items-center hover:bg-accent/50 rounded-md transition-colors"
                                             >
-                                                <span className="text-sm font-medium truncate">
+                                                <span className="text-sm font-medium truncate" title={judge.name}>
                                                     {judge.name}
                                                 </span>
                                                 <span className="text-sm text-muted-foreground text-right tabular-nums">

@@ -389,6 +389,7 @@ export default function ChatPage() {
                                 className="h-7 w-7 p-0"
                                 onClick={startNewChat}
                                 title="New chat"
+                                aria-label="New chat"
                             >
                                 <Plus className="h-3.5 w-3.5" />
                             </Button>
@@ -397,6 +398,7 @@ export default function ChatPage() {
                                 size="sm"
                                 className="h-7 w-7 p-0 lg:hidden"
                                 onClick={() => setSidebarOpen(false)}
+                                aria-label="Close sidebar"
                             >
                                 <X className="h-3.5 w-3.5" />
                             </Button>
@@ -425,7 +427,7 @@ export default function ChatPage() {
                                     onClick={() => selectSession(session.id)}
                                 >
                                     <MessageSquare className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                    <span className="truncate flex-1 text-xs">
+                                    <span className="truncate flex-1 text-xs" title={session.title}>
                                         {session.title}
                                     </span>
                                     <Button
@@ -433,6 +435,7 @@ export default function ChatPage() {
                                         size="sm"
                                         className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 shrink-0"
                                         onClick={(e) => handleDeleteSession(e, session.id)}
+                                        aria-label="Delete session"
                                     >
                                         <Trash2 className="h-3 w-3 text-muted-foreground" />
                                     </Button>
@@ -512,7 +515,9 @@ export default function ChatPage() {
                     <div className="border-t bg-card/50">
                         <div className="max-w-3xl mx-auto px-4 py-3">
                             <div className="flex items-end gap-2">
+                                <label htmlFor="chat-input" className="sr-only">Ask a legal question</label>
                                 <textarea
+                                    id="chat-input"
                                     ref={inputRef}
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
@@ -529,6 +534,7 @@ export default function ChatPage() {
                                         className="h-10 w-10 p-0 shrink-0 rounded-md"
                                         onClick={exportSession}
                                         title="Export conversation as Markdown"
+                                        aria-label="Export conversation"
                                     >
                                         <Download className="h-4 w-4" />
                                     </Button>
@@ -538,6 +544,7 @@ export default function ChatPage() {
                                     className="h-10 w-10 p-0 shrink-0 rounded-md"
                                     onClick={() => handleSend()}
                                     disabled={!input.trim() || isStreaming}
+                                    aria-label="Send message"
                                 >
                                     {isStreaming ? (
                                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -610,6 +617,7 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
                             onClick={handleCopy}
                             className="absolute top-2 right-2 opacity-0 group-hover/msg:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
                             title="Copy to clipboard"
+                            aria-label="Copy to clipboard"
                         >
                             {copied ? (
                                 <Check className="h-3.5 w-3.5 text-green-500" />
@@ -636,7 +644,7 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
                                     id={`source-${message.id}-${i + 1}`}
                                 >
                                     <span className="text-[var(--gold)] font-semibold">[{i + 1}]</span>
-                                    <span className="truncate max-w-[180px]">
+                                    <span className="truncate max-w-[180px]" title={source.citation || source.title || "Case"}>
                                         {source.citation || source.title || "Case"}
                                     </span>
                                     {source.court && (

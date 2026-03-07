@@ -36,8 +36,10 @@ export function Header() {
                 {/* Search bar — desktop */}
                 <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-lg mx-6">
                     <div className="relative w-full">
+                        <label htmlFor="header-search" className="sr-only">Search Indian case law</label>
                         <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                         <Input
+                            id="header-search"
                             placeholder="Search Indian case law…"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
@@ -86,7 +88,7 @@ export function Header() {
                 </nav>
 
                 {/* Mobile toggle */}
-                <Button variant="ghost" size="icon" className="md:hidden ml-auto h-8 w-8" onClick={() => setMobileOpen(!mobileOpen)}>
+                <Button variant="ghost" size="icon" className="md:hidden ml-auto h-8 w-8" onClick={() => setMobileOpen(!mobileOpen)} aria-label={mobileOpen ? "Close menu" : "Open menu"}>
                     {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
                 </Button>
             </div>
@@ -96,8 +98,9 @@ export function Header() {
                 <div className="md:hidden border-t px-4 py-3 space-y-2 bg-card">
                     <form onSubmit={handleSearch}>
                         <div className="relative">
+                            <label htmlFor="header-search-mobile" className="sr-only">Search case law</label>
                             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                            <Input placeholder="Search case law…" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-9 text-sm" />
+                            <Input id="header-search-mobile" placeholder="Search case law…" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-9 text-sm" />
                         </div>
                     </form>
                     <div className="flex flex-col gap-0.5 pt-1">

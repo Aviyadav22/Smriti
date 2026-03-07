@@ -75,7 +75,9 @@ export function AgentCheckpointPrompt({ question, context, onSubmit, disabled }:
                             </button>
                         ))}
                     </div>
+                    <label htmlFor="checkpoint-response" className="sr-only">Type your response</label>
                     <Textarea
+                        id="checkpoint-response"
                         placeholder="Type your response..."
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
