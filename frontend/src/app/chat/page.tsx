@@ -30,6 +30,7 @@ import {
     X,
     Copy,
     Check,
+    Download,
 } from "lucide-react";
 import { LegalDisclaimer } from "@/components/legal-disclaimer";
 
@@ -301,6 +302,32 @@ export default function ChatPage() {
         [input, isStreaming, activeSessionId],
     );
 
+    function exportSession() {
+        if (messages.length === 0) return;
+
+        const md = messages
+            .map((m) => {
+                const prefix = m.role === "user" ? "**You:**" : "**Smriti:**";
+                let text = `${prefix} ${m.content}\n`;
+                if (m.sources && m.sources.length > 0) {
+                    text += "\n**Sources:**\n";
+                    m.sources.forEach((s, i) => {
+                        text += `- [${i + 1}] ${s.citation || s.title} (${s.court}, ${s.year})\n`;
+                    });
+                }
+                return text;
+            })
+            .join("\n---\n\n");
+
+        const blob = new Blob([md], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `smriti-chat-${new Date().toISOString().slice(0, 10)}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
     function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -480,6 +507,17 @@ export default function ChatPage() {
                                     className="flex-1 resize-none bg-background border rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/60"
                                     disabled={isStreaming}
                                 />
+                                {messages.length > 0 && !isStreaming && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-10 w-10 p-0 shrink-0 rounded-md"
+                                        onClick={exportSession}
+                                        title="Export conversation as Markdown"
+                                    >
+                                        <Download className="h-4 w-4" />
+                                    </Button>
+                                )}
                                 <Button
                                     size="sm"
                                     className="h-10 w-10 p-0 shrink-0 rounded-md"
