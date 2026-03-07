@@ -42,6 +42,7 @@ class SearchResultItem:
     judge: str | None = None
     snippet: str | None = None
     bench_type: str | None = None
+    equivalent_citations: list[str] = field(default_factory=list)
     relevance_sources: list[str] = field(default_factory=list)
 
 
@@ -290,16 +291,38 @@ async def _exact_citation_search(
     query: str,
     db: AsyncSession,
 ) -> list[SearchResultItem]:
-    """Search for cases by exact citation match (ILIKE)."""
-    sql = text(
-        "SELECT id, title, citation, court, year, decision_date, "
-        "case_type, judge, bench_type "
-        "FROM cases WHERE citation ILIKE :q "
-        "ORDER BY year DESC NULLS LAST "
-        "LIMIT 20"
+    """Search for cases by exact citation match — checks both cases and equivalents tables."""
+    query_clean = query.strip()
+
+    # 1. Direct match on cases.citation
+    result = await db.execute(
+        text(
+            "SELECT id, title, citation, court, year, decision_date, "
+            "case_type, judge, bench_type "
+            "FROM cases WHERE citation ILIKE :q "
+            "ORDER BY year DESC NULLS LAST "
+            "LIMIT 5"
+        ),
+        {"q": f"%{query_clean}%"},
     )
-    result = await db.execute(sql, {"q": f"%{query}%"})
     rows = result.mappings().all()
+
+    # 2. If no direct match, check equivalents table
+    if not rows:
+        equiv_result = await db.execute(
+            text(
+                "SELECT c.id, c.title, c.citation, c.court, c.year, "
+                "c.decision_date, c.case_type, c.judge, c.bench_type "
+                "FROM case_citation_equivalents cce "
+                "JOIN cases c ON c.id::text = cce.case_id "
+                "WHERE cce.citation_text ILIKE :q LIMIT 5"
+            ),
+            {"q": f"%{query_clean}%"},
+        )
+        rows = equiv_result.mappings().all()
+
+    if not rows:
+        return []
 
     return [
         SearchResultItem(
@@ -418,6 +441,19 @@ async def _enrich_results(
     result = await db.execute(sql, params)
     rows = {str(row["id"]): row for row in result.mappings().all()}
 
+    # Fetch equivalent citations
+    equiv_result = await db.execute(
+        text(
+            f"SELECT case_id, citation_text FROM case_citation_equivalents "
+            f"WHERE case_id IN ({placeholders})"
+        ),
+        params,
+    )
+    equiv_rows = equiv_result.mappings().all()
+    equiv_map: dict[str, list[str]] = {}
+    for er in equiv_rows:
+        equiv_map.setdefault(er["case_id"], []).append(er["citation_text"])
+
     enriched: list[SearchResultItem] = []
     for cid in case_ids:
         row = rows.get(cid)
@@ -436,6 +472,7 @@ async def _enrich_results(
                 judge=row.get("judge"),
                 snippet=snippets_map.get(cid),
                 bench_type=row.get("bench_type"),
+                equivalent_citations=equiv_map.get(cid, []),
             )
         )
 

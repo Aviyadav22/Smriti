@@ -224,6 +224,7 @@ def _serialize_response(response: SearchResponse) -> dict:
                 "judge": r.judge,
                 "snippet": r.snippet,
                 "bench_type": r.bench_type,
+                "equivalent_citations": r.equivalent_citations,
             }
             for r in response.results
         ],
