@@ -8,6 +8,7 @@ import uuid
 from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from app.security.rate_limiter import rate_limit_dependency
 from fastapi.responses import StreamingResponse
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
@@ -28,6 +29,7 @@ from app.db.postgres import get_db
 from app.models.agent_execution import AgentExecution, AgentStatus, AgentType
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user
+from app.security.sanitizer import sanitize_search_query, detect_prompt_injection
 
 logger = logging.getLogger(__name__)
 
@@ -130,9 +132,9 @@ async def _stream_agent_events(
     except Exception as exc:
         logger.exception("Agent execution %s failed", execution.id)
         execution.status = AgentStatus.failed.value
-        execution.error_message = str(exc)
+        execution.error_message = str(exc)[:2000]
         await db.commit()
-        yield f"data: {json.dumps({'type': 'error', 'message': str(exc), 'recoverable': False})}\n\n"
+        yield f"data: {json.dumps({'type': 'error', 'message': 'Agent execution failed. Please try again.', 'recoverable': False})}\n\n"
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +142,7 @@ async def _stream_agent_events(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/{agent_type}/run")
+@router.post("/{agent_type}/run", dependencies=[Depends(rate_limit_dependency("10/minute"))])
 async def run_agent(
     agent_type: str,
     user: TokenPayload = Depends(get_current_user),
@@ -158,6 +160,12 @@ async def run_agent(
     # Parse request body based on agent_type
     if request_body is None:
         raise HTTPException(status_code=422, detail="Request body is required.")
+
+    # Sanitize user input for research queries
+    if isinstance(request_body, ResearchRequest):
+        if detect_prompt_injection(request_body.query):
+            raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
+        request_body.query = sanitize_search_query(request_body.query)
 
     # Create checkpointer
     checkpointer = MemorySaver()
@@ -351,6 +359,11 @@ async def resume_execution(
 
     if str(execution.user_id) != user.sub:
         raise HTTPException(status_code=403, detail="Access denied.")
+
+    # Sanitize resume input
+    if detect_prompt_injection(body.input):
+        raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
+    body.input = sanitize_search_query(body.input)
 
     if execution.status != AgentStatus.waiting_input.value:
         raise HTTPException(

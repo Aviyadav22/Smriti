@@ -207,7 +207,7 @@ class TestGetCase:
         fake_id = str(uuid.uuid4())
         resp = client.get(f"/api/v1/cases/{fake_id}")
         assert resp.status_code == 404
-        assert fake_id in resp.json()["detail"]
+        assert resp.json()["detail"] == "Case not found"
 
         app.dependency_overrides.clear()
 
@@ -486,7 +486,7 @@ class TestGetPdf:
         app.dependency_overrides[get_db] = _override_db
 
         mock_storage = AsyncMock()
-        mock_storage.download.return_value = b"%PDF-1.4 fake pdf content"
+        mock_storage.retrieve.return_value = b"%PDF-1.4 fake pdf content"
         mock_get_storage.return_value = mock_storage
 
         resp = client.get(f"/api/v1/cases/{_CASE_ID}/pdf")
@@ -496,7 +496,7 @@ class TestGetPdf:
         assert "Test Case Title.pdf" in resp.headers["Content-Disposition"]
         assert resp.content == b"%PDF-1.4 fake pdf content"
 
-        mock_storage.download.assert_awaited_once_with(f"pdfs/{_CASE_ID}.pdf")
+        mock_storage.retrieve.assert_awaited_once_with(f"pdfs/{_CASE_ID}.pdf")
 
         app.dependency_overrides.clear()
 
@@ -549,7 +549,7 @@ class TestGetPdf:
         app.dependency_overrides[get_db] = _override_db
 
         mock_storage = AsyncMock()
-        mock_storage.download.side_effect = FileNotFoundError("not found")
+        mock_storage.retrieve.side_effect = FileNotFoundError("not found")
         mock_get_storage.return_value = mock_storage
 
         resp = client.get(f"/api/v1/cases/{_CASE_ID}/pdf")

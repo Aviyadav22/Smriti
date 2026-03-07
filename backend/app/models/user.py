@@ -42,4 +42,5 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     def __repr__(self) -> str:
-        return f"<User(id={self.id}, email='{self.email}', role='{self.role}')>"
+        masked = self.email[:3] + "***" if self.email else "?"
+        return f"<User(id={self.id}, email='{masked}', role='{self.role}')>"

@@ -152,13 +152,11 @@ def _decode_token(token: str, secret: str, expected_type: str) -> TokenPayload:
     except jwt.ExpiredSignatureError:
         raise AuthenticationError("Token has expired")
     except jwt.InvalidTokenError as exc:
-        raise AuthenticationError(f"Invalid token: {exc}")
+        raise AuthenticationError("Invalid or expired token")
 
     token_type = decoded.get("type")
     if token_type != expected_type:
-        raise AuthenticationError(
-            f"Expected {expected_type} token, got {token_type}"
-        )
+        raise AuthenticationError("Invalid token type")
 
     # Check revocation blacklist
     jti = decoded.get("jti")

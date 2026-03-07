@@ -1,5 +1,6 @@
 """Smriti API — AI-powered Indian legal research platform."""
 
+import logging
 from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 
@@ -13,6 +14,8 @@ from app.security.exceptions import (
     AuthorizationError,
     RateLimitExceededError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _run_migrations() -> None:
@@ -45,6 +48,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.db.redis_client import close_redis
 
     await close_redis()
+
+    # Close graph store driver if it was initialised during this process
+    from app.core.dependencies import get_graph_store
+
+    try:
+        info = get_graph_store.cache_info()
+        if info.currsize > 0:
+            graph_store = get_graph_store()
+            if hasattr(graph_store, "close"):
+                await graph_store.close()
+    except Exception:
+        pass
 
 
 app = FastAPI(
@@ -98,6 +113,15 @@ async def rate_limit_error_handler(
         status_code=429,
         content={"error": exc.detail, "code": "RATE_LIMITED"},
         headers=headers,
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.error("Unhandled exception on %s %s", request.method, request.url.path, exc_info=exc)
+    return JSONResponse(
+        status_code=500,
+        content={"error": "An internal error occurred. Please try again.", "code": "INTERNAL_ERROR"},
     )
 
 

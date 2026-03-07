@@ -48,7 +48,7 @@ async def get_case(
     if case is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Case not found: {case_id}",
+            detail="Case not found",
         )
 
     case_dict = dict(case)
@@ -90,7 +90,7 @@ async def get_case_pdf(
     row = result.mappings().one_or_none()
 
     if row is None:
-        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+        raise HTTPException(status_code=404, detail="Case not found")
 
     pdf_path = row.get("pdf_storage_path")
     if not pdf_path:
@@ -98,7 +98,7 @@ async def get_case_pdf(
 
     storage = get_storage()
     try:
-        pdf_bytes = await storage.download(pdf_path)
+        pdf_bytes = await storage.retrieve(pdf_path)
     except (FileNotFoundError, OSError, RuntimeError) as exc:
         raise HTTPException(
             status_code=404, detail="PDF file not found in storage"
@@ -131,7 +131,7 @@ async def get_citations(
         text("SELECT 1 FROM cases WHERE id = :id"), {"id": case_id}
     )
     if exists.scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+        raise HTTPException(status_code=404, detail="Case not found")
 
     graph = get_graph_store()
     try:
@@ -163,7 +163,7 @@ async def get_cited_by(
         text("SELECT 1 FROM cases WHERE id = :id"), {"id": case_id}
     )
     if exists.scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+        raise HTTPException(status_code=404, detail="Case not found")
 
     graph = get_graph_store()
     try:
@@ -200,7 +200,7 @@ async def get_similar(
     row = result.mappings().one_or_none()
 
     if row is None:
-        raise HTTPException(status_code=404, detail=f"Case not found: {case_id}")
+        raise HTTPException(status_code=404, detail="Case not found")
 
     ratio = row.get("ratio_decidendi") or row.get("title") or ""
     if not ratio:
