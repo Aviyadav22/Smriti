@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
     Plus,
     Trash2,
     Send,
+    Square,
     Loader2,
     Scale,
     ExternalLink,
@@ -63,6 +64,23 @@ const EXAMPLE_QUERIES = [
 // ---------------------------------------------------------------------------
 
 export default function ChatPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="min-h-screen flex flex-col">
+                    <Header />
+                    <div className="flex-1 flex items-center justify-center">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </div>
+                </div>
+            }
+        >
+            <ChatPageInner />
+        </Suspense>
+    );
+}
+
+function ChatPageInner() {
     const router = useRouter();
     const { isAuthenticated, isLoading: authLoading } = useAuth();
 
@@ -82,6 +100,9 @@ export default function ChatPage() {
 
     // Error state
     const [networkError, setNetworkError] = useState<string | null>(null);
+
+    // Query params (for "Open in Chat" from case detail page)
+    const searchParams = useSearchParams();
 
     // UI state
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -114,6 +135,18 @@ export default function ChatPage() {
             inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 150) + "px";
         }
     }, [input]);
+
+    // Auto-send query from URL params (e.g., "Open in Chat" from case detail page)
+    useEffect(() => {
+        const initialQuery = searchParams.get("q");
+        if (initialQuery && messages.length === 0 && !isStreaming) {
+            setInput(initialQuery);
+            // Auto-send after a short delay to let the component fully mount
+            setTimeout(() => {
+                handleSend(initialQuery);
+            }, 500);
+        }
+    }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
     async function loadSessions() {
         setSessionsLoading(true);
@@ -167,6 +200,7 @@ export default function ChatPage() {
 
     async function handleDeleteSession(e: React.MouseEvent, sessionId: string) {
         e.stopPropagation();
+        if (!confirm("Delete this conversation? This cannot be undone.")) return;
         try {
             await deleteChatSession(sessionId);
             setSessions((prev) => prev.filter((s) => s.id !== sessionId));
@@ -539,19 +573,28 @@ export default function ChatPage() {
                                         <Download className="h-4 w-4" />
                                     </Button>
                                 )}
-                                <Button
-                                    size="sm"
-                                    className="h-10 w-10 p-0 shrink-0 rounded-md"
-                                    onClick={() => handleSend()}
-                                    disabled={!input.trim() || isStreaming}
-                                    aria-label="Send message"
-                                >
-                                    {isStreaming ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
+                                {isStreaming ? (
+                                    <Button
+                                        variant="destructive"
+                                        size="sm"
+                                        className="h-10 px-3 shrink-0 rounded-md gap-1.5"
+                                        onClick={() => abortRef.current?.abort()}
+                                        aria-label="Stop generating"
+                                    >
+                                        <Square className="h-3.5 w-3.5" />
+                                        <span className="text-xs">Stop</span>
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        size="sm"
+                                        className="h-10 w-10 p-0 shrink-0 rounded-md"
+                                        onClick={() => handleSend()}
+                                        disabled={!input.trim()}
+                                        aria-label="Send message"
+                                    >
                                         <Send className="h-4 w-4" />
-                                    )}
-                                </Button>
+                                    </Button>
+                                )}
                             </div>
                             <LegalDisclaimer className="mt-2" />
                         </div>
