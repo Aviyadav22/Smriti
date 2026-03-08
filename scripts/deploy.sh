@@ -28,10 +28,10 @@ docker build -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/backend:late
 docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/backend:latest
 cd ..
 
-echo "=== Step 5: Build & push frontend image ==="
+echo "=== Step 5: Build & push frontend image (placeholder URL, rebuilt in step 8) ==="
 cd frontend
 docker build \
-  --build-arg NEXT_PUBLIC_API_URL=https://smriti-backend-HASH-${REGION}.a.run.app/api/v1 \
+  --build-arg NEXT_PUBLIC_API_URL=https://placeholder.run.app/api/v1 \
   -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/frontend:latest .
 docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/frontend:latest
 cd ..
@@ -44,10 +44,14 @@ gcloud run deploy smriti-backend \
   --allow-unauthenticated \
   --memory=1Gi \
   --cpu=1 \
-  --min-instances=0 \
-  --max-instances=3 \
+  --min-instances=1 \
+  --max-instances=5 \
+  --timeout=300 \
+  --cpu-boost \
+  --execution-environment=gen2 \
   --port=8000 \
-  --set-env-vars="APP_ENV=production,APP_DEBUG=false,LOG_LEVEL=INFO" \
+  --http-health-check-path=/health \
+  --set-env-vars="APP_ENV=production,APP_DEBUG=false,LOG_LEVEL=INFO,STORAGE_PROVIDER=gcs,GCS_BUCKET_NAME=smriti-documents" \
   --set-secrets="\
 DATABASE_URL=DATABASE_URL:latest,\
 REDIS_URL=REDIS_URL:latest,\
@@ -61,6 +65,7 @@ NEO4J_URI=NEO4J_URI:latest,\
 NEO4J_USER=NEO4J_USER:latest,\
 NEO4J_PASSWORD=NEO4J_PASSWORD:latest,\
 COHERE_API_KEY=COHERE_API_KEY:latest,\
+SENTRY_DSN=SENTRY_DSN:latest,\
 CORS_ORIGINS=CORS_ORIGINS:latest"
 
 echo "=== Step 7: Get backend URL ==="

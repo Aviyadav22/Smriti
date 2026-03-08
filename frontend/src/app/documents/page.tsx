@@ -5,8 +5,12 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
+import { useAuth } from "@/lib/auth-context";
 import { getDocuments, loadTokens } from "@/lib/api";
 import type { DocumentListItem } from "@/lib/types";
+import { Loader2 } from "lucide-react";
 
 function statusBadgeVariant(
   status: string,
@@ -38,6 +42,7 @@ function statusColor(status: string): string {
 
 export default function DocumentsPage() {
   const router = useRouter();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [documents, setDocuments] = useState<DocumentListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -61,13 +66,36 @@ export default function DocumentsPage() {
     }
   }, []);
 
+  // Redirect unauthenticated users
   useEffect(() => {
-    loadTokens();
-    fetchDocuments(1);
-  }, [fetchDocuments]);
+    if (!authLoading && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [authLoading, isAuthenticated, router]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadTokens();
+      fetchDocuments(1);
+    }
+  }, [fetchDocuments, isAuthenticated]);
+
+  // Auth loading or redirect
+  if (authLoading || !isAuthenticated) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="container mx-auto max-w-4xl py-10 px-4">
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <main className="flex-1 container mx-auto max-w-4xl py-10 px-4">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">My Documents</h1>
         <Button onClick={() => router.push("/upload")}>Upload New</Button>
@@ -147,6 +175,8 @@ export default function DocumentsPage() {
           </Button>
         </div>
       )}
+      </main>
+      <Footer />
     </div>
   );
 }

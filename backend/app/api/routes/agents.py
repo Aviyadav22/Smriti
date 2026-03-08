@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from typing import AsyncIterator
 
@@ -11,22 +12,28 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.security.rate_limiter import rate_limit_dependency
 from fastapi.responses import StreamingResponse
 from langgraph.types import Command
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.case_prep import build_case_prep_graph
+from app.core.agents.drafting import build_drafting_graph
 from app.core.agents.research import build_research_graph
+from app.core.agents.strategy import build_strategy_graph
 from app.core.dependencies import (
     get_checkpointer,
     get_embedder,
+    get_flash_llm,
     get_graph_store,
     get_llm,
     get_reranker,
     get_vector_store,
 )
+from app.core.drafting.export import export_to_docx, export_to_pdf
+from app.core.drafting.templates import TEMPLATES, get_template
 from app.db.postgres import get_db
 from app.models.agent_execution import AgentExecution, AgentStatus, AgentType
+from app.security.audit import create_audit_log
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user
 from app.security.sanitizer import sanitize_search_query, detect_prompt_injection
@@ -37,6 +44,10 @@ router = APIRouter()
 
 # ---------------------------------------------------------------------------
 # Module-level store for active graph checkpointers (MVP: single-server)
+# WARNING: Memory leak risk -- entries are cleaned up in _stream_agent_events
+# finally block and in cancel_execution. If the SSE connection drops without
+# triggering the async generator cleanup, the entry will leak. In production,
+# use AsyncPostgresSaver checkpointing (no in-memory map needed).
 # ---------------------------------------------------------------------------
 
 _active_checkpointers: dict[str, object] = {}
@@ -48,10 +59,61 @@ _active_checkpointers: dict[str, object] = {}
 
 class ResearchRequest(BaseModel):
     query: str = Field(..., min_length=5, max_length=5000)
+    language: str = Field(default="en", pattern="^(en|hi)$")
 
 
 class CasePrepRequest(BaseModel):
     document_id: str = Field(...)
+    language: str = Field(default="en", pattern="^(en|hi)$")
+
+    @field_validator("document_id")
+    @classmethod
+    def validate_document_id_as_uuid(cls, v: str) -> str:
+        """Ensure document_id is a valid UUID."""
+        try:
+            uuid.UUID(v)
+        except ValueError:
+            raise ValueError("document_id must be a valid UUID")
+        return v
+
+
+class StrategyRequest(BaseModel):
+    case_facts: str = Field(..., min_length=20, max_length=20000)
+    desired_relief: str = Field(..., min_length=5, max_length=2000)
+    target_judge: str = Field(default="", max_length=200)
+    target_bench: str = Field(default="", max_length=50)
+    language: str = Field(default="en", pattern="^(en|hi)$")
+
+
+class PrecedentRef(BaseModel):
+    citation: str = Field(..., max_length=500)
+    title: str = Field(default="", max_length=500)
+
+
+class DraftingRequest(BaseModel):
+    doc_type: str = Field(..., min_length=1, max_length=50)
+    case_facts: str = Field(..., min_length=20, max_length=20000)
+    target_court: str = Field(default="", max_length=200)
+    relevant_precedents: list[PrecedentRef] = Field(default_factory=list)
+    additional_context: dict[str, str] = Field(default_factory=dict)
+    language: str = Field(default="en", pattern="^(en|hi)$")
+
+    @field_validator("relevant_precedents")
+    @classmethod
+    def validate_precedents_length(cls, v: list[PrecedentRef]) -> list[PrecedentRef]:
+        if len(v) > 20:
+            raise ValueError("Maximum 20 precedent references allowed")
+        return v
+
+    @field_validator("additional_context")
+    @classmethod
+    def validate_additional_context(cls, v: dict[str, str]) -> dict[str, str]:
+        if len(v) > 10:
+            raise ValueError("Maximum 10 additional_context keys allowed")
+        for key, val in v.items():
+            if len(val) > 2000:
+                raise ValueError(f"additional_context value for '{key}' exceeds 2000 characters")
+        return v
 
 
 class ResumeRequest(BaseModel):
@@ -119,7 +181,10 @@ async def _stream_agent_events(
             execution.result_data = {
                 "memo": (
                     final_state.get("draft_memo")
-                    or final_state.get("enhanced_memo", "")
+                    or final_state.get("enhanced_memo")
+                    or final_state.get("strategy_memo")
+                    or final_state.get("full_draft")
+                    or ""
                 ),
                 "confidence": final_state.get("confidence", 0),
             }
@@ -150,14 +215,14 @@ async def run_agent(
     agent_type: str,
     user: TokenPayload = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    request_body: ResearchRequest | CasePrepRequest | None = None,
+    request_body: ResearchRequest | CasePrepRequest | StrategyRequest | DraftingRequest | None = None,
 ) -> StreamingResponse:
     """Start an agent execution and stream SSE events."""
     # Validate agent_type
-    if agent_type not in ("research", "case_prep"):
+    if agent_type not in ("research", "case_prep", "strategy", "drafting"):
         raise HTTPException(
             status_code=422,
-            detail=f"Invalid agent_type '{agent_type}'. Must be 'research' or 'case_prep'.",
+            detail=f"Invalid agent_type '{agent_type}'. Must be 'research', 'case_prep', 'strategy', or 'drafting'.",
         )
 
     # Parse request body based on agent_type
@@ -170,21 +235,65 @@ async def run_agent(
             raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
         request_body.query = sanitize_search_query(request_body.query)
 
+    if isinstance(request_body, StrategyRequest):
+        for field_name in ("case_facts", "desired_relief", "target_judge", "target_bench"):
+            value = getattr(request_body, field_name)
+            if value and detect_prompt_injection(value):
+                raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
+            if value:
+                setattr(request_body, field_name, sanitize_search_query(value))
+
+    if isinstance(request_body, DraftingRequest):
+        for field_name in ("case_facts", "target_court"):
+            value = getattr(request_body, field_name)
+            if value and detect_prompt_injection(value):
+                raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
+            if value:
+                setattr(request_body, field_name, sanitize_search_query(value))
+
+        # Validate doc_type against known templates at submission time
+        if request_body.doc_type not in TEMPLATES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown doc_type. Valid types: {list(TEMPLATES.keys())}",
+            )
+
     # Create checkpointer
     checkpointer = get_checkpointer()
     thread_id = str(uuid.uuid4())
 
+    # Extract language from request body (defaults to "en")
+    request_language = getattr(request_body, "language", "en") or "en"
+
     # Create execution record
+    if isinstance(request_body, ResearchRequest):
+        input_data = {"query": request_body.query}
+    elif isinstance(request_body, CasePrepRequest):
+        input_data = {"document_id": request_body.document_id}
+    elif isinstance(request_body, StrategyRequest):
+        input_data = {
+            "case_facts": request_body.case_facts,
+            "desired_relief": request_body.desired_relief,
+            "target_judge": request_body.target_judge,
+            "target_bench": request_body.target_bench,
+        }
+    else:
+        input_data = {
+            "doc_type": request_body.doc_type,
+            "case_facts": request_body.case_facts,
+            "target_court": request_body.target_court,
+            "relevant_precedents": [p.model_dump() for p in request_body.relevant_precedents],
+            "additional_context": request_body.additional_context,
+        }
+    # Store language in input_data for downstream use
+    input_data["language"] = request_language
+
     execution = AgentExecution(
         user_id=uuid.UUID(user.sub),
         agent_type=agent_type,
         status=AgentStatus.running.value,
         thread_id=uuid.UUID(thread_id),
-        input_data=(
-            {"query": request_body.query}
-            if isinstance(request_body, ResearchRequest)
-            else {"document_id": request_body.document_id}
-        ),
+        input_data=input_data,
     )
     db.add(execution)
     await db.commit()
@@ -211,8 +320,8 @@ async def run_agent(
             db=db,
             checkpointer=checkpointer,
         )
-        initial_input = {"query": request_body.query}
-    else:
+        initial_input = {"query": request_body.query, "language": request_language}
+    elif agent_type == "case_prep":
         graph_store = get_graph_store()
         graph = build_case_prep_graph(
             llm=llm,
@@ -224,7 +333,59 @@ async def run_agent(
             db=db,
             checkpointer=checkpointer,
         )
-        initial_input = {"document_id": request_body.document_id}
+        initial_input = {"document_id": request_body.document_id, "language": request_language}
+    elif agent_type == "strategy":
+        graph_store = get_graph_store()
+        graph = build_strategy_graph(
+            llm=llm,
+            flash_llm=get_flash_llm(),
+            embedder=embedder,
+            vector_store=vector_store,
+            reranker=reranker,
+            graph_store=graph_store,
+            db=db,
+            checkpointer=checkpointer,
+        )
+        initial_input = {
+            "case_facts": request_body.case_facts,
+            "desired_relief": request_body.desired_relief,
+            "target_judge": request_body.target_judge,
+            "target_bench": request_body.target_bench,
+            "language": request_language,
+        }
+    elif agent_type == "drafting":
+        graph = build_drafting_graph(
+            llm=llm,
+            flash_llm=get_flash_llm(),
+            embedder=embedder,
+            vector_store=vector_store,
+            reranker=reranker,
+            db=db,
+            checkpointer=checkpointer,
+        )
+        initial_input = {
+            "doc_type": request_body.doc_type,
+            "case_facts": request_body.case_facts,
+            "target_court": request_body.target_court,
+            "relevant_precedents": [p.model_dump() for p in request_body.relevant_precedents],
+            "additional_context": request_body.additional_context,
+            "language": request_language,
+        }
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported agent type: {agent_type}",
+        )
+
+    # Audit log: agent invocation
+    await create_audit_log(
+        db=db,
+        action="agent.run",
+        user_id=user.sub,
+        resource_type="agent_execution",
+        resource_id=str(execution.id),
+        metadata={"agent_type": agent_type, "thread_id": thread_id},
+    )
 
     return StreamingResponse(
         _stream_agent_events(graph, initial_input, config, execution, db),
@@ -277,10 +438,13 @@ async def list_executions(
                 "agent_type": e.agent_type,
                 "status": e.status,
                 "input_data": e.input_data,
+                "result_data": e.result_data,
                 "current_step": e.current_step,
                 "steps_completed": e.steps_completed,
                 "total_steps": e.total_steps,
+                "error_message": e.error_message,
                 "created_at": str(e.created_at),
+                "updated_at": str(e.updated_at),
                 "completed_at": str(e.completed_at) if e.completed_at else None,
             }
             for e in executions
@@ -340,7 +504,7 @@ async def get_execution(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/executions/{execution_id}/resume")
+@router.post("/executions/{execution_id}/resume", dependencies=[Depends(rate_limit_dependency("10/minute"))])
 async def resume_execution(
     execution_id: str,
     body: ResumeRequest,
@@ -414,7 +578,7 @@ async def resume_execution(
             db=db,
             checkpointer=checkpointer,
         )
-    else:
+    elif execution.agent_type == AgentType.case_prep.value:
         graph_store = get_graph_store()
         graph = build_case_prep_graph(
             llm=llm,
@@ -426,9 +590,47 @@ async def resume_execution(
             db=db,
             checkpointer=checkpointer,
         )
+    elif execution.agent_type == AgentType.strategy.value:
+        graph_store = get_graph_store()
+        graph = build_strategy_graph(
+            llm=llm,
+            flash_llm=get_flash_llm(),
+            embedder=embedder,
+            vector_store=vector_store,
+            reranker=reranker,
+            graph_store=graph_store,
+            db=db,
+            checkpointer=checkpointer,
+        )
+    elif execution.agent_type == AgentType.drafting.value:
+        graph = build_drafting_graph(
+            llm=llm,
+            flash_llm=get_flash_llm(),
+            embedder=embedder,
+            vector_store=vector_store,
+            reranker=reranker,
+            db=db,
+            checkpointer=checkpointer,
+        )
+    else:
+        # Should not happen due to DB constraint, but guard against it
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported agent type: {execution.agent_type}",
+        )
 
     # Resume with Command
     resume_input = Command(resume=body.input)
+
+    # Audit log: agent resume
+    await create_audit_log(
+        db=db,
+        action="agent.resume",
+        user_id=user.sub,
+        resource_type="agent_execution",
+        resource_id=execution_id,
+        metadata={"agent_type": execution.agent_type},
+    )
 
     return StreamingResponse(
         _stream_agent_events(graph, resume_input, config, execution, db),
@@ -484,4 +686,108 @@ async def cancel_execution(
     # Clean up checkpointer
     _active_checkpointers.pop(execution_id, None)
 
+    # Audit log: agent cancellation
+    await create_audit_log(
+        db=db,
+        action="agent.cancel",
+        user_id=user.sub,
+        resource_type="agent_execution",
+        resource_id=execution_id,
+        metadata={"agent_type": execution.agent_type},
+    )
+
     return {"status": "cancelled", "execution_id": execution_id}
+
+
+# ---------------------------------------------------------------------------
+# GET /drafting/templates -- List available document templates
+# ---------------------------------------------------------------------------
+
+
+@router.get("/drafting/templates")
+async def get_drafting_templates(
+    user: TokenPayload = Depends(get_current_user),
+) -> dict:
+    """Return available document templates for the Drafting Agent."""
+    return {
+        "templates": [
+            {
+                "doc_type": t.doc_type,
+                "display_name": t.display_name,
+                "sections": t.sections,
+                "required_fields": t.required_fields,
+                "statutory_basis": t.statutory_basis,
+            }
+            for t in TEMPLATES.values()
+        ]
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /drafting/export/{execution_id} -- Export draft as DOCX or PDF
+# ---------------------------------------------------------------------------
+
+
+@router.post("/drafting/export/{execution_id}", dependencies=[Depends(rate_limit_dependency("20/minute"))])
+async def export_draft(
+    execution_id: str,
+    format: str = Query("docx", pattern="^(docx|pdf)$"),
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Export a completed draft as Word or PDF."""
+    try:
+        exec_uuid = uuid.UUID(execution_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid execution_id format.")
+
+    stmt = select(AgentExecution).where(AgentExecution.id == exec_uuid)
+    result = await db.execute(stmt)
+    execution = result.scalar_one_or_none()
+
+    if execution is None:
+        raise HTTPException(status_code=404, detail="Execution not found.")
+    if str(execution.user_id) != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied.")
+    if execution.agent_type != AgentType.drafting.value:
+        raise HTTPException(status_code=400, detail="Export is only available for drafting executions.")
+    if execution.status != AgentStatus.completed.value:
+        raise HTTPException(status_code=400, detail="Execution is not completed.")
+
+    content = (execution.result_data or {}).get("memo", "")
+    doc_type = (execution.input_data or {}).get("doc_type", "")
+
+    try:
+        template = get_template(doc_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Unknown document type: {doc_type}")
+
+    # Sanitize doc_type for use in Content-Disposition filename
+    safe_doc_type = re.sub(r"[^a-zA-Z0-9_-]", "", doc_type)
+    fmt = format  # already validated by Query pattern
+
+    if fmt == "docx":
+        file_bytes = await export_to_docx(content, template)
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        filename = f"draft_{safe_doc_type}.docx"
+    else:
+        file_bytes = await export_to_pdf(content, template)
+        media_type = "application/pdf"
+        filename = f"draft_{safe_doc_type}.pdf"
+
+    # Audit log: document export
+    await create_audit_log(
+        db=db,
+        action="agent.export",
+        user_id=user.sub,
+        resource_type="agent_execution",
+        resource_id=execution_id,
+        metadata={"format": fmt, "doc_type": doc_type},
+    )
+
+    from io import BytesIO
+    return StreamingResponse(
+        BytesIO(file_bytes),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

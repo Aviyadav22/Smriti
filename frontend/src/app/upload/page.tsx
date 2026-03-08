@@ -1,15 +1,27 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
 import { FileUpload } from "@/components/file-upload";
+import { useAuth } from "@/lib/auth-context";
 import { uploadDocument } from "@/lib/api";
+import { Loader2 } from "lucide-react";
 
 export default function UploadPage() {
   const router = useRouter();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Redirect unauthenticated users
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [authLoading, isAuthenticated, router]);
 
   const handleFileSelected = useCallback(
     async (file: File) => {
@@ -30,8 +42,22 @@ export default function UploadPage() {
     [router],
   );
 
+  // Auth loading or redirect
+  if (authLoading || !isAuthenticated) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="container mx-auto max-w-2xl py-10 px-4">
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <main className="flex-1 container mx-auto max-w-2xl py-10 px-4">
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">Upload Document</CardTitle>
@@ -76,6 +102,8 @@ export default function UploadPage() {
           )}
         </CardContent>
       </Card>
+      </main>
+      <Footer />
     </div>
   );
 }

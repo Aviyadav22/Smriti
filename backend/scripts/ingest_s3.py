@@ -79,11 +79,38 @@ TRACKER_DB = Path("data/ingest_tracker.db")
 
 
 class IngestTracker:
-    """SQLite-backed tracker for resume support."""
+    """SQLite-backed tracker with per-stage progress tracking."""
 
     def __init__(self, db_path: Path = TRACKER_DB) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(db_path))
+        self._migrate_schema()
+
+    def _migrate_schema(self) -> None:
+        """Create or migrate the tracking schema."""
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ingestion_progress (
+                doc_key TEXT PRIMARY KEY,
+                case_id TEXT,
+                year INTEGER,
+                stage_extracted BOOLEAN DEFAULT 0,
+                stage_metadata BOOLEAN DEFAULT 0,
+                stage_embedded BOOLEAN DEFAULT 0,
+                stage_stored BOOLEAN DEFAULT 0,
+                stage_graphed BOOLEAN DEFAULT 0,
+                text_length INTEGER DEFAULT 0,
+                quality_tier TEXT,
+                ocr_used BOOLEAN DEFAULT 0,
+                chunk_count INTEGER DEFAULT 0,
+                last_error TEXT,
+                retry_count INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now')),
+                completed_at TEXT
+            )
+            """
+        )
+        # Keep backward compatibility with old 'processed' table
         self._conn.execute(
             """
             CREATE TABLE IF NOT EXISTS processed (
@@ -98,13 +125,73 @@ class IngestTracker:
         self._conn.commit()
 
     def is_processed(self, doc_key: str) -> bool:
+        """Check if a document has been fully processed (all stages complete)."""
+        row = self._conn.execute(
+            "SELECT 1 FROM ingestion_progress WHERE doc_key = ? "
+            "AND stage_extracted = 1 AND stage_metadata = 1 "
+            "AND stage_embedded = 1 AND stage_stored = 1 AND stage_graphed = 1",
+            (doc_key,),
+        ).fetchone()
+        if row:
+            return True
+        # Backward compat: check old table
         row = self._conn.execute(
             "SELECT 1 FROM processed WHERE doc_key = ? AND status = 'success'",
             (doc_key,),
         ).fetchone()
         return row is not None
 
+    def init_doc(self, doc_key: str, year: int) -> None:
+        """Initialize a document entry if it doesn't exist."""
+        self._conn.execute(
+            "INSERT OR IGNORE INTO ingestion_progress (doc_key, year) VALUES (?, ?)",
+            (doc_key, year),
+        )
+        self._conn.commit()
+
+    def mark_stage(self, doc_key: str, stage: str, case_id: str | None = None, **kwargs) -> None:
+        """Mark a stage as complete with optional metadata."""
+        valid_stages = {"extracted", "metadata", "embedded", "stored", "graphed"}
+        if stage not in valid_stages:
+            raise ValueError(f"Invalid stage: {stage}. Must be one of {valid_stages}")
+
+        updates = [f"stage_{stage} = 1"]
+        params: dict = {}
+
+        if case_id:
+            updates.append("case_id = :case_id")
+            params["case_id"] = case_id
+
+        for key in ("text_length", "quality_tier", "ocr_used", "chunk_count"):
+            if key in kwargs:
+                updates.append(f"{key} = :{key}")
+                params[key] = kwargs[key]
+
+        # Check if all stages are now complete
+        updates_str = ", ".join(updates)
+        params["doc_key"] = doc_key
+
+        self._conn.execute(
+            f"UPDATE ingestion_progress SET {updates_str} WHERE doc_key = :doc_key",
+            params,
+        )
+
+        # Check if fully complete and set completed_at
+        row = self._conn.execute(
+            "SELECT stage_extracted, stage_metadata, stage_embedded, stage_stored, stage_graphed "
+            "FROM ingestion_progress WHERE doc_key = ?",
+            (doc_key,),
+        ).fetchone()
+        if row and all(row):
+            self._conn.execute(
+                "UPDATE ingestion_progress SET completed_at = datetime('now') WHERE doc_key = ?",
+                (doc_key,),
+            )
+
+        self._conn.commit()
+
     def mark_success(self, doc_key: str, case_id: str) -> None:
+        """Legacy compat: mark as fully successful."""
         self._conn.execute(
             "INSERT OR REPLACE INTO processed (doc_key, case_id, status) VALUES (?, ?, 'success')",
             (doc_key, case_id),
@@ -112,17 +199,85 @@ class IngestTracker:
         self._conn.commit()
 
     def mark_failed(self, doc_key: str, error: str) -> None:
+        """Record a failure."""
+        self._conn.execute(
+            "UPDATE ingestion_progress SET last_error = ?, retry_count = retry_count + 1 "
+            "WHERE doc_key = ?",
+            (error, doc_key),
+        )
         self._conn.execute(
             "INSERT OR REPLACE INTO processed (doc_key, status, error) VALUES (?, 'failed', ?)",
             (doc_key, error),
         )
         self._conn.commit()
 
+    def get_failed_at_stage(self, stage: str) -> list[str]:
+        """Get doc_keys that failed at a specific stage."""
+        return [
+            row[0] for row in self._conn.execute(
+                f"SELECT doc_key FROM ingestion_progress "
+                f"WHERE stage_{stage} = 0 AND last_error IS NOT NULL",
+            ).fetchall()
+        ]
+
+    def get_by_quality(self, tier: str) -> list[str]:
+        """Get doc_keys with a specific quality tier."""
+        return [
+            row[0] for row in self._conn.execute(
+                "SELECT doc_key FROM ingestion_progress WHERE quality_tier = ?",
+                (tier,),
+            ).fetchall()
+        ]
+
     def stats(self) -> dict[str, int]:
+        """Overall statistics."""
         rows = self._conn.execute(
             "SELECT status, COUNT(*) FROM processed GROUP BY status"
         ).fetchall()
         return {row[0]: row[1] for row in rows}
+
+    def detailed_stats(self, year: int | None = None) -> dict:
+        """Detailed stage-level statistics."""
+        where = "WHERE year = ?" if year else ""
+        params = (year,) if year else ()
+
+        total = self._conn.execute(
+            f"SELECT COUNT(*) FROM ingestion_progress {where}", params
+        ).fetchone()[0]
+
+        stages = {}
+        for stage in ("extracted", "metadata", "embedded", "stored", "graphed"):
+            count = self._conn.execute(
+                f"SELECT COUNT(*) FROM ingestion_progress {where} {'AND' if where else 'WHERE'} stage_{stage} = 1",
+                params,
+            ).fetchone()[0]
+            stages[stage] = count
+
+        quality = {}
+        for tier in ("high", "medium", "low"):
+            count = self._conn.execute(
+                f"SELECT COUNT(*) FROM ingestion_progress {where} {'AND' if where else 'WHERE'} quality_tier = ?",
+                params + (tier,),
+            ).fetchone()[0]
+            quality[tier] = count
+
+        completed = self._conn.execute(
+            f"SELECT COUNT(*) FROM ingestion_progress {where} {'AND' if where else 'WHERE'} completed_at IS NOT NULL",
+            params,
+        ).fetchone()[0]
+
+        failed = self._conn.execute(
+            f"SELECT COUNT(*) FROM ingestion_progress {where} {'AND' if where else 'WHERE'} last_error IS NOT NULL",
+            params,
+        ).fetchone()[0]
+
+        return {
+            "total": total,
+            "completed": completed,
+            "failed": failed,
+            "stages": stages,
+            "quality": quality,
+        }
 
     def close(self) -> None:
         self._conn.close()
@@ -309,6 +464,7 @@ async def ingest_year(
     async def _process_one(pdf_path: Path, llm: GeminiLLM, embedder: GeminiEmbedder) -> None:
         nonlocal processed
         doc_key = f"year={year}/{pdf_path.name}"
+        tracker.init_doc(doc_key, year)
 
         if tracker.is_processed(doc_key):
             stats["skipped"] += 1
@@ -329,6 +485,12 @@ async def ingest_year(
                         storage=storage,
                     )
                 tracker.mark_success(doc_key, case_id)
+                # Mark all stages complete (since ingest_judgment does them all)
+                tracker.mark_stage(doc_key, "extracted", case_id=case_id)
+                tracker.mark_stage(doc_key, "metadata", case_id=case_id)
+                tracker.mark_stage(doc_key, "embedded", case_id=case_id)
+                tracker.mark_stage(doc_key, "stored", case_id=case_id)
+                tracker.mark_stage(doc_key, "graphed", case_id=case_id)
                 stats["success"] += 1
                 processed += 1
                 if processed % 50 == 0:
@@ -361,40 +523,83 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Bulk ingest Indian Supreme Court judgments from AWS Open Data"
     )
-    parser.add_argument("--year", type=int, help="Ingest a single year")
-    parser.add_argument("--year-from", type=int, help="Start year (inclusive)")
-    parser.add_argument("--year-to", type=int, help="End year (inclusive)")
-    parser.add_argument("--resume", action="store_true", help="Resume interrupted run")
-    parser.add_argument(
-        "--limit", type=int, default=None, help="Max judgments per year"
-    )
-    parser.add_argument(
-        "--concurrency", type=int, default=5, help="Concurrent ingestion tasks"
-    )
-    parser.add_argument(
-        "--data-dir",
-        type=str,
-        default="data",
-        help="Local directory for downloaded data",
-    )
-    return parser.parse_args()
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # --- run command (default behavior) ---
+    run_parser = subparsers.add_parser("run", help="Run full ingestion pipeline")
+    run_parser.add_argument("--year", type=int, help="Ingest a single year")
+    run_parser.add_argument("--year-from", type=int, help="Start year (inclusive)")
+    run_parser.add_argument("--year-to", type=int, help="End year (inclusive)")
+    run_parser.add_argument("--resume", action="store_true", help="Resume interrupted run")
+    run_parser.add_argument("--limit", type=int, default=None, help="Max judgments per year")
+    run_parser.add_argument("--concurrency", type=int, default=5, help="Concurrent tasks")
+    run_parser.add_argument("--data-dir", type=str, default="data", help="Data directory")
+
+    # --- report command ---
+    report_parser = subparsers.add_parser("report", help="Show ingestion quality report")
+    report_parser.add_argument("--year", type=int, help="Filter by year")
+
+    # --- retry command ---
+    retry_parser = subparsers.add_parser("retry", help="Retry failed items at a specific stage")
+    retry_parser.add_argument("--stage", required=True, choices=["extracted", "metadata", "embedded", "stored", "graphed"])
+    retry_parser.add_argument("--quality-tier", choices=["high", "medium", "low"])
+    retry_parser.add_argument("--concurrency", type=int, default=5)
+    retry_parser.add_argument("--data-dir", type=str, default="data")
+
+    # Backward compat: if no subcommand, treat args as "run"
+    args = parser.parse_args()
+    if args.command is None:
+        # Legacy mode: parse as run command
+        args = run_parser.parse_args()
+        args.command = "run"
+
+    return args
 
 
 async def main() -> None:
     args = parse_args()
+    tracker = IngestTracker()
+
+    if args.command == "report":
+        stats = tracker.detailed_stats(year=args.year)
+        year_label = f"Year {args.year}" if args.year else "All years"
+        print(f"\n=== Ingestion Report: {year_label} ===")
+        print(f"Total documents: {stats['total']}")
+        print(f"Completed:       {stats['completed']}")
+        print(f"Failed:          {stats['failed']}")
+        print(f"\nStage completion:")
+        for stage, count in stats["stages"].items():
+            pct = (count / stats["total"] * 100) if stats["total"] else 0
+            print(f"  {stage:12s}: {count:5d} ({pct:.1f}%)")
+        print(f"\nQuality distribution:")
+        for tier, count in stats["quality"].items():
+            pct = (count / stats["total"] * 100) if stats["total"] else 0
+            print(f"  {tier:12s}: {count:5d} ({pct:.1f}%)")
+        print()
+        tracker.close()
+        return
+
+    if args.command == "retry":
+        doc_keys = tracker.get_failed_at_stage(args.stage)
+        if args.quality_tier:
+            quality_keys = set(tracker.get_by_quality(args.quality_tier))
+            doc_keys = [k for k in doc_keys if k in quality_keys]
+        logger.info("Found %d documents to retry at stage '%s'", len(doc_keys), args.stage)
+        # TODO: implement per-stage retry (requires stage-specific processing functions)
+        logger.info("Per-stage retry not yet implemented. Use 'run --resume' for now.")
+        tracker.close()
+        return
+
+    # Default: run command
     data_dir = Path(args.data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    tracker = IngestTracker()
-
-    # Determine years to process
     years: list[int] = []
     if args.year:
         years = [args.year]
     elif args.year_from and args.year_to:
         years = list(range(args.year_from, args.year_to + 1))
     elif args.resume:
-        # Resume: re-process all years that have partial data
         existing = sorted(
             int(d.name.replace("year=", ""))
             for d in data_dir.iterdir()
@@ -422,6 +627,12 @@ async def main() -> None:
     logger.info("=== INGESTION COMPLETE ===")
     logger.info("Total stats: %s", total_stats)
     logger.info("Tracker stats: %s", tracker.stats())
+
+    # Show detailed report
+    for year in years:
+        detailed = tracker.detailed_stats(year=year)
+        logger.info("Year %d detailed: %s", year, detailed)
+
     tracker.close()
 
 

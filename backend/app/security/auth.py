@@ -111,6 +111,8 @@ def create_access_token(
         "iat": int(now.timestamp()),
         "jti": str(uuid.uuid4()),
         "type": "access",
+        "iss": "smriti",
+        "aud": "smriti-api",
     }
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=_ALGORITHM)
 
@@ -142,6 +144,8 @@ def create_refresh_token(
         "iat": int(now.timestamp()),
         "jti": str(uuid.uuid4()),
         "type": "refresh",
+        "iss": "smriti",
+        "aud": "smriti-api",
     }
     return jwt.encode(
         payload, settings.jwt_refresh_secret_key, algorithm=_ALGORITHM
@@ -170,7 +174,10 @@ async def _decode_token(token: str, secret: str, expected_type: str) -> TokenPay
     """
     try:
         decoded: dict[str, str | int | float] = jwt.decode(
-            token, secret, algorithms=[_ALGORITHM]
+            token, secret, algorithms=[_ALGORITHM],
+            audience="smriti-api",
+            issuer="smriti",
+            leeway=30,  # 30 second clock skew tolerance
         )
     except jwt.ExpiredSignatureError:
         raise AuthenticationError("Token has expired")

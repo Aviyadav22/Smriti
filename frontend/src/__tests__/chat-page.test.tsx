@@ -19,8 +19,19 @@ vi.mock("next/navigation", async () => {
   };
 });
 
-// Default: authenticated user
-let mockAccessToken: string | null = "fake-token";
+// Override global auth mock — allow per-test control of isAuthenticated
+let mockIsAuthenticated = true;
+vi.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({
+    isAuthenticated: mockIsAuthenticated,
+    isLoading: false,
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+  }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 const mockGetChatSessions = vi.fn();
 const mockGetChatHistory = vi.fn();
 
@@ -34,7 +45,7 @@ vi.mock("@/lib/api", async () => {
     createChatSession: vi.fn(),
     sendChatMessage: vi.fn(),
     loadTokens: vi.fn(),
-    getAccessToken: () => mockAccessToken,
+    getAccessToken: () => (mockIsAuthenticated ? "fake-token" : null),
   };
 });
 
@@ -43,7 +54,7 @@ import ChatPage from "@/app/chat/page";
 describe("ChatPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAccessToken = "fake-token";
+    mockIsAuthenticated = true;
     mockGetChatSessions.mockResolvedValue([]);
     mockGetChatHistory.mockResolvedValue([]);
     pushMock.mockClear();
@@ -52,7 +63,7 @@ describe("ChatPage", () => {
   });
 
   it("redirects to /login when unauthenticated", async () => {
-    mockAccessToken = null;
+    mockIsAuthenticated = false;
     renderWithProviders(<ChatPage />);
 
     await waitFor(() => {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Card,
   CardContent,
@@ -12,9 +13,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
 import { ProcessingStatus } from "@/components/processing-status";
+import { useAuth } from "@/lib/auth-context";
 import { getDocument, deleteDocument, loadTokens } from "@/lib/api";
 import type { DocumentDetail, DocumentIssue, DocumentCounterArgument } from "@/lib/types";
+import { Loader2 } from "lucide-react";
 
 function IssueCard({ issue, defaultOpen = false }: { issue: DocumentIssue; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -53,14 +58,14 @@ function IssueCard({ issue, defaultOpen = false }: { issue: DocumentIssue; defau
               <h4 className="text-sm font-medium mb-2">Supporting Precedents</h4>
               <div className="space-y-1">
                 {issue.supporting_precedents.map((p) => (
-                  <a
+                  <Link
                     key={p.case_id}
                     href={`/case/${p.case_id}`}
                     className="block text-sm text-primary hover:underline"
                   >
                     {p.title || p.citation || p.case_id}
                     {p.citation && p.title ? ` — ${p.citation}` : ""}
-                  </a>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -144,6 +149,7 @@ function ResearchMemoSection({ memo }: { memo: string }) {
 export default function DocumentDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const id = params.id as string;
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -176,16 +182,25 @@ export default function DocumentDetailPage() {
     }
   }, [id]);
 
+  // Redirect unauthenticated users
   useEffect(() => {
-    loadTokens();
-    fetchDoc();
+    if (!authLoading && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [authLoading, isAuthenticated, router]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadTokens();
+      fetchDoc();
+    }
 
     return () => {
       if (pollRef.current) {
         clearInterval(pollRef.current);
       }
     };
-  }, [fetchDoc]);
+  }, [fetchDoc, isAuthenticated]);
 
   // Start polling when doc is in processing state
   useEffect(() => {
@@ -220,18 +235,38 @@ export default function DocumentDetailPage() {
     }
   }, [id, router]);
 
+  // Auth loading or redirect
+  if (authLoading || !isAuthenticated) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
-      <div className="container mx-auto max-w-4xl py-10 px-4">
-        <p className="text-muted-foreground">Loading document...</p>
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-1 container mx-auto max-w-4xl py-10 px-4">
+          <p className="text-muted-foreground">Loading document...</p>
+        </main>
+        <Footer />
       </div>
     );
   }
 
   if (error && !doc) {
     return (
-      <div className="container mx-auto max-w-4xl py-10 px-4">
-        <p className="text-destructive">{error}</p>
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-1 container mx-auto max-w-4xl py-10 px-4">
+          <p className="text-destructive">{error}</p>
+        </main>
+        <Footer />
       </div>
     );
   }
@@ -242,7 +277,9 @@ export default function DocumentDetailPage() {
     doc.status !== "completed" && doc.status !== "failed";
 
   return (
-    <div className="container mx-auto max-w-4xl py-10 px-4 space-y-6">
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <main className="flex-1 container mx-auto max-w-4xl py-10 px-4 space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -370,6 +407,8 @@ export default function DocumentDetailPage() {
           <ResearchMemoSection memo={doc.analysis.research_memo} />
         </>
       )}
+      </main>
+      <Footer />
     </div>
   );
 }

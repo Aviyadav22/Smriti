@@ -5,7 +5,10 @@ enabling cross-format search and display.
 """
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, UUIDPrimaryKeyMixin
@@ -16,8 +19,8 @@ class CaseCitationEquivalent(UUIDPrimaryKeyMixin, Base):
 
     __tablename__ = "case_citation_equivalents"
 
-    case_id: Mapped[str] = mapped_column(
-        String, ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True
+    case_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True
     )
     reporter: Mapped[str] = mapped_column(String(50), nullable=False)
     citation_text: Mapped[str] = mapped_column(String(200), nullable=False)

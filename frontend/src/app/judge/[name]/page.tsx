@@ -307,13 +307,13 @@ export default function JudgeProfilePage() {
                     )}
 
                     {/* Recent Cases */}
-                    {cases && cases.items.length > 0 && (
+                    {cases && cases.cases.length > 0 && (
                         <div className="border rounded-lg bg-card p-5 mb-8">
                             <h2 className="text-sm font-medium mb-4 flex items-center gap-1.5">
                                 <FileText className="h-4 w-4" /> Recent Cases
                             </h2>
                             <div className="space-y-2">
-                                {cases.items.map((c) => (
+                                {cases.cases.map((c) => (
                                     <Link
                                         key={c.id}
                                         href={`/case/${c.id}`}

@@ -2,8 +2,6 @@
 from unittest.mock import patch
 
 from app.core.agents.checkpointer import (
-    CHECKPOINTER_POOL_MAX,
-    CHECKPOINTER_POOL_MIN,
     get_checkpointer_connection_string,
 )
 
@@ -20,7 +18,3 @@ class TestCheckpointerConnectionString:
             mock_settings.database_url = "postgresql://user:pass@host:5432/db"
             result = get_checkpointer_connection_string()
             assert result == "postgresql://user:pass@host:5432/db"
-
-    def test_pool_constants(self) -> None:
-        assert CHECKPOINTER_POOL_MIN >= 1
-        assert CHECKPOINTER_POOL_MAX >= CHECKPOINTER_POOL_MIN

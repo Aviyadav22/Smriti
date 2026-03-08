@@ -4,13 +4,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 
 WORKDIR /app
 
-# Copy only package.json (NO lock file) — fresh install ensures native binaries match platform
-COPY package.json ./
-RUN npm install
+# Copy package files for reproducible installs
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
-# Remove any lock file from host that could interfere
-RUN rm -f package-lock.json
 
 # Build-time env var for API URL (will be set during Cloud Build)
 ARG NEXT_PUBLIC_API_URL

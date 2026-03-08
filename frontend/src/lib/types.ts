@@ -47,6 +47,7 @@ export interface SearchResultItem {
     snippet: string | null;
     bench_type: string | null;
     equivalent_citations: string[];
+    treatment_warning?: string | null;
     precedent_strength?: PrecedentStrengthLevel;
     section_type?: JudgmentSection | null;
 }
@@ -63,20 +64,6 @@ export interface SearchResponse {
         years?: Record<number, number>;
         bench_types?: Record<string, number>;
     };
-}
-
-export interface SearchSuggestion {
-    case_id: string;
-    title: string | null;
-    citation: string | null;
-}
-
-export interface ConfidenceBreakdown {
-    overall: number;
-    relevance: number;
-    coverage: number;
-    authority: number;
-    contradiction_penalty: number;
 }
 
 export interface FacetsResponse {
@@ -161,13 +148,6 @@ export interface RegisterRequest {
     email: string;
     password: string;
     name: string;
-}
-
-export interface User {
-    id: string;
-    email: string;
-    name: string;
-    role: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -267,16 +247,6 @@ export interface JudgeListResponse {
     total_pages: number;
 }
 
-export interface YearCount {
-    year: number;
-    count: number;
-}
-
-export interface DisposalPattern {
-    disposal_nature: string;
-    count: number;
-}
-
 export interface BenchCombination {
     judge: string;
     cases_together: number;
@@ -288,16 +258,6 @@ export interface JudgmentSummary {
     citation: string | null;
     year: number | null;
     citation_count?: number;
-}
-
-export interface ActFrequency {
-    act: string;
-    count: number;
-}
-
-export interface CaseTypeCount {
-    case_type: string;
-    count: number;
 }
 
 export interface JudgeProfile {
@@ -324,7 +284,7 @@ export interface JudgeCaseItem {
 }
 
 export interface JudgeCasesResponse {
-    items: JudgeCaseItem[];
+    cases: JudgeCaseItem[];
     total: number;
     page: number;
     page_size: number;
@@ -429,7 +389,7 @@ export interface AudioDigestStatus {
 // Agent Types
 // ---------------------------------------------------------------------------
 
-export type AgentType = "research" | "case_prep";
+export type AgentType = "research" | "case_prep" | "strategy" | "drafting";
 
 export type AgentStatus = "running" | "waiting_input" | "completed" | "failed" | "cancelled";
 
@@ -449,12 +409,9 @@ export interface AgentExecution {
 }
 
 export interface AgentStreamEvent {
-    type: "status" | "progress" | "result" | "checkpoint" | "memo" | "done" | "error";
+    type: "status" | "checkpoint" | "memo" | "done" | "error";
     step?: string;
     message?: string;
-    steps_completed?: number;
-    total_steps?: number;
-    data?: unknown;
     question?: string;
     context?: Record<string, unknown>;
     content?: string;
@@ -467,4 +424,20 @@ export interface AgentStep {
     name: string;
     status: "pending" | "active" | "completed" | "error";
     message?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Drafting Agent Templates
+// ---------------------------------------------------------------------------
+
+export interface DocumentTemplate {
+    doc_type: string;
+    display_name: string;
+    sections: string[];
+    required_fields: string[];
+    statutory_basis: string;
+}
+
+export interface DocumentTemplatesResponse {
+    templates: DocumentTemplate[];
 }

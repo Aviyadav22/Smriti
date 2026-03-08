@@ -56,7 +56,8 @@ describe("ResearchAgentPage", () => {
 
   it("renders back link to agents hub", () => {
     renderWithProviders(<ResearchAgentPage />);
-    const backLink = screen.getByText("Agents").closest("a");
-    expect(backLink).toHaveAttribute("href", "/agents");
+    const agentLinks = screen.getAllByText("Agents");
+    const backLink = agentLinks.find(el => el.closest("a")?.getAttribute("href") === "/agents");
+    expect(backLink).toBeTruthy();
   });
 });

@@ -61,6 +61,10 @@ echo "=== Cohere ==="
 create_secret "COHERE_API_KEY" "Cohere API Key"
 
 echo ""
+echo "=== Sentry ==="
+create_secret "SENTRY_DSN" "Sentry DSN (leave empty to disable)"
+
+echo ""
 echo "=== CORS (will be updated after deployment) ==="
 echo -n "http://localhost:3000" | gcloud secrets create "CORS_ORIGINS" \
   --replication-policy="automatic" --data-file=- 2>/dev/null || \

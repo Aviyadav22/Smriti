@@ -3,8 +3,9 @@
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { AgentHubCard } from "@/components/agent-hub-card";
-import { Search, FileText, History } from "lucide-react";
+import { Search, FileText, History, Lightbulb, PenTool } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Header } from "@/components/header";
@@ -13,6 +14,7 @@ import { Footer } from "@/components/footer";
 export default function AgentsPage() {
     const { isAuthenticated, isLoading: authLoading } = useAuth();
     const router = useRouter();
+    const t = useTranslations("agents");
 
     useEffect(() => {
         if (!authLoading && !isAuthenticated) router.push("/login");
@@ -29,32 +31,44 @@ export default function AgentsPage() {
                     <div className="flex items-center justify-between mb-8">
                         <div>
                             <h1 className="text-2xl font-semibold font-[family-name:var(--font-lora)]">
-                                AI Agents
+                                {t("title")}
                             </h1>
                             <p className="text-sm text-muted-foreground mt-1">
-                                Autonomous legal research and case preparation assistants
+                                {t("subtitle")}
                             </p>
                         </div>
                         <Button variant="outline" size="sm" asChild>
                             <Link href="/agents/history">
-                                <History className="h-3.5 w-3.5 mr-1.5" /> History
+                                <History className="h-3.5 w-3.5 mr-1.5" /> {t("history")}
                             </Link>
                         </Button>
                     </div>
 
                     <div className="grid gap-6 md:grid-cols-2">
                         <AgentHubCard
-                            title="Research Agent"
-                            description="Ask a legal question. The agent decomposes it into sub-queries, searches across case law in parallel, detects contradictions between holdings, and generates a structured research memo with citations."
+                            title={t("research.title")}
+                            description={t("research.description")}
                             icon={<Search className="h-6 w-6" />}
                             href="/agents/research"
                         />
                         <AgentHubCard
-                            title="Case Prep Agent"
-                            description="Select a previously analyzed document. The agent prioritizes issues by legal strength, performs deeper precedent searches through citation graphs, and generates a strategy memo with recommended argument ordering."
+                            title={t("casePrep.title")}
+                            description={t("casePrep.description")}
                             icon={<FileText className="h-6 w-6" />}
                             href="/agents/case-prep"
-                            badge="Requires uploaded document"
+                            badge={t("requiresDocument")}
+                        />
+                        <AgentHubCard
+                            title={t("strategy.title")}
+                            description={t("strategy.description")}
+                            icon={<Lightbulb className="h-6 w-6" />}
+                            href="/agents/strategy"
+                        />
+                        <AgentHubCard
+                            title={t("drafting.title")}
+                            description={t("drafting.description")}
+                            icon={<PenTool className="h-6 w-6" />}
+                            href="/agents/drafting"
                         />
                     </div>
                 </div>

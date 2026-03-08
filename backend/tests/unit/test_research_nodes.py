@@ -10,7 +10,6 @@ import pytest
 from app.core.agents.confidence import calculate_confidence
 from app.core.agents.nodes.common import safe_json_parse, safe_json_parse_list
 from app.core.agents.nodes.research_nodes import (
-    _parse_json_list,
     classify_query_node,
     decompose_query_node,
     detect_contradictions_node,
@@ -738,27 +737,27 @@ class TestVerifyCitationsNode:
 
 
 # ---------------------------------------------------------------------------
-# _parse_json_list helper
+# safe_json_parse_list helper
 # ---------------------------------------------------------------------------
 
 
 class TestParseJsonList:
     def test_valid_json_array(self) -> None:
-        assert _parse_json_list('[{"a": 1}]') == [{"a": 1}]
+        assert safe_json_parse_list('[{"a": 1}]') == [{"a": 1}]
 
     def test_json_in_code_fence(self) -> None:
         raw = '```json\n[{"a": 1}]\n```'
-        assert _parse_json_list(raw) == [{"a": 1}]
+        assert safe_json_parse_list(raw) == [{"a": 1}]
 
     def test_empty_array(self) -> None:
-        assert _parse_json_list("[]") == []
+        assert safe_json_parse_list("[]") == []
 
     def test_garbage_returns_empty(self) -> None:
-        assert _parse_json_list("no json here at all") == []
+        assert safe_json_parse_list("no json here at all") == []
 
     def test_json_with_surrounding_text(self) -> None:
         raw = 'Here are the results:\n[{"x": 1}]\nEnd.'
-        assert _parse_json_list(raw) == [{"x": 1}]
+        assert safe_json_parse_list(raw) == [{"x": 1}]
 
 
 # ---------------------------------------------------------------------------

@@ -66,6 +66,7 @@ export default function RegisterPage() {
                             <label htmlFor="register-name" className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Full Name</label>
                             <Input
                                 id="register-name"
+                                autoComplete="name"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder="Advocate Name"
@@ -78,6 +79,7 @@ export default function RegisterPage() {
                             <Input
                                 id="register-email"
                                 type="email"
+                                autoComplete="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 placeholder="you@firm.com"
@@ -91,6 +93,7 @@ export default function RegisterPage() {
                             <Input
                                 id="register-password"
                                 type="password"
+                                autoComplete="new-password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 placeholder="Min 8 characters"

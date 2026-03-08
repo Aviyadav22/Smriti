@@ -37,7 +37,7 @@ describe("AgentsPage", () => {
 
   it("renders page heading", () => {
     renderWithProviders(<AgentsPage />);
-    expect(screen.getByText("AI Agents")).toBeInTheDocument();
+    expect(screen.getByText("AI Agent Hub")).toBeInTheDocument();
   });
 
   it("renders history link", () => {
@@ -63,6 +63,32 @@ describe("AgentsPage", () => {
 
   it("shows badge on Case Prep card", () => {
     renderWithProviders(<AgentsPage />);
-    expect(screen.getByText("Requires uploaded document")).toBeInTheDocument();
+    expect(screen.getByText("Requires document")).toBeInTheDocument();
+  });
+
+  it("renders Strategy Agent card", () => {
+    renderWithProviders(<AgentsPage />);
+    expect(screen.getByText("Strategy Agent")).toBeInTheDocument();
+  });
+
+  it("renders Drafting Agent card", () => {
+    renderWithProviders(<AgentsPage />);
+    expect(screen.getByText("Drafting Agent")).toBeInTheDocument();
+  });
+
+  it("links Strategy Agent to /agents/strategy", () => {
+    renderWithProviders(<AgentsPage />);
+    const startButtons = screen.getAllByText("Start");
+    // Third Start button is for Strategy Agent
+    const strategyLink = startButtons[2].closest("a");
+    expect(strategyLink).toHaveAttribute("href", "/agents/strategy");
+  });
+
+  it("links Drafting Agent to /agents/drafting", () => {
+    renderWithProviders(<AgentsPage />);
+    const startButtons = screen.getAllByText("Start");
+    // Fourth Start button is for Drafting Agent
+    const draftingLink = startButtons[3].closest("a");
+    expect(draftingLink).toHaveAttribute("href", "/agents/drafting");
   });
 });

@@ -94,6 +94,9 @@ _HIGH_COURTS: Final[dict[str, str]] = {
     # Sikkim
     "SikHC": "High Court of Sikkim",
     "SikkimHC": "High Court of Sikkim",
+    # Madhya Pradesh
+    "MPHC": "High Court of Madhya Pradesh",
+    "MadhyaPradeshHC": "High Court of Madhya Pradesh",
 }
 
 # Key tribunals & specialized bodies
@@ -117,6 +120,47 @@ COURT_NAME_MAP: Final[dict[str, str]] = {
     **_SUPREME_COURT,
     **_HIGH_COURTS,
     **_TRIBUNALS,
+}
+
+# ---------------------------------------------------------------------------
+# Long-form aliases → canonical full name
+# ---------------------------------------------------------------------------
+
+COURT_ALIASES: Final[dict[str, str]] = {
+    # Madhya Pradesh
+    "High Court of Madhya Pradesh": "High Court of Madhya Pradesh",
+    "Madhya Pradesh High Court": "High Court of Madhya Pradesh",
+    "MP High Court": "High Court of Madhya Pradesh",
+    "MP HC": "High Court of Madhya Pradesh",
+    # Common alternate orderings for other HCs
+    "Allahabad High Court": "High Court of Allahabad",
+    "Bombay High Court": "High Court of Bombay",
+    "Calcutta High Court": "High Court of Calcutta",
+    "Madras High Court": "High Court of Madras",
+    "Delhi High Court": "High Court of Delhi",
+    "Karnataka High Court": "High Court of Karnataka",
+    "Kerala High Court": "High Court of Kerala",
+    "Gujarat High Court": "High Court of Gujarat",
+    "Rajasthan High Court": "High Court of Rajasthan",
+    "Patna High Court": "High Court of Patna",
+    "Punjab and Haryana High Court": "High Court of Punjab and Haryana",
+    "Punjab & Haryana High Court": "High Court of Punjab and Haryana",
+    "Andhra Pradesh High Court": "High Court of Andhra Pradesh",
+    "Telangana High Court": "High Court of Telangana",
+    "Orissa High Court": "High Court of Orissa",
+    "Odisha High Court": "High Court of Orissa",
+    "Jharkhand High Court": "High Court of Jharkhand",
+    "Chhattisgarh High Court": "High Court of Chhattisgarh",
+    "Uttarakhand High Court": "High Court of Uttarakhand",
+    "Himachal Pradesh High Court": "High Court of Himachal Pradesh",
+    "Jammu & Kashmir and Ladakh High Court": "High Court of Jammu & Kashmir and Ladakh",
+    "J&K High Court": "High Court of Jammu & Kashmir and Ladakh",
+    "Gauhati High Court": "High Court of Gauhati",
+    "Guwahati High Court": "High Court of Gauhati",
+    "Tripura High Court": "High Court of Tripura",
+    "Meghalaya High Court": "High Court of Meghalaya",
+    "Manipur High Court": "High Court of Manipur",
+    "Sikkim High Court": "High Court of Sikkim",
 }
 
 # ---------------------------------------------------------------------------
@@ -149,6 +193,7 @@ AIR_COURT_CODES: Final[dict[str, str]] = {
     "Man": "High Court of Manipur",
     "Sik": "High Court of Sikkim",
     "Tel": "High Court of Telangana",
+    "MP": "High Court of Madhya Pradesh",
 }
 
 # ---------------------------------------------------------------------------
@@ -196,11 +241,12 @@ def normalize_court_name(name: str) -> str:
     Lookup order:
     1. Exact match in COURT_NAME_MAP (abbreviation → full name)
     2. Exact match in AIR_COURT_CODES
-    3. Case-insensitive search across all maps
-    4. Return the input unchanged if no match is found
+    3. Exact match in COURT_ALIASES (long-form aliases)
+    4. Case-insensitive search across all maps
+    5. Return the input unchanged if no match is found
 
     Args:
-        name: Short name, abbreviation, or AIR court code.
+        name: Short name, abbreviation, AIR court code, or long-form alias.
 
     Returns:
         Canonical full court name, or the original string if unrecognized.
@@ -213,7 +259,11 @@ def normalize_court_name(name: str) -> str:
     if name in AIR_COURT_CODES:
         return AIR_COURT_CODES[name]
 
-    # 3. Case-insensitive fallback across all maps
+    # 3. Direct lookup in aliases
+    if name in COURT_ALIASES:
+        return COURT_ALIASES[name]
+
+    # 4. Case-insensitive fallback across all maps
     name_lower = name.lower().strip()
     for key, value in COURT_NAME_MAP.items():
         if key.lower() == name_lower:
@@ -221,8 +271,11 @@ def normalize_court_name(name: str) -> str:
     for key, value in AIR_COURT_CODES.items():
         if key.lower() == name_lower:
             return value
+    for key, value in COURT_ALIASES.items():
+        if key.lower() == name_lower:
+            return value
 
-    # 4. Check if input is already a canonical name
+    # 5. Check if input is already a canonical name
     if name in _COURT_LEVEL_MAP:
         return name
 

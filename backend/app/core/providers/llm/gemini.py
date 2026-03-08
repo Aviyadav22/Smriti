@@ -21,9 +21,9 @@ _LLM_TIMEOUT = 120
 class GeminiLLM:
     """Google Gemini LLM provider implementing LLMProvider protocol."""
 
-    def __init__(self, *, api_key: str | None = None) -> None:
+    def __init__(self, *, api_key: str | None = None, model: str | None = None) -> None:
         self._client = genai.Client(api_key=api_key or settings.gemini_api_key)
-        self._model = settings.gemini_model
+        self._model = model or settings.gemini_model
 
     async def generate(
         self,

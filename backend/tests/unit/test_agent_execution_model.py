@@ -11,7 +11,12 @@ class TestAgentType:
         assert AgentType.case_prep.value == "case_prep"
 
     def test_enum_members(self) -> None:
-        assert set(AgentType) == {AgentType.research, AgentType.case_prep}
+        assert set(AgentType) == {
+            AgentType.research,
+            AgentType.case_prep,
+            AgentType.strategy,
+            AgentType.drafting,
+        }
 
 
 class TestAgentStatus:

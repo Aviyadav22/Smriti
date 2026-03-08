@@ -89,7 +89,7 @@ function makeProfile(overrides: Partial<JudgeProfile> = {}): JudgeProfile {
 
 function makeCases(overrides: Partial<JudgeCasesResponse> = {}): JudgeCasesResponse {
     return {
-        items: [
+        cases: [
             {
                 id: "recent-1",
                 title: "State of Maharashtra v. Respondent",

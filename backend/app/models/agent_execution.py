@@ -14,6 +14,8 @@ from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 class AgentType(str, enum.Enum):
     research = "research"
     case_prep = "case_prep"
+    strategy = "strategy"
+    drafting = "drafting"
 
 
 class AgentStatus(str, enum.Enum):
@@ -53,7 +55,7 @@ class AgentExecution(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __table_args__ = (
         CheckConstraint(
-            "agent_type IN ('research', 'case_prep')",
+            "agent_type IN ('research', 'case_prep', 'strategy', 'drafting')",
             name="ck_agent_executions_agent_type",
         ),
         CheckConstraint(

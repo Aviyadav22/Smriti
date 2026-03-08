@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, fields
 from datetime import datetime
@@ -41,15 +42,12 @@ class CaseMetadata:
 # LLM extraction
 # ---------------------------------------------------------------------------
 
-async def extract_metadata_llm(text: str, llm: LLMProvider) -> CaseMetadata:
+async def extract_metadata_llm(
+    text: str, llm: LLMProvider, *, max_retries: int = 3
+) -> CaseMetadata:
     """Use an LLM with structured output to extract metadata from judgment text.
 
-    Args:
-        text: Full judgment text (will be truncated to ``_MAX_INPUT_CHARS``).
-        llm: An LLM provider implementing ``generate_structured``.
-
-    Returns:
-        A ``CaseMetadata`` instance populated from the LLM response.
+    Retries up to max_retries times with exponential backoff on transient failures.
     """
     from app.core.legal.prompts import (
         METADATA_EXTRACTION_SYSTEM,
@@ -59,21 +57,37 @@ async def extract_metadata_llm(text: str, llm: LLMProvider) -> CaseMetadata:
 
     prompt = METADATA_EXTRACTION_USER.format(judgment_text=text[:_MAX_INPUT_CHARS])
 
-    try:
-        result = await llm.generate_structured(
-            prompt,
-            system=METADATA_EXTRACTION_SYSTEM,
-            output_schema=METADATA_OUTPUT_SCHEMA,
-            temperature=0.1,
-        )
-    except (ValueError, KeyError, ConnectionError, TimeoutError, RuntimeError) as exc:
-        logger.error("LLM metadata extraction failed: %s", exc)
-        return CaseMetadata()
+    for attempt in range(max_retries):
+        try:
+            result = await llm.generate_structured(
+                prompt,
+                system=METADATA_EXTRACTION_SYSTEM,
+                output_schema=METADATA_OUTPUT_SCHEMA,
+                temperature=0.1,
+            )
+            # Build CaseMetadata only from keys that match its fields.
+            field_names = {f.name for f in fields(CaseMetadata)}
+            filtered = {k: v for k, v in result.items() if k in field_names}
+            return CaseMetadata(**filtered)
+        except (ConnectionError, TimeoutError) as exc:
+            if attempt == max_retries - 1:
+                logger.error(
+                    "LLM metadata extraction failed after %d retries: %s",
+                    max_retries, exc,
+                )
+                return CaseMetadata()
+            wait = 2 ** attempt
+            logger.warning(
+                "LLM metadata extraction attempt %d/%d failed, retrying in %ds: %s",
+                attempt + 1, max_retries, wait, exc,
+            )
+            await asyncio.sleep(wait)
+        except (ValueError, KeyError, RuntimeError) as exc:
+            # Non-transient errors — don't retry
+            logger.error("LLM metadata extraction failed (non-retryable): %s", exc)
+            return CaseMetadata()
 
-    # Build CaseMetadata only from keys that match its fields.
-    field_names = {f.name for f in fields(CaseMetadata)}
-    filtered = {k: v for k, v in result.items() if k in field_names}
-    return CaseMetadata(**filtered)
+    return CaseMetadata()
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +163,24 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
         if val is not None and not isinstance(val, list):
             logger.warning("Field '%s' is not a list, clearing field", list_field)
             setattr(metadata, list_field, None)
+
+    return metadata
+
+
+def validate_cross_fields(metadata: CaseMetadata) -> CaseMetadata:
+    """Cross-validate fields against each other to catch inconsistencies."""
+    # Year must match decision_date year if both present
+    if metadata.year and metadata.decision_date:
+        try:
+            date_year = datetime.fromisoformat(metadata.decision_date).year
+            if metadata.year != date_year:
+                logger.warning(
+                    "Year %d doesn't match decision_date year %d, using decision_date",
+                    metadata.year, date_year,
+                )
+                metadata.year = date_year
+        except ValueError:
+            pass
 
     return metadata
 

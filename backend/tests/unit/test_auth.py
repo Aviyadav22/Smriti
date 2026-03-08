@@ -69,7 +69,7 @@ class TestAccessToken:
 
     @pytest.mark.asyncio
     async def test_expired_token_raises(self):
-        token = create_access_token("user-123", "user", expires_delta=timedelta(seconds=-1))
+        token = create_access_token("user-123", "user", expires_delta=timedelta(seconds=-60))
         with pytest.raises(AuthenticationError, match="expired"):
             await verify_access_token(token)
 

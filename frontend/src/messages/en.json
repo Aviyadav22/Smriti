@@ -1,0 +1,73 @@
+{
+  "common": {
+    "search": "Search",
+    "login": "Login",
+    "logout": "Logout",
+    "register": "Register",
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "back": "Back",
+    "next": "Next",
+    "submit": "Submit",
+    "close": "Close",
+    "download": "Download",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "noResults": "No results found"
+  },
+  "header": {
+    "searchPlaceholder": "Search Indian case law...",
+    "chat": "Chat",
+    "graph": "Graph",
+    "agents": "Agents",
+    "documents": "Documents",
+    "judges": "Judges",
+    "upload": "Upload",
+    "courts": "Courts"
+  },
+  "footer": {
+    "disclaimer": "AI-assisted legal research — not legal advice. Verify all citations and consult a qualified advocate.",
+    "copyright": "Smriti — AI Legal Research",
+    "dataSource": "Judgment data from public records",
+    "tagline": "AI Legal Research"
+  },
+  "agents": {
+    "title": "AI Agents",
+    "subtitle": "Autonomous legal research and case preparation assistants",
+    "research": {
+      "title": "Research Agent",
+      "description": "Ask a legal question. The agent decomposes it into sub-queries, searches across case law in parallel, detects contradictions between holdings, and generates a structured research memo with citations."
+    },
+    "casePrep": {
+      "title": "Case Prep Agent",
+      "description": "Select a previously analyzed document. The agent prioritizes issues by legal strength, performs deeper precedent searches through citation graphs, and generates a strategy memo with recommended argument ordering."
+    },
+    "strategy": {
+      "title": "Strategy Agent",
+      "description": "Enter case facts and desired relief. The agent assesses case strength, generates ordered legal arguments, anticipates counter-arguments, and produces a strategic memo with judge-specific insights."
+    },
+    "drafting": {
+      "title": "Drafting Agent",
+      "description": "Select a document type — bail applications, writ petitions, written statements, and more. The agent drafts the document grounded in verified precedents and current statutory provisions."
+    },
+    "history": "History",
+    "requiresDocument": "Requires uploaded document"
+  },
+  "language": {
+    "en": "English",
+    "hi": "हिन्दी",
+    "toggle": "Language"
+  },
+  "privacy": {
+    "title": "Privacy Policy",
+    "lastUpdated": "Last updated: March 2026"
+  },
+  "cookieConsent": {
+    "message": "We use essential cookies for authentication and preferences.",
+    "acceptAll": "Accept All",
+    "essentialOnly": "Essential Only"
+  }
+}

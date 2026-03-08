@@ -1,0 +1,244 @@
+"""Tests for the document template system."""
+from __future__ import annotations
+
+import pytest
+
+from app.core.drafting.templates import TEMPLATES, DocumentTemplate, get_template
+from app.core.legal.prompts import (
+    DRAFT_APPEAL_SYSTEM,
+    DRAFT_APPLICATION_SYSTEM,
+    DRAFT_BAIL_APPLICATION_SYSTEM,
+    DRAFT_LEGAL_NOTICE_SYSTEM,
+    DRAFT_WRIT_PETITION_SYSTEM,
+    DRAFT_WRITTEN_STATEMENT_SYSTEM,
+)
+
+# All prompt constants keyed by the prompt_key string stored in each template.
+# This mirrors the _PROMPT_MAP in drafting_nodes.py.
+_VALID_PROMPT_MAP: dict[str, str] = {
+    "DRAFT_BAIL_APPLICATION_SYSTEM": DRAFT_BAIL_APPLICATION_SYSTEM,
+    "DRAFT_WRIT_PETITION_SYSTEM": DRAFT_WRIT_PETITION_SYSTEM,
+    "DRAFT_WRITTEN_STATEMENT_SYSTEM": DRAFT_WRITTEN_STATEMENT_SYSTEM,
+    "DRAFT_LEGAL_NOTICE_SYSTEM": DRAFT_LEGAL_NOTICE_SYSTEM,
+    "DRAFT_APPEAL_SYSTEM": DRAFT_APPEAL_SYSTEM,
+    "DRAFT_APPLICATION_SYSTEM": DRAFT_APPLICATION_SYSTEM,
+}
+
+# The seven document types that must exist in TEMPLATES.
+_EXPECTED_DOC_TYPES = {
+    "bail_application",
+    "writ_petition_226",
+    "writ_petition_32",
+    "written_statement",
+    "legal_notice",
+    "appeal",
+    "interim_application",
+}
+
+
+# ---------------------------------------------------------------------------
+# TestTemplates
+# ---------------------------------------------------------------------------
+
+
+class TestTemplates:
+    def test_all_seven_templates_exist_in_templates_dict(self) -> None:
+        assert set(TEMPLATES.keys()) == _EXPECTED_DOC_TYPES
+
+    def test_each_template_is_document_template_instance(self) -> None:
+        for doc_type, template in TEMPLATES.items():
+            assert isinstance(template, DocumentTemplate), (
+                f"TEMPLATES['{doc_type}'] is not a DocumentTemplate instance"
+            )
+
+    def test_each_template_has_non_empty_sections(self) -> None:
+        for doc_type, template in TEMPLATES.items():
+            assert isinstance(template.sections, tuple), (
+                f"TEMPLATES['{doc_type}'].sections must be a tuple"
+            )
+            assert len(template.sections) > 0, (
+                f"TEMPLATES['{doc_type}'].sections must be non-empty"
+            )
+
+    def test_each_template_has_non_empty_required_fields(self) -> None:
+        for doc_type, template in TEMPLATES.items():
+            assert isinstance(template.required_fields, tuple), (
+                f"TEMPLATES['{doc_type}'].required_fields must be a tuple"
+            )
+            assert len(template.required_fields) > 0, (
+                f"TEMPLATES['{doc_type}'].required_fields must be non-empty"
+            )
+
+    def test_each_template_has_non_empty_display_name(self) -> None:
+        for doc_type, template in TEMPLATES.items():
+            assert isinstance(template.display_name, str), (
+                f"TEMPLATES['{doc_type}'].display_name must be a string"
+            )
+            assert template.display_name.strip(), (
+                f"TEMPLATES['{doc_type}'].display_name must be non-empty"
+            )
+
+    def test_each_template_prompt_key_maps_to_valid_prompt(self) -> None:
+        for doc_type, template in TEMPLATES.items():
+            prompt_key = template.prompt_key
+            assert prompt_key in _VALID_PROMPT_MAP, (
+                f"TEMPLATES['{doc_type}'].prompt_key='{prompt_key}' "
+                f"does not map to a valid prompt constant. "
+                f"Valid keys: {sorted(_VALID_PROMPT_MAP.keys())}"
+            )
+            prompt_text = _VALID_PROMPT_MAP[prompt_key]
+            assert isinstance(prompt_text, str) and prompt_text.strip(), (
+                f"Prompt for key '{prompt_key}' must be a non-empty string"
+            )
+
+    def test_section_names_are_non_empty_strings(self) -> None:
+        for doc_type, template in TEMPLATES.items():
+            for section in template.sections:
+                assert isinstance(section, str) and section.strip(), (
+                    f"Section in TEMPLATES['{doc_type}'].sections must be a non-empty string, "
+                    f"got: {section!r}"
+                )
+
+    def test_required_field_names_are_non_empty_strings(self) -> None:
+        for doc_type, template in TEMPLATES.items():
+            for field in template.required_fields:
+                assert isinstance(field, str) and field.strip(), (
+                    f"Field in TEMPLATES['{doc_type}'].required_fields must be a non-empty string, "
+                    f"got: {field!r}"
+                )
+
+    def test_bail_application_has_expected_sections(self) -> None:
+        template = TEMPLATES["bail_application"]
+        expected_sections = {
+            "court_header",
+            "case_details",
+            "facts_of_the_case",
+            "grounds_for_bail",
+            "legal_provisions",
+            "precedents_relied_upon",
+            "prayer",
+            "verification",
+        }
+        assert set(template.sections) == expected_sections
+
+    def test_bail_application_has_expected_required_fields(self) -> None:
+        template = TEMPLATES["bail_application"]
+        assert "accused_name" in template.required_fields
+        assert "fir_number" in template.required_fields
+        assert "police_station" in template.required_fields
+        assert "offences_charged" in template.required_fields
+
+    def test_writ_petition_226_uses_writ_petition_prompt(self) -> None:
+        template = TEMPLATES["writ_petition_226"]
+        assert template.prompt_key == "DRAFT_WRIT_PETITION_SYSTEM"
+
+    def test_writ_petition_32_uses_writ_petition_prompt(self) -> None:
+        template = TEMPLATES["writ_petition_32"]
+        assert template.prompt_key == "DRAFT_WRIT_PETITION_SYSTEM"
+
+    def test_writ_petition_32_targets_supreme_court(self) -> None:
+        template = TEMPLATES["writ_petition_32"]
+        # Art. 32 petitions go to the Supreme Court, not High Courts
+        assert "SUPREME COURT" in template.court_header.upper()
+
+    def test_templates_dict_is_frozen_and_not_mutated(self) -> None:
+        """TEMPLATES should not allow adding new keys at runtime."""
+        original_keys = set(TEMPLATES.keys())
+        # Attempt to verify that we're working with an immutable mapping
+        # (typing.Final means the binding is frozen, not the dict itself)
+        # So we just verify the contents are stable
+        assert set(TEMPLATES.keys()) == original_keys
+
+    def test_doc_type_matches_key(self) -> None:
+        """Each template's doc_type attribute must match its key in TEMPLATES."""
+        for key, template in TEMPLATES.items():
+            assert template.doc_type == key, (
+                f"TEMPLATES['{key}'].doc_type='{template.doc_type}' "
+                f"does not match its key '{key}'"
+            )
+
+
+# ---------------------------------------------------------------------------
+# TestGetTemplate
+# ---------------------------------------------------------------------------
+
+
+class TestGetTemplate:
+    def test_returns_correct_template_for_bail_application(self) -> None:
+        template = get_template("bail_application")
+        assert isinstance(template, DocumentTemplate)
+        assert template.doc_type == "bail_application"
+        assert template.display_name == "Bail Application (S.439 CrPC)"
+
+    def test_returns_correct_template_for_writ_petition_226(self) -> None:
+        template = get_template("writ_petition_226")
+        assert template.doc_type == "writ_petition_226"
+        assert "226" in template.display_name or "226" in template.statutory_basis
+
+    def test_returns_correct_template_for_writ_petition_32(self) -> None:
+        template = get_template("writ_petition_32")
+        assert template.doc_type == "writ_petition_32"
+        assert "32" in template.display_name or "32" in template.statutory_basis
+
+    def test_returns_correct_template_for_written_statement(self) -> None:
+        template = get_template("written_statement")
+        assert template.doc_type == "written_statement"
+
+    def test_returns_correct_template_for_legal_notice(self) -> None:
+        template = get_template("legal_notice")
+        assert template.doc_type == "legal_notice"
+
+    def test_returns_correct_template_for_appeal(self) -> None:
+        template = get_template("appeal")
+        assert template.doc_type == "appeal"
+
+    def test_returns_correct_template_for_interim_application(self) -> None:
+        template = get_template("interim_application")
+        assert template.doc_type == "interim_application"
+
+    def test_raises_value_error_for_unknown_doc_type(self) -> None:
+        with pytest.raises(ValueError):
+            get_template("nonexistent_document_type")
+
+    def test_error_message_lists_valid_types(self) -> None:
+        with pytest.raises(ValueError) as exc_info:
+            get_template("invalid_type_xyz")
+
+        error_message = str(exc_info.value)
+        # The error message must list valid doc_type strings
+        for valid_type in _EXPECTED_DOC_TYPES:
+            assert valid_type in error_message, (
+                f"Error message does not list valid type '{valid_type}': {error_message}"
+            )
+
+    def test_error_message_mentions_invalid_type(self) -> None:
+        with pytest.raises(ValueError) as exc_info:
+            get_template("totally_invalid")
+
+        assert "totally_invalid" in str(exc_info.value)
+
+    def test_raises_for_empty_string(self) -> None:
+        with pytest.raises(ValueError):
+            get_template("")
+
+    def test_raises_for_near_miss_type(self) -> None:
+        """Slightly misspelled doc types must still raise ValueError."""
+        with pytest.raises(ValueError):
+            get_template("bail_applications")  # plural
+
+    def test_raises_for_wrong_case(self) -> None:
+        """Doc type lookup is case-sensitive."""
+        with pytest.raises(ValueError):
+            get_template("BAIL_APPLICATION")
+
+    def test_returned_template_is_frozen(self) -> None:
+        """DocumentTemplate is a frozen dataclass; mutation must raise."""
+        template = get_template("bail_application")
+        with pytest.raises((AttributeError, TypeError)):
+            template.doc_type = "mutated"  # type: ignore[misc]
+
+    def test_returns_same_object_on_repeated_calls(self) -> None:
+        """get_template should return the same immutable object from TEMPLATES."""
+        t1 = get_template("bail_application")
+        t2 = get_template("bail_application")
+        assert t1 is t2

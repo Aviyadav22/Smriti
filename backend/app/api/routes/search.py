@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from app.security.rate_limiter import rate_limit_dependency
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.core.config import settings
-from app.core.dependencies import get_embedder, get_llm, get_reranker, get_vector_store
+from app.core.dependencies import get_embedder, get_llm, get_reranker, get_translator, get_vector_store
 from app.core.search.hybrid import SearchResponse, hybrid_search
 from app.core.search.query import SearchFilters
 from app.db.postgres import get_db
@@ -29,6 +29,7 @@ router = APIRouter()
 
 @router.get("", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def search(
+    response: Response,
     q: str = Query(..., min_length=1, max_length=2000, description="Search query"),
     court: str | None = Query(None, description="Filter by court name (comma-separated for multiple)"),
     year_from: int | None = Query(None, ge=1900, le=2100, description="Filter from year"),
@@ -44,6 +45,7 @@ async def search(
     ),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(10, ge=1, le=50, description="Results per page"),
+    language: str = Query("en", pattern="^(en|hi)$", description="Response language (en or hi)"),
     db: AsyncSession = Depends(get_db),
     _current_user: TokenPayload | None = Depends(get_current_user_optional),
 ) -> dict:
@@ -51,6 +53,14 @@ async def search(
     if detect_prompt_injection(q):
         raise HTTPException(status_code=400, detail="Query contains disallowed patterns")
     q = sanitize_search_query(q)
+
+    # Hindi support: translate query to English for search, preserve original
+    original_query = q
+    if language == "hi":
+        translator = get_translator()
+        detected_lang = await translator.detect_language(q)
+        if detected_lang == "hi":
+            q = await translator.translate(q, source="hi", target="en")
 
     # Split comma-separated court string into list, stripping whitespace
     court_list = (
@@ -74,7 +84,7 @@ async def search(
     reranker = get_reranker()
     redis_client = await get_redis()
 
-    response = await hybrid_search(
+    search_response = await hybrid_search(
         query=q,
         filters=filters,
         page=page,
@@ -87,7 +97,24 @@ async def search(
         redis_client=redis_client,
     )
 
-    return _serialize_response(response)
+    serialized = _serialize_response(search_response)
+
+    # Cache control for client-side caching
+    response.headers["Cache-Control"] = "private, max-age=60"
+
+    # Hindi support: translate result snippets back to Hindi
+    if language == "hi":
+        translator = get_translator()
+        for result in serialized.get("results", []):
+            snippet = result.get("snippet")
+            if snippet:
+                result["snippet"] = await translator.translate(
+                    snippet, source="en", target="hi"
+                )
+        # Preserve original Hindi query for display
+        serialized["query_understanding"]["original_query"] = original_query
+
+    return serialized
 
 
 # ---------------------------------------------------------------------------

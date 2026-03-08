@@ -21,9 +21,23 @@ vi.mock("next/navigation", async () => {
   };
 });
 
+// Override global auth mock — allow per-test control of isAuthenticated
+let mockIsAuthenticated = true;
+vi.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({
+    isAuthenticated: mockIsAuthenticated,
+    isLoading: false,
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+  }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 describe("Header", () => {
   beforeEach(() => {
     pushMock.mockClear();
+    mockIsAuthenticated = true;
   });
 
   it("renders the Smriti brand name", () => {
@@ -33,15 +47,18 @@ describe("Header", () => {
 
   it("renders navigation links", () => {
     renderWithProviders(<Header />);
-    // Desktop nav links
-    const searchLinks = screen.getAllByText("Search");
-    expect(searchLinks.length).toBeGreaterThanOrEqual(1);
+    // Desktop nav links — Chat is translated via header.chat → "Chat"
+    const chatLinks = screen.getAllByText("Chat");
+    expect(chatLinks.length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows Login and Register when not authenticated", () => {
+    mockIsAuthenticated = false;
     renderWithProviders(<Header />);
-    expect(screen.getAllByText("Login").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Register").length).toBeGreaterThanOrEqual(1);
+    // tc("login") and tc("register") return the key ("login"/"register") since
+    // "common.login"/"common.register" are not in the global translation table
+    expect(screen.getAllByText(/login/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/register/i).length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders the search input with correct placeholder", () => {

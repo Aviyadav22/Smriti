@@ -1,79 +1,10 @@
 """Legal domain constants for the Indian legal system.
 
-Defines enumerations, mappings, and reference data used across the platform
-for case classification, statutory cross-referencing, and judgment structure.
+Defines mappings and reference data used across the platform
+for statutory cross-referencing.
 """
 
 from typing import Final
-
-# ---------------------------------------------------------------------------
-# Case types — classification of filings before Indian courts
-# ---------------------------------------------------------------------------
-
-CASE_TYPES: Final[list[str]] = [
-    "Civil Appeal",
-    "Criminal Appeal",
-    "Special Leave Petition",
-    "Writ Petition",
-    "Transfer Petition",
-    "Review Petition",
-    "Contempt Petition",
-    "Original Suit",
-    "Reference",
-    "Other",
-]
-
-# ---------------------------------------------------------------------------
-# Bench types — ordered by ascending precedent weight
-# ---------------------------------------------------------------------------
-
-BENCH_TYPES: Final[list[str]] = [
-    "single",
-    "division",
-    "full",
-    "constitutional",
-]
-
-# ---------------------------------------------------------------------------
-# Disposal natures — how a case was finally resolved
-# ---------------------------------------------------------------------------
-
-DISPOSAL_NATURES: Final[list[str]] = [
-    "Allowed",
-    "Dismissed",
-    "Partly Allowed",
-    "Withdrawn",
-    "Remanded",
-    "Other",
-]
-
-# ---------------------------------------------------------------------------
-# Jurisdictions
-# ---------------------------------------------------------------------------
-
-JURISDICTIONS: Final[list[str]] = [
-    "civil",
-    "criminal",
-    "constitutional",
-    "tax",
-    "labor",
-    "company",
-    "other",
-]
-
-# ---------------------------------------------------------------------------
-# Judgment section types — canonical labels for structural segments
-# ---------------------------------------------------------------------------
-
-SECTION_TYPES: Final[list[str]] = [
-    "HEADER",
-    "FACTS",
-    "ARGUMENTS",
-    "ISSUES",
-    "ANALYSIS",
-    "RATIO",
-    "ORDER",
-]
 
 # ---------------------------------------------------------------------------
 # IPC → BNS section mapping  (Indian Penal Code, 1860 → Bharatiya Nyaya

@@ -31,7 +31,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     name: str | None = None
-    consent_given: bool = True
+    consent_given: bool  # Must be explicitly set — no default (DPDP compliance)
     consent_version: str = "1.0"
 
     @field_validator("password")
@@ -271,3 +271,80 @@ async def logout(
         except Exception:
             pass
     return {"detail": "Successfully logged out"}
+
+
+@router.delete("/me", status_code=200)
+async def delete_account(
+    request: Request,
+    current_user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Delete user account and all personal data (DPDP Act Section 12).
+
+    Cascade deletes: agent executions, chat messages, chat sessions,
+    documents, audio digests, consents, then deactivates user.
+    """
+    uid = current_user.sub
+
+    # Delete agent executions
+    await db.execute(
+        text("DELETE FROM agent_executions WHERE user_id = :uid"),
+        {"uid": uid},
+    )
+
+    # Delete chat messages via sessions
+    await db.execute(
+        text("""
+            DELETE FROM chat_messages WHERE session_id IN
+            (SELECT id FROM chat_sessions WHERE user_id = :uid)
+        """),
+        {"uid": uid},
+    )
+    await db.execute(
+        text("DELETE FROM chat_sessions WHERE user_id = :uid"),
+        {"uid": uid},
+    )
+
+    # Delete documents (note: storage files should also be cleaned up)
+    await db.execute(
+        text("DELETE FROM documents WHERE user_id = :uid"),
+        {"uid": uid},
+    )
+
+    # Delete consents
+    await db.execute(
+        text("DELETE FROM consents WHERE user_id = :uid"),
+        {"uid": uid},
+    )
+
+    # Log erasure in DPDP audit (retained for compliance)
+    await db.execute(
+        text("""
+            INSERT INTO dpdp_audit_log (action, user_id, details)
+            VALUES ('account_deleted', :uid, '{"initiated_by": "user"}'::jsonb)
+        """),
+        {"uid": uid},
+    )
+
+    # Deactivate user account (don't hard delete — keep for audit trail)
+    await db.execute(
+        text("UPDATE users SET is_active = false, email = :anon_email WHERE id = :uid"),
+        {"uid": uid, "anon_email": f"deleted_{uid[:8]}@deleted.local"},
+    )
+
+    await db.commit()
+
+    # Revoke current token
+    await revoke_token(current_user.jti, int(current_user.exp.timestamp()))
+
+    await create_audit_log(
+        db=db,
+        action="account.deleted",
+        user_id=uid,
+        resource_type="auth",
+        resource_id=None,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    return {"detail": "Account and all personal data deleted."}

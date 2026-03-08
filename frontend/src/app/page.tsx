@@ -6,7 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
-import { Search, BookOpen, Scale, Building2, ArrowRight } from "lucide-react";
+import {
+  Search,
+  BookOpen,
+  Scale,
+  Building2,
+  ArrowRight,
+  Brain,
+  Network,
+  Globe,
+  Shield,
+  FileText,
+  Gavel,
+  Check,
+} from "lucide-react";
 
 const EXAMPLE_QUERIES = [
   "Right to privacy Supreme Court",
@@ -115,7 +128,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Features */}
+        {/* How it Works */}
         <section className="mx-auto max-w-5xl px-4 py-16">
           <h2 className="text-2xl font-semibold text-center mb-10 tracking-tight">
             How Smriti Works
@@ -147,6 +160,157 @@ export default function HomePage() {
                 </div>
                 <h3 className="text-lg font-semibold mb-2 tracking-tight">{title}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Features Grid */}
+        <section className="border-y bg-card/50">
+          <div className="mx-auto max-w-5xl px-4 py-16">
+            <h2 className="text-2xl font-semibold text-center mb-10 tracking-tight">
+              Built for Indian Lawyers
+            </h2>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                {
+                  icon: Network,
+                  title: "Citation Graph",
+                  desc: "Interactive visualization of how cases cite, overrule, affirm, and distinguish each other.",
+                },
+                {
+                  icon: Brain,
+                  title: "AI Agents",
+                  desc: "Research, case prep, strategy, and drafting agents that do hours of work in minutes.",
+                },
+                {
+                  icon: Globe,
+                  title: "Hindi Support",
+                  desc: "Search and get results in Hindi. Full UI localization for India's most spoken language.",
+                },
+                {
+                  icon: Shield,
+                  title: "DPDP Compliant",
+                  desc: "Built-in privacy from day one. Consent tracking, encryption, and right to erasure.",
+                },
+                {
+                  icon: Gavel,
+                  title: "Judge Analytics",
+                  desc: "Disposal patterns, bench combinations, and case history for every Supreme Court judge.",
+                },
+                {
+                  icon: FileText,
+                  title: "Document Drafting",
+                  desc: "Generate bail applications, writ petitions, and legal notices grounded in real precedents.",
+                },
+                {
+                  icon: BookOpen,
+                  title: "Section-Aware",
+                  desc: "Judgments tagged by Facts, Issues, Arguments, Holdings, and Order for precise retrieval.",
+                },
+                {
+                  icon: Search,
+                  title: "Smart Search",
+                  desc: "Hybrid semantic + keyword search with Reciprocal Rank Fusion and AI reranking.",
+                },
+              ].map(({ icon: Icon, title, desc }) => (
+                <div key={title} className="border rounded-md p-4 bg-background hover:shadow-sm">
+                  <Icon className="h-4 w-4 text-[var(--gold)] mb-2" />
+                  <h3 className="text-sm font-semibold mb-1">{title}</h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Pricing */}
+        <section className="mx-auto max-w-4xl px-4 py-16">
+          <h2 className="text-2xl font-semibold text-center mb-3 tracking-tight">
+            Simple Pricing
+          </h2>
+          <p className="text-sm text-muted-foreground text-center mb-10">
+            Start free. Upgrade when you need more.
+          </p>
+          <div className="grid md:grid-cols-3 gap-6">
+            {[
+              {
+                name: "Free",
+                price: "₹0",
+                period: "forever",
+                features: [
+                  "Unlimited case search",
+                  "5 AI summaries/day",
+                  "Citation graph viewing",
+                  "Basic judge analytics",
+                ],
+                cta: "Get Started",
+                href: "/register",
+                highlighted: false,
+              },
+              {
+                name: "Pro",
+                price: "₹999",
+                period: "/month",
+                features: [
+                  "Everything in Free",
+                  "Unlimited AI summaries",
+                  "Research & Strategy Agents",
+                  "Document drafting (20/mo)",
+                  "Full citation graph",
+                  "Hindi search & results",
+                ],
+                cta: "Start Pro Trial",
+                href: "/register",
+                highlighted: true,
+              },
+              {
+                name: "Firm",
+                price: "₹2,499",
+                period: "/seat/month",
+                features: [
+                  "Everything in Pro",
+                  "Unlimited drafting",
+                  "Team workspace",
+                  "Priority support",
+                  "API access",
+                  "Custom playbooks",
+                ],
+                cta: "Contact Sales",
+                href: "mailto:hello@smriti.law",
+                highlighted: false,
+              },
+            ].map(({ name, price, period, features, cta, href, highlighted }) => (
+              <div
+                key={name}
+                className={`border rounded-md p-6 ${
+                  highlighted
+                    ? "border-[var(--gold)] bg-card shadow-sm ring-1 ring-[var(--gold)]/20"
+                    : "bg-card"
+                }`}
+              >
+                <h3 className="text-lg font-semibold mb-1">{name}</h3>
+                <div className="mb-4">
+                  <span className="text-2xl font-bold font-[family-name:var(--font-lora)]">
+                    {price}
+                  </span>
+                  <span className="text-xs text-muted-foreground ml-1">{period}</span>
+                </div>
+                <ul className="space-y-2 mb-6">
+                  {features.map((f) => (
+                    <li key={f} className="flex items-start gap-2 text-xs text-muted-foreground">
+                      <Check className="h-3.5 w-3.5 text-[var(--gold)] mt-0.5 shrink-0" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  asChild
+                  variant={highlighted ? "default" : "outline"}
+                  className="w-full rounded-md h-9 text-xs"
+                >
+                  <a href={href}>{cta}</a>
+                </Button>
               </div>
             ))}
           </div>

@@ -1,13 +1,7 @@
 """LangGraph checkpointer setup using existing PostgreSQL."""
 from __future__ import annotations
 
-from typing import Final
-
 from app.core.config import settings
-
-# Default pool size for checkpointer connections
-CHECKPOINTER_POOL_MIN: Final[int] = 1
-CHECKPOINTER_POOL_MAX: Final[int] = 5
 
 
 def get_checkpointer_connection_string() -> str:

@@ -123,6 +123,32 @@ async def _get_rate_limiter() -> RateLimiter:
 
 
 # ---------------------------------------------------------------------------
+# In-memory fallback for when Redis is unavailable
+# ---------------------------------------------------------------------------
+
+import time as _time
+import threading
+
+_mem_lock = threading.Lock()
+_mem_buckets: dict[str, list[float]] = {}
+
+
+def _in_memory_check(key: str, limit: int, window_seconds: int) -> bool:
+    """Simple in-memory sliding window fallback when Redis is down."""
+    now = _time.time()
+    with _mem_lock:
+        entries = _mem_buckets.get(key, [])
+        # Prune expired entries
+        entries = [t for t in entries if t > now - window_seconds]
+        if len(entries) >= limit:
+            _mem_buckets[key] = entries
+            return False
+        entries.append(now)
+        _mem_buckets[key] = entries
+        return True
+
+
+# ---------------------------------------------------------------------------
 # Dependency factory
 # ---------------------------------------------------------------------------
 
@@ -202,8 +228,13 @@ def rate_limit_dependency(
         except RateLimitExceededError:
             raise
         except Exception as exc:
-            # If Redis is unavailable, allow the request through rather than
-            # blocking all traffic. Rate limiting is a best-effort safeguard.
-            logger.warning("Rate limiter Redis unavailable, allowing request: %s", exc)
+            # Redis unavailable — use in-memory fallback to prevent abuse
+            logger.warning("Rate limiter Redis unavailable, using in-memory fallback: %s", exc)
+            allowed = _in_memory_check(key, max_requests, window_seconds)
+            if not allowed:
+                raise RateLimitExceededError(
+                    detail=f"Rate limit exceeded: {limit}",
+                    retry_after=window_seconds,
+                )
 
     return _check_rate

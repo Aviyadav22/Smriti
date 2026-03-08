@@ -19,7 +19,7 @@ class PineconeStore:
 
     def __init__(self) -> None:
         self._client = Pinecone(api_key=settings.pinecone_api_key)
-        host = getattr(settings, "pinecone_host", "")
+        host = settings.pinecone_host
         if host:
             self._index = self._client.Index(host=host)
         else:
@@ -50,6 +50,3 @@ class PineconeStore:
             SearchResult(id=m.id, score=m.score, metadata=m.metadata or {})
             for m in results.matches
         ]
-
-    async def delete(self, ids: list[str]) -> None:
-        await asyncio.to_thread(self._index.delete, ids=ids)

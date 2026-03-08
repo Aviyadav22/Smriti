@@ -187,7 +187,7 @@ export default function CaseDetailPage() {
                                             <FileText className="h-8 w-8 mx-auto text-muted-foreground/30 mb-3" />
                                             <p className="text-sm text-muted-foreground mb-3">View the original judgment PDF</p>
                                             <Button asChild variant="outline" size="sm" className="text-xs rounded-md">
-                                                <a href={getCasePdfUrl(caseId)} target="_blank" rel="noopener">
+                                                <a href={getCasePdfUrl(caseId)} target="_blank" rel="noopener noreferrer">
                                                     Open PDF <ExternalLink className="h-3 w-3 ml-1.5" />
                                                 </a>
                                             </Button>

@@ -22,19 +22,6 @@ class CitationTreatment(str, Enum):
     DOUBTED = "doubted"
 
 
-# Negative follow patterns — checked BEFORE positive FOLLOWED to avoid false positives
-# e.g. "not followed", "declined to follow", "refused to follow", "never been followed"
-NEGATIVE_FOLLOW_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(
-        r"(?:not|never|declined\s+to|refused\s+to)\s+follow(?:ed|ing)?",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(?:not|never)\s+(?:been\s+)?followed",
-        re.IGNORECASE,
-    ),
-]
-
 # Patterns that indicate treatment of a cited case
 # Format: (treatment_type, regex_pattern)
 # NOTE: NOT_FOLLOWED is listed before FOLLOWED so that negative treatment

@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.core.agents.case_prep import route_after_load
+from app.core.agents.nodes.common import safe_json_parse_list
 from app.core.agents.nodes.case_prep_nodes import (
-    _parse_json_list,
     build_argument_order_node,
     deep_precedent_search_node,
     generate_strategy_memo_node,
@@ -701,23 +701,23 @@ class TestVerifyCitationsNode:
 
 
 # ---------------------------------------------------------------------------
-# _parse_json_list helper
+# safe_json_parse_list helper
 # ---------------------------------------------------------------------------
 
 
 class TestParseJsonList:
     def test_valid_json_array(self) -> None:
-        assert _parse_json_list('[{"a": 1}]') == [{"a": 1}]
+        assert safe_json_parse_list('[{"a": 1}]') == [{"a": 1}]
 
     def test_json_in_code_fence(self) -> None:
         raw = '```json\n[{"a": 1}]\n```'
-        assert _parse_json_list(raw) == [{"a": 1}]
+        assert safe_json_parse_list(raw) == [{"a": 1}]
 
     def test_empty_array(self) -> None:
-        assert _parse_json_list("[]") == []
+        assert safe_json_parse_list("[]") == []
 
     def test_garbage_returns_empty(self) -> None:
-        assert _parse_json_list("no json here at all") == []
+        assert safe_json_parse_list("no json here at all") == []
 
 
 # ---------------------------------------------------------------------------

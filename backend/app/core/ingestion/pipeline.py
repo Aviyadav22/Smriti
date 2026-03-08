@@ -21,9 +21,10 @@ from app.core.ingestion.metadata import (
     CaseMetadata,
     extract_metadata_llm,
     merge_metadata,
+    validate_cross_fields,
     validate_with_regex,
 )
-from app.core.ingestion.pdf import extract_pdf_text, extract_with_ocr
+from app.core.ingestion.pdf import extract_and_score, extract_pdf_text, extract_with_ocr
 from app.core.interfaces.embedder import EmbeddingProvider
 from app.core.interfaces.graph_store import GraphStore
 from app.core.interfaces.llm import LLMProvider
@@ -78,17 +79,21 @@ async def ingest_judgment(
     logger.info("Starting ingestion for case_id=%s, pdf=%s", case_id, pdf_path)
 
     # ------------------------------------------------------------------
-    # 1. EXTRACT TEXT
+    # 1. EXTRACT TEXT + QUALITY SCORING
     # ------------------------------------------------------------------
-    full_text = await extract_pdf_text(pdf_path)
-    if not full_text or len(full_text) < 100:
-        logger.warning("pdfplumber extraction insufficient, trying OCR: %s", pdf_path)
-        full_text = await extract_with_ocr(pdf_path)
+    quality = await extract_and_score(pdf_path)
+    full_text = quality.text
 
-    if not full_text or len(full_text) < 50:
+    if not full_text or quality.char_count < 50:
         logger.error("No text extracted from PDF: %s", pdf_path)
         await _record_ingestion_failure(db, case_id, pdf_path, "No text extracted")
         return case_id
+
+    if quality.tier == "low":
+        logger.warning(
+            "Low quality text for %s: %d chars, %d legal keywords (proceeding anyway)",
+            pdf_path, quality.char_count, quality.legal_keyword_count,
+        )
 
     # ------------------------------------------------------------------
     # 2. MERGE METADATA (Parquet + LLM)
@@ -99,9 +104,8 @@ async def ingest_judgment(
     # ------------------------------------------------------------------
     # 3. VALIDATE METADATA
     # ------------------------------------------------------------------
-    # Note: validate_with_regex() already normalizes the court name,
-    # so no separate normalize_court_name() call is needed here.
     metadata = validate_with_regex(metadata)
+    metadata = validate_cross_fields(metadata)
 
     # ------------------------------------------------------------------
     # 4. STORE PDF
@@ -250,7 +254,16 @@ async def _insert_case(
                 :pdf_storage_path, :s3_source_path, :source,
                 :language, :available_languages, 0
             )
-            ON CONFLICT (citation) WHERE citation IS NOT NULL DO NOTHING
+            ON CONFLICT (citation) WHERE citation IS NOT NULL DO UPDATE SET
+                full_text = EXCLUDED.full_text,
+                pdf_storage_path = EXCLUDED.pdf_storage_path,
+                ratio_decidendi = COALESCE(EXCLUDED.ratio_decidendi, cases.ratio_decidendi),
+                acts_cited = COALESCE(EXCLUDED.acts_cited, cases.acts_cited),
+                cases_cited = COALESCE(EXCLUDED.cases_cited, cases.cases_cited),
+                keywords = COALESCE(EXCLUDED.keywords, cases.keywords),
+                bench_type = COALESCE(EXCLUDED.bench_type, cases.bench_type),
+                jurisdiction = COALESCE(EXCLUDED.jurisdiction, cases.jurisdiction),
+                searchable_text = EXCLUDED.searchable_text
             RETURNING id
             """
         ),
@@ -397,14 +410,15 @@ async def _build_citation_graph(
                     "placeholder_id": f"ref_{uuid.uuid4().hex[:12]}",
                 },
             )
-            # Create the CITES edge
+            # Create the CITES edge with treatment metadata
             await graph_store.query(
                 "MATCH (a:Case {id: $from_id}), (b:Case {citation: $to_citation}) "
-                "MERGE (a)-[:CITES {reporter: $reporter}]->(b)",
+                "MERGE (a)-[:CITES {reporter: $reporter, treatment: $treatment}]->(b)",
                 params={
                     "from_id": case_id,
                     "to_citation": cited_ref,
                     "reporter": citation.reporter,
+                    "treatment": citation.treatment if hasattr(citation, "treatment") else "",
                 },
             )
         except (OSError, ConnectionError, RuntimeError):

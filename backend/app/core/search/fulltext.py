@@ -116,7 +116,7 @@ async def _search_sections(
         "plainto_tsquery('english', :query), "
         "'StartSel=**, StopSel=**, MaxWords=50, MinWords=20') AS snippet "
         "FROM case_sections cs "
-        "JOIN cases c ON c.id::text = cs.case_id "
+        "JOIN cases c ON c.id = cs.case_id "
         "WHERE cs.section_type = :section_type "
         "AND to_tsvector('english', cs.content) @@ plainto_tsquery('english', :query) "
         "ORDER BY rank DESC "

@@ -126,19 +126,17 @@ Smriti is **India's AI-powered legal intelligence platform** — the Harvey AI f
 
 ---
 
-### Phase 4: Data + Judge Analytics
+### Phase 4: Judge Analytics
 
-**Goal:** Fill the database. Ship Judge Analytics as the first "intelligence" feature.
+**Goal:** Ship Judge Analytics using the existing ~740 ingested cases. Build and validate the feature first — bulk re-ingestion with improved metadata extraction happens separately later.
 
-**Why first:** Every feature depends on data. Judge Analytics is low-effort/high-impact — LegitQuest charges premium, no free tool has it.
+**Why first:** Judge Analytics is low-effort/high-impact — LegitQuest charges premium, no free tool has it. Works even with a small dataset.
 
-#### 4.1 Full SC Ingestion
-- [ ] Ingest all 35K SC judgments from S3 (max out dataset)
-- [ ] Use Gemini Flash for metadata extraction (conserve Pro credits)
-- [ ] Citation graph integrity verification (Neo4j edges match extracted citations)
-- [ ] Metadata quality audit: sample 100 cases, verify accuracy
-- [ ] Upgrade Pinecone to Starter when free tier exhausts
-- [ ] Progress dashboard: ingestion stats, error rates, quality scores
+#### 4.1 Data Validation (existing ~740 cases)
+- [ ] Verify existing cases have judge/author_judge fields populated
+- [ ] Audit metadata quality on 20 sample cases
+- [ ] Identify metadata extraction gaps for future re-ingestion
+- [ ] Verify search works against existing data: 5 test queries
 
 #### 4.2 Judge Analytics API
 - [ ] `GET /judges` — List all judges with case counts

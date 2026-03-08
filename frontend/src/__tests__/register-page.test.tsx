@@ -32,6 +32,19 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
+// Override global auth mock — register delegates to mockApiRegister so tests
+// can assert on the call and control resolution/rejection
+vi.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({
+    isAuthenticated: false,
+    isLoading: false,
+    login: vi.fn(),
+    register: (...args: unknown[]) => mockApiRegister(...args),
+    logout: vi.fn(),
+  }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 describe("RegisterPage", () => {
   beforeEach(() => {
     pushMock.mockClear();

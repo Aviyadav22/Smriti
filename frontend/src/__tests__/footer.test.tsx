@@ -8,9 +8,9 @@ describe("Footer", () => {
     expect(screen.getByText("Smriti")).toBeInTheDocument();
   });
 
-  it("displays the AI Legal Research tagline", () => {
+  it("displays the AI-powered Indian legal research tagline", () => {
     render(<Footer />);
-    expect(screen.getByText(/AI Legal Research/)).toBeInTheDocument();
+    expect(screen.getByText(/AI-powered Indian legal research/)).toBeInTheDocument();
   });
 
   it("shows the CC-BY-4.0 license link", () => {
@@ -26,14 +26,14 @@ describe("Footer", () => {
   it("displays the legal disclaimer", () => {
     render(<Footer />);
     expect(
-      screen.getByText(/not legal advice/i)
+      screen.getByText(/For informational purposes only/i)
     ).toBeInTheDocument();
   });
 
-  it("mentions public records as data source", () => {
+  it("mentions Supreme Court Judgments dataset as data source", () => {
     render(<Footer />);
     expect(
-      screen.getByText(/public records/i)
+      screen.getByText(/Supreme Court Judgments dataset by Dattam Labs/i)
     ).toBeInTheDocument();
   });
 });

@@ -68,6 +68,12 @@ export default function ResearchAgentPage() {
     }, []);
 
     const handleEvent = useCallback((event: AgentStreamEvent) => {
+        // Capture execution_id from the first event that carries it,
+        // so it's available before "done" (e.g. at checkpoint time).
+        if (event.execution_id) {
+            setExecutionId(event.execution_id);
+        }
+
         switch (event.type) {
             case "status":
                 setSteps((prev) =>

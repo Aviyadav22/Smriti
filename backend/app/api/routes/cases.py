@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import uuid as _uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from app.security.rate_limiter import rate_limit_dependency
 from sqlalchemy import text
@@ -15,12 +15,13 @@ from app.core.dependencies import (
     get_embedder,
     get_graph_store,
     get_storage,
+    get_translator,
     get_vector_store,
 )
 from app.core.ingestion.chunker import detect_judgment_sections
 from app.db.postgres import get_db
 from app.security.auth import TokenPayload
-from app.security.rbac import get_current_user_optional
+from app.security.rbac import get_current_user, get_current_user_optional
 
 router = APIRouter()
 
@@ -74,6 +75,48 @@ async def get_case(
             case_dict[key] = str(case_dict[key])
 
     return case_dict
+
+
+# ---------------------------------------------------------------------------
+# GET /cases/{case_id}/summary — Case summary with optional Hindi translation
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{case_id}/summary", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+async def get_case_summary(
+    case_id: str,
+    language: str = Query("en", pattern="^(en|hi)$"),
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Get a case summary, optionally translated to Hindi."""
+    result = await db.execute(
+        text(
+            "SELECT id, title, citation, court, year, ratio_decidendi "
+            "FROM cases WHERE id = :id"
+        ),
+        {"id": case_id},
+    )
+    case = result.mappings().one_or_none()
+
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    summary = case.get("ratio_decidendi") or ""
+
+    if language == "hi" and summary:
+        translator = get_translator()
+        summary = await translator.translate(summary, source="en", target="hi")
+
+    return {
+        "case_id": case_id,
+        "title": case.get("title"),
+        "citation": case.get("citation"),
+        "court": case.get("court"),
+        "year": case.get("year"),
+        "summary": summary,
+        "language": language,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -136,18 +136,18 @@ class TestIngestJudgment:
     @patch("app.core.ingestion.pipeline.chunk_judgment")
     @patch("app.core.ingestion.pipeline.detect_judgment_sections")
     @patch("app.core.ingestion.pipeline._insert_case", new_callable=AsyncMock)
+    @patch("app.core.ingestion.pipeline.validate_cross_fields")
     @patch("app.core.ingestion.pipeline.validate_with_regex")
     @patch("app.core.ingestion.pipeline.merge_metadata")
     @patch("app.core.ingestion.pipeline.extract_metadata_llm", new_callable=AsyncMock)
-    @patch("app.core.ingestion.pipeline.extract_with_ocr", new_callable=AsyncMock)
-    @patch("app.core.ingestion.pipeline.extract_pdf_text", new_callable=AsyncMock)
+    @patch("app.core.ingestion.pipeline.extract_and_score", new_callable=AsyncMock)
     async def test_pipeline_processes_document(
         self,
-        mock_extract_pdf: AsyncMock,
-        mock_extract_ocr: AsyncMock,
+        mock_extract_and_score: AsyncMock,
         mock_extract_meta_llm: AsyncMock,
         mock_merge_meta: MagicMock,
         mock_validate: MagicMock,
+        mock_validate_cross: MagicMock,
         mock_insert_case: AsyncMock,
         mock_detect_sections: MagicMock,
         mock_chunk: MagicMock,
@@ -162,14 +162,20 @@ class TestIngestJudgment:
         mock_storage: AsyncMock,
     ) -> None:
         """Full pipeline runs all steps: extract, metadata, chunk, embed, store."""
+        from app.core.ingestion.pdf import TextQuality
+
         metadata = _make_case_metadata()
         chunks = _make_chunks()
         embeddings = _make_embeddings()
 
-        mock_extract_pdf.return_value = _LONG_TEXT
+        mock_extract_and_score.return_value = TextQuality(
+            text=_LONG_TEXT, char_count=len(_LONG_TEXT), tier="high",
+            ocr_used=False, legal_keyword_count=5, page_count=10,
+        )
         mock_extract_meta_llm.return_value = metadata
         mock_merge_meta.return_value = metadata
         mock_validate.return_value = metadata
+        mock_validate_cross.return_value = metadata
         mock_insert_case.return_value = "case-id-123"
         mock_detect_sections.return_value = _make_sections()
         mock_chunk.return_value = chunks
@@ -189,10 +195,11 @@ class TestIngestJudgment:
         )
 
         # Verify all pipeline steps were called
-        mock_extract_pdf.assert_called_once_with("/tmp/test.pdf")
+        mock_extract_and_score.assert_called_once_with("/tmp/test.pdf")
         mock_extract_meta_llm.assert_called_once()
         mock_merge_meta.assert_called_once()
         mock_validate.assert_called_once()
+        mock_validate_cross.assert_called_once()
         mock_detect_sections.assert_called_once_with(_LONG_TEXT)
         mock_chunk.assert_called_once()
         mock_embed_chunks.assert_called_once()
@@ -202,12 +209,10 @@ class TestIngestJudgment:
         assert case_id == "case-id-123"
 
     @patch("app.core.ingestion.pipeline._record_ingestion_failure", new_callable=AsyncMock)
-    @patch("app.core.ingestion.pipeline.extract_with_ocr", new_callable=AsyncMock)
-    @patch("app.core.ingestion.pipeline.extract_pdf_text", new_callable=AsyncMock)
+    @patch("app.core.ingestion.pipeline.extract_and_score", new_callable=AsyncMock)
     async def test_pipeline_handles_pdf_parse_failure(
         self,
-        mock_extract_pdf: AsyncMock,
-        mock_extract_ocr: AsyncMock,
+        mock_extract_and_score: AsyncMock,
         mock_record_failure: AsyncMock,
         mock_db: AsyncMock,
         mock_llm: AsyncMock,
@@ -217,8 +222,12 @@ class TestIngestJudgment:
         mock_storage: AsyncMock,
     ) -> None:
         """Pipeline records failure and returns case_id when PDF yields no text."""
-        mock_extract_pdf.return_value = ""
-        mock_extract_ocr.return_value = ""  # OCR also fails
+        from app.core.ingestion.pdf import TextQuality
+
+        mock_extract_and_score.return_value = TextQuality(
+            text="", char_count=0, tier="low",
+            ocr_used=True, legal_keyword_count=0, page_count=0,
+        )
 
         case_id = await ingest_judgment(
             pdf_path="/tmp/corrupt.pdf",
@@ -246,16 +255,18 @@ class TestIngestJudgment:
     @patch("app.core.ingestion.pipeline.chunk_judgment")
     @patch("app.core.ingestion.pipeline.detect_judgment_sections")
     @patch("app.core.ingestion.pipeline._insert_case", new_callable=AsyncMock)
+    @patch("app.core.ingestion.pipeline.validate_cross_fields")
     @patch("app.core.ingestion.pipeline.validate_with_regex")
     @patch("app.core.ingestion.pipeline.merge_metadata")
     @patch("app.core.ingestion.pipeline.extract_metadata_llm", new_callable=AsyncMock)
-    @patch("app.core.ingestion.pipeline.extract_pdf_text", new_callable=AsyncMock)
+    @patch("app.core.ingestion.pipeline.extract_and_score", new_callable=AsyncMock)
     async def test_pipeline_handles_embedding_failure(
         self,
-        mock_extract_pdf: AsyncMock,
+        mock_extract_and_score: AsyncMock,
         mock_extract_meta_llm: AsyncMock,
         mock_merge_meta: MagicMock,
         mock_validate: MagicMock,
+        mock_validate_cross: MagicMock,
         mock_insert_case: AsyncMock,
         mock_detect_sections: MagicMock,
         mock_chunk: MagicMock,
@@ -270,12 +281,18 @@ class TestIngestJudgment:
         mock_storage: AsyncMock,
     ) -> None:
         """Pipeline propagates embedding failures as exceptions."""
+        from app.core.ingestion.pdf import TextQuality
+
         metadata = _make_case_metadata()
 
-        mock_extract_pdf.return_value = _LONG_TEXT
+        mock_extract_and_score.return_value = TextQuality(
+            text=_LONG_TEXT, char_count=len(_LONG_TEXT), tier="high",
+            ocr_used=False, legal_keyword_count=5, page_count=10,
+        )
         mock_extract_meta_llm.return_value = metadata
         mock_merge_meta.return_value = metadata
         mock_validate.return_value = metadata
+        mock_validate_cross.return_value = metadata
         mock_insert_case.return_value = "case-id-123"
         mock_detect_sections.return_value = _make_sections()
         mock_chunk.return_value = _make_chunks()
@@ -296,12 +313,10 @@ class TestIngestJudgment:
             )
 
     @patch("app.core.ingestion.pipeline._record_ingestion_failure", new_callable=AsyncMock)
-    @patch("app.core.ingestion.pipeline.extract_with_ocr", new_callable=AsyncMock)
-    @patch("app.core.ingestion.pipeline.extract_pdf_text", new_callable=AsyncMock)
+    @patch("app.core.ingestion.pipeline.extract_and_score", new_callable=AsyncMock)
     async def test_pipeline_handles_empty_text(
         self,
-        mock_extract_pdf: AsyncMock,
-        mock_extract_ocr: AsyncMock,
+        mock_extract_and_score: AsyncMock,
         mock_record_failure: AsyncMock,
         mock_db: AsyncMock,
         mock_llm: AsyncMock,
@@ -311,10 +326,12 @@ class TestIngestJudgment:
         mock_storage: AsyncMock,
     ) -> None:
         """Pipeline handles empty text: short text from both extractors."""
-        # pdfplumber returns very short text (< 100 chars) -> tries OCR
-        mock_extract_pdf.return_value = "Short"
-        # OCR also returns very short text (< 50 chars)
-        mock_extract_ocr.return_value = "Also short"
+        from app.core.ingestion.pdf import TextQuality
+
+        mock_extract_and_score.return_value = TextQuality(
+            text="Also short", char_count=10, tier="low",
+            ocr_used=True, legal_keyword_count=0, page_count=1,
+        )
 
         case_id = await ingest_judgment(
             pdf_path="/tmp/empty.pdf",
@@ -338,16 +355,18 @@ class TestIngestJudgment:
     @patch("app.core.ingestion.pipeline.chunk_judgment")
     @patch("app.core.ingestion.pipeline.detect_judgment_sections")
     @patch("app.core.ingestion.pipeline._insert_case", new_callable=AsyncMock)
+    @patch("app.core.ingestion.pipeline.validate_cross_fields")
     @patch("app.core.ingestion.pipeline.validate_with_regex")
     @patch("app.core.ingestion.pipeline.merge_metadata")
     @patch("app.core.ingestion.pipeline.extract_metadata_llm", new_callable=AsyncMock)
-    @patch("app.core.ingestion.pipeline.extract_pdf_text", new_callable=AsyncMock)
+    @patch("app.core.ingestion.pipeline.extract_and_score", new_callable=AsyncMock)
     async def test_chunking_is_called_with_correct_params(
         self,
-        mock_extract_pdf: AsyncMock,
+        mock_extract_and_score: AsyncMock,
         mock_extract_meta_llm: AsyncMock,
         mock_merge_meta: MagicMock,
         mock_validate: MagicMock,
+        mock_validate_cross: MagicMock,
         mock_insert_case: AsyncMock,
         mock_detect_sections: MagicMock,
         mock_chunk: MagicMock,
@@ -362,14 +381,20 @@ class TestIngestJudgment:
         mock_storage: AsyncMock,
     ) -> None:
         """chunk_judgment receives full_text, detected sections, and case_id."""
+        from app.core.ingestion.pdf import TextQuality
+
         metadata = _make_case_metadata()
         sections = _make_sections()
         chunks = _make_chunks()
 
-        mock_extract_pdf.return_value = _LONG_TEXT
+        mock_extract_and_score.return_value = TextQuality(
+            text=_LONG_TEXT, char_count=len(_LONG_TEXT), tier="high",
+            ocr_used=False, legal_keyword_count=5, page_count=10,
+        )
         mock_extract_meta_llm.return_value = metadata
         mock_merge_meta.return_value = metadata
         mock_validate.return_value = metadata
+        mock_validate_cross.return_value = metadata
         mock_insert_case.return_value = "case-id-456"
         mock_detect_sections.return_value = sections
         mock_chunk.return_value = chunks

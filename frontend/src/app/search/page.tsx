@@ -167,6 +167,7 @@ function SearchContent() {
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
                                     placeholder="Search Indian case law…"
+                                    maxLength={500}
                                     className="pl-9 h-10 text-sm bg-background rounded-md"
                                 />
                             </div>
@@ -243,11 +244,11 @@ function SearchContent() {
                                 </div>
                                 <div>
                                     <label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Year From</label>
-                                    <Input type="number" value={yearFrom} onChange={(e) => setYearFrom(e.target.value)} placeholder="1950" className="h-8 text-xs" />
+                                    <Input type="number" value={yearFrom} onChange={(e) => setYearFrom(e.target.value)} placeholder="1950" min={1950} max={2026} className="h-8 text-xs" />
                                 </div>
                                 <div>
                                     <label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Year To</label>
-                                    <Input type="number" value={yearTo} onChange={(e) => setYearTo(e.target.value)} placeholder="2025" className="h-8 text-xs" />
+                                    <Input type="number" value={yearTo} onChange={(e) => setYearTo(e.target.value)} placeholder="2026" min={1950} max={2026} className="h-8 text-xs" />
                                 </div>
                             </div>
                         )}

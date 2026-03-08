@@ -11,6 +11,7 @@ from app.core.interfaces import (
     GraphStore,
     LLMProvider,
     Reranker,
+    TranslationProvider,
     VectorStore,
 )
 
@@ -22,6 +23,16 @@ def get_llm() -> LLMProvider:
         from app.core.providers.llm.gemini import GeminiLLM
 
         return GeminiLLM()
+    raise ValueError(f"Unknown LLM provider: {settings.llm_provider}")
+
+
+@lru_cache
+def get_flash_llm() -> LLMProvider:
+    """Return the configured fast/cheap LLM provider instance (Gemini Flash)."""
+    if settings.llm_provider == "gemini":
+        from app.core.providers.llm.gemini import GeminiLLM
+
+        return GeminiLLM(model=settings.gemini_flash_model)
     raise ValueError(f"Unknown LLM provider: {settings.llm_provider}")
 
 
@@ -66,12 +77,26 @@ def get_reranker() -> Reranker:
 
 
 @lru_cache
+def get_translator() -> TranslationProvider:
+    """Return the configured translation provider instance."""
+    if settings.llm_provider == "gemini":
+        from app.core.providers.translation.gemini_translator import GeminiTranslator
+
+        return GeminiTranslator()
+    raise ValueError(f"Unknown translation provider for: {settings.llm_provider}")
+
+
+@lru_cache
 def get_storage() -> FileStorage:
     """Return the configured file storage instance."""
     if settings.storage_provider == "local":
         from app.core.providers.storage.local_storage import LocalStorage
 
         return LocalStorage()
+    if settings.storage_provider == "gcs":
+        from app.core.providers.storage.gcs_storage import GCSStorage
+
+        return GCSStorage()
     raise ValueError(f"Unknown storage provider: {settings.storage_provider}")
 
 

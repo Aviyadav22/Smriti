@@ -509,3 +509,146 @@ class TestAuthRouteRegistration:
         for route in router.routes:
             if hasattr(route, "path") and route.path == "/login":
                 assert "POST" in route.methods  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# Account lock tests
+# ---------------------------------------------------------------------------
+
+
+class TestAccountLock:
+    """Tests for account locking after failed login attempts."""
+
+    @patch("app.api.routes.auth.create_audit_log", new_callable=AsyncMock)
+    @patch("app.api.routes.auth.verify_password", return_value=False)
+    @patch("app.security.rate_limiter._get_rate_limiter", new_callable=AsyncMock)
+    def test_failed_login_increments_count(
+        self,
+        mock_get_limiter: AsyncMock,
+        mock_verify: MagicMock,
+        mock_audit: AsyncMock,
+        client: TestClient,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Wrong password increments failed_login_count."""
+        mock_limiter = AsyncMock()
+        mock_limiter.check_rate_limit.return_value = True
+        mock_get_limiter.return_value = mock_limiter
+
+        select_result = MagicMock()
+        select_result.mappings.return_value.one_or_none.return_value = _user_row(
+            failed_login_count=2,
+        )
+
+        mock_db.execute.side_effect = [
+            select_result,  # SELECT user
+            None,           # UPDATE failed count
+        ]
+
+        resp = client.post(
+            "/api/v1/auth/login",
+            json={"email": "user@example.com", "password": "wrong-pass"},
+        )
+
+        assert resp.status_code == 401
+        # Verify UPDATE was called (second db.execute call)
+        assert mock_db.execute.call_count >= 2
+
+    @patch("app.security.rate_limiter._get_rate_limiter", new_callable=AsyncMock)
+    def test_locked_account_returns_423(
+        self,
+        mock_get_limiter: AsyncMock,
+        client: TestClient,
+        mock_db: AsyncMock,
+    ) -> None:
+        """An account locked until a future time returns 423."""
+        mock_limiter = AsyncMock()
+        mock_limiter.check_rate_limit.return_value = True
+        mock_get_limiter.return_value = mock_limiter
+
+        from datetime import timedelta
+
+        future = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+        select_result = MagicMock()
+        select_result.mappings.return_value.one_or_none.return_value = _user_row(
+            failed_login_count=5,
+            locked_until=future,
+        )
+        mock_db.execute.return_value = select_result
+
+        resp = client.post(
+            "/api/v1/auth/login",
+            json={"email": "locked@example.com", "password": "AnyPass1"},
+        )
+
+        assert resp.status_code == 423
+        assert "locked" in resp.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Inactive user tests
+# ---------------------------------------------------------------------------
+
+
+class TestInactiveUser:
+    """Tests for deactivated user access control."""
+
+    @patch("app.api.routes.auth.verify_password", return_value=True)
+    @patch("app.security.rate_limiter._get_rate_limiter", new_callable=AsyncMock)
+    def test_inactive_user_login_returns_403(
+        self,
+        mock_get_limiter: AsyncMock,
+        mock_verify: MagicMock,
+        client: TestClient,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A deactivated user cannot log in."""
+        mock_limiter = AsyncMock()
+        mock_limiter.check_rate_limit.return_value = True
+        mock_get_limiter.return_value = mock_limiter
+
+        select_result = MagicMock()
+        select_result.mappings.return_value.one_or_none.return_value = _user_row(
+            is_active=False,
+        )
+        mock_db.execute.return_value = select_result
+
+        resp = client.post(
+            "/api/v1/auth/login",
+            json={"email": "inactive@example.com", "password": "GoodPass1"},
+        )
+
+        assert resp.status_code == 403
+        assert "deactivated" in resp.json()["detail"].lower()
+
+    @patch("app.api.routes.auth.verify_refresh_token", new_callable=AsyncMock)
+    def test_inactive_user_refresh_returns_401(
+        self,
+        mock_verify_refresh: AsyncMock,
+        client: TestClient,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A deactivated user cannot refresh their token."""
+        mock_verify_refresh.return_value = TokenPayload(
+            sub=_USER_ID,
+            role="refresh",
+            exp=datetime.now(timezone.utc),
+            iat=datetime.now(timezone.utc),
+            jti="some-jti",
+        )
+
+        user_result = MagicMock()
+        user_result.mappings.return_value.one_or_none.return_value = {
+            "role": "researcher",
+            "is_active": False,
+        }
+        mock_db.execute.return_value = user_result
+
+        resp = client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": "valid-refresh-jwt"},
+        )
+
+        assert resp.status_code == 401
+        assert "deactivated" in resp.json()["detail"].lower() or "not found" in resp.json()["detail"].lower()

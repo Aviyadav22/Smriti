@@ -1,3 +1,6 @@
+# Credentials (never commit)
+docs/GCP_DEPLOYMENT_CREDENTIALS.md
+
 # Python
 __pycache__/
 *.py[cod]

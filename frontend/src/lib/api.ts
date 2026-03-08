@@ -11,6 +11,8 @@ import type {
     CourtStats,
     DocumentDetail,
     DocumentListResponse,
+    DocumentTemplate,
+    DocumentTemplatesResponse,
     DocumentUploadResponse,
     FacetsResponse,
     GraphData,
@@ -94,34 +96,42 @@ async function apiFetch<T>(
         headers["Authorization"] = `Bearer ${accessToken}`;
     }
 
-    const res = await fetch(`${API_BASE}${path}`, {
-        ...options,
-        headers,
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    if (res.status === 401 && refreshToken) {
-        const refreshed = await tryRefresh();
-        if (refreshed) {
-            headers["Authorization"] = `Bearer ${accessToken}`;
-            const retry = await fetch(`${API_BASE}${path}`, { ...options, headers });
-            if (!retry.ok) {
-                const err = await retry.json().catch(() => ({ error: "Request failed" }));
-                throw new ApiError(retry.status, err.code || "UNKNOWN", err.error || "Request failed");
+    try {
+        const res = await fetch(`${API_BASE}${path}`, {
+            ...options,
+            headers,
+            signal: controller.signal,
+        });
+
+        if (res.status === 401 && refreshToken) {
+            const refreshed = await tryRefresh();
+            if (refreshed) {
+                headers["Authorization"] = `Bearer ${accessToken}`;
+                const retry = await fetch(`${API_BASE}${path}`, { ...options, headers });
+                if (!retry.ok) {
+                    const err = await retry.json().catch(() => ({ error: "Request failed" }));
+                    throw new ApiError(retry.status, err.code || "UNKNOWN", err.error || "Request failed");
+                }
+                if (retry.status === 204) return undefined as T;
+                return retry.json() as Promise<T>;
             }
-            if (retry.status === 204) return undefined as T;
-            return retry.json() as Promise<T>;
+            clearTokens();
+            throw new ApiError(401, "UNAUTHORIZED", "Session expired");
         }
-        clearTokens();
-        throw new ApiError(401, "UNAUTHORIZED", "Session expired");
-    }
 
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Request failed" }));
-        throw new ApiError(res.status, err.code || "UNKNOWN", err.error || "Request failed");
-    }
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Request failed" }));
+            throw new ApiError(res.status, err.code || "UNKNOWN", err.error || "Request failed");
+        }
 
-    if (res.status === 204) return undefined as T;
-    return res.json() as Promise<T>;
+        if (res.status === 204) return undefined as T;
+        return res.json() as Promise<T>;
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
 
 async function tryRefresh(): Promise<boolean> {
@@ -188,6 +198,7 @@ export async function search(params: {
     section?: string;
     page?: number;
     page_size?: number;
+    language?: string;
 }): Promise<SearchResponse> {
     const query = new URLSearchParams();
     query.set("q", params.q);
@@ -201,6 +212,7 @@ export async function search(params: {
     if (params.section) query.set("section", params.section);
     if (params.page) query.set("page", String(params.page));
     if (params.page_size) query.set("page_size", String(params.page_size));
+    if (params.language) query.set("language", params.language);
     return apiFetch<SearchResponse>(`/search?${query.toString()}`);
 }
 
@@ -556,6 +568,80 @@ export async function getAgentExecutions(
     pageSize: number = 20,
 ): Promise<{ executions: AgentExecution[]; total: number; page: number; page_size: number }> {
     return apiFetch(`/agents/executions?page=${page}&page_size=${pageSize}`);
+}
+
+export function runStrategyAgent(
+    caseFacts: string,
+    desiredRelief: string,
+    onEvent: (event: AgentStreamEvent) => void,
+    onError?: (error: Error) => void,
+    targetJudge?: string,
+    targetBench?: string,
+): AbortController {
+    return _streamAgent(
+        "/agents/strategy/run",
+        {
+            case_facts: caseFacts,
+            desired_relief: desiredRelief,
+            target_judge: targetJudge || "",
+            target_bench: targetBench || "",
+        },
+        onEvent,
+        onError,
+    );
+}
+
+export function runDraftingAgent(
+    docType: string,
+    caseFacts: string,
+    onEvent: (event: AgentStreamEvent) => void,
+    onError?: (error: Error) => void,
+    targetCourt?: string,
+    relevantPrecedents?: Record<string, unknown>[],
+    additionalContext?: Record<string, unknown>,
+): AbortController {
+    return _streamAgent(
+        "/agents/drafting/run",
+        {
+            doc_type: docType,
+            case_facts: caseFacts,
+            target_court: targetCourt || "",
+            relevant_precedents: relevantPrecedents || [],
+            additional_context: additionalContext || {},
+        },
+        onEvent,
+        onError,
+    );
+}
+
+export async function getDraftingTemplates(): Promise<DocumentTemplatesResponse> {
+    return apiFetch<DocumentTemplatesResponse>("/agents/drafting/templates");
+}
+
+export async function exportDraft(
+    executionId: string,
+    format: "docx" | "pdf" = "docx",
+): Promise<Blob> {
+    const headers: Record<string, string> = {};
+    if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+    }
+
+    const res = await fetch(
+        `${API_BASE}/agents/drafting/export/${executionId}?format=${format}`,
+        { method: "POST", headers },
+    );
+
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Export failed" }));
+        throw new ApiError(
+            res.status,
+            "EXPORT_ERROR",
+            err.detail || err.error || "Export failed",
+        );
+    }
+
+    return res.blob();
 }
 
 export { ApiError };

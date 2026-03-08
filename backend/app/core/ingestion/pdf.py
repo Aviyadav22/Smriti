@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 
 import pdfplumber
 from pdfminer.psparser import PSException
@@ -15,6 +16,26 @@ MAX_PAGES = 5000
 
 # OCR batch size to avoid memory exhaustion on large scanned PDFs
 _OCR_BATCH_SIZE = 10
+
+
+@dataclass
+class TextQuality:
+    """Quality assessment of extracted text."""
+    text: str
+    char_count: int
+    tier: str  # "high", "medium", "low"
+    ocr_used: bool
+    legal_keyword_count: int
+    page_count: int
+
+
+LEGAL_KEYWORDS = {
+    "court", "petitioner", "respondent", "section", "act", "judgment",
+    "order", "appeal", "bench", "hon'ble", "advocate", "counsel",
+    "article", "constitution", "decree", "plaintiff", "defendant",
+    "prosecution", "accused", "bail", "writ", "petition", "tribunal",
+    "appellant", "versus", "v.", "vs.", "learned", "disposed",
+}
 
 
 def _extract_pdf_text_sync(file_path: str) -> str:
@@ -112,3 +133,67 @@ async def extract_with_ocr(file_path: str) -> str:
             return ""
 
     return await asyncio.to_thread(_ocr_sync)
+
+
+def score_text_quality(text: str, ocr_used: bool = False, page_count: int = 0) -> TextQuality:
+    """Score the quality of extracted judgment text.
+
+    Tiers:
+    - high: >2000 chars, >=3 legal keywords
+    - medium: >500 chars, >=1 legal keyword
+    - low: everything else (flag for manual review)
+    """
+    char_count = len(text)
+    text_lower = text.lower()
+    legal_keyword_count = sum(1 for kw in LEGAL_KEYWORDS if kw in text_lower)
+
+    if char_count > 2000 and legal_keyword_count >= 3:
+        tier = "high"
+    elif char_count > 500 and legal_keyword_count >= 1:
+        tier = "medium"
+    else:
+        tier = "low"
+
+    return TextQuality(
+        text=text,
+        char_count=char_count,
+        tier=tier,
+        ocr_used=ocr_used,
+        legal_keyword_count=legal_keyword_count,
+        page_count=page_count,
+    )
+
+
+async def extract_and_score(file_path: str) -> TextQuality:
+    """Extract text from PDF and return quality-scored result.
+
+    Tries pdfplumber first, falls back to OCR if insufficient text.
+    """
+    # Get page count for metrics
+    page_count = 0
+    try:
+        with pdfplumber.open(file_path) as pdf:
+            page_count = len(pdf.pages)
+    except (OSError, PSException, ValueError):
+        pass
+
+    text = await extract_pdf_text(file_path)
+    ocr_used = False
+
+    if not text or len(text) < 100:
+        logger.warning("pdfplumber extraction insufficient, trying OCR: %s", file_path)
+        text = await extract_with_ocr(file_path)
+        ocr_used = True
+
+    if not text:
+        text = ""
+
+    quality = score_text_quality(text, ocr_used=ocr_used, page_count=page_count)
+
+    if quality.tier == "low":
+        logger.warning(
+            "Low quality extraction for %s: %d chars, %d legal keywords, ocr=%s",
+            file_path, quality.char_count, quality.legal_keyword_count, ocr_used,
+        )
+
+    return quality

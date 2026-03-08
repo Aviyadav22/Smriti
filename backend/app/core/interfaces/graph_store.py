@@ -13,15 +13,6 @@ class GraphStore(Protocol):
         """Create a node and return its ID."""
         ...
 
-    async def create_edge(
-        self,
-        from_id: str,
-        to_id: str,
-        relationship: str,
-        *,
-        properties: dict | None = None,
-    ) -> None: ...
-
     async def get_node(self, node_id: str) -> dict | None: ...
 
     async def query(

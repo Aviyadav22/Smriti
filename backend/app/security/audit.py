@@ -4,11 +4,14 @@ Records user actions to the ``audit_logs`` database table for compliance
 and forensic analysis.
 """
 
+import hashlib
 import json
 from datetime import datetime, timezone
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
 
 
 async def create_audit_log(
@@ -40,6 +43,16 @@ async def create_audit_log(
     now = datetime.now(timezone.utc)
     metadata_json = json.dumps(metadata) if metadata else None
 
+    # Hash IP addresses for DPDP compliance — avoid storing raw PII
+    # Use encryption key as salt (dedicated to data protection, not JWT signing)
+    hashed_ip = (
+        hashlib.sha256(
+            f"{ip_address}:{settings.encryption_key}".encode()
+        ).hexdigest()[:16]
+        if ip_address
+        else None
+    )
+
     await db.execute(
         text(
             """
@@ -69,7 +82,7 @@ async def create_audit_log(
             "user_id": user_id,
             "resource_type": resource_type,
             "resource_id": resource_id,
-            "ip_address": ip_address,
+            "ip_address": hashed_ip,
             "user_agent": user_agent,
             "metadata": metadata_json,
             "created_at": now,

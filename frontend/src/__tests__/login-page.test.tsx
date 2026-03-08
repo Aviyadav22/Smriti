@@ -32,6 +32,19 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
+// Override global auth mock — login delegates to mockApiLogin so tests can
+// assert on the call and control resolution/rejection
+vi.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({
+    isAuthenticated: false,
+    isLoading: false,
+    login: (...args: unknown[]) => mockApiLogin(...args),
+    register: vi.fn(),
+    logout: vi.fn(),
+  }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 describe("LoginPage", () => {
   beforeEach(() => {
     pushMock.mockClear();
@@ -128,7 +141,7 @@ describe("LoginPage", () => {
       target: { value: "bad@firm.com" },
     });
     fireEvent.change(screen.getByPlaceholderText(/••••/), {
-      target: { value: "wrong" },
+      target: { value: "wrongpassword" },
     });
     fireEvent.submit(screen.getByRole("button", { name: /sign in/i }).closest("form")!);
 

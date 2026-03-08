@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://smriti:smriti_dev@localhost:5432/smriti"
     database_pool_size: int = 10
     database_max_overflow: int = 20
+    database_pool_recycle: int = 1800
+    database_pool_timeout: int = 30
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
@@ -45,6 +47,7 @@ class Settings(BaseSettings):
     llm_provider: str = "gemini"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-pro"
+    gemini_flash_model: str = "gemini-2.5-flash"
     gemini_embedding_model: str = "gemini-embedding-001"
     gemini_embedding_dimension: int = 1536
 
@@ -74,6 +77,7 @@ class Settings(BaseSettings):
     # Storage
     storage_provider: str = "local"
     local_storage_path: str = "./data/pdfs"
+    gcs_bucket_name: str = "smriti-documents"
 
     # Ingestion
     ingestion_tracker_db: str = "./data/ingestion_tracker.db"
@@ -95,6 +99,15 @@ class Settings(BaseSettings):
 
     # Logging
     log_level: str = "INFO"
+
+    # Monitoring
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.1
+    sentry_environment: str = ""
+
+    # DPDP
+    data_retention_days: int = 365
+    user_upload_retention_days: int = 7
 
     @model_validator(mode="after")
     def validate_critical_settings(self) -> "Settings":
@@ -121,6 +134,16 @@ class Settings(BaseSettings):
             if not self.encryption_key:
                 raise ValueError(
                     "encryption_key must not be empty in production"
+                )
+            # Enforce encryption key minimum length
+            if len(self.encryption_key) < 32:
+                raise ValueError(
+                    "encryption_key must be at least 32 characters in production"
+                )
+            # Enforce CORS is not wildcard
+            if "*" in self.cors_origins:
+                raise ValueError(
+                    "CORS origins must not contain '*' in production"
                 )
         else:
             # Development: warn but allow empty
