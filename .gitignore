@@ -55,5 +55,3 @@ htmlcov/
 
 # Logs
 *.log
-.claude/worktrees/
-.claude/settings.local.json
