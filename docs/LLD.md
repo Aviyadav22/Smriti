@@ -378,7 +378,7 @@ Hybrid search across all case law.
 ```
 
 **Auth**: Optional (unauthenticated gets limited results)
-**Rate limit**: 100/min authenticated, 20/min unauthenticated
+**Rate limit**: 30/min (search), 60/min (suggest), 30/min (facets)
 
 #### `GET /api/v1/search/facets`
 

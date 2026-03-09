@@ -19,17 +19,17 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
-    filename: Mapped[str] = mapped_column(String, nullable=False)
-    storage_path: Mapped[str] = mapped_column(String, nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(512), nullable=False)
     file_size: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     mime_type: Mapped[str] = mapped_column(
-        String, nullable=False, server_default="application/pdf"
+        String(100), nullable=False, server_default="application/pdf"
     )
     status: Mapped[str] = mapped_column(
-        String, nullable=False, server_default="pending"
+        String(20), nullable=False, server_default="pending"
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    processing_step: Mapped[str | None] = mapped_column(String, nullable=True)
+    processing_step: Mapped[str | None] = mapped_column(String(50), nullable=True)
     processing_started_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
@@ -40,6 +40,7 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         UUID(as_uuid=True),
         ForeignKey("cases.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
     __table_args__ = (

@@ -40,7 +40,7 @@ def _make_state(**overrides) -> dict:
         "section_drafts": {},
         "full_draft": "",
         "revision_feedback": "",
-        "export_formats": ["docx"],
+
         "messages": [],
         "iteration": 0,
         "error": "",
@@ -345,7 +345,8 @@ class TestDraftSectionsNode:
         assert set(drafts.keys()) == {"facts_of_the_case", "grounds_for_bail", "prayer"}
         assert llm.generate.await_count == 3
         for section_text in drafts.values():
-            assert section_text == "Draft content for section."
+            # Draft may have citation density warnings appended
+            assert section_text.startswith("Draft content for section.")
 
     @pytest.mark.asyncio
     async def test_returns_empty_dict_when_no_sections(self) -> None:
@@ -385,7 +386,7 @@ class TestDraftSectionsNode:
         # All three sections should be present
         assert set(drafts.keys()) == {"facts_of_the_case", "grounds_for_bail", "prayer"}
         # Second section should have an error placeholder
-        assert "[Error:" in drafts["grounds_for_bail"]
+        assert "[Error drafting" in drafts["grounds_for_bail"]
         # Other sections succeed
         assert drafts["facts_of_the_case"] == "Good draft content."
         assert drafts["prayer"] == "Good draft content."
@@ -456,7 +457,7 @@ class TestAssembleDocumentNode:
         result = await assemble_document_node(state, llm)
 
         assert "full_draft" in result
-        assert result["full_draft"] == "Formatted full document."
+        assert result["full_draft"].startswith("Formatted full document.")
         llm.generate.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -556,18 +557,9 @@ class TestAssembleDocumentNode:
 
 class TestReviseSectionNode:
     @pytest.mark.asyncio
-    async def test_revises_target_section_and_reassembles(self) -> None:
-        call_count = 0
-
-        async def generate_side_effect(**kwargs) -> str:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return "Revised grounds for bail content."
-            return "Reassembled full document."
-
+    async def test_revises_target_section(self) -> None:
         llm = _make_llm()
-        llm.generate = generate_side_effect
+        llm.generate.return_value = "Revised grounds for bail content."
 
         state = _make_state(
             revision_feedback="grounds_for_bail: Please strengthen the bail grounds.",
@@ -588,14 +580,12 @@ class TestReviseSectionNode:
         result = await revise_section_node(state, llm)
 
         assert "section_drafts" in result
-        assert "full_draft" in result
-        assert "revision_feedback" in result
-        # Feedback is cleared after revision
-        assert result["revision_feedback"] == ""
+        # Reassembly is now handled by the assemble node, not revise
+        assert "full_draft" not in result
         # Target section is updated
         assert result["section_drafts"]["grounds_for_bail"] == "Revised grounds for bail content."
-        # Full draft is reassembled
-        assert result["full_draft"] == "Reassembled full document."
+        # Other sections unchanged
+        assert result["section_drafts"]["facts_of_the_case"] == "Original facts."
 
     @pytest.mark.asyncio
     async def test_returns_unchanged_when_no_feedback(self) -> None:
@@ -609,26 +599,14 @@ class TestReviseSectionNode:
         result = await revise_section_node(state, llm)
 
         assert result["section_drafts"] == {"facts": "Some facts."}
-        assert result["full_draft"] == "Existing full draft."
-        assert result["revision_feedback"] == ""
+        assert "full_draft" not in result
         llm.generate.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_detects_section_from_feedback_text(self) -> None:
         """When feedback mentions a section name (not prefixed), that section is targeted."""
-        revised_draft = "Improved prayer section."
-        reassembled = "Full document with improved prayer."
-        generate_responses = [revised_draft, reassembled]
-        call_index = 0
-
-        async def generate_side_effect(**kwargs) -> str:
-            nonlocal call_index
-            resp = generate_responses[call_index]
-            call_index += 1
-            return resp
-
         llm = _make_llm()
-        llm.generate = generate_side_effect
+        llm.generate.return_value = "Improved prayer section."
 
         state = _make_state(
             revision_feedback="Please rewrite the prayer section to be more specific.",
@@ -654,15 +632,8 @@ class TestReviseSectionNode:
     @pytest.mark.asyncio
     async def test_defaults_to_first_section_when_section_unknown(self) -> None:
         """When feedback does not match any section name, default to first section."""
-        call_count = 0
-
-        async def generate_side_effect(**kwargs) -> str:
-            nonlocal call_count
-            call_count += 1
-            return f"Response {call_count}"
-
         llm = _make_llm()
-        llm.generate = generate_side_effect
+        llm.generate.return_value = "Revised first section."
 
         state = _make_state(
             revision_feedback="Make it more persuasive overall.",
@@ -682,8 +653,7 @@ class TestReviseSectionNode:
         result = await revise_section_node(state, llm)
 
         # First section (facts_of_the_case) should be revised
-        assert result["section_drafts"]["facts_of_the_case"] == "Response 1"
-        assert result["revision_feedback"] == ""
+        assert result["section_drafts"]["facts_of_the_case"] == "Revised first section."
 
 
 # ---------------------------------------------------------------------------
@@ -698,10 +668,10 @@ class TestVerifyFinalNode:
         db = AsyncMock()
 
         with patch(
-            "app.core.agents.nodes.drafting_nodes.verify_case_ids",
+            "app.core.agents.nodes.common.verify_case_ids",
             new_callable=AsyncMock,
         ) as mock_verify_ids, patch(
-            "app.core.agents.nodes.drafting_nodes.verify_citations_against_db",
+            "app.core.agents.nodes.common.verify_citations_against_db",
             new_callable=AsyncMock,
         ) as mock_verify_cites:
             mock_verify_ids.return_value = set()
@@ -723,10 +693,10 @@ class TestVerifyFinalNode:
         db = AsyncMock()
 
         with patch(
-            "app.core.agents.nodes.drafting_nodes.verify_case_ids",
+            "app.core.agents.nodes.common.verify_case_ids",
             new_callable=AsyncMock,
         ) as mock_verify_ids, patch(
-            "app.core.agents.nodes.drafting_nodes.verify_citations_against_db",
+            "app.core.agents.nodes.common.verify_citations_against_db",
             new_callable=AsyncMock,
         ) as mock_verify_cites:
             # UUID not found in DB
@@ -746,7 +716,7 @@ class TestVerifyFinalNode:
         db = AsyncMock()
 
         with patch(
-            "app.core.agents.nodes.drafting_nodes.verify_citations_against_db",
+            "app.core.agents.nodes.common.verify_citations_against_db",
             new_callable=AsyncMock,
         ) as mock_verify_cites:
             # Citation not found in DB
@@ -768,7 +738,7 @@ class TestVerifyFinalNode:
         db = AsyncMock()
 
         with patch(
-            "app.core.agents.nodes.drafting_nodes.verify_citations_against_db",
+            "app.core.agents.nodes.common.verify_citations_against_db",
             new_callable=AsyncMock,
         ) as mock_verify_cites:
             # Citation found in DB (human-readable check passes)
@@ -791,7 +761,7 @@ class TestVerifyFinalNode:
         db = AsyncMock()
 
         with patch(
-            "app.core.agents.nodes.drafting_nodes.verify_citations_against_db",
+            "app.core.agents.nodes.common.verify_citations_against_db",
             new_callable=AsyncMock,
         ) as mock_verify_cites:
             mock_verify_cites.return_value = (["(2017) 10 SCC 1"], [])

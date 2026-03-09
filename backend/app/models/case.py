@@ -15,20 +15,20 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "cases"
 
     title: Mapped[str] = mapped_column(String, nullable=False)
-    citation: Mapped[str | None] = mapped_column(String, nullable=True)
-    case_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    cnr: Mapped[str | None] = mapped_column(String, nullable=True)
-    court: Mapped[str] = mapped_column(String, nullable=False)
+    citation: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    case_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    cnr: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    court: Mapped[str] = mapped_column(String(100), nullable=False)
     year: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
-    case_type: Mapped[str | None] = mapped_column(String, nullable=True)
-    jurisdiction: Mapped[str | None] = mapped_column(String, nullable=True)
-    bench_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    case_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    jurisdiction: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    bench_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     judge: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
-    author_judge: Mapped[str | None] = mapped_column(String, nullable=True)
+    author_judge: Mapped[str | None] = mapped_column(String(255), nullable=True)
     petitioner: Mapped[str | None] = mapped_column(String, nullable=True)
     respondent: Mapped[str | None] = mapped_column(String, nullable=True)
     decision_date: Mapped[date | None] = mapped_column(sa.Date, nullable=True)
-    disposal_nature: Mapped[str | None] = mapped_column(String, nullable=True)
+    disposal_nature: Mapped[str | None] = mapped_column(String(50), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     keywords: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     acts_cited: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
@@ -36,13 +36,13 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     ratio_decidendi: Mapped[str | None] = mapped_column(Text, nullable=True)
     full_text: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
     searchable_text: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
-    pdf_storage_path: Mapped[str | None] = mapped_column(String, nullable=True)
-    s3_source_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    pdf_storage_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    s3_source_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     source: Mapped[str] = mapped_column(
-        String, nullable=False, server_default="aws_open_data"
+        String(30), nullable=False, server_default="aws_open_data"
     )
     language: Mapped[str] = mapped_column(
-        String, nullable=False, server_default="english"
+        String(20), nullable=False, server_default="english"
     )
     chunk_count: Mapped[int] = mapped_column(
         sa.Integer, nullable=False, server_default="0"

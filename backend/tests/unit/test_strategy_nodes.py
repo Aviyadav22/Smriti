@@ -243,7 +243,7 @@ class TestSearchPrecedentsNode:
 
         with (
             patch(
-                "app.core.agents.nodes.strategy_nodes.hybrid_search",
+                "app.core.agents.nodes.common.hybrid_search",
                 new_callable=AsyncMock,
             ) as mock_search,
             patch(
@@ -312,7 +312,7 @@ class TestSearchPrecedentsNode:
 
         with (
             patch(
-                "app.core.agents.nodes.strategy_nodes.hybrid_search",
+                "app.core.agents.nodes.common.hybrid_search",
                 new_callable=AsyncMock,
             ) as mock_search,
             patch(
@@ -402,7 +402,7 @@ class TestSearchPrecedentsNode:
 
         with (
             patch(
-                "app.core.agents.nodes.strategy_nodes.hybrid_search",
+                "app.core.agents.nodes.common.hybrid_search",
                 new_callable=AsyncMock,
             ) as mock_search,
             patch(
@@ -752,7 +752,7 @@ class TestSynthesizeStrategyNode:
 
         assert "strategy_memo" in result
         assert "confidence" in result
-        assert result["strategy_memo"] == memo_text
+        assert result["strategy_memo"].startswith(memo_text)
         assert 0.0 <= result["confidence"] <= 1.0
 
     @pytest.mark.asyncio
@@ -841,14 +841,14 @@ class TestVerifyCitationsNode:
         state = _make_state(strategy_memo=f"See case {uid} for details.")
 
         with patch(
-            "app.core.agents.nodes.strategy_nodes.verify_case_ids",
+            "app.core.agents.nodes.common.verify_case_ids",
             new_callable=AsyncMock,
         ) as mock_verify:
             mock_verify.return_value = set()  # All IDs are invalid
 
             # Mock citation extraction to return empty (no human-readable citations)
             with patch(
-                "app.core.agents.nodes.strategy_nodes.extract_citations_from_text",
+                "app.core.agents.nodes.common.extract_citations_from_text",
                 return_value=[],
             ):
                 db = AsyncMock()
@@ -862,7 +862,7 @@ class TestVerifyCitationsNode:
         state = _make_state(strategy_memo="This memo has no UUIDs or citations.")
 
         with patch(
-            "app.core.agents.nodes.strategy_nodes.extract_citations_from_text",
+            "app.core.agents.nodes.common.extract_citations_from_text",
             return_value=[],
         ):
             db = AsyncMock()
@@ -885,13 +885,13 @@ class TestVerifyCitationsNode:
         state = _make_state(strategy_memo=f"See case {uid} for details.")
 
         with patch(
-            "app.core.agents.nodes.strategy_nodes.verify_case_ids",
+            "app.core.agents.nodes.common.verify_case_ids",
             new_callable=AsyncMock,
         ) as mock_verify:
             mock_verify.return_value = {uid}  # UUID is valid
 
             with patch(
-                "app.core.agents.nodes.strategy_nodes.extract_citations_from_text",
+                "app.core.agents.nodes.common.extract_citations_from_text",
                 return_value=[],
             ):
                 db = AsyncMock()
@@ -907,13 +907,13 @@ class TestVerifyCitationsNode:
         )
 
         with patch(
-            "app.core.agents.nodes.strategy_nodes.extract_citations_from_text",
+            "app.core.agents.nodes.common.extract_citations_from_text",
             return_value=["(2099) 1 SCC 999"],
         ), patch(
-            "app.core.agents.nodes.strategy_nodes.verify_citations_against_db",
+            "app.core.agents.nodes.common.verify_citations_against_db",
             new_callable=AsyncMock,
         ) as mock_verify_db, patch(
-            "app.core.agents.nodes.strategy_nodes.check_grounding",
+            "app.core.agents.nodes.common.check_grounding",
             return_value=[],
         ):
             mock_verify_db.return_value = ([], ["(2099) 1 SCC 999"])
@@ -932,13 +932,13 @@ class TestVerifyCitationsNode:
         )
 
         with patch(
-            "app.core.agents.nodes.strategy_nodes.extract_citations_from_text",
+            "app.core.agents.nodes.common.extract_citations_from_text",
             return_value=["(2017) 10 SCC 1"],
         ), patch(
-            "app.core.agents.nodes.strategy_nodes.verify_citations_against_db",
+            "app.core.agents.nodes.common.verify_citations_against_db",
             new_callable=AsyncMock,
         ) as mock_verify_db, patch(
-            "app.core.agents.nodes.strategy_nodes.check_grounding",
+            "app.core.agents.nodes.common.check_grounding",
             return_value=["(2017) 10 SCC 1"],
         ):
             mock_verify_db.return_value = (["(2017) 10 SCC 1"], [])
@@ -957,13 +957,13 @@ class TestVerifyCitationsNode:
         )
 
         with patch(
-            "app.core.agents.nodes.strategy_nodes.extract_citations_from_text",
+            "app.core.agents.nodes.common.extract_citations_from_text",
             return_value=["(2017) 10 SCC 1"],
         ), patch(
-            "app.core.agents.nodes.strategy_nodes.verify_citations_against_db",
+            "app.core.agents.nodes.common.verify_citations_against_db",
             new_callable=AsyncMock,
         ) as mock_verify_db, patch(
-            "app.core.agents.nodes.strategy_nodes.check_grounding",
+            "app.core.agents.nodes.common.check_grounding",
             return_value=[],
         ):
             mock_verify_db.return_value = (["(2017) 10 SCC 1"], [])

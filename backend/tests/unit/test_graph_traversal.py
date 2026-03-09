@@ -94,9 +94,9 @@ class TestGetNeighborhood:
         store = _make_graph_store(get_node_return={"id": "case_1"})
         await get_neighborhood("case_1", graph_store=store, depth=10)
 
-        # Verify the query was called with depth capped at 3
+        # Verify the query was called with depth capped at 3 (embedded in Cypher f-string)
         call_args = store.query.call_args
-        assert call_args.kwargs["params"]["depth"] == 3
+        assert "*1..3" in call_args.kwargs["cypher"]
 
     @pytest.mark.asyncio
     async def test_deduplicates_edges(self) -> None:
@@ -175,7 +175,7 @@ class TestGetCitationChain:
         await get_citation_chain("case_1", graph_store=store, max_depth=20)
 
         call_args = store.query.call_args
-        assert call_args.kwargs["params"]["depth"] == 5
+        assert "*1..5" in call_args.kwargs["cypher"]
 
     @pytest.mark.asyncio
     async def test_handles_runtime_error(self) -> None:

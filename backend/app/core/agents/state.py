@@ -19,6 +19,7 @@ class ResearchState(TypedDict):
     confidence: float
     messages: Annotated[list[dict], operator.add]
     iteration: int
+    error: str
 
 
 class CasePrepState(TypedDict):
@@ -28,7 +29,6 @@ class CasePrepState(TypedDict):
     analysis: dict
     prioritized_issues: list[dict]
     argument_order: list[dict]
-    strategy_points: list[str]
     enhanced_memo: str
     messages: Annotated[list[dict], operator.add]
     iteration: int
@@ -75,7 +75,6 @@ class DraftingState(TypedDict):
     section_drafts: dict     # {section_name: draft_text}
     full_draft: str          # assembled document
     revision_feedback: str   # user feedback for section revision
-    export_formats: list[str]  # ["docx", "pdf"]
     messages: Annotated[list[dict], operator.add]
     iteration: int
     error: str

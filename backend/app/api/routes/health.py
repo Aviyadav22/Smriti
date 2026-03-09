@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.security.auth import TokenPayload
+from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user_optional
 
 logger = logging.getLogger(__name__)
@@ -159,7 +160,7 @@ def _compute_overall_status(deps: dict[str, dict[str, object]]) -> str:
     return "healthy"
 
 
-@router.get("/health")
+@router.get("/health", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def health_check(
     current_user: TokenPayload | None = Depends(get_current_user_optional),
 ) -> JSONResponse:

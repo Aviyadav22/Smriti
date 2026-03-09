@@ -65,8 +65,13 @@ fabricate cases, citations, or legal principles.
 Rules:
 1. ALWAYS cite your sources using numbered markers like [1], [2], etc. \
 The numbers MUST correspond exactly to the numbered sources in the context. \
-Do not reference source numbers that do not exist.
-2. Every factual claim must be backed by a source from the provided context.
+Do not reference source numbers that do not exist. \
+When citing a specific case or legal proposition, reference it using the numbered \
+marker [N] that corresponds to the source index. Every factual claim about a case \
+must include a source marker. Place the marker immediately after the claim it supports \
+(e.g., "The right to privacy was held to be a fundamental right [1].").
+2. Every factual claim must be backed by a source from the provided context. \
+If multiple sources support the same claim, cite all of them (e.g., [1][3]).
 3. If the provided context does not contain relevant information, say: \
 "I could not find relevant cases for this query in the current database."
 4. NEVER fabricate case names, citations, or legal principles.
@@ -113,52 +118,45 @@ does not contain enough information, say so clearly rather than speculating."""
 METADATA_OUTPUT_SCHEMA: Final[dict] = {
     "type": "object",
     "properties": {
-        "title": {"type": "string", "nullable": True},
-        "citation": {"type": "string", "nullable": True},
-        "court": {"type": "string", "nullable": True},
+        "title": {"type": ["string", "null"]},
+        "citation": {"type": ["string", "null"]},
+        "court": {"type": ["string", "null"]},
         "judge": {
-            "type": "array",
+            "type": ["array", "null"],
             "items": {"type": "string"},
-            "nullable": True,
         },
-        "author_judge": {"type": "string", "nullable": True},
-        "year": {"type": "integer", "nullable": True},
-        "decision_date": {"type": "string", "nullable": True},
-        "case_type": {"type": "string", "nullable": True},
+        "author_judge": {"type": ["string", "null"]},
+        "year": {"type": ["integer", "null"]},
+        "decision_date": {"type": ["string", "null"]},
+        "case_type": {"type": ["string", "null"]},
         "bench_type": {
-            "type": "string",
-            "nullable": True,
+            "type": ["string", "null"],
             "enum": ["single", "division", "full", "constitutional"],
         },
         "jurisdiction": {
-            "type": "string",
-            "nullable": True,
+            "type": ["string", "null"],
             "enum": [
                 "civil", "criminal", "constitutional",
                 "tax", "labor", "company", "other",
             ],
         },
-        "petitioner": {"type": "string", "nullable": True},
-        "respondent": {"type": "string", "nullable": True},
-        "ratio_decidendi": {"type": "string", "nullable": True},
+        "petitioner": {"type": ["string", "null"]},
+        "respondent": {"type": ["string", "null"]},
+        "ratio_decidendi": {"type": ["string", "null"]},
         "acts_cited": {
-            "type": "array",
+            "type": ["array", "null"],
             "items": {"type": "string"},
-            "nullable": True,
         },
         "cases_cited": {
-            "type": "array",
+            "type": ["array", "null"],
             "items": {"type": "string"},
-            "nullable": True,
         },
         "keywords": {
-            "type": "array",
+            "type": ["array", "null"],
             "items": {"type": "string"},
-            "nullable": True,
         },
         "disposal_nature": {
-            "type": "string",
-            "nullable": True,
+            "type": ["string", "null"],
             "enum": [
                 "Allowed", "Dismissed", "Partly Allowed",
                 "Withdrawn", "Remanded", "Other",
@@ -231,27 +229,25 @@ DOCUMENT_ISSUE_EXTRACTION_SCHEMA: Final[dict] = {
         "parties": {
             "type": "object",
             "properties": {
-                "petitioner": {"type": "string", "nullable": True},
-                "respondent": {"type": "string", "nullable": True},
+                "petitioner": {"type": ["string", "null"]},
+                "respondent": {"type": ["string", "null"]},
             },
         },
         "key_facts": {
             "type": "array",
             "items": {"type": "string"},
         },
-        "relief_sought": {"type": "string", "nullable": True},
+        "relief_sought": {"type": ["string", "null"]},
         "jurisdiction": {
-            "type": "string",
-            "nullable": True,
+            "type": ["string", "null"],
             "enum": [
                 "civil", "criminal", "constitutional",
                 "tax", "labor", "company", "other",
             ],
         },
         "acts_referenced": {
-            "type": "array",
+            "type": ["array", "null"],
             "items": {"type": "string"},
-            "nullable": True,
         },
     },
     "required": [
@@ -391,12 +387,11 @@ RESEARCH_CLASSIFY_SCHEMA: Final[dict] = {
             "type": "string",
             "enum": ["simple", "moderate", "complex"],
         },
-        "jurisdiction": {"type": "string", "nullable": True},
-        "target_court": {"type": "string", "nullable": True},
+        "jurisdiction": {"type": ["string", "null"]},
+        "target_court": {"type": ["string", "null"]},
         "target_bench": {
-            "type": "string",
+            "type": ["string", "null"],
             "enum": ["single", "division", "full", "constitutional"],
-            "nullable": True,
         },
         "key_entities": {
             "type": "array",
@@ -504,6 +499,9 @@ equal/larger bench), PERSUASIVE (different High Court, tribunal), or DISTINGUISH
 (factually distinct, obiter dicta) based on the Indian precedent hierarchy.
 - If the research question contains an incorrect legal assumption, note this in the \
 Executive Summary before proceeding with the analysis.
+- For each key legal finding, structure your analysis using IRAC: identify the ISSUE, \
+state the RULE (statute or binding precedent), APPLY it to the facts, and state your \
+CONCLUSION. This ensures legally rigorous output.
 """
 
 RESEARCH_SYNTHESIZE_USER: Final[str] = """\
@@ -588,9 +586,8 @@ CASE_PREP_PRIORITIZE_SCHEMA: Final[dict] = {
                     "composite_score": {"type": "number"},
                     "reasoning": {"type": "string"},
                     "risk_factors": {
-                        "type": "array",
+                        "type": ["array", "null"],
                         "items": {"type": "string"},
-                        "nullable": True,
                     },
                 },
                 "required": [
@@ -644,6 +641,9 @@ evidence gathering, witness strategy.
 - Note any upcoming legislative changes or pending Supreme Court references that \
 might affect the case.
 - Provide actionable next steps with clear priorities.
+- For each issue-wise strategy section, structure the legal reasoning using IRAC: \
+identify the ISSUE, state the RULE, APPLY it to the case facts, and state the \
+CONCLUSION.
 """
 
 CASE_PREP_STRATEGY_USER: Final[str] = """\
@@ -977,6 +977,9 @@ stare decisis, per incuriam, sub silentio, etc.).
 - Include bench strength and binding value assessment for all cited precedents.
 - Classify recommendations by priority: CRITICAL (must do), IMPORTANT (should do), \
 and OPTIONAL (nice to have).
+- For each recommended argument, structure the legal reasoning using IRAC: identify \
+the ISSUE, state the RULE (statute or binding precedent), APPLY it to the case facts, \
+and state the CONCLUSION. This ensures the memo is litigation-ready.
 """
 
 STRATEGY_SYNTHESIZE_USER: Final[str] = """\
@@ -1310,4 +1313,30 @@ Assembly rules:
 - Add proper page break markers between major sections.
 - Account for the IPC→BNS and CrPC→BNSS transition in all statutory references.
 """
+
+# ---------------------------------------------------------------------------
+# IRAC Structure & Legal Disclaimer — shared across all agent synthesis prompts
+# ---------------------------------------------------------------------------
+
+IRAC_STRUCTURE_INSTRUCTION: Final[str] = """\
+
+CRITICAL — Structure your analysis using the IRAC framework for each key point:
+
+[ISSUE] Identify the precise legal question at stake.
+[RULE] State the applicable statute, constitutional provision, or binding precedent.
+[APPLICATION] Apply the rule to the specific facts of this case.
+[CONCLUSION] State your finding on this point.
+
+Each major legal point MUST follow this structure. Minor supporting points may be \
+presented more concisely, but every substantive argument must have an identifiable \
+ISSUE, RULE, APPLICATION, and CONCLUSION.
+"""
+
+LEGAL_DISCLAIMER: Final[str] = (
+    "\n\n---\n"
+    "**Disclaimer**: This is AI-generated legal analysis produced by Smriti AI. "
+    "It does not constitute legal advice. All citations, holdings, and legal "
+    "propositions must be independently verified by a qualified advocate before "
+    "reliance. Consult a practising lawyer for advice specific to your situation."
+)
 

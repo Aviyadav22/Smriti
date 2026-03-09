@@ -148,6 +148,7 @@ export interface RegisterRequest {
     email: string;
     password: string;
     name: string;
+    consent_given: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +181,7 @@ export interface ChatMessage {
 }
 
 export interface StreamEvent {
-    type: "session" | "chunk" | "source" | "done";
+    type: "session" | "chunk" | "source" | "done" | "disclaimer";
     session_id?: string;
     title?: string;
     content?: string;
@@ -191,6 +192,7 @@ export interface StreamEvent {
     year?: number;
     score?: number;
     source_count?: number;
+    message?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -418,6 +420,7 @@ export interface AgentStreamEvent {
     execution_id?: string;
     status?: string;
     recoverable?: boolean;
+    data?: Record<string, unknown>;
 }
 
 export interface AgentStep {

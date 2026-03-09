@@ -8,6 +8,8 @@ import re
 import uuid
 from typing import AsyncIterator
 
+from cachetools import TTLCache
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.security.rate_limiter import rate_limit_dependency
 from fastapi.responses import StreamingResponse
@@ -31,7 +33,7 @@ from app.core.dependencies import (
 )
 from app.core.drafting.export import export_to_docx, export_to_pdf
 from app.core.drafting.templates import TEMPLATES, get_template
-from app.db.postgres import get_db
+from app.db.postgres import async_session_factory, get_db
 from app.models.agent_execution import AgentExecution, AgentStatus, AgentType
 from app.security.audit import create_audit_log
 from app.security.auth import TokenPayload
@@ -44,13 +46,16 @@ router = APIRouter()
 
 # ---------------------------------------------------------------------------
 # Module-level store for active graph checkpointers (MVP: single-server)
-# WARNING: Memory leak risk -- entries are cleaned up in _stream_agent_events
-# finally block and in cancel_execution. If the SSE connection drops without
-# triggering the async generator cleanup, the entry will leak. In production,
-# use AsyncPostgresSaver checkpointing (no in-memory map needed).
+# Uses TTLCache to automatically evict entries after 1 hour, preventing
+# memory leaks from abandoned SSE connections. In production, use
+# AsyncPostgresSaver checkpointing (no in-memory map needed).
 # ---------------------------------------------------------------------------
 
-_active_checkpointers: dict[str, object] = {}
+_CHECKPOINTER_TTL_SECONDS = 3600  # 1 hour
+
+_active_checkpointers: TTLCache[str, object] = TTLCache(
+    maxsize=1024, ttl=_CHECKPOINTER_TTL_SECONDS
+)
 
 # ---------------------------------------------------------------------------
 # Request / Response schemas
@@ -129,80 +134,146 @@ async def _stream_agent_events(
     graph,  # noqa: ANN001
     initial_input: dict,
     config: dict,
-    execution: AgentExecution,
-    db: AsyncSession,
+    exec_id: uuid.UUID,
 ) -> AsyncIterator[str]:
-    """Stream SSE events from agent graph execution."""
-    try:
-        async for event in graph.astream(
-            initial_input, config=config, stream_mode="updates"
-        ):
-            for node_name, node_output in event.items():
-                sse_event = {
-                    "type": "status",
-                    "step": node_name,
-                    "message": f"Completed: {node_name}",
+    """Stream SSE events from agent graph execution.
+
+    IMPORTANT: This generator runs AFTER the FastAPI endpoint returns, so the
+    Depends(get_db) session is already closed. All DB updates use independent
+    sessions created via async_session_factory().
+
+    Uses an async queue + background task pattern so we can send SSE keepalive
+    heartbeats every 15 seconds while waiting for long-running graph nodes
+    (e.g. LLM calls that take 30-60s).
+    """
+    import asyncio
+
+    _KEEPALIVE_INTERVAL = 15  # seconds between heartbeat comments
+    _SENTINEL = object()  # signals the producer is done
+
+    queue: asyncio.Queue[str | object] = asyncio.Queue()
+    is_checkpoint = False
+
+    async def _run_graph() -> None:
+        """Producer: iterate graph events and push SSE strings into queue."""
+        nonlocal is_checkpoint
+        try:
+            async for event in graph.astream(
+                initial_input, config=config, stream_mode="updates"
+            ):
+                for node_name, node_output in event.items():
+                    sse_event = {
+                        "type": "status",
+                        "execution_id": str(exec_id),
+                        "step": node_name,
+                        "message": f"Completed: {node_name}",
+                    }
+                    await queue.put(f"data: {json.dumps(sse_event)}\n\n")
+
+            # Check if we are at an interrupt (HITL checkpoint)
+            state = await graph.aget_state(config)
+
+            if state.next:
+                is_checkpoint = True
+                interrupt_value = None
+                if hasattr(state, "tasks") and state.tasks:
+                    for task in state.tasks:
+                        if hasattr(task, "interrupts") and task.interrupts:
+                            interrupt_value = task.interrupts[0].value
+                            break
+
+                current_step = state.next[0] if state.next else None
+                async with async_session_factory() as db:
+                    await db.execute(
+                        text(
+                            "UPDATE agent_executions SET status = 'waiting_input', "
+                            "current_step = :step WHERE id = :id"
+                        ),
+                        {"id": exec_id, "step": current_step},
+                    )
+                    await db.commit()
+
+                checkpoint_data = {
+                    "type": "checkpoint",
+                    "execution_id": str(exec_id),
+                    "question": (
+                        interrupt_value.get("question", "")
+                        if isinstance(interrupt_value, dict)
+                        else str(interrupt_value or "")
+                    ),
+                    "context": (
+                        interrupt_value
+                        if isinstance(interrupt_value, dict)
+                        else {"value": interrupt_value}
+                    ),
                 }
-                yield f"data: {json.dumps(sse_event)}\n\n"
+                await queue.put(f"data: {json.dumps(checkpoint_data)}\n\n")
+            else:
+                # Graph completed normally
+                final_state = state.values
+                result_data = {
+                    "memo": (
+                        final_state.get("draft_memo")
+                        or final_state.get("enhanced_memo")
+                        or final_state.get("strategy_memo")
+                        or final_state.get("full_draft")
+                        or ""
+                    ),
+                    "confidence": final_state.get("confidence", 0),
+                }
+                async with async_session_factory() as db:
+                    await db.execute(
+                        text(
+                            "UPDATE agent_executions SET status = 'completed', "
+                            "result_data = :data, completed_at = now() WHERE id = :id"
+                        ),
+                        {"id": exec_id, "data": json.dumps(result_data)},
+                    )
+                    await db.commit()
 
-        # Check if we are at an interrupt (HITL checkpoint)
-        state = await graph.aget_state(config)
-        if state.next:
-            # There are pending nodes -- graph paused at an interrupt
-            interrupt_value = None
-            if hasattr(state, "tasks") and state.tasks:
-                for task in state.tasks:
-                    if hasattr(task, "interrupts") and task.interrupts:
-                        interrupt_value = task.interrupts[0].value
-                        break
+                await queue.put(f"data: {json.dumps({'type': 'memo', 'execution_id': str(exec_id), 'content': result_data['memo'], 'data': {'confidence': result_data['confidence']}})}\n\n")
+                await queue.put(f"data: {json.dumps({'type': 'done', 'execution_id': str(exec_id), 'status': 'completed'})}\n\n")
 
-            execution.status = AgentStatus.waiting_input.value
-            execution.current_step = state.next[0] if state.next else None
-            await db.commit()
+        except Exception as exc:
+            logger.exception("Agent execution %s failed", exec_id)
+            try:
+                async with async_session_factory() as db:
+                    await db.execute(
+                        text(
+                            "UPDATE agent_executions SET status = 'failed', "
+                            "error_message = :msg WHERE id = :id"
+                        ),
+                        {"id": exec_id, "msg": str(exc)[:2000]},
+                    )
+                    await db.commit()
+            except Exception:
+                logger.exception("Failed to update execution %s status to failed", exec_id)
+            await queue.put(f"data: {json.dumps({'type': 'error', 'message': 'Agent execution failed. Please try again.', 'recoverable': False})}\n\n")
+            _active_checkpointers.pop(str(exec_id), None)
+        finally:
+            await queue.put(_SENTINEL)
 
-            checkpoint_data = {
-                "type": "checkpoint",
-                "question": (
-                    interrupt_value.get("question", "")
-                    if isinstance(interrupt_value, dict)
-                    else str(interrupt_value or "")
-                ),
-                "context": (
-                    interrupt_value
-                    if isinstance(interrupt_value, dict)
-                    else {"value": interrupt_value}
-                ),
-            }
-            yield f"data: {json.dumps(checkpoint_data)}\n\n"
-        else:
-            # Graph completed normally
-            final_state = state.values
-            execution.status = AgentStatus.completed.value
-            execution.result_data = {
-                "memo": (
-                    final_state.get("draft_memo")
-                    or final_state.get("enhanced_memo")
-                    or final_state.get("strategy_memo")
-                    or final_state.get("full_draft")
-                    or ""
-                ),
-                "confidence": final_state.get("confidence", 0),
-            }
-            execution.completed_at = func.now()
-            await db.commit()
+    # Launch the graph producer as a background task
+    task = asyncio.create_task(_run_graph())
 
-            yield f"data: {json.dumps({'type': 'memo', 'content': execution.result_data['memo']})}\n\n"
-            yield f"data: {json.dumps({'type': 'done', 'execution_id': str(execution.id), 'status': 'completed'})}\n\n"
+    try:
+        while True:
+            try:
+                item = await asyncio.wait_for(queue.get(), timeout=_KEEPALIVE_INTERVAL)
+            except asyncio.TimeoutError:
+                # No event within interval — send SSE keepalive comment
+                yield ": keepalive\n\n"
+                continue
 
-    except Exception as exc:
-        logger.exception("Agent execution %s failed", execution.id)
-        execution.status = AgentStatus.failed.value
-        execution.error_message = str(exc)[:2000]
-        await db.commit()
-        yield f"data: {json.dumps({'type': 'error', 'message': 'Agent execution failed. Please try again.', 'recoverable': False})}\n\n"
+            if item is _SENTINEL:
+                break
+            yield item  # type: ignore[misc]
     finally:
-        # Clean up checkpointer to prevent memory leak
-        _active_checkpointers.pop(str(execution.id), None)
+        # Clean up checkpointer if graph completed (not paused at checkpoint)
+        if not is_checkpoint:
+            _active_checkpointers.pop(str(exec_id), None)
+        if not task.done():
+            task.cancel()
 
 
 # ---------------------------------------------------------------------------
@@ -299,7 +370,7 @@ async def run_agent(
     await db.commit()
     await db.refresh(execution)
 
-    # Store checkpointer for potential resume
+    # Store checkpointer for potential resume (TTLCache auto-evicts after 1 hour)
     _active_checkpointers[str(execution.id)] = checkpointer
 
     # Build graph and initial state
@@ -313,11 +384,10 @@ async def run_agent(
     if agent_type == "research":
         graph = build_research_graph(
             llm=llm,
-            flash_llm=llm,  # Use same LLM for flash in MVP
+            flash_llm=get_flash_llm(),
             embedder=embedder,
             vector_store=vector_store,
             reranker=reranker,
-            db=db,
             checkpointer=checkpointer,
         )
         initial_input = {"query": request_body.query, "language": request_language}
@@ -325,12 +395,10 @@ async def run_agent(
         graph_store = get_graph_store()
         graph = build_case_prep_graph(
             llm=llm,
-            flash_llm=llm,
             embedder=embedder,
             vector_store=vector_store,
             reranker=reranker,
             graph_store=graph_store,
-            db=db,
             checkpointer=checkpointer,
         )
         initial_input = {"document_id": request_body.document_id, "language": request_language}
@@ -343,7 +411,6 @@ async def run_agent(
             vector_store=vector_store,
             reranker=reranker,
             graph_store=graph_store,
-            db=db,
             checkpointer=checkpointer,
         )
         initial_input = {
@@ -360,7 +427,6 @@ async def run_agent(
             embedder=embedder,
             vector_store=vector_store,
             reranker=reranker,
-            db=db,
             checkpointer=checkpointer,
         )
         initial_input = {
@@ -388,7 +454,7 @@ async def run_agent(
     )
 
     return StreamingResponse(
-        _stream_agent_events(graph, initial_input, config, execution, db),
+        _stream_agent_events(graph, initial_input, config, execution.id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -571,23 +637,20 @@ async def resume_execution(
     if execution.agent_type == AgentType.research.value:
         graph = build_research_graph(
             llm=llm,
-            flash_llm=llm,
+            flash_llm=get_flash_llm(),
             embedder=embedder,
             vector_store=vector_store,
             reranker=reranker,
-            db=db,
             checkpointer=checkpointer,
         )
     elif execution.agent_type == AgentType.case_prep.value:
         graph_store = get_graph_store()
         graph = build_case_prep_graph(
             llm=llm,
-            flash_llm=llm,
             embedder=embedder,
             vector_store=vector_store,
             reranker=reranker,
             graph_store=graph_store,
-            db=db,
             checkpointer=checkpointer,
         )
     elif execution.agent_type == AgentType.strategy.value:
@@ -599,7 +662,6 @@ async def resume_execution(
             vector_store=vector_store,
             reranker=reranker,
             graph_store=graph_store,
-            db=db,
             checkpointer=checkpointer,
         )
     elif execution.agent_type == AgentType.drafting.value:
@@ -609,7 +671,6 @@ async def resume_execution(
             embedder=embedder,
             vector_store=vector_store,
             reranker=reranker,
-            db=db,
             checkpointer=checkpointer,
         )
     else:
@@ -633,7 +694,7 @@ async def resume_execution(
     )
 
     return StreamingResponse(
-        _stream_agent_events(graph, resume_input, config, execution, db),
+        _stream_agent_events(graph, resume_input, config, exec_uuid),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

@@ -7,31 +7,27 @@ are passed via closures when the graph is built.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-from dataclasses import asdict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.confidence import calculate_confidence
-from app.core.legal.treatment import has_overruling_language
-from app.core.agents.nodes.citation_verifier import (
-    check_grounding,
-    extract_citations_from_text,
-    verify_citations_against_db,
-)
 from app.core.legal.precedent_strength import classify_precedent_strength
 from app.core.agents.nodes.common import (
-    UUID_RE,
+    MAX_RESULTS_FOR_LLM,
     enrich_results_with_ratio,
     format_search_results_for_llm,
+    parallel_hybrid_search,
     safe_json_parse_list,
-    verify_case_ids,
+    collect_grounding_citations,
+    verify_memo_citations,
+    detect_overruled_cases,
 )
 from app.core.agents.state import ResearchState
 from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
 from app.core.legal.prompts import (
+    LEGAL_DISCLAIMER,
     RESEARCH_CLASSIFY_SCHEMA,
     RESEARCH_CLASSIFY_SYSTEM,
     RESEARCH_CONTRADICTIONS_SYSTEM,
@@ -41,7 +37,6 @@ from app.core.legal.prompts import (
     RESEARCH_SYNTHESIZE_SYSTEM,
     RESEARCH_SYNTHESIZE_USER,
 )
-from app.core.search.hybrid import SearchResultItem, hybrid_search
 from app.security.sanitizer import sanitize_search_query
 
 logger = logging.getLogger(__name__)
@@ -63,11 +58,15 @@ async def classify_query_node(
     for accurate precedent strength labelling.
     """
     query = state["query"]
-    classification = await llm.generate_structured(
-        prompt=query,
-        system=RESEARCH_CLASSIFY_SYSTEM,
-        output_schema=RESEARCH_CLASSIFY_SCHEMA,
-    )
+    try:
+        classification = await llm.generate_structured(
+            prompt=query,
+            system=RESEARCH_CLASSIFY_SYSTEM,
+            output_schema=RESEARCH_CLASSIFY_SCHEMA,
+        )
+    except Exception as e:
+        logger.warning("LLM call failed in classify_query_node: %s", e)
+        return {"error": f"Failed to classify query: {e!s}"}
 
     # Extract target court/bench from classification, falling back to defaults
     result: dict = {"messages": [{"type": "classification", "data": classification}]}
@@ -150,36 +149,10 @@ async def parallel_search_node(
     if not sub_queries:
         return {"search_results": []}
 
-    async def _search_one(sq: str) -> list[dict]:
-        response = await hybrid_search(
-            sq,
-            llm=llm,
-            embedder=embedder,
-            vector_store=vector_store,
-            reranker=reranker,
-            db=db,
-        )
-        results: list[dict] = []
-        for item in response.results:
-            d = asdict(item)
-            d["source_query"] = sq
-            results.append(d)
-        return results
-
-    all_lists = await asyncio.gather(
-        *[_search_one(sq) for sq in sub_queries],
-        return_exceptions=True,
+    combined = await parallel_hybrid_search(
+        sub_queries, llm, embedder, vector_store, reranker, db
     )
-
-    combined: list[dict] = []
-    for result_or_exc in all_lists:
-        if isinstance(result_or_exc, BaseException):
-            logger.warning("Sub-query search failed: %s", result_or_exc)
-            continue
-        combined.extend(result_or_exc)
-
     combined = await enrich_results_with_ratio(combined, db)
-
     return {"search_results": combined}
 
 
@@ -227,15 +200,12 @@ async def gather_results_node(state: ResearchState) -> dict:
 
     cross_refs.sort(key=lambda x: x["match_count"], reverse=True)
 
-    return {"cross_references": cross_refs}
+    return {"cross_references": cross_refs, "search_results": list(best.values())}
 
 
 # ---------------------------------------------------------------------------
 # Node 5: detect_contradictions_node
 # ---------------------------------------------------------------------------
-
-
-MAX_RESULTS_FOR_LLM = 30
 
 
 async def detect_contradictions_node(
@@ -266,11 +236,15 @@ async def detect_contradictions_node(
         "If no contradictions exist, return an empty JSON array: []"
     )
 
-    raw = await llm.generate(
-        prompt=prompt,
-        system=RESEARCH_CONTRADICTIONS_SYSTEM,
-        temperature=0.1,
-    )
+    try:
+        raw = await llm.generate(
+            prompt=prompt,
+            system=RESEARCH_CONTRADICTIONS_SYSTEM,
+            temperature=0.1,
+        )
+    except Exception as e:
+        logger.warning("LLM call failed in detect_contradictions_node: %s", e)
+        return {"contradictions": []}
 
     contradictions = safe_json_parse_list(raw)
     return {"contradictions": contradictions}
@@ -299,20 +273,17 @@ async def synthesize_memo_node(
     findings = format_search_results_for_llm(results_for_llm)
 
     # Detect overruling language in search results
+    overruled_case_ids = detect_overruled_cases(results)
     treatment_warnings: list[str] = []
-    overruled_case_ids: set[str] = set()
     for r in results:
-        check_text = (r.get("snippet", "") or "") + " " + (r.get("ratio", "") or "") + " " + (r.get("chunk_text", "") or "")
-        if check_text.strip() and has_overruling_language(check_text):
+        cid = r.get("case_id", "")
+        if cid and cid in overruled_case_ids:
             title = r.get("title", "Unknown")
             citation = r.get("citation", "N/A")
             treatment_warnings.append(
                 f"- {title} ({citation}): Contains language suggesting this case "
                 f"may have been overruled or declared per incuriam."
             )
-            cid = r.get("case_id", "")
-            if cid:
-                overruled_case_ids.add(cid)
 
     cross_ref_text = ""
     if cross_refs:
@@ -352,6 +323,9 @@ async def synthesize_memo_node(
         temperature=0.2,
         max_tokens=8192,
     )
+
+    # Append legal disclaimer to the memo
+    memo += LEGAL_DISCLAIMER
 
     # Collect reranker scores from results
     reranker_scores = sorted(
@@ -406,91 +380,13 @@ async def verify_citations_node(
     state: ResearchState,
     db: AsyncSession,
 ) -> dict:
-    """Verify that case IDs and human-readable citations in the draft memo exist.
-
-    Performs three checks:
-    1. UUID-based verification (existing) -- checks case IDs against the DB.
-    2. Human-readable citation verification -- checks SCC/AIR/etc. citations
-       against ``cases.citation`` and ``case_citation_equivalents.citation_text``.
-    3. Grounding check -- flags citations that appear in the memo but were NOT
-       in the search results (potentially hallucinated from LLM training data).
-
-    Appends warning sections to the memo for any issues found.
-    """
+    """Verify citations in the draft memo using shared 3-layer verification."""
     memo = state.get("draft_memo", "")
     if not memo:
         return {"draft_memo": memo}
 
-    # --- Step 1: UUID verification (existing logic) ---
-    found_ids = list(set(UUID_RE.findall(memo)))
-    if found_ids:
-        valid_ids = await verify_case_ids(found_ids, db)
-        invalid_ids = [uid for uid in found_ids if uid not in valid_ids]
-
-        if invalid_ids:
-            warning = (
-                "\n\n---\n"
-                "**Citation Verification Warning**\n"
-                "The following case identifiers referenced in this memo could not "
-                "be verified against the database:\n"
-            )
-            for uid in invalid_ids:
-                warning += f"- {uid}\n"
-            warning += (
-                "These references may be hallucinated or refer to cases not yet "
-                "ingested. Please verify independently.\n"
-            )
-            memo += warning
-
-    # --- Step 2: Human-readable citation verification ---
-    memo_citations = extract_citations_from_text(memo)
-    if memo_citations:
-        _verified, unverified = await verify_citations_against_db(memo_citations, db)
-
-        if unverified:
-            warning = (
-                "\n\n---\n"
-                "**Human-Readable Citation Warning**\n"
-                "The following citations could not be verified against the database:\n"
-            )
-            for cite in unverified:
-                warning += f"- {cite}\n"
-            warning += (
-                "These may be fabricated citations. Please verify independently "
-                "before relying on them.\n"
-            )
-            memo += warning
-
-    # --- Step 3: Grounding check ---
-    if memo_citations:
-        # Collect citations from search results
-        search_results = state.get("search_results", [])
-        search_citation_strings: list[str] = []
-        for result in search_results:
-            citation = result.get("citation", "")
-            if citation:
-                search_citation_strings.append(citation)
-            snippet = result.get("snippet", "")
-            if snippet:
-                search_citation_strings.extend(extract_citations_from_text(snippet))
-
-        ungrounded = check_grounding(memo_citations, search_citation_strings)
-        if ungrounded:
-            warning = (
-                "\n\n---\n"
-                "**Ungrounded Citation Warning**\n"
-                "The following citations appear in the memo but were NOT found "
-                "in the search results. They may have been hallucinated from "
-                "the LLM's training data:\n"
-            )
-            for cite in ungrounded:
-                warning += f"- {cite}\n"
-            warning += (
-                "Exercise extra caution with these citations and verify them "
-                "against primary sources.\n"
-            )
-            memo += warning
-
+    grounding_citations = collect_grounding_citations(state.get("search_results", []))
+    memo = await verify_memo_citations(memo, db, grounding_citations)
     return {"draft_memo": memo}
 
 

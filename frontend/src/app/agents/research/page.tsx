@@ -94,6 +94,7 @@ export default function ResearchAgentPage() {
                 );
                 break;
             case "checkpoint":
+                if (event.execution_id) setExecutionId(event.execution_id);
                 setCheckpoint({
                     question: event.question || "",
                     context: event.context || {},
@@ -162,22 +163,29 @@ export default function ResearchAgentPage() {
         }
     }, [query, starting, handleEvent]);
 
+    const [checkpointError, setCheckpointError] = useState<string | null>(null);
+
     const handleResume = useCallback(
         (input: string) => {
             if (!executionId) return;
+            // Keep checkpoint state so it can be re-shown on error
+            const savedCheckpoint = checkpoint;
             setCheckpoint(null);
+            setCheckpointError(null);
             setIsRunning(true);
             abortRef.current = resumeAgentExecution(
                 executionId,
                 input,
                 handleEvent,
                 (err) => {
-                    setError(err.message);
+                    // Restore checkpoint prompt so user can retry
+                    setCheckpoint(savedCheckpoint);
+                    setCheckpointError(err.message);
                     setIsRunning(false);
                 },
             );
         },
-        [executionId, handleEvent],
+        [executionId, checkpoint, handleEvent],
     );
 
     const handleReset = useCallback(() => {
@@ -283,6 +291,8 @@ export default function ResearchAgentPage() {
                                 context={checkpoint.context}
                                 onSubmit={handleResume}
                                 disabled={isRunning}
+                                error={checkpointError}
+                                onClearError={() => setCheckpointError(null)}
                             />
                         )}
 

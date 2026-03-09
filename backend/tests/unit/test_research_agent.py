@@ -42,7 +42,6 @@ def _build_graph():
         embedder=object(),
         vector_store=object(),
         reranker=object(),
-        db=object(),
         checkpointer=None,
     )
 
@@ -126,6 +125,8 @@ class TestRouteAfterPlan:
         state = _base_state(
             messages=[
                 {"type": "user_feedback", "step": "plan", "content": "More"},
+                {"type": "user_feedback", "step": "plan", "content": "Still more"},
+                {"type": "user_feedback", "step": "plan", "content": "Again"},
             ],
             iteration=3,
         )
@@ -176,6 +177,8 @@ class TestRouteAfterFindings:
         state = _base_state(
             messages=[
                 {"type": "user_feedback", "step": "findings", "content": "More"},
+                {"type": "user_feedback", "step": "findings", "content": "Still more"},
+                {"type": "user_feedback", "step": "findings", "content": "Again"},
             ],
             iteration=3,
         )
@@ -226,6 +229,8 @@ class TestRouteAfterMemo:
         state = _base_state(
             messages=[
                 {"type": "user_feedback", "step": "memo", "content": "Revise"},
+                {"type": "user_feedback", "step": "memo", "content": "More revisions"},
+                {"type": "user_feedback", "step": "memo", "content": "Final attempt"},
             ],
             iteration=3,
         )

@@ -7,6 +7,7 @@ are passed via closures when the graph is built.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import asdict
@@ -14,15 +15,14 @@ from dataclasses import asdict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.agents.nodes.citation_verifier import (
-    check_grounding,
-    extract_citations_from_text,
-    verify_citations_against_db,
-)
+from app.core.agents.nodes.citation_verifier import verify_citations_against_db
 from app.core.agents.nodes.common import (
-    UUID_RE,
+    apply_language_suffix,
+    check_citation_density,
+    collect_grounding_citations,
+    get_latest_feedback,
     safe_json_parse_list,
-    verify_case_ids,
+    verify_memo_citations,
 )
 from app.core.agents.state import DraftingState
 from app.core.drafting.templates import get_template
@@ -37,6 +37,7 @@ from app.core.legal.prompts import (
     DRAFT_VERIFY_PROVISIONS_SYSTEM,
     DRAFT_WRIT_PETITION_SYSTEM,
     DRAFT_WRITTEN_STATEMENT_SYSTEM,
+    LEGAL_DISCLAIMER,
 )
 from app.security.sanitizer import sanitize_search_query
 
@@ -104,16 +105,18 @@ async def gather_provisions_node(
 
     # Query PostgreSQL for related acts cited in cases with similar statutory basis
     related_acts: list[str] = []
-    if statutory_basis:
+    # Extract the first act name from statutory_basis for fuzzy matching
+    act_name = statutory_basis.split(",")[0].strip() if statutory_basis else ""
+    if act_name:
         try:
             result = await db.execute(
                 text(
-                    "SELECT DISTINCT unnest(acts_cited) as act "
+                    "SELECT DISTINCT unnest(acts_cited) AS act "
                     "FROM cases "
-                    "WHERE acts_cited && ARRAY[:statutory_basis] "
+                    "WHERE array_to_string(acts_cited, ' ') ILIKE :pattern "
                     "LIMIT 20"
                 ),
-                {"statutory_basis": statutory_basis},
+                {"pattern": f"%{act_name}%"},
             )
             related_acts = [row[0] for row in result.fetchall()]
         except Exception:
@@ -142,11 +145,15 @@ async def gather_provisions_node(
         '- "current": true if the provision is currently in force, false otherwise\n'
     )
 
-    raw = await llm.generate(
-        prompt=prompt,
-        system=DRAFT_VERIFY_PROVISIONS_SYSTEM,
-        temperature=0.1,
-    )
+    try:
+        raw = await llm.generate(
+            prompt=prompt,
+            system=DRAFT_VERIFY_PROVISIONS_SYSTEM,
+            temperature=0.1,
+        )
+    except Exception as e:
+        logger.warning("LLM call failed in gather_provisions_node: %s", e)
+        raw = ""
 
     provisions = safe_json_parse_list(raw)
 
@@ -254,34 +261,55 @@ async def draft_sections_node(
     ) if statutory_provisions else "None identified."
     context_text = json.dumps(additional_context, indent=2)
 
+    # Inject user feedback from sources checkpoint if re-running after HITL
+    feedback = get_latest_feedback(state.get("messages", []), "sources")
+    feedback_text = ""
+    if feedback:
+        sanitized_fb = sanitize_search_query(feedback)
+        feedback_text = f"\n\nUser Feedback on Sources:\n{sanitized_fb}\n"
+
+    sem = asyncio.Semaphore(3)
+
+    async def _draft_one(section_name: str) -> tuple[str, str]:
+        async with sem:
+            prompt = (
+                f"Draft ONLY the '{section_name}' section of a "
+                f"{template.get('display_name', 'legal document')}.\n\n"
+                f"Case Facts:\n{case_facts}\n\n"
+                f"Additional Context:\n{context_text}\n\n"
+                f"Target Court: {target_court or 'Not specified'}\n\n"
+                f"Statutory Provisions:\n{provisions_text}\n\n"
+                f"Precedents (verified status included):\n{precedents_text}\n\n"
+                f"{feedback_text}"
+                f"Generate ONLY the content for the '{section_name}' section. "
+                f"Do not include other sections.\n\n"
+                f"For substantive legal sections (grounds, legal provisions, "
+                f"precedents, analysis), structure each key point using IRAC: "
+                f"ISSUE (legal question), RULE (statute/precedent), APPLICATION "
+                f"(to these facts), CONCLUSION (your position)."
+            )
+            try:
+                draft = await llm.generate(
+                    prompt=prompt,
+                    system=system_prompt,
+                    temperature=0.2,
+                    max_tokens=4096,
+                )
+                return section_name, draft.strip()
+            except Exception as e:
+                logger.warning("Failed to draft section %s: %s", section_name, e)
+                return section_name, f"[Error drafting {section_name}: {e}]"
+
+    tasks = [_draft_one(name) for name in sections]
+    results = await asyncio.gather(*tasks)
     section_drafts: dict[str, str] = {}
-
-    for section_name in sections:
-        prompt = (
-            f"Draft ONLY the '{section_name}' section of a "
-            f"{template.get('display_name', 'legal document')}.\n\n"
-            f"Case Facts:\n{case_facts}\n\n"
-            f"Additional Context:\n{context_text}\n\n"
-            f"Target Court: {target_court or 'Not specified'}\n\n"
-            f"Statutory Provisions:\n{provisions_text}\n\n"
-            f"Precedents (verified status included):\n{precedents_text}\n\n"
-            f"Generate ONLY the content for the '{section_name}' section. "
-            f"Do not include other sections."
-        )
-
-        try:
-            draft = await llm.generate(
-                prompt=prompt,
-                system=system_prompt,
-                temperature=0.2,
-                max_tokens=4096,
-            )
-            section_drafts[section_name] = draft.strip()
-        except Exception:
-            logger.warning(
-                "Failed to draft section '%s'", section_name, exc_info=True
-            )
-            section_drafts[section_name] = f"[Error: Failed to draft section '{section_name}']"
+    for name, draft_text in results:
+        # Validate citation density for substantive sections
+        warning = check_citation_density(draft_text, name)
+        if warning:
+            draft_text = draft_text + warning
+            logger.info("Low citation density in section '%s'", name)
+        section_drafts[name] = draft_text
 
     return {"section_drafts": section_drafts}
 
@@ -334,12 +362,7 @@ async def assemble_document_node(
     )
 
     # If language is Hindi, append instruction to write in Devanagari
-    assemble_system = DRAFT_ASSEMBLE_SYSTEM
-    if state.get("language", "en") == "hi":
-        assemble_system += (
-            "\n\nIMPORTANT: Write your entire response in Hindi (Devanagari script). "
-            "Keep case names, citations, statute names, and section numbers in English."
-        )
+    assemble_system = apply_language_suffix(DRAFT_ASSEMBLE_SYSTEM, state.get("language", "en"))
 
     try:
         full_draft = await llm.generate(
@@ -353,7 +376,10 @@ async def assemble_document_node(
         # Fall back to the raw assembled text
         return {"full_draft": raw_assembled}
 
-    return {"full_draft": full_draft.strip()}
+    # Append legal disclaimer to assembled document
+    full_draft = full_draft.strip() + LEGAL_DISCLAIMER
+
+    return {"full_draft": full_draft}
 
 
 # ---------------------------------------------------------------------------
@@ -365,13 +391,13 @@ async def revise_section_node(
     state: DraftingState,
     llm: LLMProvider,
 ) -> dict:
-    """Revise a specific section based on user feedback and reassemble."""
+    """Revise a specific section based on user feedback."""
     revision_feedback = state.get("revision_feedback", "")
     section_drafts = state.get("section_drafts", {})
     template = state.get("template", {})
 
     if not revision_feedback:
-        return {"section_drafts": section_drafts, "full_draft": state.get("full_draft", ""), "revision_feedback": ""}
+        return {"section_drafts": section_drafts}
 
     sanitized_feedback = sanitize_search_query(revision_feedback)
 
@@ -407,14 +433,10 @@ async def revise_section_node(
         )
 
     if not target_section:
-        return {"section_drafts": section_drafts, "full_draft": state.get("full_draft", ""), "revision_feedback": ""}
+        return {"section_drafts": section_drafts}
 
     # Get the current draft of the target section
     current_draft = section_drafts.get(target_section, "")
-
-    # Look up the document-type-specific prompt
-    prompt_key = template.get("prompt_key", "")
-    base_prompt = _PROMPT_MAP.get(prompt_key, "")
 
     prompt = (
         f"Revise the '{target_section}' section of a "
@@ -436,53 +458,8 @@ async def revise_section_node(
         logger.warning(
             "Failed to revise section '%s'", target_section, exc_info=True
         )
-        return {"section_drafts": section_drafts, "full_draft": state.get("full_draft", ""), "revision_feedback": ""}
 
-    # Reassemble the full draft with the revised section
-    target_court = state.get("target_court", "")
-    court_header_template = template.get("court_header", "")
-    court_header = ""
-    if court_header_template and target_court:
-        try:
-            court_header = court_header_template.format(court=target_court)
-        except (KeyError, IndexError):
-            court_header = court_header_template
-
-    all_sections = template.get("sections", [])
-    raw_parts: list[str] = []
-    for section_name in all_sections:
-        draft = section_drafts.get(section_name, "")
-        if draft:
-            raw_parts.append(f"## {section_name.upper().replace('_', ' ')}\n\n{draft}")
-
-    raw_assembled = "\n\n---\n\n".join(raw_parts)
-
-    reassemble_prompt = (
-        "Assemble the following sections into a properly formatted Indian legal document.\n\n"
-        f"Document Type: {template.get('display_name', 'Legal Document')}\n"
-        f"Court Header: {court_header}\n\n"
-        f"Sections:\n\n{raw_assembled}\n\n"
-        "Format with proper paragraph numbering, headers, and legal formatting conventions. "
-        "Preserve all citations and legal references exactly as written. "
-        "Do not add any new substantive content."
-    )
-
-    try:
-        full_draft = await llm.generate(
-            prompt=reassemble_prompt,
-            system=DRAFT_ASSEMBLE_SYSTEM,
-            temperature=0.1,
-            max_tokens=8192,
-        )
-    except Exception:
-        logger.warning("Failed to reassemble document after revision", exc_info=True)
-        full_draft = state.get("full_draft", "")
-
-    return {
-        "section_drafts": section_drafts,
-        "full_draft": full_draft.strip() if isinstance(full_draft, str) else full_draft,
-        "revision_feedback": "",
-    }
+    return {"section_drafts": section_drafts}
 
 
 # ---------------------------------------------------------------------------
@@ -494,105 +471,13 @@ async def verify_final_node(
     state: DraftingState,
     db: AsyncSession,
 ) -> dict:
-    """Verify citations in the full draft using 3-layer verification.
+    """Verify citations in the final draft using shared 3-layer verification."""
+    memo = state.get("full_draft", "")
+    if not memo:
+        return {"full_draft": memo}
 
-    Performs the same three-layer verification as research_nodes and strategy_nodes:
-    1. UUID-based verification -- checks case IDs against the DB.
-    2. Human-readable citation verification -- checks SCC/AIR/etc. citations
-       against ``cases.citation`` and ``case_citation_equivalents.citation_text``.
-    3. Grounding check -- flags citations in the draft that were NOT in the
-       verified precedents (potentially hallucinated from LLM training data).
-    """
-    full_draft = state.get("full_draft", "")
-    if not full_draft:
-        return {"full_draft": full_draft}
-
-    # --- Step 1: UUID verification ---
-    found_ids = list(set(UUID_RE.findall(full_draft)))
-    if found_ids:
-        try:
-            valid_ids = await verify_case_ids(found_ids, db)
-            invalid_ids = [uid for uid in found_ids if uid not in valid_ids]
-
-            if invalid_ids:
-                warning = (
-                    "\n\n---\n"
-                    "**Citation Verification Warning**\n"
-                    "The following case identifiers referenced in this document could not "
-                    "be verified against the database:\n"
-                )
-                for uid in invalid_ids:
-                    warning += f"- {uid}\n"
-                warning += (
-                    "These references may be hallucinated or refer to cases not yet "
-                    "ingested. Please verify independently.\n"
-                )
-                full_draft += warning
-        except Exception:
-            logger.warning("UUID verification failed", exc_info=True)
-
-    # --- Step 2: Human-readable citation verification ---
-    draft_citations = extract_citations_from_text(full_draft)
-    if draft_citations:
-        try:
-            _verified, unverified = await verify_citations_against_db(
-                draft_citations, db
-            )
-
-            if unverified:
-                warning = (
-                    "\n\n---\n"
-                    "**Human-Readable Citation Warning**\n"
-                    "The following citations could not be verified against the database:\n"
-                )
-                for cite in unverified:
-                    warning += f"- {cite}\n"
-                warning += (
-                    "These may be fabricated citations. Please verify independently "
-                    "before relying on them.\n"
-                )
-                full_draft += warning
-        except Exception:
-            logger.warning(
-                "Human-readable citation verification failed", exc_info=True
-            )
-
-    # --- Step 3: Grounding check ---
-    if draft_citations:
-        # Build grounding set from verified_precedents
-        verified_precedents = state.get("verified_precedents", [])
-        grounding_citation_strings: list[str] = []
-        for prec in verified_precedents:
-            if isinstance(prec, dict):
-                citation = prec.get("citation", "")
-                if citation:
-                    grounding_citation_strings.append(citation)
-
-        # Also extract citations from precedent text fields
-        for prec in verified_precedents:
-            if isinstance(prec, dict):
-                for field in ("snippet", "ratio", "text"):
-                    text_val = prec.get(field, "")
-                    if text_val:
-                        grounding_citation_strings.extend(
-                            extract_citations_from_text(text_val)
-                        )
-
-        ungrounded = check_grounding(draft_citations, grounding_citation_strings)
-        if ungrounded:
-            warning = (
-                "\n\n---\n"
-                "**Ungrounded Citation Warning**\n"
-                "The following citations appear in the document but were NOT found "
-                "in the provided precedents. They may have been hallucinated from "
-                "the LLM's training data:\n"
-            )
-            for cite in ungrounded:
-                warning += f"- {cite}\n"
-            warning += (
-                "Exercise extra caution with these citations and verify them "
-                "against primary sources.\n"
-            )
-            full_draft += warning
-
-    return {"full_draft": full_draft}
+    grounding_citations = collect_grounding_citations(
+        state.get("verified_precedents", [])
+    )
+    memo = await verify_memo_citations(memo, db, grounding_citations)
+    return {"full_draft": memo}

@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeSanitize from "rehype-sanitize";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +47,7 @@ interface DisplayMessage {
     sources: ChatSource[];
     created_at: string;
     isStreaming?: boolean;
+    disclaimer?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +292,23 @@ function ChatPageInner() {
                                 court: event.court || null,
                                 year: event.year || null,
                                 score: event.score || 0,
+                            });
+                        }
+                        break;
+
+                    case "disclaimer":
+                        // Append disclaimer text to the assistant message
+                        if (event.message) {
+                            setMessages((prev) => {
+                                const updated = [...prev];
+                                const last = updated[updated.length - 1];
+                                if (last && last.role === "assistant") {
+                                    updated[updated.length - 1] = {
+                                        ...last,
+                                        disclaimer: event.message,
+                                    };
+                                }
+                                return updated;
                             });
                         }
                         break;
@@ -705,6 +724,13 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
                         </div>
                     </div>
                 )}
+
+                {/* Legal Disclaimer */}
+                {message.disclaimer && !message.isStreaming && (
+                    <p className="text-[10px] text-muted-foreground/70 italic mt-2 px-1">
+                        {message.disclaimer}
+                    </p>
+                )}
             </div>
         </div>
     );
@@ -738,6 +764,7 @@ function MarkdownWithCitations({
     return (
         <ReactMarkdown
             remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeSanitize]}
             components={{
                 a: ({ href, children, ...props }) => {
                     // Handle internal citation anchor links

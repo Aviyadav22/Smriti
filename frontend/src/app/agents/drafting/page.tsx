@@ -264,22 +264,27 @@ export default function DraftingAgentPage() {
         }
     }, [selectedDocType, caseFacts, targetCourt, dynamicFields, starting, handleEvent]);
 
+    const [checkpointError, setCheckpointError] = useState<string | null>(null);
+
     const handleResume = useCallback(
         (input: string) => {
             if (!executionId) return;
+            const savedCheckpoint = checkpoint;
             setCheckpoint(null);
+            setCheckpointError(null);
             setIsRunning(true);
             abortRef.current = resumeAgentExecution(
                 executionId,
                 input,
                 handleEvent,
                 (err) => {
-                    setError(err.message);
+                    setCheckpoint(savedCheckpoint);
+                    setCheckpointError(err.message);
                     setIsRunning(false);
                 },
             );
         },
-        [executionId, handleEvent],
+        [executionId, checkpoint, handleEvent],
     );
 
     const handleRevise = (sectionName: string, feedback: string) => {
@@ -513,6 +518,8 @@ export default function DraftingAgentPage() {
                                 context={checkpoint.context}
                                 onSubmit={handleResume}
                                 disabled={isRunning}
+                                error={checkpointError}
+                                onClearError={() => setCheckpointError(null)}
                             />
                         )}
 

@@ -138,7 +138,7 @@ async def suggest(
             cached = await redis_client.get(cache_key)
             if cached is not None:
                 return json.loads(cached)
-        except (ConnectionError, TimeoutError):
+        except Exception:
             pass
 
     escaped_q = q.replace("%", "\\%").replace("_", "\\_")
@@ -171,7 +171,7 @@ async def suggest(
                 settings.search_facet_cache_ttl,
                 json.dumps(response),
             )
-        except (ConnectionError, TimeoutError):
+        except Exception:
             pass
 
     return response
@@ -196,7 +196,7 @@ async def facets(
             cached = await redis_client.get(cache_key)
             if cached is not None:
                 return json.loads(cached)
-        except (ConnectionError, TimeoutError):
+        except Exception:
             pass
 
     courts_result = await db.execute(
@@ -235,7 +235,7 @@ async def facets(
                 settings.search_facet_cache_ttl,
                 json.dumps(response),
             )
-        except (ConnectionError, TimeoutError):
+        except Exception:
             pass
 
     return response

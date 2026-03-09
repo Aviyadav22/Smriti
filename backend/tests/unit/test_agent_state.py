@@ -34,10 +34,9 @@ class TestCasePrepState:
             "analysis": {},
             "prioritized_issues": [],
             "argument_order": [],
-            "strategy_points": [],
             "enhanced_memo": "",
             "messages": [],
             "iteration": 0,
         }
         assert state["document_id"] == "abc"
-        assert state["strategy_points"] == []
+        assert state["argument_order"] == []

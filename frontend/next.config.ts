@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/v1/:path*",
-        destination: `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1"}/:path*`,
+        destination: `${process.env.BACKEND_URL || "http://127.0.0.1:8000/api/v1"}/:path*`,
       },
     ];
   },
@@ -19,11 +19,19 @@ const nextConfig: NextConfig = {
   /* Security headers */
   async headers() {
     const isDev = process.env.NODE_ENV === "development";
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const apiUrl = process.env.BACKEND_URL || "http://127.0.0.1:8000";
 
+    // CSP Policy:
+    // - script-src: NO 'unsafe-inline' — prevents inline script injection (XSS).
+    //   Next.js uses nonce-based inline scripts automatically in production.
+    //   'unsafe-eval' is only added in dev mode for hot-reload.
+    // - style-src: 'unsafe-inline' is required because Next.js (styled-jsx)
+    //   and Tailwind inject <style> tags at runtime. Nonce-based styles are
+    //   not yet fully supported by Next.js (see next.js#26891).
     const csp = [
       "default-src 'self'",
-      `script-src 'self'${isDev ? " 'unsafe-eval'" : ""} 'unsafe-inline'`,
+      `script-src 'self'${isDev ? " 'unsafe-eval'" : ""}`,
+      // NOTE: 'unsafe-inline' in style-src is required by Next.js styled-jsx / Tailwind runtime styles.
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://storage.googleapis.com",
       "font-src 'self'",

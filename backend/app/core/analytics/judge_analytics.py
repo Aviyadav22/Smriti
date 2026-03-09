@@ -6,6 +6,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+import sqlalchemy as sa
 from sqlalchemy import func, select, literal_column, case as sa_case
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -198,28 +199,11 @@ class JudgeAnalyticsService:
         }
 
         # Bench combinations — other judges who sat with this judge
-        bench_query = (
-            select(
-                func.unnest(Case.judge).label("co_judge"),
-                func.count().label("count"),
-            )
-            .where(Case.judge.any(judge_name))
-            .group_by(literal_column("co_judge"))
-            .having(func.unnest(Case.judge) != judge_name)
-            .order_by(func.count().desc())
-            .limit(10)
+        # Use the Python-based fallback directly since the SQL approach with
+        # UNNEST in HAVING is not supported and leaves the transaction aborted.
+        bench_combinations = await self._get_bench_combinations_fallback(
+            judge_name
         )
-        try:
-            bench_result = await self._session.execute(bench_query)
-            bench_combinations = [
-                {"judge": row.co_judge, "cases_together": row.count}
-                for row in bench_result.all()
-            ]
-        except Exception:
-            # Fallback: query bench combinations differently
-            bench_combinations = await self._get_bench_combinations_fallback(
-                judge_name
-            )
 
         # Top cited judgments (cases with most citations in cases_cited)
         cited_query = (
@@ -399,6 +383,180 @@ class JudgeAnalyticsService:
 
         return profiles
 
+    # ------------------------------------------------------------------
+    # Enhanced analytics: disposal rates, temporal trends, sentencing stats
+    # ------------------------------------------------------------------
+
+    async def calculate_disposal_rates(
+        self, judge_name: str
+    ) -> dict[str, Any]:
+        """Calculate disposal (conviction/acquittal) rates for a judge.
+
+        Groups all cases authored by this judge by disposal_nature and
+        returns counts and percentages for each category.
+
+        Returns:
+            {
+                "total": N,
+                "breakdown": {
+                    "allowed": {"count": X, "pct": Y},
+                    "dismissed": {"count": X, "pct": Y},
+                    ...
+                }
+            }
+            Returns {"total": 0, "breakdown": {}} if no cases found.
+        """
+        # Total authored cases
+        total_query = select(func.count()).where(
+            Case.author_judge == judge_name
+        )
+        total_result = await self._session.execute(total_query)
+        total = total_result.scalar_one_or_none() or 0
+
+        if total == 0:
+            return {"total": 0, "breakdown": {}}
+
+        # Group by disposal_nature
+        disposal_query = (
+            select(
+                Case.disposal_nature,
+                func.count().label("count"),
+            )
+            .where(Case.author_judge == judge_name)
+            .where(Case.disposal_nature.isnot(None))
+            .group_by(Case.disposal_nature)
+            .order_by(func.count().desc())
+        )
+        disposal_result = await self._session.execute(disposal_query)
+
+        breakdown: dict[str, dict[str, int | float]] = {}
+        for row in disposal_result.all():
+            nature = row.disposal_nature.lower().strip() if row.disposal_nature else "unknown"
+            pct = round((row.count / total) * 100, 2) if total > 0 else 0.0
+            breakdown[nature] = {"count": row.count, "pct": pct}
+
+        return {"total": total, "breakdown": breakdown}
+
+    async def calculate_temporal_trends(
+        self, judge_name: str
+    ) -> list[dict[str, Any]]:
+        """Calculate year-over-year trends for a judge's authored cases.
+
+        Groups cases by year (from decision_date, falling back to year column)
+        and computes allowed/dismissed counts and percentages per year.
+
+        Returns:
+            [
+                {
+                    "year": YYYY,
+                    "total": N,
+                    "allowed": N,
+                    "dismissed": N,
+                    "allowed_pct": float
+                },
+                ...
+            ]
+            Returns [] if no cases found.
+        """
+        # Use COALESCE(EXTRACT(YEAR FROM decision_date), year) for the year
+        year_expr = func.coalesce(
+            func.extract("year", Case.decision_date).cast(sa.Integer),
+            Case.year,
+        )
+
+        trends_query = (
+            select(
+                year_expr.label("yr"),
+                func.count().label("total"),
+                func.count(
+                    sa_case(
+                        (func.lower(Case.disposal_nature) == "allowed", literal_column("1")),
+                        else_=None,
+                    )
+                ).label("allowed"),
+                func.count(
+                    sa_case(
+                        (func.lower(Case.disposal_nature) == "dismissed", literal_column("1")),
+                        else_=None,
+                    )
+                ).label("dismissed"),
+            )
+            .where(Case.author_judge == judge_name)
+            .where(
+                sa.or_(
+                    Case.decision_date.isnot(None),
+                    Case.year.isnot(None),
+                )
+            )
+            .group_by(year_expr)
+            .order_by(year_expr)
+        )
+
+        result = await self._session.execute(trends_query)
+        rows = result.all()
+
+        trends: list[dict[str, Any]] = []
+        for row in rows:
+            if row.yr is None:
+                continue
+            allowed_pct = round((row.allowed / row.total) * 100, 2) if row.total > 0 else 0.0
+            trends.append({
+                "year": int(row.yr),
+                "total": row.total,
+                "allowed": row.allowed,
+                "dismissed": row.dismissed,
+                "allowed_pct": allowed_pct,
+            })
+
+        return trends
+
+    async def calculate_sentencing_stats(
+        self, judge_name: str
+    ) -> dict[str, Any]:
+        """Calculate case type distribution for a judge's authored cases.
+
+        Groups by case_type and returns counts and percentages, giving
+        insight into the kinds of matters this judge typically handles.
+
+        Returns:
+            {
+                "total": N,
+                "case_types": {
+                    "Criminal Appeal": {"count": X, "pct": Y},
+                    "Civil Appeal": {"count": X, "pct": Y},
+                    ...
+                }
+            }
+            Returns {"total": 0, "case_types": {}} if no cases found.
+        """
+        total_query = select(func.count()).where(
+            Case.author_judge == judge_name
+        )
+        total_result = await self._session.execute(total_query)
+        total = total_result.scalar_one_or_none() or 0
+
+        if total == 0:
+            return {"total": 0, "case_types": {}}
+
+        type_query = (
+            select(
+                Case.case_type,
+                func.count().label("count"),
+            )
+            .where(Case.author_judge == judge_name)
+            .where(Case.case_type.isnot(None))
+            .group_by(Case.case_type)
+            .order_by(func.count().desc())
+        )
+        type_result = await self._session.execute(type_query)
+
+        case_types: dict[str, dict[str, int | float]] = {}
+        for row in type_result.all():
+            pct = round((row.count / total) * 100, 2) if total > 0 else 0.0
+            case_types[row.case_type] = {"count": row.count, "pct": pct}
+
+        return {"total": total, "case_types": case_types}
+
     async def get_court_stats(self, court: str) -> CourtStats | None:
         """Get court-level statistics.
 
@@ -473,3 +631,41 @@ class JudgeAnalyticsService:
             disposal_patterns=disposal_patterns,
             top_judges=top_judges,
         )
+
+
+# ---------------------------------------------------------------------------
+# Module-level convenience functions
+# ---------------------------------------------------------------------------
+
+
+async def calculate_disposal_rates(
+    judge_name: str, db: AsyncSession
+) -> dict[str, Any]:
+    """Calculate disposal (conviction/acquittal) rates for a judge.
+
+    Convenience wrapper around JudgeAnalyticsService.calculate_disposal_rates.
+    """
+    service = JudgeAnalyticsService(db)
+    return await service.calculate_disposal_rates(judge_name)
+
+
+async def calculate_temporal_trends(
+    judge_name: str, db: AsyncSession
+) -> list[dict[str, Any]]:
+    """Calculate year-over-year trends for a judge's authored cases.
+
+    Convenience wrapper around JudgeAnalyticsService.calculate_temporal_trends.
+    """
+    service = JudgeAnalyticsService(db)
+    return await service.calculate_temporal_trends(judge_name)
+
+
+async def calculate_sentencing_stats(
+    judge_name: str, db: AsyncSession
+) -> dict[str, Any]:
+    """Calculate case type distribution for a judge's authored cases.
+
+    Convenience wrapper around JudgeAnalyticsService.calculate_sentencing_stats.
+    """
+    service = JudgeAnalyticsService(db)
+    return await service.calculate_sentencing_stats(judge_name)

@@ -11,13 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.db.postgres import get_db
+from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user
 from app.security.auth import TokenPayload
 
 router = APIRouter()
 
 
-@router.get("/data-summary")
+@router.get(
+    "/data-summary",
+    dependencies=[Depends(rate_limit_dependency("20/minute"))],
+)
 async def data_summary(
     user: TokenPayload = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -51,7 +55,10 @@ async def data_summary(
     }
 
 
-@router.post("/erasure")
+@router.post(
+    "/erasure",
+    dependencies=[Depends(rate_limit_dependency("5/hour"))],
+)
 async def request_erasure(
     user: TokenPayload = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -111,7 +118,10 @@ async def request_erasure(
     }
 
 
-@router.post("/consent-withdraw")
+@router.post(
+    "/consent-withdraw",
+    dependencies=[Depends(rate_limit_dependency("10/hour"))],
+)
 async def withdraw_consent(
     user: TokenPayload = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

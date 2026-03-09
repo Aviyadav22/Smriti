@@ -14,17 +14,13 @@ from dataclasses import asdict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.agents.nodes.citation_verifier import (
-    check_grounding,
-    extract_citations_from_text,
-    verify_citations_against_db,
-)
 from app.core.agents.nodes.common import (
-    UUID_RE,
+    collect_grounding_citations,
     enrich_results_with_ratio,
-    format_search_results_for_llm,
+    get_citation_neighbors,
+    get_latest_feedback,
     safe_json_parse_list,
-    verify_case_ids,
+    verify_memo_citations,
 )
 from app.core.agents.state import CasePrepState
 from app.core.interfaces import EmbeddingProvider, GraphStore, LLMProvider, Reranker, VectorStore
@@ -35,8 +31,10 @@ from app.core.legal.prompts import (
     CASE_PREP_PRIORITIZE_USER,
     CASE_PREP_STRATEGY_SYSTEM,
     CASE_PREP_STRATEGY_USER,
+    LEGAL_DISCLAIMER,
 )
 from app.core.search.hybrid import hybrid_search
+from app.security.sanitizer import sanitize_search_query
 
 logger = logging.getLogger(__name__)
 
@@ -126,11 +124,20 @@ async def prioritize_issues_node(
         relief_sought=relief_sought,
     )
 
-    result = await llm.generate_structured(
-        prompt=prompt,
-        system=CASE_PREP_PRIORITIZE_SYSTEM,
-        output_schema=CASE_PREP_PRIORITIZE_SCHEMA,
-    )
+    feedback = get_latest_feedback(state.get("messages", []), "issues")
+    if feedback:
+        sanitized = sanitize_search_query(feedback)
+        prompt += f"\n\nUser revision request: {sanitized}\nPlease address this feedback."
+
+    try:
+        result = await llm.generate_structured(
+            prompt=prompt,
+            system=CASE_PREP_PRIORITIZE_SYSTEM,
+            output_schema=CASE_PREP_PRIORITIZE_SCHEMA,
+        )
+    except Exception as e:
+        logger.warning("LLM call failed in prioritize_issues_node: %s", e)
+        return {"error": f"Failed to prioritize issues: {e!s}"}
 
     prioritized = result.get("prioritized_issues", [])
 
@@ -194,44 +201,12 @@ async def deep_precedent_search_node(
             search_results = []
 
         # Step 2: Get 2-hop citation neighbors for top results
-        neighbor_results: list[dict] = []
-        for sr in search_results[:3]:
-            case_id = sr.get("case_id", "")
-            if not case_id:
-                continue
-            try:
-                neighbors = await graph_store.get_neighbors(
-                    case_id,
-                    relationship="CITES",
-                    direction="both",
-                    depth=2,
-                )
-                # neighbors is {"center": ..., "neighbors": [{"node": {...}, "relationship": ...}]}
-                neighbor_entries = neighbors.get("neighbors", [])
-                for entry in neighbor_entries:
-                    node = entry.get("node", {}) if isinstance(entry, dict) else {}
-                    if isinstance(node, dict) and node.get("id") != case_id:
-                        neighbor_results.append(node)
-            except (ConnectionError, TimeoutError) as e:
-                logger.warning("Graph neighbor query failed for case_id=%s", case_id)
+        seen = {sr.get("case_id", "") for sr in search_results}
+        neighbor_results = await get_citation_neighbors(graph_store, search_results, seen, max_results=3)
 
-        # Step 3: Deduplicate by case_id
-        seen: set[str] = {sr.get("case_id", "") for sr in search_results}
+        # Step 3: Merge search results with citation graph neighbors
         merged = list(search_results)
-        for nr in neighbor_results:
-            nid = nr.get("id", nr.get("case_id", ""))
-            if nid and nid not in seen:
-                seen.add(nid)
-                merged.append({
-                    "case_id": nid,
-                    "title": nr.get("title"),
-                    "citation": nr.get("citation"),
-                    "court": nr.get("court"),
-                    "year": nr.get("year"),
-                    "snippet": nr.get("snippet", ""),
-                    "score": 0.0,
-                    "source": "citation_graph",
-                })
+        merged.extend(neighbor_results)
 
         return {
             "issue_title": title,
@@ -244,15 +219,30 @@ async def deep_precedent_search_node(
     )
 
     precedent_findings: list[dict] = []
+    failure_count = 0
     for finding in findings:
         if isinstance(finding, BaseException):
             logger.warning("Deep precedent search failed: %s", finding)
+            failure_count += 1
             continue
         # Enrich each issue's results with ratio_decidendi and bench_type
         finding["results"] = await enrich_results_with_ratio(
             finding.get("results", []), db
         )
         precedent_findings.append(finding)
+
+    # If ALL searches failed, set a warning in the state
+    if not precedent_findings and failure_count > 0:
+        logger.error(
+            "All %d deep precedent searches failed", failure_count
+        )
+        return {
+            "messages": [{"type": "deep_precedents", "data": []}],
+            "error": (
+                f"All {failure_count} deep precedent searches failed. "
+                "Please check search service availability and try again."
+            ),
+        }
 
     # Update prioritized issue scores based on actual precedent findings
     prioritized = state.get("prioritized_issues", [])
@@ -311,7 +301,7 @@ async def build_argument_order_node(
     precedent_findings: list[dict] = []
     for msg in state.get("messages", []):
         if isinstance(msg, dict) and msg.get("type") == "deep_precedents":
-            precedent_findings = msg.get("data", [])
+            precedent_findings.extend(msg.get("data", []))
 
     issues_summary = json.dumps(prioritized, indent=2)
     precedents_summary = json.dumps(precedent_findings, indent=2) if precedent_findings else "None found."
@@ -328,11 +318,20 @@ async def build_argument_order_node(
         '- "preliminary": boolean (true if this is a threshold/preliminary issue)\n'
     )
 
-    raw = await llm.generate(
-        prompt=prompt,
-        system=CASE_PREP_ARGUMENT_ORDER_SYSTEM,
-        temperature=0.2,
-    )
+    feedback = get_latest_feedback(state.get("messages", []), "strategy")
+    if feedback:
+        sanitized = sanitize_search_query(feedback)
+        prompt += f"\n\nUser revision request: {sanitized}\nPlease address this feedback."
+
+    try:
+        raw = await llm.generate(
+            prompt=prompt,
+            system=CASE_PREP_ARGUMENT_ORDER_SYSTEM,
+            temperature=0.2,
+        )
+    except Exception as e:
+        logger.warning("LLM call failed in build_argument_order_node: %s", e)
+        raw = ""
 
     ordered_args = safe_json_parse_list(raw)
 
@@ -370,7 +369,7 @@ async def generate_strategy_memo_node(
     precedent_findings: list[dict] = []
     for msg in state.get("messages", []):
         if isinstance(msg, dict) and msg.get("type") == "deep_precedents":
-            precedent_findings = msg.get("data", [])
+            precedent_findings.extend(msg.get("data", []))
 
     issues_analysis = json.dumps(prioritized, indent=2) if prioritized else "No issues analyzed."
     precedent_text = json.dumps(precedent_findings, indent=2) if precedent_findings else "No precedents found."
@@ -388,12 +387,24 @@ async def generate_strategy_memo_node(
         relief_sought=relief_sought,
     )
 
-    memo = await llm.generate(
-        prompt=prompt,
-        system=CASE_PREP_STRATEGY_SYSTEM,
-        temperature=0.2,
-        max_tokens=8192,
-    )
+    feedback = get_latest_feedback(state.get("messages", []), "memo")
+    if feedback:
+        sanitized = sanitize_search_query(feedback)
+        prompt += f"\n\nUser revision request: {sanitized}\nPlease address this feedback."
+
+    try:
+        memo = await llm.generate(
+            prompt=prompt,
+            system=CASE_PREP_STRATEGY_SYSTEM,
+            temperature=0.2,
+            max_tokens=8192,
+        )
+    except Exception as e:
+        logger.warning("LLM call failed in generate_strategy_memo_node: %s", e)
+        return {"error": f"Failed to generate strategy memo: {e!s}"}
+
+    # Append legal disclaimer to the memo
+    memo += LEGAL_DISCLAIMER
 
     return {"enhanced_memo": memo}
 
@@ -407,95 +418,21 @@ async def verify_citations_node(
     state: CasePrepState,
     db: AsyncSession,
 ) -> dict:
-    """Verify that case IDs and human-readable citations in the strategy memo exist.
-
-    Performs three checks:
-    1. UUID-based verification (existing) -- checks case IDs against the DB.
-    2. Human-readable citation verification -- checks SCC/AIR/etc. citations
-       against ``cases.citation`` and ``case_citation_equivalents.citation_text``.
-    3. Grounding check -- flags citations that appear in the memo but were NOT
-       in the search results (potentially hallucinated from LLM training data).
-
-    Appends warning sections to the memo for any issues found.
-    """
+    """Verify citations in the strategy memo using shared 3-layer verification."""
     memo = state.get("enhanced_memo", "")
     if not memo:
         return {"enhanced_memo": memo}
 
-    # --- Step 1: UUID verification (existing logic) ---
-    found_ids = list(set(UUID_RE.findall(memo)))
-    if found_ids:
-        valid_ids = await verify_case_ids(found_ids, db)
-        invalid_ids = [uid for uid in found_ids if uid not in valid_ids]
+    # Collect grounding citations from deep precedent search results
+    grounding_citations: list[str] = []
+    for msg in state.get("messages", []):
+        if isinstance(msg, dict) and msg.get("type") == "deep_precedents":
+            for finding in msg.get("data", []):
+                grounding_citations.extend(
+                    collect_grounding_citations(finding.get("results", []))
+                )
 
-        if invalid_ids:
-            warning = (
-                "\n\n---\n"
-                "**Citation Verification Warning**\n"
-                "The following case identifiers referenced in this memo could not "
-                "be verified against the database:\n"
-            )
-            for uid in invalid_ids:
-                warning += f"- {uid}\n"
-            warning += (
-                "These references may be hallucinated or refer to cases not yet "
-                "ingested. Please verify independently.\n"
-            )
-            memo += warning
-
-    # --- Step 2: Human-readable citation verification ---
-    memo_citations = extract_citations_from_text(memo)
-    if memo_citations:
-        _verified, unverified = await verify_citations_against_db(memo_citations, db)
-
-        if unverified:
-            warning = (
-                "\n\n---\n"
-                "**Human-Readable Citation Warning**\n"
-                "The following citations could not be verified against the database:\n"
-            )
-            for cite in unverified:
-                warning += f"- {cite}\n"
-            warning += (
-                "These may be fabricated citations. Please verify independently "
-                "before relying on them.\n"
-            )
-            memo += warning
-
-    # --- Step 3: Grounding check ---
-    if memo_citations:
-        # Collect citations from deep precedent search results in messages
-        search_citation_strings: list[str] = []
-        for msg in state.get("messages", []):
-            if isinstance(msg, dict) and msg.get("type") == "deep_precedents":
-                for finding in msg.get("data", []):
-                    for result in finding.get("results", []):
-                        citation = result.get("citation", "")
-                        if citation:
-                            search_citation_strings.append(citation)
-                        snippet = result.get("snippet", "")
-                        if snippet:
-                            search_citation_strings.extend(
-                                extract_citations_from_text(snippet)
-                            )
-
-        ungrounded = check_grounding(memo_citations, search_citation_strings)
-        if ungrounded:
-            warning = (
-                "\n\n---\n"
-                "**Ungrounded Citation Warning**\n"
-                "The following citations appear in the memo but were NOT found "
-                "in the search results. They may have been hallucinated from "
-                "the LLM's training data:\n"
-            )
-            for cite in ungrounded:
-                warning += f"- {cite}\n"
-            warning += (
-                "Exercise extra caution with these citations and verify them "
-                "against primary sources.\n"
-            )
-            memo += warning
-
+    memo = await verify_memo_citations(memo, db, grounding_citations)
     return {"enhanced_memo": memo}
 
 

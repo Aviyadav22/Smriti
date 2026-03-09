@@ -7,24 +7,25 @@ are passed via closures when the graph is built.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-from dataclasses import asdict
-
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.confidence import calculate_confidence
-from app.core.agents.nodes.citation_verifier import (
-    check_grounding,
-    extract_citations_from_text,
-    verify_citations_against_db,
-)
 from app.core.agents.nodes.common import (
     UUID_RE,
+    MAX_RESULTS_FOR_LLM,
+    apply_language_suffix,
+    collect_grounding_citations,
+    deduplicate_by_case_id,
+    detect_overruled_cases,
     enrich_results_with_ratio,
+    get_citation_neighbors,
+    get_latest_feedback,
+    parallel_hybrid_search,
     verify_case_ids,
+    verify_memo_citations,
 )
 from app.core.agents.state import StrategyState
 from app.core.interfaces import (
@@ -36,6 +37,7 @@ from app.core.interfaces import (
 )
 from app.core.legal.precedent_strength import classify_precedent_strength
 from app.core.legal.prompts import (
+    LEGAL_DISCLAIMER,
     STRATEGY_ANALYZE_FACTS_SCHEMA,
     STRATEGY_ANALYZE_FACTS_SYSTEM,
     STRATEGY_ARGUMENTS_SCHEMA,
@@ -49,13 +51,9 @@ from app.core.legal.prompts import (
     STRATEGY_SYNTHESIZE_SYSTEM,
     STRATEGY_SYNTHESIZE_USER,
 )
-from app.core.legal.treatment import has_overruling_language
-from app.core.search.hybrid import hybrid_search
 from app.security.sanitizer import sanitize_search_query
 
 logger = logging.getLogger(__name__)
-
-MAX_RESULTS_FOR_LLM = 30
 
 
 # ---------------------------------------------------------------------------
@@ -70,9 +68,16 @@ async def analyze_facts_node(
     """Parse case facts into structured form (parties, causes of action, etc.)."""
     case_facts = sanitize_search_query(state["case_facts"])
 
+    prompt = case_facts
+
+    feedback = get_latest_feedback(state.get("messages", []), "analysis")
+    if feedback:
+        sanitized = sanitize_search_query(feedback)
+        prompt += f"\n\nUser revision request: {sanitized}\nPlease address this feedback."
+
     try:
         fact_analysis = await llm.generate_structured(
-            prompt=case_facts,
+            prompt=prompt,
             system=STRATEGY_ANALYZE_FACTS_SYSTEM,
             output_schema=STRATEGY_ANALYZE_FACTS_SCHEMA,
         )
@@ -102,17 +107,21 @@ async def fetch_judge_profile_node(
 
     sanitized_judge = sanitize_search_query(target_judge)
 
+    # Use ILIKE for fuzzy matching since judge names vary in format
+    # (e.g., "B.R. Gavai", "gavai", "Justice Gavai")
+    judge_pattern = f"%{sanitized_judge}%"
+
     try:
         # Disposal breakdown
         disposal_result = await db.execute(
             sa_text(
                 "SELECT disposal_nature, COUNT(*) as cnt "
                 "FROM cases "
-                "WHERE :judge_name = ANY(judge) "
+                "WHERE array_to_string(judge, ' ') ILIKE :judge_pattern "
                 "GROUP BY disposal_nature "
                 "ORDER BY cnt DESC"
             ),
-            {"judge_name": sanitized_judge},
+            {"judge_pattern": judge_pattern},
         )
         disposal_breakdown = [
             {"disposal_nature": row[0], "count": row[1]}
@@ -124,12 +133,12 @@ async def fetch_judge_profile_node(
             sa_text(
                 "SELECT act, COUNT(*) as cnt "
                 "FROM cases, unnest(acts_cited) as act "
-                "WHERE :judge_name = ANY(judge) "
+                "WHERE array_to_string(judge, ' ') ILIKE :judge_pattern "
                 "GROUP BY act "
                 "ORDER BY cnt DESC "
                 "LIMIT 10"
             ),
-            {"judge_name": sanitized_judge},
+            {"judge_pattern": judge_pattern},
         )
         top_acts = [
             {"act": row[0], "count": row[1]}
@@ -142,9 +151,9 @@ async def fetch_judge_profile_node(
                 "SELECT COUNT(*) as total, "
                 "COUNT(*) FILTER (WHERE year >= EXTRACT(YEAR FROM NOW()) - 3) as recent "
                 "FROM cases "
-                "WHERE :judge_name = ANY(judge)"
+                "WHERE array_to_string(judge, ' ') ILIKE :judge_pattern"
             ),
-            {"judge_name": sanitized_judge},
+            {"judge_pattern": judge_pattern},
         )
         counts_row = counts_result.fetchone()
         total_cases = counts_row[0] if counts_row else 0
@@ -214,104 +223,39 @@ async def search_precedents_node(
     if desired_relief:
         queries.append(f"{sanitize_search_query(desired_relief)} Indian court precedent")
 
+    # Deduplicate queries while preserving order
+    queries = list(dict.fromkeys(queries))
+
     if not queries:
         return {"search_results": [], "precedent_map": []}
 
-    # Parallel hybrid search (same pattern as research_nodes.parallel_search_node)
-    async def _search_one(sq: str) -> list[dict]:
-        response = await hybrid_search(
-            sq,
-            llm=llm,
-            embedder=embedder,
-            vector_store=vector_store,
-            reranker=reranker,
-            db=db,
-        )
-        results: list[dict] = []
-        for item in response.results:
-            d = asdict(item)
-            d["source_query"] = sq
-            results.append(d)
-        return results
-
-    all_lists = await asyncio.gather(
-        *[_search_one(sq) for sq in queries],
-        return_exceptions=True,
+    # Parallel hybrid search
+    combined = await parallel_hybrid_search(
+        queries,
+        llm=llm,
+        embedder=embedder,
+        vector_store=vector_store,
+        reranker=reranker,
+        db=db,
     )
 
-    combined: list[dict] = []
-    for result_or_exc in all_lists:
-        if isinstance(result_or_exc, BaseException):
-            logger.warning("Strategy search query failed: %s", result_or_exc)
-            continue
-        combined.extend(result_or_exc)
-
     # Deduplicate by case_id, keeping highest score
-    best: dict[str, dict] = {}
-    for r in combined:
-        cid = r.get("case_id", "")
-        if not cid:
-            continue
-        existing = best.get(cid)
-        if existing is None or r.get("score", 0) > existing.get("score", 0):
-            best[cid] = r
-    combined = list(best.values())
+    combined = deduplicate_by_case_id(combined)
 
     # Enrich with ratio and bench_type from PostgreSQL
     combined = await enrich_results_with_ratio(combined, db)
 
     # Get 2-hop citation neighbours for top 5 results
     top_results = sorted(combined, key=lambda r: r.get("score", 0), reverse=True)[:5]
-    neighbor_results: list[dict] = []
     seen_ids: set[str] = {r.get("case_id", "") for r in combined}
 
-    for sr in top_results:
-        case_id = sr.get("case_id", "")
-        if not case_id:
-            continue
-        try:
-            neighbors = await graph_store.get_neighbors(
-                case_id,
-                relationship="CITES",
-                direction="both",
-                depth=2,
-            )
-            neighbor_entries = neighbors.get("neighbors", [])
-            for entry in neighbor_entries:
-                node = entry.get("node", {}) if isinstance(entry, dict) else {}
-                if isinstance(node, dict):
-                    nid = node.get("id", node.get("case_id", ""))
-                    if nid and nid not in seen_ids:
-                        seen_ids.add(nid)
-                        neighbor_results.append({
-                            "case_id": nid,
-                            "title": node.get("title"),
-                            "citation": node.get("citation"),
-                            "court": node.get("court"),
-                            "year": node.get("year"),
-                            "snippet": node.get("snippet", ""),
-                            "score": 0.0,
-                            "source": "citation_graph",
-                        })
-        except (ConnectionError, TimeoutError):
-            logger.warning("Graph neighbor query failed for case_id=%s", case_id)
-
+    neighbor_results = await get_citation_neighbors(
+        graph_store, top_results, seen_ids, max_results=5
+    )
     combined.extend(neighbor_results)
 
-    # Detect overruling language and classify precedent strength
-    overruled_case_ids: set[str] = set()
-    for r in combined:
-        check_text = (
-            (r.get("snippet", "") or "")
-            + " "
-            + (r.get("ratio", "") or "")
-            + " "
-            + (r.get("chunk_text", "") or "")
-        )
-        if check_text.strip() and has_overruling_language(check_text):
-            cid = r.get("case_id", "")
-            if cid:
-                overruled_case_ids.add(cid)
+    # Detect overruling language
+    overruled_case_ids = detect_overruled_cases(combined)
 
     # Build precedent_map
     precedent_map: list[dict] = []
@@ -406,6 +350,11 @@ async def generate_arguments_node(
     )
     if desired_relief:
         prompt += f"Desired Relief: {sanitize_search_query(desired_relief)}\n\n"
+
+    feedback = get_latest_feedback(state.get("messages", []), "arguments")
+    if feedback:
+        sanitized = sanitize_search_query(feedback)
+        prompt += f"\n\nUser revision request: {sanitized}\nPlease address this feedback."
 
     try:
         result = await llm.generate_structured(
@@ -551,8 +500,6 @@ async def synthesize_strategy_node(
     procedural_suggestions = state.get("procedural_suggestions", [])
     search_results = state.get("search_results", [])
     precedent_map = state.get("precedent_map", [])
-    target_court = state.get("target_court") or "Supreme Court of India"
-    target_bench = state.get("target_bench") or "division"
 
     prompt = STRATEGY_SYNTHESIZE_USER.format(
         case_facts=case_facts,
@@ -563,13 +510,15 @@ async def synthesize_strategy_node(
         procedural_suggestions=json.dumps(procedural_suggestions, indent=2),
     )
 
-    # If language is Hindi, append instruction to write in Devanagari
-    system = STRATEGY_SYNTHESIZE_SYSTEM
-    if state.get("language", "en") == "hi":
-        system += (
-            "\n\nIMPORTANT: Write your entire response in Hindi (Devanagari script). "
-            "Keep case names, citations, statute names, and section numbers in English."
-        )
+    feedback = get_latest_feedback(state.get("messages", []), "memo")
+    if feedback:
+        sanitized = sanitize_search_query(feedback)
+        prompt += f"\n\nUser revision request: {sanitized}\nPlease address this feedback."
+
+    system = apply_language_suffix(
+        STRATEGY_SYNTHESIZE_SYSTEM,
+        state.get("language", "en"),
+    )
 
     try:
         memo = await llm.generate(
@@ -581,6 +530,9 @@ async def synthesize_strategy_node(
     except Exception as e:
         logger.error("LLM error in synthesize_strategy_node: %s", e, exc_info=True)
         return {"error": f"LLM error in synthesize_strategy_node: {e!s}"}
+
+    # Append legal disclaimer to the memo
+    memo += LEGAL_DISCLAIMER
 
     # Calculate confidence (same pattern as research_nodes)
     reranker_scores = sorted(
@@ -628,83 +580,19 @@ async def verify_citations_node(
     """Verify case IDs and human-readable citations in the strategy memo.
 
     Performs the same three-layer verification as research_nodes:
-    1. UUID-based verification — checks case IDs against the DB.
-    2. Human-readable citation verification — checks SCC/AIR/etc. citations
+    1. UUID-based verification -- checks case IDs against the DB.
+    2. Human-readable citation verification -- checks SCC/AIR/etc. citations
        against ``cases.citation`` and ``case_citation_equivalents.citation_text``.
-    3. Grounding check — flags citations in the memo that were NOT in the
+    3. Grounding check -- flags citations in the memo that were NOT in the
        search results (potentially hallucinated from LLM training data).
     """
     memo = state.get("strategy_memo", "")
     if not memo:
         return {"strategy_memo": memo}
 
-    # --- Step 1: UUID verification ---
-    found_ids = list(set(UUID_RE.findall(memo)))
-    if found_ids:
-        valid_ids = await verify_case_ids(found_ids, db)
-        invalid_ids = [uid for uid in found_ids if uid not in valid_ids]
+    search_results = state.get("search_results", [])
+    grounding_citations = collect_grounding_citations(search_results)
 
-        if invalid_ids:
-            warning = (
-                "\n\n---\n"
-                "**Citation Verification Warning**\n"
-                "The following case identifiers referenced in this memo could not "
-                "be verified against the database:\n"
-            )
-            for uid in invalid_ids:
-                warning += f"- {uid}\n"
-            warning += (
-                "These references may be hallucinated or refer to cases not yet "
-                "ingested. Please verify independently.\n"
-            )
-            memo += warning
-
-    # --- Step 2: Human-readable citation verification ---
-    memo_citations = extract_citations_from_text(memo)
-    if memo_citations:
-        _verified, unverified = await verify_citations_against_db(memo_citations, db)
-
-        if unverified:
-            warning = (
-                "\n\n---\n"
-                "**Human-Readable Citation Warning**\n"
-                "The following citations could not be verified against the database:\n"
-            )
-            for cite in unverified:
-                warning += f"- {cite}\n"
-            warning += (
-                "These may be fabricated citations. Please verify independently "
-                "before relying on them.\n"
-            )
-            memo += warning
-
-    # --- Step 3: Grounding check ---
-    if memo_citations:
-        search_results = state.get("search_results", [])
-        search_citation_strings: list[str] = []
-        for result in search_results:
-            citation = result.get("citation", "")
-            if citation:
-                search_citation_strings.append(citation)
-            snippet = result.get("snippet", "")
-            if snippet:
-                search_citation_strings.extend(extract_citations_from_text(snippet))
-
-        ungrounded = check_grounding(memo_citations, search_citation_strings)
-        if ungrounded:
-            warning = (
-                "\n\n---\n"
-                "**Ungrounded Citation Warning**\n"
-                "The following citations appear in the memo but were NOT found "
-                "in the search results. They may have been hallucinated from "
-                "the LLM's training data:\n"
-            )
-            for cite in ungrounded:
-                warning += f"- {cite}\n"
-            warning += (
-                "Exercise extra caution with these citations and verify them "
-                "against primary sources.\n"
-            )
-            memo += warning
+    memo = await verify_memo_citations(memo, db, grounding_citations)
 
     return {"strategy_memo": memo}

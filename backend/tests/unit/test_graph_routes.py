@@ -125,10 +125,10 @@ class TestNeighborhood:
         resp = client.get(f"/api/v1/graph/{_CASE_ID}/neighborhood?depth=2")
         assert resp.status_code == 200
 
-        # Verify query was called with depth=2
+        # Verify query was called with depth=2 (embedded in Cypher f-string)
         mock_graph.query.assert_awaited_once()
         call_kwargs = mock_graph.query.call_args
-        assert call_kwargs.kwargs["params"]["depth"] == 2
+        assert "*1..2" in call_kwargs.kwargs["cypher"]
 
     @patch("app.api.routes.graph.get_graph_store")
     def test_neighborhood_graph_error_returns_empty(
@@ -208,7 +208,7 @@ class TestChain:
 
         mock_graph.query.assert_awaited_once()
         call_kwargs = mock_graph.query.call_args
-        assert call_kwargs.kwargs["params"]["depth"] == 5
+        assert "*1..5" in call_kwargs.kwargs["cypher"]
 
     @patch("app.api.routes.graph.get_graph_store")
     def test_chain_graph_error_returns_empty(

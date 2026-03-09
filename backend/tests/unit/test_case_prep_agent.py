@@ -25,7 +25,6 @@ def _base_state(**overrides: object) -> CasePrepState:
         "analysis": {},
         "prioritized_issues": [],
         "argument_order": [],
-        "strategy_points": [],
         "enhanced_memo": "",
         "messages": [],
         "iteration": 0,
@@ -38,12 +37,10 @@ def _build_graph():
     """Build a graph with dummy dependencies (no checkpointer)."""
     return build_case_prep_graph(
         llm=object(),
-        flash_llm=object(),
         embedder=object(),
         vector_store=object(),
         reranker=object(),
         graph_store=object(),
-        db=object(),
         checkpointer=None,
     )
 
@@ -123,6 +120,8 @@ class TestRouteAfterIssues:
         state = _base_state(
             messages=[
                 {"type": "user_feedback", "step": "issues", "content": "More"},
+                {"type": "user_feedback", "step": "issues", "content": "Still more"},
+                {"type": "user_feedback", "step": "issues", "content": "Again"},
             ],
             iteration=3,
         )
@@ -173,6 +172,8 @@ class TestRouteAfterStrategy:
         state = _base_state(
             messages=[
                 {"type": "user_feedback", "step": "strategy", "content": "Adjust"},
+                {"type": "user_feedback", "step": "strategy", "content": "More changes"},
+                {"type": "user_feedback", "step": "strategy", "content": "Final try"},
             ],
             iteration=3,
         )
@@ -223,6 +224,8 @@ class TestRouteAfterMemo:
         state = _base_state(
             messages=[
                 {"type": "user_feedback", "step": "memo", "content": "Revise"},
+                {"type": "user_feedback", "step": "memo", "content": "More changes"},
+                {"type": "user_feedback", "step": "memo", "content": "Final try"},
             ],
             iteration=3,
         )

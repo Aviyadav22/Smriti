@@ -1,6 +1,39 @@
 """Shared test fixtures and configuration."""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
+
+from app.security import rate_limiter as _rl_module
+
+
+@pytest.fixture(autouse=True)
+def _isolate_rate_limiter():
+    """Reset and mock the rate-limiter singleton for every test.
+
+    Without this, the module-level singleton connects to real Redis
+    (via settings.redis_url) and shares state across tests — causing
+    flaky failures when the sliding window accumulates entries.
+
+    This fixture:
+    1. Resets the singleton so no stale connection persists.
+    2. Patches _get_rate_limiter to return a mock that always allows.
+    3. Clears in-memory buckets so tests start fresh.
+    """
+    _rl_module._rate_limiter = None
+    _rl_module._redis_client = None
+    _rl_module._mem_buckets.clear()
+
+    mock_limiter = AsyncMock()
+    mock_limiter.check_rate_limit.return_value = True
+
+    with patch.object(_rl_module, "_get_rate_limiter", return_value=mock_limiter):
+        yield
+
+    # Cleanup: reset again after test
+    _rl_module._rate_limiter = None
+    _rl_module._redis_client = None
+    _rl_module._mem_buckets.clear()
 
 
 @pytest.fixture

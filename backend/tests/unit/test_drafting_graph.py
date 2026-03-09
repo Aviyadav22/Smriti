@@ -40,7 +40,7 @@ def _make_state(**overrides) -> dict:
         "section_drafts": {},
         "full_draft": "",
         "revision_feedback": "",
-        "export_formats": ["docx"],
+
         "messages": [],
         "iteration": 0,
         "error": "",
@@ -105,11 +105,9 @@ class TestRouteAfterSources:
     def test_returns_draft_sections_when_iteration_at_3(self) -> None:
         state = _make_state(
             messages=[
-                {
-                    "type": "user_feedback",
-                    "step": "sources",
-                    "content": "More provisions please.",
-                }
+                {"type": "user_feedback", "step": "sources", "content": "More provisions please."},
+                {"type": "user_feedback", "step": "sources", "content": "Still more."},
+                {"type": "user_feedback", "step": "sources", "content": "Final try."},
             ],
             iteration=3,
         )
@@ -188,11 +186,9 @@ class TestRouteAfterDraft:
     def test_returns_verify_final_when_iteration_at_3(self) -> None:
         state = _make_state(
             messages=[
-                {
-                    "type": "user_feedback",
-                    "step": "draft",
-                    "content": "Revise more.",
-                }
+                {"type": "user_feedback", "step": "draft", "content": "Revise more."},
+                {"type": "user_feedback", "step": "draft", "content": "Still not right."},
+                {"type": "user_feedback", "step": "draft", "content": "Final attempt."},
             ],
             iteration=3,
         )
@@ -252,11 +248,9 @@ class TestRouteAfterFinal:
     def test_returns_end_when_iteration_at_3(self) -> None:
         state = _make_state(
             messages=[
-                {
-                    "type": "user_feedback",
-                    "step": "final",
-                    "content": "Another revision.",
-                }
+                {"type": "user_feedback", "step": "final", "content": "Another revision."},
+                {"type": "user_feedback", "step": "final", "content": "More changes."},
+                {"type": "user_feedback", "step": "final", "content": "Final try."},
             ],
             iteration=3,
         )
@@ -309,7 +303,6 @@ class TestBuildDraftingGraph:
             embedder=embedder,
             vector_store=vector_store,
             reranker=reranker,
-            db=db,
             checkpointer=None,
         )
 
@@ -330,7 +323,6 @@ class TestBuildDraftingGraph:
             embedder=embedder,
             vector_store=vector_store,
             reranker=reranker,
-            db=db,
             checkpointer=None,
         )
 
@@ -372,7 +364,6 @@ class TestBuildDraftingGraph:
                 embedder=embedder,
                 vector_store=vector_store,
                 reranker=reranker,
-                db=db,
                 checkpointer=checkpointer,
             )
             assert graph is not None

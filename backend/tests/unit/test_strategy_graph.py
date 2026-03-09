@@ -71,11 +71,9 @@ class TestRouteAfterAnalysis:
     def test_returns_search_precedents_when_iteration_equals_3(self) -> None:
         state = _make_state(
             messages=[
-                {
-                    "type": "user_feedback",
-                    "step": "analysis",
-                    "content": "Still not right.",
-                }
+                {"type": "user_feedback", "step": "analysis", "content": "Still not right."},
+                {"type": "user_feedback", "step": "analysis", "content": "More changes."},
+                {"type": "user_feedback", "step": "analysis", "content": "Final try."},
             ],
             iteration=3,
         )
@@ -84,11 +82,11 @@ class TestRouteAfterAnalysis:
     def test_returns_search_precedents_when_iteration_exceeds_3(self) -> None:
         state = _make_state(
             messages=[
-                {
-                    "type": "user_feedback",
-                    "step": "analysis",
-                    "content": "Keep revising.",
-                }
+                {"type": "user_feedback", "step": "analysis", "content": "Keep revising."},
+                {"type": "user_feedback", "step": "analysis", "content": "More changes."},
+                {"type": "user_feedback", "step": "analysis", "content": "Still more."},
+                {"type": "user_feedback", "step": "analysis", "content": "Final try."},
+                {"type": "user_feedback", "step": "analysis", "content": "One more."},
             ],
             iteration=5,
         )
@@ -143,9 +141,9 @@ class TestRouteAfterAnalysis:
 
 
 class TestRouteAfterArguments:
-    def test_returns_counter_arguments_when_no_feedback(self) -> None:
+    def test_returns_counter_and_judge_when_no_feedback(self) -> None:
         state = _make_state(messages=[], iteration=0)
-        assert route_after_arguments(state) == "counter_arguments"
+        assert route_after_arguments(state) == "counter_and_judge"
 
     def test_returns_generate_arguments_when_feedback_present_and_iteration_under_3(self) -> None:
         state = _make_state(
@@ -160,31 +158,28 @@ class TestRouteAfterArguments:
         )
         assert route_after_arguments(state) == "generate_arguments"
 
-    def test_returns_counter_arguments_when_iteration_equals_3(self) -> None:
+    def test_returns_counter_and_judge_when_iteration_equals_3(self) -> None:
         state = _make_state(
             messages=[
-                {
-                    "type": "user_feedback",
-                    "step": "arguments",
-                    "content": "Refine once more.",
-                }
+                {"type": "user_feedback", "step": "arguments", "content": "Refine once more."},
+                {"type": "user_feedback", "step": "arguments", "content": "More changes."},
+                {"type": "user_feedback", "step": "arguments", "content": "Final try."},
             ],
             iteration=3,
         )
-        assert route_after_arguments(state) == "counter_arguments"
+        assert route_after_arguments(state) == "counter_and_judge"
 
-    def test_returns_counter_arguments_when_iteration_exceeds_3(self) -> None:
+    def test_returns_counter_and_judge_when_iteration_exceeds_3(self) -> None:
         state = _make_state(
             messages=[
-                {
-                    "type": "user_feedback",
-                    "step": "arguments",
-                    "content": "Keep trying.",
-                }
+                {"type": "user_feedback", "step": "arguments", "content": "Keep trying."},
+                {"type": "user_feedback", "step": "arguments", "content": "More."},
+                {"type": "user_feedback", "step": "arguments", "content": "Again."},
+                {"type": "user_feedback", "step": "arguments", "content": "Still more."},
             ],
             iteration=10,
         )
-        assert route_after_arguments(state) == "counter_arguments"
+        assert route_after_arguments(state) == "counter_and_judge"
 
     def test_ignores_feedback_for_other_steps(self) -> None:
         state = _make_state(
@@ -197,7 +192,7 @@ class TestRouteAfterArguments:
             ],
             iteration=1,
         )
-        assert route_after_arguments(state) == "counter_arguments"
+        assert route_after_arguments(state) == "counter_and_judge"
 
     def test_empty_feedback_content_does_not_loop(self) -> None:
         state = _make_state(
@@ -210,7 +205,7 @@ class TestRouteAfterArguments:
             ],
             iteration=1,
         )
-        assert route_after_arguments(state) == "counter_arguments"
+        assert route_after_arguments(state) == "counter_and_judge"
 
     def test_returns_end_when_error_is_set(self) -> None:
         state = _make_state(error="LLM error in generate_arguments_node: timeout")
@@ -243,11 +238,9 @@ class TestRouteAfterMemo:
     def test_returns_end_when_iteration_equals_3(self) -> None:
         state = _make_state(
             messages=[
-                {
-                    "type": "user_feedback",
-                    "step": "memo",
-                    "content": "One more pass.",
-                }
+                {"type": "user_feedback", "step": "memo", "content": "One more pass."},
+                {"type": "user_feedback", "step": "memo", "content": "More changes."},
+                {"type": "user_feedback", "step": "memo", "content": "Final try."},
             ],
             iteration=3,
         )
@@ -256,11 +249,10 @@ class TestRouteAfterMemo:
     def test_returns_end_when_iteration_exceeds_3(self) -> None:
         state = _make_state(
             messages=[
-                {
-                    "type": "user_feedback",
-                    "step": "memo",
-                    "content": "Still needs work.",
-                }
+                {"type": "user_feedback", "step": "memo", "content": "Still needs work."},
+                {"type": "user_feedback", "step": "memo", "content": "More changes."},
+                {"type": "user_feedback", "step": "memo", "content": "Again."},
+                {"type": "user_feedback", "step": "memo", "content": "Final."},
             ],
             iteration=7,
         )
@@ -323,7 +315,6 @@ class TestBuildStrategyGraph:
             vector_store=self._MockDep(),
             reranker=self._MockDep(),
             graph_store=self._MockDep(),
-            db=self._MockDep(),
             checkpointer=checkpointer,
         )
 
@@ -332,19 +323,19 @@ class TestBuildStrategyGraph:
         assert hasattr(graph, "invoke") or hasattr(graph, "ainvoke")
 
     def test_graph_has_expected_node_count(self) -> None:
-        """Graph must have exactly 12 registered nodes (+ __start__ = 13)."""
+        """Graph must have exactly 11 registered nodes (+ __start__ = 12)."""
         graph = self._build()
         # LangGraph exposes the graph structure via .graph attribute on compiled graphs
         # The underlying StateGraph nodes are accessible via graph.nodes or the builder
         node_count = len(graph.nodes)
-        # 12 user nodes + __start__ = 13
-        assert node_count == 13, (
-            f"Expected 13 nodes, got {node_count}. "
+        # 11 user nodes + __start__ = 12
+        assert node_count == 12, (
+            f"Expected 12 nodes, got {node_count}. "
             f"Nodes: {sorted(graph.nodes)}"
         )
 
     def test_graph_has_expected_nodes(self) -> None:
-        """Compiled graph must include all 12 named nodes."""
+        """Compiled graph must include all 11 named nodes."""
         graph = self._build()
         expected_nodes = {
             "analyze_facts",
@@ -354,8 +345,7 @@ class TestBuildStrategyGraph:
             "assess_strength",
             "generate_arguments",
             "checkpoint_arguments",
-            "counter_arguments",
-            "judge_considerations",
+            "counter_and_judge",
             "synthesize_strategy",
             "verify",
             "checkpoint_memo",

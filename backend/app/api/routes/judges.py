@@ -36,7 +36,7 @@ async def _get_cached_or_compute(
             cached = await redis_client.get(cache_key)  # type: ignore[union-attr]
             if cached:
                 return json.loads(cached)
-        except (ConnectionError, TimeoutError) as e:
+        except Exception:
             pass
 
     result = await compute_fn()  # type: ignore[operator]
@@ -51,7 +51,7 @@ async def _get_cached_or_compute(
             await redis_client.set(  # type: ignore[union-attr]
                 cache_key, json.dumps(serializable, default=str), ex=ttl
             )
-        except (ConnectionError, TimeoutError) as e:
+        except Exception:
             pass
 
     return result

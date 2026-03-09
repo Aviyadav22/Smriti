@@ -187,9 +187,11 @@ celery -A app.worker:celery_app worker --loglevel=info
 
 ## Current Phase
 
-**Phase 7: Strategy Agent + Drafting Agent + Hindi (next)**
+**Phase 8: Production Hardening + Launch (next)**
 
-Phases 1-6.5 complete — backend, security, search pipeline, frontend, RAG chat, citation graph, judge analytics, document upload + analysis, audio digests, LangGraph agent framework (Research Agent + Case Prep Agent), quality excellence sprint (precedent strength, citation equivalence, section-aware search, confidence scoring, RAG grounding) all built. 461 backend unit tests, 156 frontend tests, all passing. See `PHASE_PLAN.md` for full status.
+Phases 1-7 complete — backend, security, search pipeline, frontend, RAG chat, citation graph, judge analytics, document upload + analysis, audio digests, LangGraph agent framework (Research Agent, Case Prep Agent, Strategy Agent, Drafting Agent), quality excellence sprint, two comprehensive codebase audits with fixes. ~1126 backend unit tests, ~218 frontend tests. Hindi support partially complete (next-intl setup done, translations in progress, Hindi legal glossary added). See `PHASE_PLAN.md` for full status.
+
+**Audit v2 Completed**: Second comprehensive codebase audit addressed remaining quality gaps including IRAC enforcement in agent prompts, legal disclaimers on all AI-generated output, semantic citation verification (holding accuracy checks), treatment-strength fusion for precedent classification, expanded IPC-BNS/CrPC-BNSS/IEA-BSA statute mappings, Hindi legal terminology glossary (100+ terms), and hardened prompt injection detection.
 
 ---
 

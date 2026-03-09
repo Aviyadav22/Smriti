@@ -175,7 +175,7 @@ class TestResearchAgentSchemas:
 
     def test_classify_schema_jurisdiction_nullable(self) -> None:
         jurisdiction = RESEARCH_CLASSIFY_SCHEMA["properties"]["jurisdiction"]
-        assert jurisdiction.get("nullable") is True
+        assert "null" in jurisdiction["type"]
 
     def test_decompose_schema_has_sub_queries(self) -> None:
         props = RESEARCH_DECOMPOSE_SCHEMA["properties"]

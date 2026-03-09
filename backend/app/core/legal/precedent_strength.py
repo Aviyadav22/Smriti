@@ -13,6 +13,16 @@ import logging
 from enum import Enum
 from typing import Final
 
+_CURRENT_YEAR: Final[int] = 2026
+
+_STRENGTH_NUMERIC: Final[dict[str, float]] = {
+    "BINDING": 1.0,
+    "PERSUASIVE": 0.6,
+    "DISTINGUISHABLE": 0.3,
+    "OVERRULED": 0.0,
+    "UNKNOWN": 0.4,
+}
+
 from app.core.legal.courts import get_court_level, normalize_court_name
 
 logger = logging.getLogger(__name__)
@@ -107,3 +117,55 @@ def classify_precedent_strength(
 
     # Tribunals, district courts, unknown — always persuasive
     return PrecedentStrength.PERSUASIVE
+
+
+def recency_weight(year: int | None) -> float:
+    """Compute a recency decay weight for a judgment year.
+
+    Recent cases receive a weight close to 1.0; older cases decay gradually.
+    Formula: ``1.0 / (1 + max(0, (current_year - year)) / 10)``
+
+    Args:
+        year: The year the judgment was decided. If *None*, returns 1.0
+              (no penalty when year is unknown).
+
+    Returns:
+        A float between 0.0 and 1.0.
+    """
+    if year is None:
+        return 1.0
+    age = max(0, (_CURRENT_YEAR - year))
+    return 1.0 / (1 + age / 10)
+
+
+def compute_effective_strength(
+    base_strength: PrecedentStrength,
+    overruled: bool,
+    treatment_confidence: float = 0.7,
+    year: int | None = None,
+) -> float:
+    """Fuse precedent strength with treatment status and recency.
+
+    A BINDING precedent that has been overruled will receive a heavy penalty,
+    while a recent, non-overruled BINDING case retains a score close to 1.0.
+
+    Args:
+        base_strength: The structural strength from :func:`classify_precedent_strength`.
+        overruled: Whether the case has been overruled.
+        treatment_confidence: Confidence in the overruled detection (0-1).
+            Only applied when *overruled* is True.
+        year: Year the judgment was decided (for recency weighting).
+
+    Returns:
+        Effective strength score between 0.0 and 1.0.
+    """
+    base_value = _STRENGTH_NUMERIC.get(base_strength.value, 0.4)
+
+    # Treatment penalty — scale the base value down by confidence
+    if overruled:
+        base_value = base_value * (1 - treatment_confidence)
+
+    # Recency decay
+    result = base_value * recency_weight(year)
+
+    return min(1.0, max(0.0, result))

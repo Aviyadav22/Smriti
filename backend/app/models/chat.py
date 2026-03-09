@@ -21,7 +21,7 @@ class ChatSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         index=True,
     )
     title: Mapped[str] = mapped_column(
-        String, nullable=False, server_default="New Research Session"
+        String(255), nullable=False, server_default="New Research Session"
     )
 
     messages: Mapped[list["ChatMessage"]] = relationship(
@@ -41,7 +41,7 @@ class ChatMessage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    role: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     sources: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     tokens_used: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)

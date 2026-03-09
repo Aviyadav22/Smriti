@@ -11,6 +11,7 @@ from app.core.interfaces import (
     GraphStore,
     LLMProvider,
     Reranker,
+    TTSProvider,
     TranslationProvider,
     VectorStore,
 )
@@ -98,6 +99,18 @@ def get_storage() -> FileStorage:
 
         return GCSStorage()
     raise ValueError(f"Unknown storage provider: {settings.storage_provider}")
+
+
+@lru_cache
+def get_tts() -> TTSProvider:
+    """Return the configured TTS provider instance."""
+    if settings.tts_provider == "sarvam" and settings.sarvam_api_key:
+        from app.core.providers.tts.sarvam import SarvamTTS
+
+        return SarvamTTS()
+    from app.core.providers.tts.mock_tts import MockTTS
+
+    return MockTTS()
 
 
 def get_checkpointer():

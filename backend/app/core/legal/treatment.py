@@ -28,33 +28,33 @@ class CitationTreatment(str, Enum):
 # is detected first and those match spans are excluded from positive matching.
 TREATMENT_PATTERNS: list[tuple[CitationTreatment, re.Pattern[str]]] = [
     (CitationTreatment.OVERRULED, re.compile(
-        r"(?:overruled|overrule[sd]?\s+(?:by|in)|no\s+longer\s+good\s+law|per\s+incuriam|"
-        r"expressly\s+overruled|impliedly\s+overruled|stood\s+overruled)",
+        r"\b(?:overruled|overrule[sd]?\s+(?:by|in)|no\s+longer\s+good\s+law|per\s+incuriam|"
+        r"expressly\s+overruled|impliedly\s+overruled|stood\s+overruled)\b",
         re.IGNORECASE,
     )),
     (CitationTreatment.DISTINGUISHED, re.compile(
-        r"(?:distinguished|distinguishable|distinguish(?:ed|ing)\s+(?:from|in|on))",
+        r"\b(?:distinguished|distinguishable|distinguish(?:ed|ing)\s+(?:from|in|on))\b",
         re.IGNORECASE,
     )),
     (CitationTreatment.AFFIRMED, re.compile(
-        r"(?:affirmed|upheld|approved|endorsed|confirmed\s+(?:by|in))",
+        r"\b(?:affirmed|upheld|approved|endorsed|confirmed\s+(?:by|in))\b",
         re.IGNORECASE,
     )),
     (CitationTreatment.NOT_FOLLOWED, re.compile(
-        r"(?:(?:not|never|declined\s+to|refused\s+to)\s+follow(?:ed|ing)?|"
-        r"(?:not|never)\s+(?:been\s+)?followed)",
+        r"\b(?:(?:not|never|declined\s+to|refused\s+to)\s+follow(?:ed|ing)?|"
+        r"(?:not|never)\s+(?:been\s+)?followed)\b",
         re.IGNORECASE,
     )),
     (CitationTreatment.FOLLOWED, re.compile(
-        r"(?:followed|applied|relied\s+upon|reiterated)",
+        r"\b(?:followed|applied|relied\s+upon|reiterated)\b",
         re.IGNORECASE,
     )),
     (CitationTreatment.EXPLAINED, re.compile(
-        r"(?:explained|clarified|interpreted)",
+        r"\b(?:explained|clarified|interpreted)\b",
         re.IGNORECASE,
     )),
     (CitationTreatment.DOUBTED, re.compile(
-        r"(?:doubted|questioned|expressed\s+(?:doubt|reservation))",
+        r"\b(?:doubted|questioned|expressed\s+(?:doubt|reservation))\b",
         re.IGNORECASE,
     )),
 ]

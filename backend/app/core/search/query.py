@@ -165,15 +165,16 @@ _STATUTE_EXPANSION_RULES: list[
 ]
 
 
-def expand_statute_references(query: str) -> str:
+def expand_statute_references(query: str) -> tuple[str, list[str]]:
     """Expand old-law statute references to include new-law equivalents and vice versa.
 
     For example, "Section 302 IPC" is expanded to also include "Section 103 BNS",
     and "Section 103 BNS" is expanded to also include "Section 302 IPC".
     This ensures search results cover both pre- and post-July 2024 case law.
 
-    Returns the original query with " OR <expanded terms>" appended if any
-    statute references were detected, otherwise returns the query unchanged.
+    Returns (original_query, expanded_terms) so callers can handle them
+    appropriately — FTS can use " OR " joining while vector search uses
+    only the original query (OR syntax is meaningless for embeddings).
     """
     expanded_terms: list[str] = []
 
@@ -207,9 +208,7 @@ def expand_statute_references(query: str) -> str:
             if re.search(pattern, query, re.IGNORECASE):
                 expanded_terms.append(f"Section {old_section} {old_abbr}")
 
-    if expanded_terms:
-        return f"{query} OR {' OR '.join(expanded_terms)}"
-    return query
+    return query, expanded_terms
 
 
 # ---------------------------------------------------------------------------

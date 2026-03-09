@@ -76,6 +76,30 @@ SCALE_PATTERN: re.Pattern[str] = re.compile(
 )
 
 # ---------------------------------------------------------------------------
+# State reporter patterns
+# ---------------------------------------------------------------------------
+
+# 2020 BLR 145 or (2020) 3 BLR 145 (Bombay Law Reporter)
+BLR_PATTERN: re.Pattern[str] = re.compile(
+    r"(?:\((\d{4})\)\s+(\d+)\s+BLR\s+(\d+)|(\d{4})\s+BLR\s+(\d+))"
+)
+
+# 2020 KLT 145 (Kerala Law Times)
+KLT_PATTERN: re.Pattern[str] = re.compile(
+    r"(\d{4})\s+KLT\s+(\d+)"
+)
+
+# 2020 GLR 145 (Gujarat Law Reports)
+GLR_PATTERN: re.Pattern[str] = re.compile(
+    r"(\d{4})\s+GLR\s+(\d+)"
+)
+
+# JT 2020 (3) 145 (Judgment Today)
+JT_PATTERN: re.Pattern[str] = re.compile(
+    r"JT\s+(\d{4})\s*\((\d+)\)\s+(\d+)"
+)
+
+# ---------------------------------------------------------------------------
 # Act / section reference patterns
 # ---------------------------------------------------------------------------
 
@@ -124,8 +148,8 @@ _SHORT_ACT_NAMES: dict[str, str] = {
 def extract_citations(text: str) -> list[Citation]:
     """Extract all case citations from the given text.
 
-    Scans for SCC, SCC OnLine, AIR, INSC, SCR, CrLJ, and SCALE citation
-    formats.
+    Scans for SCC, SCC OnLine, AIR, INSC, SCR, CrLJ, SCALE, BLR, KLT,
+    GLR, and JT citation formats.
 
     Args:
         text: Judgment or legal text to search.
@@ -213,6 +237,60 @@ def extract_citations(text: str) -> list[Citation]:
     for match in SCALE_PATTERN.finditer(text):
         _add(Citation(
             reporter="SCALE",
+            year=int(match.group(1)),
+            volume=match.group(2),
+            page=match.group(3),
+            court=None,
+            raw_text=match.group(0),
+        ))
+
+    # BLR — (2020) 3 BLR 145  or  2020 BLR 145
+    for match in BLR_PATTERN.finditer(text):
+        if match.group(1) is not None:
+            # Parenthesized form: (year) volume BLR page
+            year = int(match.group(1))
+            volume: str | None = match.group(2)
+            page = match.group(3)
+        else:
+            # Simple form: year BLR page
+            year = int(match.group(4))
+            volume = None
+            page = match.group(5)
+        _add(Citation(
+            reporter="BLR",
+            year=year,
+            volume=volume,
+            page=page,
+            court=None,
+            raw_text=match.group(0),
+        ))
+
+    # KLT — 2020 KLT 145
+    for match in KLT_PATTERN.finditer(text):
+        _add(Citation(
+            reporter="KLT",
+            year=int(match.group(1)),
+            volume=None,
+            page=match.group(2),
+            court=None,
+            raw_text=match.group(0),
+        ))
+
+    # GLR — 2020 GLR 145
+    for match in GLR_PATTERN.finditer(text):
+        _add(Citation(
+            reporter="GLR",
+            year=int(match.group(1)),
+            volume=None,
+            page=match.group(2),
+            court=None,
+            raw_text=match.group(0),
+        ))
+
+    # JT — JT 2020 (3) 145
+    for match in JT_PATTERN.finditer(text):
+        _add(Citation(
+            reporter="JT",
             year=int(match.group(1)),
             volume=match.group(2),
             page=match.group(3),

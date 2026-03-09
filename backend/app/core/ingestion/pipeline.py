@@ -142,6 +142,11 @@ async def ingest_judgment(
         # 7. GENERATE EMBEDDINGS
         # ------------------------------------------------------------------
         embeddings = await _embed_chunks(chunks, embedder)
+        if len(embeddings) != len(chunks):
+            raise RuntimeError(
+                f"Embedding count mismatch: {len(embeddings)} embeddings "
+                f"for {len(chunks)} chunks (case_id={case_id})"
+            )
 
         # ------------------------------------------------------------------
         # 8. UPSERT TO VECTOR STORE
@@ -327,7 +332,7 @@ async def _embed_chunks(
                 batch_embeddings = await embedder.embed_batch(batch)
                 all_embeddings.extend(batch_embeddings)
                 break
-            except (ConnectionError, TimeoutError) as exc:
+            except Exception as exc:
                 if attempt == max_retries - 1:
                     raise
                 wait = 2 ** attempt

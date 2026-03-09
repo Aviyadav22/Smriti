@@ -94,7 +94,8 @@ async def _generate_audio_async(case_id: str, language: str) -> dict:
             )
 
             # Step 2: TTS
-            tts = _get_tts_provider()
+            from app.core.dependencies import get_tts
+            tts = get_tts()
             audio_bytes = await tts.synthesize(summary_text, language=language)
 
             # Step 3: Store audio file
@@ -158,12 +159,11 @@ async def _generate_audio_async(case_id: str, language: str) -> dict:
 
 
 def _get_tts_provider():
-    """Get the configured TTS provider."""
-    from app.core.config import settings
+    """Get the configured TTS provider.
 
-    if settings.tts_provider == "sarvam" and settings.sarvam_api_key:
-        from app.core.providers.tts.sarvam import SarvamTTS
-        return SarvamTTS()
+    .. deprecated::
+        Use ``app.core.dependencies.get_tts()`` instead.
+    """
+    from app.core.dependencies import get_tts
 
-    from app.core.providers.tts.mock_tts import MockTTS
-    return MockTTS()
+    return get_tts()

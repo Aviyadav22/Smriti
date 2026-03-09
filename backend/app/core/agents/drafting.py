@@ -20,7 +20,6 @@ import logging
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import interrupt
 
 from app.core.agents.nodes.drafting_nodes import (
     assemble_document_node,
@@ -31,7 +30,9 @@ from app.core.agents.nodes.drafting_nodes import (
     verify_final_node,
     verify_precedents_node,
 )
+from app.core.agents.routing_utils import compile_graph, make_checkpoint_node, make_feedback_router
 from app.core.agents.state import DraftingState
+from app.db.postgres import async_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -52,76 +53,9 @@ def route_after_template(state: DraftingState) -> str:
     return "gather_provisions"
 
 
-def route_after_sources(state: DraftingState) -> str:
-    """Route after sources checkpoint.
-
-    If the user provided feedback and we haven't exceeded the max iteration
-    count, loop back to gather_provisions. Otherwise proceed to draft_sections.
-    """
-    messages = state.get("messages", [])
-    last_feedback = next(
-        (
-            m
-            for m in reversed(messages)
-            if m.get("type") == "user_feedback" and m.get("step") == "sources"
-        ),
-        None,
-    )
-    if (
-        last_feedback
-        and last_feedback.get("content")
-        and state.get("iteration", 0) < 3
-    ):
-        return "gather_provisions"
-    return "draft_sections"
-
-
-def route_after_draft(state: DraftingState) -> str:
-    """Route after draft checkpoint.
-
-    If the user provided feedback (revision instructions), route to
-    revise_section. Otherwise proceed to verify_final.
-    """
-    messages = state.get("messages", [])
-    last_feedback = next(
-        (
-            m
-            for m in reversed(messages)
-            if m.get("type") == "user_feedback" and m.get("step") == "draft"
-        ),
-        None,
-    )
-    if (
-        last_feedback
-        and last_feedback.get("content")
-        and state.get("iteration", 0) < 3
-    ):
-        return "revise_section"
-    return "verify_final"
-
-
-def route_after_final(state: DraftingState) -> str:
-    """Route after final checkpoint.
-
-    If the user provided feedback and we haven't exceeded the max iteration
-    count, loop back to revise_section for another round. Otherwise END.
-    """
-    messages = state.get("messages", [])
-    last_feedback = next(
-        (
-            m
-            for m in reversed(messages)
-            if m.get("type") == "user_feedback" and m.get("step") == "final"
-        ),
-        None,
-    )
-    if (
-        last_feedback
-        and last_feedback.get("content")
-        and state.get("iteration", 0) < 3
-    ):
-        return "revise_section"
-    return END
+route_after_sources = make_feedback_router("sources", "gather_provisions", "draft_sections", check_error=True)
+route_after_draft = make_feedback_router("draft", "revise_section", "verify_final", check_error=True)
+route_after_final = make_feedback_router("final", "revise_section", check_error=True)
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +70,6 @@ def build_drafting_graph(
     embedder: Any,
     vector_store: Any,
     reranker: Any,
-    db: Any,
     checkpointer: Any | None = None,
 ) -> Any:
     """Build and compile the Drafting Agent LangGraph graph.
@@ -153,8 +86,6 @@ def build_drafting_graph(
         Vector store (Pinecone) for semantic search.
     reranker:
         Reranker (Cohere) for result re-ranking.
-    db:
-        Async database session for SQL queries.
     checkpointer:
         LangGraph checkpointer for persistence.  Can be ``None`` for
         unit testing (graph compiles without a checkpointer).
@@ -166,18 +97,27 @@ def build_drafting_graph(
     graph = StateGraph(DraftingState)
 
     # -- Node wrappers (closures capturing dependencies) --------------------
+    # DB-accessing nodes create fresh sessions via async_session_factory()
+    # because the FastAPI Depends(get_db) session closes before the
+    # StreamingResponse generator runs.
 
     async def resolve_template(state: DraftingState) -> dict:
         return await resolve_template_node(state)
 
     async def gather_provisions(state: DraftingState) -> dict:
-        result = await gather_provisions_node(state, llm, db)
-        # Always increment iteration counter
-        result["iteration"] = state.get("iteration", 0) + 1
+        async with async_session_factory() as session:
+            result = await gather_provisions_node(state, llm, session)
+        # Count feedback messages for THIS step only (not shared across checkpoints)
+        step_feedback_count = sum(
+            1 for m in state.get("messages", [])
+            if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "sources"
+        )
+        result["iteration"] = step_feedback_count
         return result
 
     async def verify_precedents(state: DraftingState) -> dict:
-        return await verify_precedents_node(state, db)
+        async with async_session_factory() as session:
+            return await verify_precedents_node(state, session)
 
     async def draft_sections(state: DraftingState) -> dict:
         return await draft_sections_node(state, llm)
@@ -187,66 +127,38 @@ def build_drafting_graph(
 
     async def revise_section(state: DraftingState) -> dict:
         result = await revise_section_node(state, llm)
-        result["iteration"] = state.get("iteration", 0) + 1
+        # Count feedback messages for THIS step only (not shared across checkpoints)
+        step_feedback_count = sum(
+            1 for m in state.get("messages", [])
+            if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "draft"
+        )
+        result["iteration"] = step_feedback_count
         return result
 
     async def verify_final(state: DraftingState) -> dict:
-        return await verify_final_node(state, db)
+        async with async_session_factory() as session:
+            return await verify_final_node(state, session)
 
     # -- Checkpoint nodes (HITL via interrupt) ------------------------------
 
-    async def checkpoint_sources(state: DraftingState) -> dict:
-        """Pause for user review of verified precedents and provisions."""
-        response = interrupt({
-            "question": (
-                "Here are the verified precedents and statutory provisions. "
-                "Would you like to adjust?"
-            ),
-            "verified_precedents": state.get("verified_precedents", []),
-            "statutory_provisions": state.get("statutory_provisions", []),
-        })
-        return {
-            "messages": [
-                {
-                    "type": "user_feedback",
-                    "step": "sources",
-                    "content": response,
-                }
-            ],
-        }
+    checkpoint_sources = make_checkpoint_node(
+        "sources",
+        "Here are the verified precedents and statutory provisions. Would you like to adjust?",
+        {"verified_precedents": ("verified_precedents", []), "statutory_provisions": ("statutory_provisions", [])},
+    )
 
-    async def checkpoint_draft(state: DraftingState) -> dict:
-        """Pause for user review of the assembled draft document."""
-        response = interrupt({
-            "question": (
-                "Here is the draft document. "
-                "Would you like to revise any section?"
-            ),
-            "full_draft": state.get("full_draft", ""),
-            "section_drafts": state.get("section_drafts", {}),
-        })
-        return {
-            "messages": [
-                {
-                    "type": "user_feedback",
-                    "step": "draft",
-                    "content": response,
-                }
-            ],
-            "revision_feedback": response,
-        }
+    checkpoint_draft = make_checkpoint_node(
+        "draft",
+        "Here is the draft document. Would you like to revise any section?",
+        {"full_draft": ("full_draft", ""), "section_drafts": ("section_drafts", {})},
+        extra_return=lambda response: {"revision_feedback": response},
+    )
 
-    async def checkpoint_final(state: DraftingState) -> dict:
-        """Pause for final review before export."""
-        response = interrupt({
-            "question": "Final review. Ready to export?",
-            "full_draft": state.get("full_draft", ""),
-        })
-        return {
-            "messages": [
-                {"type": "user_feedback", "step": "final", "content": response}
-            ],
-        }
+    checkpoint_final = make_checkpoint_node(
+        "final",
+        "Final review. Ready to export?",
+        {"full_draft": ("full_draft", "")},
+    )
 
     # -- Register nodes -----------------------------------------------------
 
@@ -280,6 +192,7 @@ def build_drafting_graph(
         {
             "gather_provisions": "gather_provisions",
             "draft_sections": "draft_sections",
+            END: END,
         },
     )
 
@@ -289,7 +202,7 @@ def build_drafting_graph(
     graph.add_conditional_edges(
         "checkpoint_draft",
         route_after_draft,
-        {"revise_section": "revise_section", "verify_final": "verify_final"},
+        {"revise_section": "revise_section", "verify_final": "verify_final", END: END},
     )
 
     graph.add_edge("revise_section", "assemble")
@@ -304,8 +217,4 @@ def build_drafting_graph(
 
     # -- Compile ------------------------------------------------------------
 
-    compile_kwargs: dict[str, Any] = {}
-    if checkpointer is not None:
-        compile_kwargs["checkpointer"] = checkpointer
-
-    return graph.compile(**compile_kwargs)
+    return compile_graph(graph, checkpointer)

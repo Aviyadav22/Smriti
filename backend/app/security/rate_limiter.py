@@ -211,14 +211,13 @@ def rate_limit_dependency(
     max_requests, window_seconds = _parse_rate_limit(limit)
 
     async def _check_rate(request: Request) -> None:
+        # Build key before try block so it's available in the except fallback
+        client_ip = request.client.host if request.client else "unknown"
+        endpoint = request.url.path
+        key = f"rate:{client_ip}:{endpoint}"
+
         try:
             limiter = await _get_rate_limiter()
-
-            # Build a rate-limit key from the client's IP and the endpoint path
-            client_ip = request.client.host if request.client else "unknown"
-            endpoint = request.url.path
-            key = f"rate:{client_ip}:{endpoint}"
-
             allowed = await limiter.check_rate_limit(key, max_requests, window_seconds)
             if not allowed:
                 raise RateLimitExceededError(

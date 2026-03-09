@@ -30,7 +30,6 @@ def _make_state(**overrides) -> dict:
         "analysis": {},
         "prioritized_issues": [],
         "argument_order": [],
-        "strategy_points": [],
         "enhanced_memo": "",
         "messages": [],
         "iteration": 0,
@@ -554,7 +553,7 @@ class TestGenerateStrategyMemoNode:
         state = _make_state(analysis={})
 
         result = await generate_strategy_memo_node(state, llm)
-        assert result["enhanced_memo"] == "Memo with defaults."
+        assert result["enhanced_memo"].startswith("Memo with defaults.")
 
     @pytest.mark.asyncio
     async def test_passes_precedent_findings_to_prompt(self) -> None:

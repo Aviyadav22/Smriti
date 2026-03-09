@@ -26,86 +26,16 @@ from app.core.agents.nodes.research_nodes import (
     synthesize_memo_node,
     verify_citations_node,
 )
+from app.core.agents.routing_utils import compile_graph, make_checkpoint_node, make_feedback_router
 from app.core.agents.state import ResearchState
+from app.db.postgres import async_session_factory
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Router functions (module-level for testability)
-# ---------------------------------------------------------------------------
-
-
-def route_after_plan(state: ResearchState) -> str:
-    """Route after plan checkpoint.
-
-    If the user provided feedback and we haven't exceeded the max iteration
-    count, loop back to decompose. Otherwise proceed to search.
-    """
-    messages = state.get("messages", [])
-    last_feedback = next(
-        (
-            m
-            for m in reversed(messages)
-            if m.get("type") == "user_feedback" and m.get("step") == "plan"
-        ),
-        None,
-    )
-    if (
-        last_feedback
-        and last_feedback.get("content")
-        and state.get("iteration", 0) < 3
-    ):
-        return "decompose"
-    return "search"
-
-
-def route_after_findings(state: ResearchState) -> str:
-    """Route after findings checkpoint.
-
-    If the user provided feedback and we haven't exceeded the max iteration
-    count, loop back to search. Otherwise proceed to synthesize.
-    """
-    messages = state.get("messages", [])
-    last_feedback = next(
-        (
-            m
-            for m in reversed(messages)
-            if m.get("type") == "user_feedback" and m.get("step") == "findings"
-        ),
-        None,
-    )
-    if (
-        last_feedback
-        and last_feedback.get("content")
-        and state.get("iteration", 0) < 3
-    ):
-        return "search"
-    return "synthesize"
-
-
-def route_after_memo(state: ResearchState) -> str:
-    """Route after memo checkpoint.
-
-    If the user provided feedback and we haven't exceeded the max iteration
-    count, loop back to synthesize. Otherwise proceed to END.
-    """
-    messages = state.get("messages", [])
-    last_feedback = next(
-        (
-            m
-            for m in reversed(messages)
-            if m.get("type") == "user_feedback" and m.get("step") == "memo"
-        ),
-        None,
-    )
-    if (
-        last_feedback
-        and last_feedback.get("content")
-        and state.get("iteration", 0) < 3
-    ):
-        return "synthesize"
-    return END
+route_after_plan = make_feedback_router("plan", "decompose", "search", check_error=True)
+route_after_findings = make_feedback_router("findings", "search", "synthesize", check_error=True)
+route_after_memo = make_feedback_router("memo", "synthesize", check_error=True)
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +50,6 @@ def build_research_graph(
     embedder: Any,
     vector_store: Any,
     reranker: Any,
-    db: Any,
     checkpointer: Any | None = None,
 ) -> Any:
     """Build and compile the Research Agent LangGraph graph.
@@ -137,8 +66,6 @@ def build_research_graph(
         Vector store (Pinecone) for semantic search.
     reranker:
         Reranker (Cohere) for result re-ranking.
-    db:
-        Async database session for SQL queries.
     checkpointer:
         LangGraph checkpointer for persistence.  Can be ``None`` for
         unit testing (graph compiles without a checkpointer).
@@ -156,14 +83,19 @@ def build_research_graph(
 
     async def decompose(state: ResearchState) -> dict:
         result = await decompose_query_node(state, llm)
-        # Always increment iteration counter
-        result["iteration"] = state.get("iteration", 0) + 1
+        # Count feedback messages for THIS step only (not shared across checkpoints)
+        step_feedback_count = sum(
+            1 for m in state.get("messages", [])
+            if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "plan"
+        )
+        result["iteration"] = step_feedback_count
         return result
 
     async def search(state: ResearchState) -> dict:
-        return await parallel_search_node(
-            state, llm, embedder, vector_store, reranker, db
-        )
+        async with async_session_factory() as session:
+            return await parallel_search_node(
+                state, llm, embedder, vector_store, reranker, session
+            )
 
     async def gather(state: ResearchState) -> dict:
         return await gather_results_node(state)
@@ -175,7 +107,8 @@ def build_research_graph(
         return await synthesize_memo_node(state, llm)
 
     async def verify(state: ResearchState) -> dict:
-        return await verify_citations_node(state, db)
+        async with async_session_factory() as session:
+            return await verify_citations_node(state, session)
 
     # -- Checkpoint nodes (HITL via interrupt) ------------------------------
 
@@ -232,18 +165,11 @@ def build_research_graph(
             ],
         }
 
-    async def checkpoint_memo(state: ResearchState) -> dict:
-        """Pause for user review of draft memo."""
-        response = interrupt({
-            "question": "Here is the draft research memo. Any revisions?",
-            "draft_memo": state.get("draft_memo", ""),
-            "confidence": state.get("confidence", 0.0),
-        })
-        return {
-            "messages": [
-                {"type": "user_feedback", "step": "memo", "content": response}
-            ],
-        }
+    checkpoint_memo = make_checkpoint_node(
+        "memo",
+        "Here is the draft research memo. Any revisions?",
+        {"draft_memo": ("draft_memo", ""), "confidence": ("confidence", 0.0)},
+    )
 
     # -- Register nodes -----------------------------------------------------
 
@@ -267,7 +193,7 @@ def build_research_graph(
     graph.add_conditional_edges(
         "checkpoint_plan",
         route_after_plan,
-        {"decompose": "decompose", "search": "search"},
+        {"decompose": "decompose", "search": "search", END: END},
     )
 
     graph.add_edge("search", "gather")
@@ -277,7 +203,7 @@ def build_research_graph(
     graph.add_conditional_edges(
         "checkpoint_findings",
         route_after_findings,
-        {"search": "search", "synthesize": "synthesize"},
+        {"search": "search", "synthesize": "synthesize", END: END},
     )
 
     graph.add_edge("synthesize", "verify")
@@ -291,8 +217,4 @@ def build_research_graph(
 
     # -- Compile ------------------------------------------------------------
 
-    compile_kwargs: dict[str, Any] = {}
-    if checkpointer is not None:
-        compile_kwargs["checkpointer"] = checkpointer
-
-    return graph.compile(**compile_kwargs)
+    return compile_graph(graph, checkpointer)

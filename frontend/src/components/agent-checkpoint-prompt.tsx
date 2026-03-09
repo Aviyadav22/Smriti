@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -11,17 +11,74 @@ interface AgentCheckpointPromptProps {
     context?: Record<string, unknown>;
     onSubmit: (input: string) => void;
     disabled?: boolean;
+    /** When set, displays an inline error with a retry button. */
+    error?: string | null;
+    /** Called to clear the error state before retrying. */
+    onClearError?: () => void;
 }
 
-export function AgentCheckpointPrompt({ question, context, onSubmit, disabled }: AgentCheckpointPromptProps) {
+function renderValue(v: unknown): React.ReactNode {
+    if (v === null || v === undefined) return <span className="text-muted-foreground italic">—</span>;
+    if (typeof v === "boolean") return String(v);
+    if (typeof v === "number" || typeof v === "string") return String(v);
+    if (Array.isArray(v)) {
+        return (
+            <ul className="space-y-0.5 mt-0.5">
+                {v.map((item, i) => (
+                    <li key={i} className="list-disc ml-4">{renderValue(item)}</li>
+                ))}
+            </ul>
+        );
+    }
+    if (typeof v === "object") {
+        return (
+            <dl className="ml-2 border-l border-border pl-2 space-y-0.5 mt-0.5">
+                {Object.entries(v as Record<string, unknown>).map(([k, val]) => (
+                    <div key={k}>
+                        <dt className="font-medium capitalize inline">{k.replace(/_/g, " ")}:</dt>{" "}
+                        <dd className="inline">{renderValue(val)}</dd>
+                    </div>
+                ))}
+            </dl>
+        );
+    }
+    return String(v);
+}
+
+export function AgentCheckpointPrompt({ question, context, onSubmit, disabled, error, onClearError }: AgentCheckpointPromptProps) {
     const [input, setInput] = useState("");
+    const [submitting, setSubmitting] = useState(false);
+    const [lastInput, setLastInput] = useState("");
+
+    // Reset submitting state when an error arrives (so user can retry)
+    useEffect(() => {
+        if (error) setSubmitting(false);
+    }, [error]);
 
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
-        if (input.trim()) {
+        if (input.trim() && !submitting) {
+            setSubmitting(true);
+            setLastInput(input.trim());
+            onClearError?.();
             onSubmit(input.trim());
             setInput("");
         }
+    }
+
+    function handleChipClick(suggestion: string) {
+        if (submitting || disabled) return;
+        setSubmitting(true);
+        setLastInput(suggestion);
+        onClearError?.();
+        onSubmit(suggestion);
+    }
+
+    function handleRetry() {
+        if (!lastInput || submitting) return;
+        setSubmitting(true);
+        onClearError?.();
+        onSubmit(lastInput);
     }
 
     return (
@@ -37,20 +94,16 @@ export function AgentCheckpointPrompt({ question, context, onSubmit, disabled }:
 
                 {context && Object.keys(context).length > 0 && (
                     <div className="rounded-md bg-muted/50 p-3 space-y-2">
-                        {Object.entries(context).map(([key, value]) => (
+                        {Object.entries(context)
+                            .filter(([key]) => key !== "question")
+                            .map(([key, value]) => (
                             <div key={key}>
                                 <p className="text-xs font-medium text-muted-foreground capitalize">
                                     {key.replace(/_/g, " ")}
                                 </p>
-                                {Array.isArray(value) ? (
-                                    <ul className="text-xs text-foreground mt-1 space-y-0.5">
-                                        {value.map((item, i) => (
-                                            <li key={i} className="list-disc ml-4">{String(item)}</li>
-                                        ))}
-                                    </ul>
-                                ) : (
-                                    <p className="text-xs text-foreground mt-0.5">{String(value)}</p>
-                                )}
+                                <div className="text-xs text-foreground mt-0.5">
+                                    {renderValue(value)}
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -67,8 +120,8 @@ export function AgentCheckpointPrompt({ question, context, onSubmit, disabled }:
                             <button
                                 key={suggestion}
                                 type="button"
-                                disabled={disabled}
-                                onClick={() => setInput(suggestion)}
+                                disabled={disabled || submitting}
+                                onClick={() => handleChipClick(suggestion)}
                                 className="rounded-full border border-border bg-muted/50 px-3 py-1 text-xs text-foreground hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {suggestion}
@@ -87,10 +140,28 @@ export function AgentCheckpointPrompt({ question, context, onSubmit, disabled }:
                     <Button
                         type="submit"
                         size="sm"
-                        disabled={disabled || !input.trim()}
+                        disabled={disabled || submitting || !input.trim()}
                     >
-                        Submit
+                        {submitting ? "Submitting…" : "Submit"}
                     </Button>
+
+                    {/* Error with retry */}
+                    {error && (
+                        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400" role="alert">
+                            <span>{error}</span>
+                            {lastInput && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleRetry}
+                                    disabled={submitting}
+                                >
+                                    Retry
+                                </Button>
+                            )}
+                        </div>
+                    )}
                 </form>
             </CardContent>
         </Card>

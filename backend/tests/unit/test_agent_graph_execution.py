@@ -74,7 +74,9 @@ class TestResearchRouters:
             "draft_memo": "",
             "confidence": 0.0,
             "messages": [
-                {"type": "user_feedback", "step": "plan", "content": "refine this"}
+                {"type": "user_feedback", "step": "plan", "content": "refine this"},
+                {"type": "user_feedback", "step": "plan", "content": "more changes"},
+                {"type": "user_feedback", "step": "plan", "content": "still not right"},
             ],
             "iteration": 3,
         }
@@ -145,7 +147,6 @@ class TestCasePrepRouters:
             "analysis": {},
             "prioritized_issues": [],
             "argument_order": [],
-            "strategy_points": [],
             "enhanced_memo": "",
             "messages": [],
             "iteration": 0,
@@ -204,7 +205,6 @@ class TestGraphCompilation:
             embedder=MockDep(),
             vector_store=MockDep(),
             reranker=MockDep(),
-            db=MockDep(),
             checkpointer=None,
         )
         # Compiled graph should have an invoke method
@@ -218,12 +218,10 @@ class TestGraphCompilation:
 
         graph = build_case_prep_graph(
             llm=MockDep(),
-            flash_llm=MockDep(),
             embedder=MockDep(),
             vector_store=MockDep(),
             reranker=MockDep(),
             graph_store=MockDep(),
-            db=MockDep(),
             checkpointer=None,
         )
         assert hasattr(graph, "invoke") or hasattr(graph, "ainvoke")

@@ -9,19 +9,18 @@ decision points.
 Graph flow:
   START -> analyze_facts -> fetch_judge -> checkpoint_analysis ->
   search_precedents -> assess_strength -> generate_arguments ->
-  checkpoint_arguments -> counter_arguments -> judge_considerations ->
+  checkpoint_arguments -> counter_and_judge ->
   synthesize_strategy -> verify -> checkpoint_memo -> END
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.types import interrupt
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.interfaces import (
     EmbeddingProvider,
@@ -41,7 +40,9 @@ from app.core.agents.nodes.strategy_nodes import (
     synthesize_strategy_node,
     verify_citations_node,
 )
+from app.core.agents.routing_utils import compile_graph, make_checkpoint_node, make_feedback_router
 from app.core.agents.state import StrategyState
+from app.db.postgres import async_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -50,84 +51,9 @@ logger = logging.getLogger(__name__)
 # Router functions (module-level for testability)
 # ---------------------------------------------------------------------------
 
-
-def route_after_analysis(state: StrategyState) -> str:
-    """Route after analysis checkpoint.
-
-    If the user provided feedback and we haven't exceeded the max iteration
-    count, loop back to analyze_facts. Otherwise proceed to search_precedents.
-    """
-    if state.get("error"):
-        return END
-    messages = state.get("messages", [])
-    last_feedback = next(
-        (
-            m
-            for m in reversed(messages)
-            if m.get("type") == "user_feedback" and m.get("step") == "analysis"
-        ),
-        None,
-    )
-    if (
-        last_feedback
-        and last_feedback.get("content")
-        and state.get("iteration", 0) < 3
-    ):
-        return "analyze_facts"
-    return "search_precedents"
-
-
-def route_after_arguments(state: StrategyState) -> str:
-    """Route after arguments checkpoint.
-
-    If the user provided feedback and we haven't exceeded the max iteration
-    count, loop back to generate_arguments. Otherwise proceed to
-    counter_arguments.
-    """
-    if state.get("error"):
-        return END
-    messages = state.get("messages", [])
-    last_feedback = next(
-        (
-            m
-            for m in reversed(messages)
-            if m.get("type") == "user_feedback" and m.get("step") == "arguments"
-        ),
-        None,
-    )
-    if (
-        last_feedback
-        and last_feedback.get("content")
-        and state.get("iteration", 0) < 3
-    ):
-        return "generate_arguments"
-    return "counter_arguments"
-
-
-def route_after_memo(state: StrategyState) -> str:
-    """Route after memo checkpoint.
-
-    If the user provided feedback and we haven't exceeded the max iteration
-    count, loop back to synthesize_strategy. Otherwise proceed to END.
-    """
-    if state.get("error"):
-        return END
-    messages = state.get("messages", [])
-    last_feedback = next(
-        (
-            m
-            for m in reversed(messages)
-            if m.get("type") == "user_feedback" and m.get("step") == "memo"
-        ),
-        None,
-    )
-    if (
-        last_feedback
-        and last_feedback.get("content")
-        and state.get("iteration", 0) < 3
-    ):
-        return "synthesize_strategy"
-    return END
+route_after_analysis = make_feedback_router("analysis", "analyze_facts", "search_precedents", check_error=True)
+route_after_arguments = make_feedback_router("arguments", "generate_arguments", "counter_and_judge", check_error=True)
+route_after_memo = make_feedback_router("memo", "synthesize_strategy", check_error=True)
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +69,6 @@ def build_strategy_graph(
     vector_store: VectorStore,
     reranker: Reranker,
     graph_store: GraphStore,
-    db: AsyncSession,
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
     """Build and compile the Strategy Agent LangGraph graph.
@@ -162,8 +87,6 @@ def build_strategy_graph(
         Reranker (Cohere) for result re-ranking.
     graph_store:
         Graph store (Neo4j) for citation graph queries.
-    db:
-        Async database session for SQL queries.
     checkpointer:
         LangGraph checkpointer for persistence.  Can be ``None`` for
         unit testing (graph compiles without a checkpointer).
@@ -175,97 +98,83 @@ def build_strategy_graph(
     graph = StateGraph(StrategyState)
 
     # -- Node wrappers (closures capturing dependencies) --------------------
+    # DB-accessing nodes create fresh sessions via async_session_factory()
+    # because the FastAPI Depends(get_db) session closes before the
+    # StreamingResponse generator runs.
 
     async def analyze_facts(state: StrategyState) -> dict:
         result = await analyze_facts_node(state, flash_llm)
-        # Always increment iteration counter
-        result["iteration"] = state.get("iteration", 0) + 1
+        # Count feedback messages for THIS step only (not shared across checkpoints)
+        step_feedback_count = sum(
+            1 for m in state.get("messages", [])
+            if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "analysis"
+        )
+        result["iteration"] = step_feedback_count
         return result
 
     async def fetch_judge(state: StrategyState) -> dict:
-        return await fetch_judge_profile_node(state, db)
+        async with async_session_factory() as session:
+            return await fetch_judge_profile_node(state, session)
 
     async def search_precedents(state: StrategyState) -> dict:
-        return await search_precedents_node(
-            state, llm, embedder, vector_store, reranker, graph_store, db
-        )
+        async with async_session_factory() as session:
+            return await search_precedents_node(
+                state, llm, embedder, vector_store, reranker, graph_store, session
+            )
 
     async def assess_strength(state: StrategyState) -> dict:
         return await assess_strength_node(state, llm)
 
     async def generate_arguments(state: StrategyState) -> dict:
         result = await generate_arguments_node(state, llm)
-        result["iteration"] = state.get("iteration", 0) + 1
+        # Count feedback messages for THIS step only (not shared across checkpoints)
+        step_feedback_count = sum(
+            1 for m in state.get("messages", [])
+            if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "arguments"
+        )
+        result["iteration"] = step_feedback_count
         return result
 
-    async def counter_args(state: StrategyState) -> dict:
-        return await counter_arguments_node(state, llm)
-
-    async def judge_consider(state: StrategyState) -> dict:
-        return await judge_considerations_node(state, llm)
+    async def counter_and_judge(state: StrategyState) -> dict:
+        counter_result, judge_result = await asyncio.gather(
+            counter_arguments_node(state, llm),
+            judge_considerations_node(state, llm),
+        )
+        return {**counter_result, **judge_result}
 
     async def synthesize_strategy(state: StrategyState) -> dict:
         result = await synthesize_strategy_node(state, llm)
-        result["iteration"] = state.get("iteration", 0) + 1
+        # Count feedback messages for THIS step only (not shared across checkpoints)
+        step_feedback_count = sum(
+            1 for m in state.get("messages", [])
+            if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "memo"
+        )
+        result["iteration"] = step_feedback_count
         return result
 
     async def verify(state: StrategyState) -> dict:
-        return await verify_citations_node(state, db)
+        async with async_session_factory() as session:
+            return await verify_citations_node(state, session)
 
     # -- Checkpoint nodes (HITL via interrupt) ------------------------------
 
-    async def checkpoint_analysis(state: StrategyState) -> dict:
-        """Pause for user review of parsed facts and judge profile."""
-        response = interrupt({
-            "question": (
-                "Here is the fact analysis and judge profile. "
-                "Would you like to adjust?"
-            ),
-            "fact_analysis": state.get("fact_analysis", {}),
-            "judge_profile": state.get("judge_profile", {}),
-        })
-        return {
-            "messages": [
-                {
-                    "type": "user_feedback",
-                    "step": "analysis",
-                    "content": response,
-                }
-            ],
-        }
+    checkpoint_analysis = make_checkpoint_node(
+        "analysis",
+        "Here is the fact analysis and judge profile. Would you like to adjust?",
+        {"fact_analysis": ("fact_analysis", {}), "judge_profile": ("judge_profile", {})},
+    )
 
-    async def checkpoint_arguments(state: StrategyState) -> dict:
-        """Pause for user review of arguments and strength assessment."""
-        response = interrupt({
-            "question": (
-                "Here are the legal arguments and strength assessment. "
-                "Would you like to adjust?"
-            ),
-            "legal_arguments": state.get("legal_arguments", []),
-            "strength_assessment": state.get("strength_assessment", {}),
-        })
-        return {
-            "messages": [
-                {
-                    "type": "user_feedback",
-                    "step": "arguments",
-                    "content": response,
-                }
-            ],
-        }
+    checkpoint_arguments = make_checkpoint_node(
+        "arguments",
+        "Here are the legal arguments and strength assessment. Would you like to adjust?",
+        {"legal_arguments": ("legal_arguments", []), "strength_assessment": ("strength_assessment", {})},
+    )
 
-    async def checkpoint_memo(state: StrategyState) -> dict:
-        """Pause for user review of final strategy memo."""
-        response = interrupt({
-            "question": "Here is the strategy memo. Any revisions?",
-            "strategy_memo": state.get("strategy_memo", ""),
-            "confidence": state.get("confidence", 0.0),
-        })
-        return {
-            "messages": [
-                {"type": "user_feedback", "step": "memo", "content": response}
-            ],
-        }
+    checkpoint_memo = make_checkpoint_node(
+        "memo",
+        "Here is the strategy memo. Any revisions?",
+        {"strategy_memo": ("strategy_memo", ""), "confidence": ("confidence", 0.0)},
+    )
 
     # -- Register nodes -----------------------------------------------------
 
@@ -276,8 +185,7 @@ def build_strategy_graph(
     graph.add_node("assess_strength", assess_strength)
     graph.add_node("generate_arguments", generate_arguments)
     graph.add_node("checkpoint_arguments", checkpoint_arguments)
-    graph.add_node("counter_arguments", counter_args)
-    graph.add_node("judge_considerations", judge_consider)
+    graph.add_node("counter_and_judge", counter_and_judge)
     graph.add_node("synthesize_strategy", synthesize_strategy)
     graph.add_node("verify", verify)
     graph.add_node("checkpoint_memo", checkpoint_memo)
@@ -303,13 +211,12 @@ def build_strategy_graph(
         route_after_arguments,
         {
             "generate_arguments": "generate_arguments",
-            "counter_arguments": "counter_arguments",
+            "counter_and_judge": "counter_and_judge",
             END: END,
         },
     )
 
-    graph.add_edge("counter_arguments", "judge_considerations")
-    graph.add_edge("judge_considerations", "synthesize_strategy")
+    graph.add_edge("counter_and_judge", "synthesize_strategy")
     graph.add_edge("synthesize_strategy", "verify")
     graph.add_edge("verify", "checkpoint_memo")
 
@@ -321,8 +228,4 @@ def build_strategy_graph(
 
     # -- Compile ------------------------------------------------------------
 
-    compile_kwargs: dict[str, Any] = {}
-    if checkpointer is not None:
-        compile_kwargs["checkpointer"] = checkpointer
-
-    return graph.compile(**compile_kwargs)
+    return compile_graph(graph, checkpointer)

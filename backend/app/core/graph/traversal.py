@@ -31,7 +31,7 @@ async def get_neighborhood(
     try:
         records = await graph_store.query(
             cypher=(
-                "MATCH path = (center {id: $id})-[r*1..$depth]-(neighbor) "
+                f"MATCH path = (center {{id: $id}})-[r*1..{depth}]-(neighbor) "
                 "WITH center, neighbor, relationships(path) AS rels "
                 "RETURN DISTINCT "
                 "  neighbor.id AS id, "
@@ -44,10 +44,10 @@ async def get_neighborhood(
                 "   type: type(rel), context: rel.context}] AS edges "
                 "LIMIT $limit"
             ),
-            params={"id": case_id, "depth": depth, "limit": MAX_NODES},
+            params={"id": case_id, "limit": MAX_NODES},
         )
-    except (ConnectionError, RuntimeError) as exc:
-        logger.warning("Graph query failed for neighborhood: %s", exc)
+    except Exception as exc:
+        logger.warning("Graph query failed for neighborhood: %s", exc, exc_info=True)
         return {"nodes": [], "edges": []}
 
     # Build deduplicated node and edge sets
@@ -67,7 +67,7 @@ async def get_neighborhood(
                 "year": center_node.get("year"),
                 "cited_by_count": center_node.get("cited_by_count", 0),
             }
-    except (ConnectionError, RuntimeError):
+    except Exception:
         nodes_map[case_id] = {"id": case_id}
 
     for record in records:
@@ -111,7 +111,7 @@ async def get_citation_chain(
     try:
         records = await graph_store.query(
             cypher=(
-                "MATCH path = (start {id: $id})-[:CITES*1..$depth]->(cited) "
+                f"MATCH path = (start {{id: $id}})-[:CITES*1..{max_depth}]->(cited) "
                 "WITH cited, relationships(path) AS rels "
                 "RETURN DISTINCT "
                 "  cited.id AS id, "
@@ -124,9 +124,9 @@ async def get_citation_chain(
                 "   type: type(rel)}] AS edges "
                 "LIMIT $limit"
             ),
-            params={"id": case_id, "depth": max_depth, "limit": MAX_NODES},
+            params={"id": case_id, "limit": MAX_NODES},
         )
-    except (ConnectionError, RuntimeError) as exc:
+    except Exception as exc:
         logger.warning("Graph query failed for citation chain: %s", exc)
         return {"nodes": [], "edges": []}
 
@@ -174,24 +174,31 @@ async def get_authorities(
 
     Finds cases within 2 hops and ranks by cited_by_count.
     """
+    # Filter out cases marked as overruled in the graph (via is_overruled
+    # property on Case nodes). Cases without the property are assumed valid.
+    # TODO: Enrich Case nodes with is_overruled during ingestion based on
+    # treatment detection so this filter becomes effective. Until then,
+    # overruled cases may still appear in authority results.
     try:
         records = await graph_store.query(
             cypher=(
                 "MATCH (center {id: $id})-[*1..2]-(neighbor) "
                 "WHERE neighbor.id <> $id "
+                "  AND COALESCE(neighbor.is_overruled, false) = false "
                 "RETURN DISTINCT "
                 "  neighbor.id AS id, "
                 "  neighbor.title AS title, "
                 "  neighbor.citation AS citation, "
                 "  neighbor.court AS court, "
                 "  neighbor.year AS year, "
-                "  COALESCE(neighbor.cited_by_count, 0) AS cited_by_count "
+                "  COALESCE(neighbor.cited_by_count, 0) AS cited_by_count, "
+                "  COALESCE(neighbor.is_overruled, false) AS is_overruled "
                 "ORDER BY cited_by_count DESC "
                 "LIMIT $limit"
             ),
             params={"id": case_id, "limit": limit},
         )
-    except (ConnectionError, RuntimeError) as exc:
+    except Exception as exc:
         logger.warning("Graph query failed for authorities: %s", exc)
         return []
 
@@ -203,6 +210,7 @@ async def get_authorities(
             "court": r.get("court"),
             "year": r.get("year"),
             "cited_by_count": r.get("cited_by_count", 0),
+            "is_overruled": r.get("is_overruled", False),
         }
         for r in records
     ]
@@ -224,19 +232,19 @@ async def get_graph_stats(
             cached = await redis_client.get(cache_key)
             if cached is not None:
                 return json.loads(cached)
-        except (ConnectionError, TimeoutError):
+        except Exception:
             pass
 
     try:
         count_result = await graph_store.query(
-            cypher="MATCH (n:Judgment) RETURN count(n) AS total_judgments"
+            cypher="MATCH (n:Case) RETURN count(n) AS total_judgments"
         )
         edge_result = await graph_store.query(
             cypher="MATCH ()-[r]->() RETURN count(r) AS total_edges"
         )
         top_result = await graph_store.query(
             cypher=(
-                "MATCH (n:Judgment) "
+                "MATCH (n:Case) "
                 "WHERE n.cited_by_count IS NOT NULL "
                 "RETURN n.id AS id, n.title AS title, n.citation AS citation, "
                 "  n.cited_by_count AS cited_by_count "
@@ -244,7 +252,7 @@ async def get_graph_stats(
                 "LIMIT 10"
             )
         )
-    except (ConnectionError, RuntimeError) as exc:
+    except Exception as exc:
         logger.warning("Graph stats query failed: %s", exc)
         return {"total_judgments": 0, "total_edges": 0, "most_cited": []}
 
@@ -268,7 +276,7 @@ async def get_graph_stats(
             import json
 
             await redis_client.setex(cache_key, 900, json.dumps(stats))
-        except (ConnectionError, TimeoutError):
+        except Exception:
             pass
 
     return stats

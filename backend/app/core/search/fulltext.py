@@ -6,6 +6,7 @@ are parameterized via SQLAlchemy text() to prevent injection.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from sqlalchemy import text
@@ -54,20 +55,22 @@ async def search_fulltext(
 
     where_clauses, params = _build_filter_clauses(filters)
 
+    # Detect quoted phrases for phraseto_tsquery support
+    tsquery_expr = _build_tsquery_expr(query, params)
+
     # Core FTS clause
     where_clauses.insert(
-        0, "searchable_text @@ plainto_tsquery('english', :query)"
+        0, f"searchable_text @@ ({tsquery_expr})"
     )
-    params["query"] = query
     params["limit"] = limit
 
     where_sql = " AND ".join(where_clauses)
 
     sql = text(
         f"SELECT id, title, citation, "
-        f"ts_rank_cd(searchable_text, plainto_tsquery('english', :query)) AS rank, "
+        f"ts_rank_cd(searchable_text, ({tsquery_expr})) AS rank, "
         f"ts_headline('english', COALESCE(description, ''), "
-        f"plainto_tsquery('english', :query), "
+        f"({tsquery_expr}), "
         f"'StartSel=**, StopSel=**, MaxWords=50, MinWords=20') AS snippet "
         f"FROM cases "
         f"WHERE {where_sql} "
@@ -93,6 +96,50 @@ async def search_fulltext(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+# Regex to find double-quoted phrases in the query string
+_QUOTED_PHRASE_RE = re.compile(r'"([^"]+)"')
+
+
+def _build_tsquery_expr(query: str, params: dict) -> str:
+    """Build a tsquery SQL expression that uses ``phraseto_tsquery`` for quoted
+    phrases and ``plainto_tsquery`` for the remaining unquoted text.
+
+    Quoted parts are combined with ``&&`` (AND) with the plain part so that
+    the phrase proximity requirement is enforced.
+
+    Updates *params* in-place with the bind values for each query fragment.
+    Returns a raw SQL expression string (safe — all user input goes through
+    bind parameters).
+    """
+    phrases = _QUOTED_PHRASE_RE.findall(query)
+    remainder = _QUOTED_PHRASE_RE.sub("", query).strip()
+
+    # No quoted phrases — use the simple plainto_tsquery path
+    if not phrases:
+        params["query"] = query
+        return "plainto_tsquery('english', :query)"
+
+    parts: list[str] = []
+
+    for i, phrase in enumerate(phrases):
+        phrase_stripped = phrase.strip()
+        if not phrase_stripped:
+            continue
+        key = f"phrase_{i}"
+        params[key] = phrase_stripped
+        parts.append(f"phraseto_tsquery('english', :{key})")
+
+    if remainder:
+        params["query"] = remainder
+        parts.append("plainto_tsquery('english', :query)")
+
+    if not parts:
+        # Edge case: only empty quotes — fall back to full query
+        params["query"] = query
+        return "plainto_tsquery('english', :query)"
+
+    return " && ".join(parts)
 
 
 async def _search_sections(

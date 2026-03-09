@@ -1,5 +1,6 @@
 """Authentication endpoints: register, login, refresh."""
 
+import logging
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -23,6 +24,8 @@ from app.security.auth import (
 from app.security.audit import create_audit_log
 from app.security.rbac import get_current_user
 from app.security.auth import TokenPayload
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -253,7 +256,11 @@ async def refresh_token(
     )
 
 
-@router.post("/logout", status_code=200)
+@router.post(
+    "/logout",
+    status_code=200,
+    dependencies=[Depends(rate_limit_dependency("20/minute"))],
+)
 async def logout(
     body: LogoutRequest | None = None,
     current_user: TokenPayload = Depends(get_current_user),
@@ -268,8 +275,10 @@ async def logout(
         try:
             refresh_payload = await verify_refresh_token(body.refresh_token)
             await revoke_token(refresh_payload.jti, int(refresh_payload.exp.timestamp()))
-        except Exception:
-            pass
+        except (HTTPException, ValueError, RuntimeError) as exc:
+            logger.warning(
+                "Failed to revoke refresh token during logout: %s", exc
+            )
     return {"detail": "Successfully logged out"}
 
 

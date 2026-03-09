@@ -1,5 +1,7 @@
 """Ingestion endpoints for uploading documents."""
 
+import logging
+import os
 import uuid
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -11,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.postgres import get_db
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user, require_role
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -36,33 +40,41 @@ async def upload_document(
         tmp.write(content)
         tmp_path = tmp.name
 
-    # Create document record
-    await db.execute(
-        text(
-            "INSERT INTO documents (id, user_id, filename, storage_path, file_size, status) "
-            "VALUES (:id, :user_id, :filename, :storage_path, :file_size, :status)"
-        ),
-        {
-            "id": doc_id,
-            "user_id": current_user.sub,
-            "filename": file.filename or "unknown.pdf",
-            "storage_path": tmp_path,
-            "file_size": len(content),
+    try:
+        # Create document record
+        await db.execute(
+            text(
+                "INSERT INTO documents (id, user_id, filename, storage_path, file_size, status) "
+                "VALUES (:id, :user_id, :filename, :storage_path, :file_size, :status)"
+            ),
+            {
+                "id": doc_id,
+                "user_id": current_user.sub,
+                "filename": file.filename or "unknown.pdf",
+                "storage_path": tmp_path,
+                "file_size": len(content),
+                "status": "pending",
+            },
+        )
+        await db.commit()
+
+        from app.tasks.document_tasks import analyze_document
+
+        analyze_document.delay(doc_id)
+
+        return {
+            "document_id": doc_id,
+            "filename": file.filename,
             "status": "pending",
-        },
-    )
-    await db.commit()
-
-    from app.tasks.document_tasks import analyze_document
-
-    analyze_document.delay(doc_id)
-
-    return {
-        "document_id": doc_id,
-        "filename": file.filename,
-        "status": "pending",
-        "message": "Document queued for processing",
-    }
+            "message": "Document queued for processing",
+        }
+    except Exception:
+        # Clean up temp file if DB insert or task dispatch fails
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            logger.warning("Failed to clean up temp file: %s", tmp_path)
+        raise
 
 
 @router.get("/status/{document_id}")

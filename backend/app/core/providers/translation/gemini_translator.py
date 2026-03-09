@@ -18,6 +18,10 @@ class GeminiTranslator:
     def __init__(self, model: str | None = None) -> None:
         from google import genai
 
+        if not settings.gemini_api_key or not settings.gemini_api_key.strip():
+            raise ValueError(
+                "Gemini API key is required. Set GEMINI_API_KEY environment variable."
+            )
         self._client = genai.Client(api_key=settings.gemini_api_key)
         self._model = model or settings.gemini_flash_model
 

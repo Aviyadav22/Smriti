@@ -88,14 +88,6 @@ def mock_db() -> AsyncMock:
     return _mock_db_session()
 
 
-@pytest.fixture(autouse=True)
-def mock_rate_limiter():
-    """Allow all requests through rate limiter in tests."""
-    mock_limiter = AsyncMock()
-    mock_limiter.check_rate_limit.return_value = True
-    with patch("app.security.rate_limiter._get_rate_limiter", return_value=mock_limiter):
-        yield mock_limiter
-
 
 @pytest.fixture
 def client(app: FastAPI, mock_db: AsyncMock) -> TestClient:

@@ -83,6 +83,28 @@ class ApiError extends Error {
     }
 }
 
+/** Extract a human-readable message from any backend error response shape. */
+function extractErrorMessage(err: Record<string, unknown>, fallback: string): string {
+    // Format: { error: "message" } — custom handlers & rate limiter
+    if (typeof err.error === "string") return err.error;
+    // Format: { detail: "message" } — FastAPI HTTPException
+    if (typeof err.detail === "string") return err.detail;
+    // Format: { detail: [{msg: "..."}] } — Pydantic validation (422)
+    if (Array.isArray(err.detail)) {
+        const msgs = (err.detail as Record<string, unknown>[])
+            .map((e) => (typeof e.msg === "string" ? e.msg : ""))
+            .filter(Boolean);
+        return msgs.length > 0 ? msgs.join("; ") : fallback;
+    }
+    // Fallback: { message: "..." }
+    if (typeof err.message === "string") return err.message;
+    return fallback;
+}
+
+function extractErrorCode(err: Record<string, unknown>): string {
+    return typeof err.code === "string" ? err.code : "UNKNOWN";
+}
+
 async function apiFetch<T>(
     path: string,
     options: RequestInit = {},
@@ -112,8 +134,8 @@ async function apiFetch<T>(
                 headers["Authorization"] = `Bearer ${accessToken}`;
                 const retry = await fetch(`${API_BASE}${path}`, { ...options, headers });
                 if (!retry.ok) {
-                    const err = await retry.json().catch(() => ({ error: "Request failed" }));
-                    throw new ApiError(retry.status, err.code || "UNKNOWN", err.error || "Request failed");
+                    const err = await retry.json().catch(() => ({}));
+                    throw new ApiError(retry.status, extractErrorCode(err), extractErrorMessage(err, "Request failed"));
                 }
                 if (retry.status === 204) return undefined as T;
                 return retry.json() as Promise<T>;
@@ -123,8 +145,8 @@ async function apiFetch<T>(
         }
 
         if (!res.ok) {
-            const err = await res.json().catch(() => ({ error: "Request failed" }));
-            throw new ApiError(res.status, err.code || "UNKNOWN", err.error || "Request failed");
+            const err = await res.json().catch(() => ({}));
+            throw new ApiError(res.status, extractErrorCode(err), extractErrorMessage(err, "Request failed"));
         }
 
         if (res.status === 204) return undefined as T;
@@ -134,7 +156,22 @@ async function apiFetch<T>(
     }
 }
 
+// Mutex to prevent concurrent refresh requests
+let refreshPromise: Promise<boolean> | null = null;
+
 async function tryRefresh(): Promise<boolean> {
+    // If a refresh is already in progress, wait for it instead of starting another
+    if (refreshPromise) return refreshPromise;
+
+    refreshPromise = _doRefresh();
+    try {
+        return await refreshPromise;
+    } finally {
+        refreshPromise = null;
+    }
+}
+
+async function _doRefresh(): Promise<boolean> {
     try {
         const res = await fetch(`${API_BASE}/auth/refresh`, {
             method: "POST",
@@ -319,20 +356,37 @@ function _streamSSE<T>(
     }
 
     (async () => {
+        let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
         try {
-            const res = await fetch(`${API_BASE}${path}`, {
+            let res = await fetch(`${API_BASE}${path}`, {
                 method: "POST",
                 headers,
                 body: JSON.stringify(body),
                 signal: controller.signal,
             });
 
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({ error: "Request failed" }));
-                throw new ApiError(res.status, err.code || "UNKNOWN", err.error || err.detail || "Request failed");
+            if (res.status === 401 && refreshToken) {
+                const refreshed = await tryRefresh();
+                if (refreshed) {
+                    headers["Authorization"] = `Bearer ${accessToken}`;
+                    res = await fetch(`${API_BASE}${path}`, {
+                        method: "POST",
+                        headers,
+                        body: JSON.stringify(body),
+                        signal: controller.signal,
+                    });
+                } else {
+                    clearTokens();
+                    throw new ApiError(401, "UNAUTHORIZED", "Session expired");
+                }
             }
 
-            const reader = res.body?.getReader();
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new ApiError(res.status, extractErrorCode(err), extractErrorMessage(err, "Request failed"));
+            }
+
+            reader = res.body?.getReader();
             if (!reader) throw new Error("No response body");
 
             const decoder = new TextDecoder();
@@ -360,6 +414,13 @@ function _streamSSE<T>(
         } catch (err) {
             if ((err as Error).name === "AbortError") return;
             onError?.(err instanceof Error ? err : new Error(String(err)));
+        } finally {
+            // Always clean up the reader to prevent memory leaks.
+            // cancel() closes the underlying stream; releaseLock() detaches from the body.
+            if (reader) {
+                try { await reader.cancel(); } catch { /* already closed */ }
+                try { reader.releaseLock(); } catch { /* already released */ }
+            }
         }
     })();
 
@@ -473,18 +534,43 @@ export async function uploadDocument(file: File): Promise<DocumentUploadResponse
         headers["Authorization"] = `Bearer ${accessToken}`;
     }
 
-    const res = await fetch(`${API_BASE}/documents/upload`, {
-        method: "POST",
-        headers,
-        body: formData,
-    });
+    // 5-minute timeout for large file uploads
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
 
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Upload failed" }));
-        throw new ApiError(res.status, "UPLOAD_ERROR", err.detail || err.error || "Upload failed");
+    try {
+        let res = await fetch(`${API_BASE}/documents/upload`, {
+            method: "POST",
+            headers,
+            body: formData,
+            signal: controller.signal,
+        });
+
+        if (res.status === 401 && refreshToken) {
+            const refreshed = await tryRefresh();
+            if (refreshed) {
+                headers["Authorization"] = `Bearer ${accessToken}`;
+                res = await fetch(`${API_BASE}/documents/upload`, {
+                    method: "POST",
+                    headers,
+                    body: formData,
+                    signal: controller.signal,
+                });
+            } else {
+                clearTokens();
+                throw new ApiError(401, "UNAUTHORIZED", "Session expired");
+            }
+        }
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new ApiError(res.status, extractErrorCode(err), extractErrorMessage(err, "Upload failed"));
+        }
+
+        return res.json();
+    } finally {
+        clearTimeout(timeoutId);
     }
-
-    return res.json();
 }
 
 export async function getDocuments(
@@ -627,17 +713,31 @@ export async function exportDraft(
         headers["Authorization"] = `Bearer ${accessToken}`;
     }
 
-    const res = await fetch(
+    let res = await fetch(
         `${API_BASE}/agents/drafting/export/${executionId}?format=${format}`,
         { method: "POST", headers },
     );
 
+    if (res.status === 401 && refreshToken) {
+        const refreshed = await tryRefresh();
+        if (refreshed) {
+            headers["Authorization"] = `Bearer ${accessToken}`;
+            res = await fetch(
+                `${API_BASE}/agents/drafting/export/${executionId}?format=${format}`,
+                { method: "POST", headers },
+            );
+        } else {
+            clearTokens();
+            throw new ApiError(401, "UNAUTHORIZED", "Session expired");
+        }
+    }
+
     if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Export failed" }));
+        const err = await res.json().catch(() => ({}));
         throw new ApiError(
             res.status,
-            "EXPORT_ERROR",
-            err.detail || err.error || "Export failed",
+            extractErrorCode(err),
+            extractErrorMessage(err, "Export failed"),
         );
     }
 

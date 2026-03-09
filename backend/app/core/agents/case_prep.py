@@ -16,7 +16,6 @@ import logging
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import interrupt
 
 from app.core.agents.nodes.case_prep_nodes import (
     build_argument_order_node,
@@ -26,7 +25,9 @@ from app.core.agents.nodes.case_prep_nodes import (
     prioritize_issues_node,
     verify_citations_node,
 )
+from app.core.agents.routing_utils import compile_graph, make_checkpoint_node, make_feedback_router
 from app.core.agents.state import CasePrepState
+from app.db.postgres import async_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -47,76 +48,9 @@ def route_after_load(state: CasePrepState) -> str:
     return "prioritize"
 
 
-def route_after_issues(state: CasePrepState) -> str:
-    """Route after issues checkpoint.
-
-    If the user provided feedback and we haven't exceeded the max iteration
-    count, loop back to prioritize. Otherwise proceed to deep_search.
-    """
-    messages = state.get("messages", [])
-    last_feedback = next(
-        (
-            m
-            for m in reversed(messages)
-            if m.get("type") == "user_feedback" and m.get("step") == "issues"
-        ),
-        None,
-    )
-    if (
-        last_feedback
-        and last_feedback.get("content")
-        and state.get("iteration", 0) < 3
-    ):
-        return "prioritize"
-    return "deep_search"
-
-
-def route_after_strategy(state: CasePrepState) -> str:
-    """Route after strategy checkpoint.
-
-    If the user provided feedback and we haven't exceeded the max iteration
-    count, loop back to argument_order. Otherwise proceed to strategy_memo.
-    """
-    messages = state.get("messages", [])
-    last_feedback = next(
-        (
-            m
-            for m in reversed(messages)
-            if m.get("type") == "user_feedback" and m.get("step") == "strategy"
-        ),
-        None,
-    )
-    if (
-        last_feedback
-        and last_feedback.get("content")
-        and state.get("iteration", 0) < 3
-    ):
-        return "argument_order"
-    return "strategy_memo"
-
-
-def route_after_memo(state: CasePrepState) -> str:
-    """Route after memo checkpoint.
-
-    If the user provided feedback and we haven't exceeded the max iteration
-    count, loop back to strategy_memo. Otherwise proceed to END.
-    """
-    messages = state.get("messages", [])
-    last_feedback = next(
-        (
-            m
-            for m in reversed(messages)
-            if m.get("type") == "user_feedback" and m.get("step") == "memo"
-        ),
-        None,
-    )
-    if (
-        last_feedback
-        and last_feedback.get("content")
-        and state.get("iteration", 0) < 3
-    ):
-        return "strategy_memo"
-    return END
+route_after_issues = make_feedback_router("issues", "prioritize", "deep_search", check_error=True)
+route_after_strategy = make_feedback_router("strategy", "argument_order", "strategy_memo", check_error=True)
+route_after_memo = make_feedback_router("memo", "strategy_memo", check_error=True)
 
 
 # ---------------------------------------------------------------------------
@@ -127,12 +61,10 @@ def route_after_memo(state: CasePrepState) -> str:
 def build_case_prep_graph(
     *,
     llm: Any,
-    flash_llm: Any,
     embedder: Any,
     vector_store: Any,
     reranker: Any,
     graph_store: Any,
-    db: Any,
     checkpointer: Any | None = None,
 ) -> Any:
     """Build and compile the Case Prep Agent LangGraph graph.
@@ -141,8 +73,6 @@ def build_case_prep_graph(
     ----------
     llm:
         Primary LLM provider (Gemini Pro) for reasoning-heavy tasks.
-    flash_llm:
-        Fast LLM provider (Gemini Flash) for lighter tasks.
     embedder:
         Embedding provider for vector search.
     vector_store:
@@ -151,8 +81,6 @@ def build_case_prep_graph(
         Reranker (Cohere) for result re-ranking.
     graph_store:
         Graph store (Neo4j) for citation graph queries.
-    db:
-        Async database session for SQL queries.
     checkpointer:
         LangGraph checkpointer for persistence.  Can be ``None`` for
         unit testing (graph compiles without a checkpointer).
@@ -164,20 +92,29 @@ def build_case_prep_graph(
     graph = StateGraph(CasePrepState)
 
     # -- Node wrappers (closures capturing dependencies) --------------------
+    # DB-accessing nodes create fresh sessions via async_session_factory()
+    # because the FastAPI Depends(get_db) session closes before the
+    # StreamingResponse generator runs.
 
     async def load_analysis(state: CasePrepState) -> dict:
-        return await load_analysis_node(state, db)
+        async with async_session_factory() as session:
+            return await load_analysis_node(state, session)
 
     async def prioritize(state: CasePrepState) -> dict:
         result = await prioritize_issues_node(state, llm)
-        # Always increment iteration counter
-        result["iteration"] = state.get("iteration", 0) + 1
+        # Count feedback messages for THIS step only (not shared across checkpoints)
+        step_feedback_count = sum(
+            1 for m in state.get("messages", [])
+            if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "issues"
+        )
+        result["iteration"] = step_feedback_count
         return result
 
     async def deep_search(state: CasePrepState) -> dict:
-        return await deep_precedent_search_node(
-            state, llm, embedder, vector_store, reranker, graph_store, db
-        )
+        async with async_session_factory() as session:
+            return await deep_precedent_search_node(
+                state, llm, embedder, vector_store, reranker, graph_store, session
+            )
 
     async def argument_order(state: CasePrepState) -> dict:
         return await build_argument_order_node(state, llm)
@@ -186,55 +123,28 @@ def build_case_prep_graph(
         return await generate_strategy_memo_node(state, llm)
 
     async def verify(state: CasePrepState) -> dict:
-        return await verify_citations_node(state, db)
+        async with async_session_factory() as session:
+            return await verify_citations_node(state, session)
 
     # -- Checkpoint nodes (HITL via interrupt) ------------------------------
 
-    async def checkpoint_issues(state: CasePrepState) -> dict:
-        """Pause for user review of prioritized issues."""
-        response = interrupt({
-            "question": (
-                "Here are the prioritized legal issues. "
-                "Reorder or drop any?"
-            ),
-            "prioritized_issues": state.get("prioritized_issues", []),
-        })
-        return {
-            "messages": [
-                {"type": "user_feedback", "step": "issues", "content": response}
-            ],
-        }
+    checkpoint_issues = make_checkpoint_node(
+        "issues",
+        "Here are the prioritized legal issues. Reorder or drop any?",
+        {"prioritized_issues": ("prioritized_issues", [])},
+    )
 
-    async def checkpoint_strategy(state: CasePrepState) -> dict:
-        """Pause for user review of argument order."""
-        response = interrupt({
-            "question": (
-                "Here is the recommended argument order. "
-                "Adjust strategy?"
-            ),
-            "argument_order": state.get("argument_order", []),
-        })
-        return {
-            "messages": [
-                {
-                    "type": "user_feedback",
-                    "step": "strategy",
-                    "content": response,
-                }
-            ],
-        }
+    checkpoint_strategy = make_checkpoint_node(
+        "strategy",
+        "Here is the recommended argument order. Adjust strategy?",
+        {"argument_order": ("argument_order", [])},
+    )
 
-    async def checkpoint_memo(state: CasePrepState) -> dict:
-        """Pause for user review of strategy memo."""
-        response = interrupt({
-            "question": "Here is the strategy memo. Any revisions?",
-            "enhanced_memo": state.get("enhanced_memo", ""),
-        })
-        return {
-            "messages": [
-                {"type": "user_feedback", "step": "memo", "content": response}
-            ],
-        }
+    checkpoint_memo = make_checkpoint_node(
+        "memo",
+        "Here is the strategy memo. Any revisions?",
+        {"enhanced_memo": ("enhanced_memo", "")},
+    )
 
     # -- Register nodes -----------------------------------------------------
 
@@ -263,7 +173,7 @@ def build_case_prep_graph(
     graph.add_conditional_edges(
         "checkpoint_issues",
         route_after_issues,
-        {"prioritize": "prioritize", "deep_search": "deep_search"},
+        {"prioritize": "prioritize", "deep_search": "deep_search", END: END},
     )
 
     graph.add_edge("deep_search", "argument_order")
@@ -272,7 +182,7 @@ def build_case_prep_graph(
     graph.add_conditional_edges(
         "checkpoint_strategy",
         route_after_strategy,
-        {"argument_order": "argument_order", "strategy_memo": "strategy_memo"},
+        {"argument_order": "argument_order", "strategy_memo": "strategy_memo", END: END},
     )
 
     graph.add_edge("strategy_memo", "verify")
@@ -286,8 +196,4 @@ def build_case_prep_graph(
 
     # -- Compile ------------------------------------------------------------
 
-    compile_kwargs: dict[str, Any] = {}
-    if checkpointer is not None:
-        compile_kwargs["checkpointer"] = checkpointer
-
-    return graph.compile(**compile_kwargs)
+    return compile_graph(graph, checkpointer)

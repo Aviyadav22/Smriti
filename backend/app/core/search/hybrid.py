@@ -10,6 +10,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 from dataclasses import asdict, dataclass, field
 
 from sqlalchemy import text
@@ -64,6 +65,7 @@ class SearchResponse:
     page_size: int
     query_understanding: QueryUnderstanding
     facets: dict = field(default_factory=dict)
+    outcome_bias_warning: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +157,12 @@ async def hybrid_search(
     search_query = qu.expanded_query or query
 
     # Expand old-law / new-law statute references (IPC<->BNS, CrPC<->BNSS, IEA<->BSA)
-    search_query = expand_statute_references(search_query)
+    # Returns (original_query, expanded_terms) — expanded terms use OR syntax
+    # which is meaningful for FTS but not for vector embeddings.
+    search_query, expanded_terms = expand_statute_references(search_query)
+    fts_query = (
+        " OR ".join([search_query, *expanded_terms]) if expanded_terms else search_query
+    )
 
     strategy = qu.search_strategy
 
@@ -181,7 +188,7 @@ async def hybrid_search(
             return response
         # Fallback: FTS only for exact_match when no citation found
         fts_results = await search_fulltext(
-            search_query,
+            fts_query,
             filters=merged_filters,
             limit=settings.search_fts_top_k,
             db=db,
@@ -198,7 +205,7 @@ async def hybrid_search(
             filters=merged_filters,
         )
         fts_task = search_fulltext(
-            search_query,
+            fts_query,
             filters=merged_filters,
             limit=settings.search_fts_top_k,
             db=db,
@@ -297,6 +304,9 @@ async def hybrid_search(
     if len(enriched) < len(page_ids):
         total_count = len(enriched)
 
+    # 8b. Check for outcome bias on bail/sentence queries
+    outcome_bias = await _check_outcome_bias(query, reranked_ids, db)
+
     response = SearchResponse(
         results=enriched,
         total_count=total_count,
@@ -304,6 +314,7 @@ async def hybrid_search(
         page_size=effective_page_size,
         query_understanding=qu,
         facets=facets,
+        outcome_bias_warning=outcome_bias,
     )
 
     # 9. Cache result
@@ -485,7 +496,7 @@ async def _enrich_results(
 
     sql = text(
         f"SELECT id, title, citation, court, year, decision_date, "
-        f"case_type, judge, bench_type "
+        f"case_type, judge, bench_type, disposal_nature "
         f"FROM cases WHERE id IN ({placeholders})"
     )
 
@@ -587,6 +598,61 @@ async def _build_facets(
 
 
 # ---------------------------------------------------------------------------
+# Outcome bias detection
+# ---------------------------------------------------------------------------
+
+_OUTCOME_BIAS_KEYWORDS = re.compile(r"\b(bail|sentence|sentencing)\b", re.IGNORECASE)
+
+
+async def _check_outcome_bias(
+    query: str,
+    case_ids: list[str],
+    db: AsyncSession,
+) -> str | None:
+    """Detect if all top results share the same disposal_nature for bail/sentence queries.
+
+    Returns a warning string if bias is detected, ``None`` otherwise.
+    This is a lightweight informational check — results are never filtered.
+    """
+    if not _OUTCOME_BIAS_KEYWORDS.search(query):
+        return None
+
+    if len(case_ids) < 2:
+        return None
+
+    # Check top 10 results at most
+    check_ids = case_ids[:10]
+    placeholders = ", ".join(f":bias_id_{i}" for i in range(len(check_ids)))
+    params = {f"bias_id_{i}": cid for i, cid in enumerate(check_ids)}
+
+    result = await db.execute(
+        text(
+            f"SELECT disposal_nature FROM cases "
+            f"WHERE id IN ({placeholders}) AND disposal_nature IS NOT NULL"
+        ),
+        params,
+    )
+    rows = result.mappings().all()
+    natures = {row["disposal_nature"] for row in rows}
+
+    if len(natures) == 1 and len(rows) >= 2:
+        nature = natures.pop()
+        logger.warning(
+            "Outcome bias detected: all %d top results have disposal_nature='%s' "
+            "for query: %s",
+            len(rows),
+            nature,
+            query,
+        )
+        return (
+            f"All top results have the same outcome ({nature}). "
+            f"Consider broadening your search to see cases with different outcomes."
+        )
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Redis caching
 # ---------------------------------------------------------------------------
 
@@ -645,6 +711,7 @@ def _serialize_response(response: SearchResponse) -> dict:
         "page_size": response.page_size,
         "query_understanding": asdict(response.query_understanding),
         "facets": response.facets,
+        "outcome_bias_warning": response.outcome_bias_warning,
     }
 
 
@@ -671,4 +738,5 @@ def _deserialize_response(data: dict) -> SearchResponse:
         page_size=data["page_size"],
         query_understanding=qu,
         facets=data.get("facets", {}),
+        outcome_bias_warning=data.get("outcome_bias_warning"),
     )

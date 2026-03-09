@@ -223,7 +223,7 @@ class TestParallelSearchNode:
             FakeItem(case_id="c1", score=0.9, title="Case One", snippet="snippet one"),
         ]
 
-        with patch("app.core.agents.nodes.research_nodes.hybrid_search", new_callable=AsyncMock) as mock_search, \
+        with patch("app.core.agents.nodes.common.hybrid_search", new_callable=AsyncMock) as mock_search, \
              patch("app.core.agents.nodes.research_nodes.enrich_results_with_ratio", new_callable=AsyncMock) as mock_enrich:
             mock_search.return_value = mock_response
             mock_enrich.side_effect = lambda results, db: results
@@ -252,7 +252,7 @@ class TestParallelSearchNode:
 
     @pytest.mark.asyncio
     async def test_handles_search_failure_gracefully(self) -> None:
-        with patch("app.core.agents.nodes.research_nodes.hybrid_search", new_callable=AsyncMock) as mock_search:
+        with patch("app.core.agents.nodes.common.hybrid_search", new_callable=AsyncMock) as mock_search:
             mock_search.side_effect = RuntimeError("search down")
 
             state = _make_state(sub_queries=["q1"])

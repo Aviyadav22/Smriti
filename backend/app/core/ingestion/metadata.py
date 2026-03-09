@@ -69,7 +69,7 @@ async def extract_metadata_llm(
             field_names = {f.name for f in fields(CaseMetadata)}
             filtered = {k: v for k, v in result.items() if k in field_names}
             return CaseMetadata(**filtered)
-        except (ConnectionError, TimeoutError) as exc:
+        except Exception as exc:
             if attempt == max_retries - 1:
                 logger.error(
                     "LLM metadata extraction failed after %d retries: %s",

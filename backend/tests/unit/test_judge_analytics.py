@@ -148,7 +148,7 @@ class TestGetJudgeProfile:
         # 2. cases_authored count
         # 3. cases_by_year
         # 4. disposal_patterns
-        # 5. bench_combinations (will raise, then fallback)
+        # 5. bench fallback — select(Case.judge).where(...)
         # 6. top_cited_judgments
         # 7. acts_frequency
         # 8. case_types
@@ -160,8 +160,9 @@ class TestGetJudgeProfile:
             SimpleNamespace(disposal_nature="Allowed", count=7),
             SimpleNamespace(disposal_nature="Dismissed", count=6),
         ]
-        bench_rows = [
-            SimpleNamespace(co_judge="Justice B", count=4),
+        bench_fallback_rows = [
+            (["Justice A", "Justice B"],),
+            (["Justice A", "Justice B", "Justice C"],),
         ]
         cited_rows = [
             SimpleNamespace(
@@ -187,7 +188,7 @@ class TestGetJudgeProfile:
             7,   # cases_authored
             year_rows,
             disposal_rows,
-            bench_rows,  # bench query succeeds
+            bench_fallback_rows,  # bench fallback query
             cited_rows,
             acts_rows,
             type_rows,
@@ -210,68 +211,28 @@ class TestGetJudgeProfile:
         assert result.case_types == {"Criminal Appeal": 8, "Civil Appeal": 5}
 
     @pytest.mark.asyncio
-    async def test_profile_bench_combinations_fallback(self) -> None:
-        """Test that bench combinations fallback works when main query fails."""
+    async def test_profile_bench_combinations(self) -> None:
+        """Test that bench combinations are computed correctly."""
         session = _make_mock_session()
 
-        case_id = uuid.uuid4()
-
-        # Build individual mock results
-        mock_results = []
-
-        # 1. total_cases = 5
-        r1 = MagicMock()
-        r1.scalar_one_or_none.return_value = 5
-        mock_results.append(r1)
-
-        # 2. cases_authored = 3
-        r2 = MagicMock()
-        r2.scalar_one_or_none.return_value = 3
-        mock_results.append(r2)
-
-        # 3. cases_by_year
-        r3 = MagicMock()
-        r3.all.return_value = [SimpleNamespace(year=2022, count=5)]
-        mock_results.append(r3)
-
-        # 4. disposal_patterns
-        r4 = MagicMock()
-        r4.all.return_value = []
-        mock_results.append(r4)
-
-        # 5. bench_combinations — raise an exception to trigger fallback
-        r5_error = RuntimeError("Unsupported SQL")
-
-        # 6. fallback bench query — returns cases with judge arrays
-        r6 = MagicMock()
-        r6.all.return_value = [
+        # Sequence: total_cases, authored, years, disposal, bench_fallback,
+        #           cited, acts, types
+        bench_rows = [
             (["Justice A", "Justice B", "Justice C"],),
             (["Justice A", "Justice B"],),
         ]
-        mock_results_after_error = [r6]
 
-        # 7. top_cited_judgments
-        r7 = MagicMock()
-        r7.all.return_value = []
-
-        # 8. acts_frequency
-        r8 = MagicMock()
-        r8.all.return_value = []
-
-        # 9. case_types
-        r9 = MagicMock()
-        r9.all.return_value = []
-
-        # Set up side_effect: items 1-4 succeed, item 5 raises, then fallback + rest
-        all_results = [r1, r2, r3, r4, r5_error, r6, r7, r8, r9]
-
-        async def execute_side_effect(*args: object, **kwargs: object) -> MagicMock:
-            val = all_results.pop(0)
-            if isinstance(val, BaseException):
-                raise val
-            return val
-
-        session.execute = AsyncMock(side_effect=execute_side_effect)
+        _mock_execute_returns(
+            session,
+            5,   # total_cases
+            3,   # cases_authored
+            [SimpleNamespace(year=2022, count=5)],  # years
+            [],  # disposal
+            bench_rows,  # bench fallback
+            [],  # cited
+            [],  # acts
+            [],  # types
+        )
 
         service = JudgeAnalyticsService(session)
         result = await service.get_judge_profile("Justice A")

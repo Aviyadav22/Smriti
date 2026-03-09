@@ -326,15 +326,15 @@ def upgrade() -> None:
         BEGIN
             NEW.searchable_text :=
                 setweight(to_tsvector('english', COALESCE(NEW.title, '')), 'A') ||
-                setweight(to_tsvector('english', COALESCE(NEW.citation, '')), 'A') ||
-                setweight(to_tsvector('english', COALESCE(NEW.court, '')), 'B') ||
-                setweight(to_tsvector('english', COALESCE(array_to_string(NEW.judge, ' '), '')), 'B') ||
-                setweight(to_tsvector('english', COALESCE(NEW.petitioner, '')), 'B') ||
-                setweight(to_tsvector('english', COALESCE(NEW.respondent, '')), 'B') ||
-                setweight(to_tsvector('english', COALESCE(NEW.description, '')), 'C') ||
-                setweight(to_tsvector('english', COALESCE(NEW.ratio_decidendi, '')), 'C') ||
-                setweight(to_tsvector('english', COALESCE(array_to_string(NEW.keywords, ' '), '')), 'D') ||
-                setweight(to_tsvector('english', COALESCE(array_to_string(NEW.acts_cited, ' '), '')), 'D');
+                setweight(to_tsvector('english', COALESCE(NEW.ratio_decidendi, '')), 'A') ||
+                setweight(to_tsvector('english', COALESCE(array_to_string(NEW.acts_cited, ' '), '')), 'B') ||
+                setweight(to_tsvector('english', COALESCE(array_to_string(NEW.keywords, ' '), '')), 'B') ||
+                setweight(to_tsvector('english', COALESCE(array_to_string(NEW.judge, ' '), '')), 'C') ||
+                setweight(to_tsvector('english', COALESCE(NEW.petitioner, '')), 'C') ||
+                setweight(to_tsvector('english', COALESCE(NEW.respondent, '')), 'C') ||
+                setweight(to_tsvector('english', COALESCE(NEW.citation, '')), 'D') ||
+                setweight(to_tsvector('english', COALESCE(NEW.court, '')), 'D') ||
+                setweight(to_tsvector('english', COALESCE(NEW.description, '')), 'D');
             NEW.updated_at := NOW();
             RETURN NEW;
         END;

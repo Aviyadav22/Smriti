@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
-from app.core.legal.prompts import CHAT_SYSTEM_PROMPT, CHAT_USER_WITH_CONTEXT
+from app.core.legal.prompts import CHAT_SYSTEM_PROMPT, CHAT_USER_WITH_CONTEXT, LEGAL_DISCLAIMER
 from app.core.legal.treatment import has_overruling_language
 from app.core.search.hybrid import hybrid_search
 from app.core.search.query import SearchFilters
@@ -140,10 +140,15 @@ async def rag_respond(
             question=question,
         )
 
-        # 5.5 Context size guard -- truncate if prompt exceeds safe limit
+        # 5.5 Context size guard -- truncate if prompt exceeds safe limit.
+        # IMPORTANT: `sources` is reassigned here so that downstream steps
+        # (source event yielding in step 7, DB persistence in step 8) only
+        # reference the sources that were actually sent to the LLM.
         if len(user_prompt) > MAX_PROMPT_CHARS:
             original_len = len(user_prompt)
-            context_text = _format_context(sources[:3])
+            original_count = len(sources)
+            sources = sources[:3]
+            context_text = _format_context(sources)
             history_text = _format_history(chat_history[-4:])
             user_prompt = CHAT_USER_WITH_CONTEXT.format(
                 retrieved_context=context_text,
@@ -151,7 +156,11 @@ async def rag_respond(
                 question=question,
             )
             logger.warning(
-                "Prompt truncated from %d to %d chars", original_len, len(user_prompt)
+                "Prompt truncated from %d to %d chars; sources reduced from %d to %d",
+                original_len,
+                len(user_prompt),
+                original_count,
+                len(sources),
             )
 
         # 6. Stream response from LLM
@@ -166,20 +175,34 @@ async def rag_respond(
 
         response_text = "".join(full_response)
 
-        # 7. Yield source events
+        # 7. Yield source events (with treatment warnings where applicable)
+        # NOTE: Only sources actually included in the LLM context are yielded
+        # (the `sources` list may have been truncated in step 5.5).
         for i, source in enumerate(sources):
-            yield RAGEvent(
-                type="source",
-                data={
-                    "index": i + 1,
-                    "case_id": source.case_id,
-                    "title": source.title,
-                    "citation": source.citation,
-                    "court": source.court,
-                    "year": source.year,
-                    "score": round(source.score, 4),
-                },
-            )
+            source_data: dict = {
+                "index": i + 1,
+                "case_id": source.case_id,
+                "title": source.title,
+                "citation": source.citation,
+                "court": source.court,
+                "year": source.year,
+                "score": round(source.score, 4),
+            }
+            # Check for overruling language in ratio/chunk and flag for the UI.
+            # LIMITATION: This heuristic only examines text within the chunk and
+            # ratio_decidendi fields.  The database does not currently store a
+            # dedicated treatment status (e.g. "overruled", "affirmed") per case,
+            # and the Neo4j citation graph is not queried here for treatment edges.
+            # A future improvement should query the graph DB for authoritative
+            # treatment status (e.g. OVERRULED_BY / DISTINGUISHED_BY edges) to
+            # provide more reliable warnings.
+            check_text = (source.ratio or "") + " " + (source.chunk_text or "")
+            if check_text.strip() and has_overruling_language(check_text):
+                source_data["treatment_warning"] = (
+                    "This case may have been overruled or distinguished. "
+                    "Verify its current status before relying on it."
+                )
+            yield RAGEvent(type="source", data=source_data)
 
         # 8. Save messages to DB
         await _save_user_message(db, session_id, question)
@@ -195,6 +218,18 @@ async def rag_respond(
             for s in sources
         ]
         await _save_assistant_message(db, session_id, response_text, source_json)
+
+        # 8.5 Yield disclaimer event for UI to display
+        yield RAGEvent(
+            type="disclaimer",
+            data={
+                "message": (
+                    "This is AI-generated legal analysis by Smriti AI. "
+                    "It does not constitute legal advice. Verify all citations "
+                    "and holdings independently before reliance."
+                ),
+            },
+        )
 
         yield RAGEvent(
             type="done",

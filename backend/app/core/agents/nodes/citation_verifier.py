@@ -1,8 +1,9 @@
 """Human-readable citation verification for agent memos.
 
-Extracts Indian legal citations (SCC, AIR, SCC OnLine, INSC, SCR, CrLJ, SCALE)
-from LLM-generated text, verifies them against the database, and checks whether
-they are grounded in the search results that the agent actually retrieved.
+Extracts Indian legal citations (SCC, AIR, SCC OnLine, INSC, SCR, CrLJ, SCALE,
+BLR, KLT, GLR, JT) from LLM-generated text, verifies them against the database,
+and checks whether they are grounded in the search results that the agent actually
+retrieved.
 
 This closes the hallucination gap where an LLM writes a plausible-looking citation
 like "(2023) 5 SCC 123" that was never in the search results and may not exist.
@@ -18,8 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.legal.extractor import (
     AIR_PATTERN,
+    BLR_PATTERN,
     CRLJ_PATTERN,
+    GLR_PATTERN,
     INSC_PATTERN,
+    JT_PATTERN,
+    KLT_PATTERN,
     SCALE_PATTERN,
     SCC_ONLINE_PATTERN,
     SCC_PATTERN,
@@ -39,6 +44,10 @@ _CITATION_PATTERNS = [
     SCR_PATTERN,
     CRLJ_PATTERN,
     SCALE_PATTERN,
+    BLR_PATTERN,
+    KLT_PATTERN,
+    GLR_PATTERN,
+    JT_PATTERN,
 ]
 
 

@@ -178,22 +178,27 @@ export default function StrategyAgentPage() {
         }
     }, [caseFacts, desiredRelief, targetJudge, targetBench, starting, handleEvent]);
 
+    const [checkpointError, setCheckpointError] = useState<string | null>(null);
+
     const handleResume = useCallback(
         (input: string) => {
             if (!executionId) return;
+            const savedCheckpoint = checkpoint;
             setCheckpoint(null);
+            setCheckpointError(null);
             setIsRunning(true);
             abortRef.current = resumeAgentExecution(
                 executionId,
                 input,
                 handleEvent,
                 (err) => {
-                    setError(err.message);
+                    setCheckpoint(savedCheckpoint);
+                    setCheckpointError(err.message);
                     setIsRunning(false);
                 },
             );
         },
-        [executionId, handleEvent],
+        [executionId, checkpoint, handleEvent],
     );
 
     const handleReset = useCallback(() => {
@@ -357,6 +362,8 @@ export default function StrategyAgentPage() {
                                 context={checkpoint.context}
                                 onSubmit={handleResume}
                                 disabled={isRunning}
+                                error={checkpointError}
+                                onClearError={() => setCheckpointError(null)}
                             />
                         )}
 

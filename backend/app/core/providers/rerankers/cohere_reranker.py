@@ -6,6 +6,13 @@ import asyncio
 import logging
 
 import cohere
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from app.core.config import settings
 from app.core.interfaces.reranker import RerankResult
@@ -15,14 +22,30 @@ logger = logging.getLogger(__name__)
 # Timeout for reranker calls (seconds)
 _RERANK_TIMEOUT = 30
 
+_cohere_retry = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    retry=retry_if_exception_type((
+        asyncio.TimeoutError, ConnectionError, OSError,
+        cohere.TooManyRequestsError,
+    )),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+
 
 class CohereReranker:
     """Cohere reranker implementing Reranker protocol."""
 
     def __init__(self) -> None:
+        if not settings.cohere_api_key or not settings.cohere_api_key.strip():
+            raise ValueError(
+                "Cohere API key is required. Set COHERE_API_KEY environment variable."
+            )
         self._client = cohere.AsyncClientV2(api_key=settings.cohere_api_key)
         self._model = settings.cohere_rerank_model
 
+    @_cohere_retry
     async def rerank(
         self,
         query: str,
