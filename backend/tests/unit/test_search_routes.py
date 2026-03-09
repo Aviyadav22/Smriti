@@ -276,28 +276,20 @@ class TestFacetsEndpoint:
         """The facets endpoint returns court, case_type, bench_type, and year ranges."""
         mock_get_redis.return_value = None
 
-        # Mock DB session with multiple execute calls
+        # Mock DB session — single combined query returns all facets at once
         mock_db = AsyncMock()
 
-        courts_result = MagicMock()
-        courts_result.all.return_value = [("Supreme Court of India",), ("Delhi High Court",)]
+        combined_row = {
+            "courts": ["Supreme Court of India", "Delhi High Court"],
+            "case_types": ["Civil Appeal", "Writ Petition"],
+            "bench_types": ["Division Bench", "Full Bench"],
+            "min_year": 1950,
+            "max_year": 2024,
+        }
+        combined_result = MagicMock()
+        combined_result.mappings.return_value.one_or_none.return_value = combined_row
 
-        case_types_result = MagicMock()
-        case_types_result.all.return_value = [("Civil Appeal",), ("Writ Petition",)]
-
-        bench_types_result = MagicMock()
-        bench_types_result.all.return_value = [("Division Bench",), ("Full Bench",)]
-
-        years_row = {"min_year": 1950, "max_year": 2024}
-        years_result = MagicMock()
-        years_result.mappings.return_value.one_or_none.return_value = years_row
-
-        mock_db.execute.side_effect = [
-            courts_result,
-            case_types_result,
-            bench_types_result,
-            years_result,
-        ]
+        mock_db.execute.return_value = combined_result
 
         async def _override_db():
             yield mock_db

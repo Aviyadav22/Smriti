@@ -144,9 +144,9 @@ async def rag_respond(
         # IMPORTANT: `sources` is reassigned here so that downstream steps
         # (source event yielding in step 7, DB persistence in step 8) only
         # reference the sources that were actually sent to the LLM.
+        original_source_count = len(sources)
         if len(user_prompt) > MAX_PROMPT_CHARS:
             original_len = len(user_prompt)
-            original_count = len(sources)
             sources = sources[:3]
             context_text = _format_context(sources)
             history_text = _format_history(chat_history[-4:])
@@ -159,8 +159,24 @@ async def rag_respond(
                 "Prompt truncated from %d to %d chars; sources reduced from %d to %d",
                 original_len,
                 len(user_prompt),
-                original_count,
+                original_source_count,
                 len(sources),
+            )
+        truncated_source_count = len(sources)
+
+        # 5.6 Notify client if sources were dropped due to context limits
+        if truncated_source_count < original_source_count:
+            yield RAGEvent(
+                type="context_notice",
+                data={
+                    "sources_used": truncated_source_count,
+                    "sources_available": original_source_count,
+                    "message": (
+                        f"Showing {truncated_source_count} of "
+                        f"{original_source_count} relevant sources "
+                        f"due to context limits."
+                    ),
+                },
             )
 
         # 6. Stream response from LLM

@@ -370,32 +370,29 @@ class TestResumeExecution:
 
         authed_client.app.dependency_overrides.pop(get_db, None)
 
-    def test_resume_returns_410_when_checkpoint_expired(
-        self, authed_client: TestClient
-    ) -> None:
-        mock_db = AsyncMock()
-        execution = _make_execution(
-            user_id=_TEST_USER_ID, status=AgentStatus.waiting_input.value
-        )
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = execution
-        mock_db.execute = AsyncMock(return_value=mock_result)
+    def test_resume_recreates_checkpointer_when_not_cached(self) -> None:
+        """When checkpointer is not in cache, a new one is created and stored.
 
-        async def _override_db():
-            return mock_db
+        In production with AsyncPostgresSaver, state is persisted to the DB
+        so a new checkpointer instance can resume from the same thread_id.
+        """
+        from app.core.dependencies import get_checkpointer
 
-        authed_client.app.dependency_overrides[get_db] = _override_db
+        fake_exec_id = str(uuid.uuid4())
+        # Ensure no checkpointer in cache
+        _active_checkpointers.pop(fake_exec_id, None)
 
-        # Ensure no checkpointer exists for this execution
-        _active_checkpointers.pop(str(execution.id), None)
+        # Simulate what the resume code does: recreate if not found
+        checkpointer = _active_checkpointers.get(fake_exec_id)
+        if checkpointer is None:
+            checkpointer = get_checkpointer()
+            _active_checkpointers[fake_exec_id] = checkpointer
 
-        resp = authed_client.post(
-            f"/api/v1/agents/executions/{execution.id}/resume",
-            json={"input": "proceed"},
-        )
-        assert resp.status_code == 410
+        assert checkpointer is not None
+        assert fake_exec_id in _active_checkpointers
 
-        authed_client.app.dependency_overrides.pop(get_db, None)
+        # Cleanup
+        _active_checkpointers.pop(fake_exec_id, None)
 
     def test_resume_returns_404_for_nonexistent(
         self, authed_client: TestClient

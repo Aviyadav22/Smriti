@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -102,15 +103,31 @@ async def search(
     # Cache control for client-side caching
     response.headers["Cache-Control"] = "private, max-age=60"
 
-    # Hindi support: translate result snippets back to Hindi
+    # Hindi support: translate result snippets back to Hindi (parallel with semaphore)
     if language == "hi":
         translator = get_translator()
-        for result in serialized.get("results", []):
-            snippet = result.get("snippet")
-            if snippet:
-                result["snippet"] = await translator.translate(
-                    snippet, source="en", target="hi"
-                )
+        results_list = serialized.get("results", [])
+        # Collect indices and snippets that need translation
+        translate_items = [
+            (i, r["snippet"])
+            for i, r in enumerate(results_list)
+            if r.get("snippet")
+        ]
+        if translate_items:
+            sem = asyncio.Semaphore(5)
+
+            async def _translate_snippet(snippet: str) -> str:
+                async with sem:
+                    return await translator.translate(
+                        snippet, source="en", target="hi"
+                    )
+
+            tasks = [_translate_snippet(snippet) for _, snippet in translate_items]
+            translated = await asyncio.gather(*tasks, return_exceptions=True)
+            for (idx, _), result in zip(translate_items, translated):
+                if isinstance(result, Exception):
+                    continue  # keep original snippet on failure
+                results_list[idx]["snippet"] = result
         # Preserve original Hindi query for display
         serialized["query_understanding"]["original_query"] = original_query
 
@@ -186,11 +203,11 @@ async def suggest(
 async def facets(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Return distinct values for search filters (cached)."""
+    """Return distinct values for search filters (cached with 1-hour TTL)."""
     redis_client = await get_redis()
     cache_key = "search:facets:all"
 
-    # Check cache
+    # Check cache first (1-hour TTL avoids repeated DB scans)
     if redis_client is not None:
         try:
             cached = await redis_client.get(cache_key)
@@ -199,40 +216,39 @@ async def facets(
         except Exception:
             pass
 
-    courts_result = await db.execute(
-        text("SELECT DISTINCT court FROM cases WHERE court IS NOT NULL ORDER BY court")
+    # Single combined query instead of 4 separate DISTINCT queries
+    combined_result = await db.execute(
+        text(
+            "SELECT"
+            "  array_agg(DISTINCT court ORDER BY court)"
+            "    FILTER (WHERE court IS NOT NULL) AS courts,"
+            "  array_agg(DISTINCT case_type ORDER BY case_type)"
+            "    FILTER (WHERE case_type IS NOT NULL) AS case_types,"
+            "  array_agg(DISTINCT bench_type ORDER BY bench_type)"
+            "    FILTER (WHERE bench_type IS NOT NULL) AS bench_types,"
+            "  MIN(year) FILTER (WHERE year IS NOT NULL) AS min_year,"
+            "  MAX(year) FILTER (WHERE year IS NOT NULL) AS max_year "
+            "FROM cases"
+        )
     )
-    case_types_result = await db.execute(
-        text("SELECT DISTINCT case_type FROM cases WHERE case_type IS NOT NULL ORDER BY case_type")
-    )
-    bench_types_result = await db.execute(
-        text("SELECT DISTINCT bench_type FROM cases WHERE bench_type IS NOT NULL ORDER BY bench_type")
-    )
-    years_result = await db.execute(
-        text("SELECT MIN(year) AS min_year, MAX(year) AS max_year FROM cases WHERE year IS NOT NULL")
-    )
-
-    courts = [row[0] for row in courts_result.all()]
-    case_types = [row[0] for row in case_types_result.all()]
-    bench_types = [row[0] for row in bench_types_result.all()]
-    year_row = years_result.mappings().one_or_none()
+    row = combined_result.mappings().one_or_none()
 
     response = {
-        "courts": courts,
-        "case_types": case_types,
-        "bench_types": bench_types,
+        "courts": (row["courts"] or []) if row else [],
+        "case_types": (row["case_types"] or []) if row else [],
+        "bench_types": (row["bench_types"] or []) if row else [],
         "years": {
-            "min": year_row["min_year"] if year_row else None,
-            "max": year_row["max_year"] if year_row else None,
+            "min": row["min_year"] if row else None,
+            "max": row["max_year"] if row else None,
         },
     }
 
-    # Cache for 15 minutes
+    # Cache for 1 hour (facets change infrequently)
     if redis_client is not None:
         try:
             await redis_client.setex(
                 cache_key,
-                settings.search_facet_cache_ttl,
+                3600,
                 json.dumps(response),
             )
         except Exception:

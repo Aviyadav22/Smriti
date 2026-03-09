@@ -149,6 +149,7 @@ async def _stream_agent_events(
     import asyncio
 
     _KEEPALIVE_INTERVAL = 15  # seconds between heartbeat comments
+    _GRAPH_TIMEOUT = 600  # 10 minutes max for entire graph execution
     _SENTINEL = object()  # signals the producer is done
 
     queue: asyncio.Queue[str | object] = asyncio.Queue()
@@ -253,8 +254,34 @@ async def _stream_agent_events(
         finally:
             await queue.put(_SENTINEL)
 
-    # Launch the graph producer as a background task
-    task = asyncio.create_task(_run_graph())
+    async def _run_graph_with_timeout() -> None:
+        """Wrap _run_graph with an overall execution timeout."""
+        try:
+            await asyncio.wait_for(_run_graph(), timeout=_GRAPH_TIMEOUT)
+        except asyncio.TimeoutError:
+            logger.error("Agent execution %s timed out after %d seconds", exec_id, _GRAPH_TIMEOUT)
+            # Update DB status to failed
+            try:
+                async with async_session_factory() as db:
+                    await db.execute(
+                        text(
+                            "UPDATE agent_executions SET status = 'failed', "
+                            "error_message = :msg WHERE id = :id"
+                        ),
+                        {"id": exec_id, "msg": f"Agent execution timed out after {_GRAPH_TIMEOUT // 60} minutes"},
+                    )
+                    await db.commit()
+            except Exception:
+                logger.exception("Failed to update execution %s status after timeout", exec_id)
+            # Send timeout error event to client
+            await queue.put(
+                f"data: {json.dumps({'type': 'error', 'message': 'Agent execution timed out after 10 minutes', 'recoverable': False})}\n\n"
+            )
+            _active_checkpointers.pop(str(exec_id), None)
+            await queue.put(_SENTINEL)
+
+    # Launch the graph producer as a background task (with timeout guard)
+    task = asyncio.create_task(_run_graph_with_timeout())
 
     try:
         while True:
@@ -606,10 +633,9 @@ async def resume_execution(
 
     checkpointer = _active_checkpointers.get(execution_id)
     if checkpointer is None:
-        raise HTTPException(
-            status_code=410,
-            detail="Checkpoint expired. Please start a new execution.",
-        )
+        # In production (AsyncPostgresSaver), state is persisted to DB — recreate checkpointer
+        checkpointer = get_checkpointer()
+        _active_checkpointers[execution_id] = checkpointer
 
     # Atomically transition status to prevent concurrent resume race condition
     result = await db.execute(

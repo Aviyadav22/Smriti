@@ -50,6 +50,9 @@ def _validate_relationship(rel_type: str) -> str:
     return rel_type
 
 
+_DEFAULT_BATCH_SIZE = 500
+
+
 class Neo4jGraph:
     """Neo4j graph database implementing GraphStore protocol."""
 
@@ -168,6 +171,139 @@ class Neo4jGraph:
         except Exception as exc:
             logger.error("Unexpected error in get_neighbors (id=%s): %s", node_id, exc)
             raise RuntimeError(f"Neo4j get_neighbors failed unexpectedly: {exc}") from exc
+
+    @_neo4j_retry
+    async def ensure_constraints(self) -> None:
+        """Create unique constraints on Case nodes.
+
+        Safe to call multiple times — uses IF NOT EXISTS.
+        """
+        constraints = [
+            (
+                "constraint_case_id_unique",
+                "CREATE CONSTRAINT constraint_case_id_unique IF NOT EXISTS "
+                "FOR (c:Case) REQUIRE c.id IS UNIQUE",
+            ),
+            (
+                "constraint_case_citation_unique",
+                "CREATE CONSTRAINT constraint_case_citation_unique IF NOT EXISTS "
+                "FOR (c:Case) REQUIRE c.citation IS UNIQUE",
+            ),
+        ]
+        try:
+            async with self._driver.session(database=self._database) as session:
+                for name, cypher in constraints:
+                    await session.run(cypher)
+                    logger.info("Ensured Neo4j constraint: %s", name)
+        except Neo4jError as exc:
+            logger.error("Failed to create Neo4j constraints: %s", exc)
+            raise RuntimeError(f"Neo4j ensure_constraints failed: {exc}") from exc
+        except Exception as exc:
+            logger.error("Unexpected error in ensure_constraints: %s", exc)
+            raise RuntimeError(
+                f"Neo4j ensure_constraints failed unexpectedly: {exc}"
+            ) from exc
+
+    @_neo4j_retry
+    async def batch_create_nodes(
+        self,
+        nodes: list[dict],
+        *,
+        batch_size: int = _DEFAULT_BATCH_SIZE,
+    ) -> int:
+        """Batch-create Case nodes using UNWIND MERGE.
+
+        Args:
+            nodes: List of dicts, each must contain at least ``id``.
+            batch_size: Number of nodes per transaction (default 500).
+
+        Returns:
+            Total number of nodes merged.
+        """
+        if not nodes:
+            return 0
+
+        cypher = (
+            "UNWIND $batch AS node "
+            "MERGE (c:Case {id: node.id}) "
+            "SET c += node "
+            "RETURN count(*) AS cnt"
+        )
+        total = 0
+        try:
+            async with self._driver.session(database=self._database) as session:
+                for i in range(0, len(nodes), batch_size):
+                    batch = nodes[i : i + batch_size]
+                    result = await session.run(cypher, batch=batch)
+                    record = await result.single()
+                    total += record["cnt"] if record else 0
+            logger.info(
+                "batch_create_nodes: merged %d nodes in %d batches",
+                total,
+                (len(nodes) + batch_size - 1) // batch_size,
+            )
+            return total
+        except Neo4jError as exc:
+            logger.error("Neo4j batch_create_nodes failed: %s", exc)
+            raise RuntimeError(f"Neo4j batch_create_nodes failed: {exc}") from exc
+        except Exception as exc:
+            logger.error("Unexpected error in batch_create_nodes: %s", exc)
+            raise RuntimeError(
+                f"Neo4j batch_create_nodes failed unexpectedly: {exc}"
+            ) from exc
+
+    @_neo4j_retry
+    async def batch_create_citation_edges(
+        self,
+        edges: list[dict],
+        *,
+        batch_size: int = _DEFAULT_BATCH_SIZE,
+    ) -> int:
+        """Batch-create CITES edges between Case nodes using UNWIND MERGE.
+
+        Args:
+            edges: List of dicts with keys ``source_id``, ``target_citation``,
+                and optionally ``source_citation``, ``treatment``.
+            batch_size: Number of edges per transaction (default 500).
+
+        Returns:
+            Total number of edges merged.
+        """
+        if not edges:
+            return 0
+
+        cypher = (
+            "UNWIND $batch AS edge "
+            "MERGE (source:Case {id: edge.source_id}) "
+            "MERGE (target:Case {citation: edge.target_citation}) "
+            "MERGE (source)-[r:CITES]->(target) "
+            "SET r.treatment = edge.treatment "
+            "RETURN count(*) AS cnt"
+        )
+        total = 0
+        try:
+            async with self._driver.session(database=self._database) as session:
+                for i in range(0, len(edges), batch_size):
+                    batch = edges[i : i + batch_size]
+                    result = await session.run(cypher, batch=batch)
+                    record = await result.single()
+                    total += record["cnt"] if record else 0
+            logger.info(
+                "batch_create_citation_edges: merged %d edges in %d batches",
+                total,
+                (len(edges) + batch_size - 1) // batch_size,
+            )
+            return total
+        except Neo4jError as exc:
+            logger.error("Neo4j batch_create_citation_edges failed: %s", exc)
+            raise RuntimeError(
+                f"Neo4j batch_create_citation_edges failed: {exc}"
+            ) from exc
+        except Exception as exc:
+            logger.error("Unexpected error in batch_create_citation_edges: %s", exc)
+            raise RuntimeError(
+                f"Neo4j batch_create_citation_edges failed unexpectedly: {exc}"
+            ) from exc
 
     async def close(self) -> None:
         """Close the Neo4j driver connection."""

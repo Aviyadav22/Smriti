@@ -2,6 +2,10 @@
 
 Coordinates the full pipeline: PDF → text → metadata → chunks → embeddings → store.
 Follows the architecture defined in DATA_SOURCES.md §3.
+
+Also provides batch/bulk database helpers for high-throughput ingestion of
+pre-processed judgments (bulk_upsert_cases, bulk_insert_sections,
+bulk_insert_citations, ingest_batch).
 """
 
 from __future__ import annotations
@@ -10,8 +14,9 @@ import asyncio
 import json
 import logging
 import uuid
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +30,7 @@ from app.core.ingestion.metadata import (
     validate_with_regex,
 )
 from app.core.ingestion.pdf import extract_and_score, extract_pdf_text, extract_with_ocr
+from app.core.ingestion.rate_limiter import AsyncRateLimiter
 from app.core.interfaces.embedder import EmbeddingProvider
 from app.core.interfaces.graph_store import GraphStore
 from app.core.interfaces.llm import LLMProvider
@@ -48,6 +54,7 @@ async def ingest_judgment(
     vector_store: VectorStore,
     graph_store: GraphStore,
     storage: FileStorage,
+    rate_limiter: AsyncRateLimiter | None = None,
 ) -> str:
     """Full ingestion pipeline for a single Indian court judgment.
 
@@ -71,6 +78,7 @@ async def ingest_judgment(
         vector_store: Vector DB for similarity search.
         graph_store: Graph DB for citation network.
         storage: File storage for PDF archival.
+        rate_limiter: Optional rate limiter to throttle Gemini API calls.
 
     Returns:
         The case UUID as a string.
@@ -98,6 +106,8 @@ async def ingest_judgment(
     # ------------------------------------------------------------------
     # 2. MERGE METADATA (Parquet + LLM)
     # ------------------------------------------------------------------
+    if rate_limiter:
+        await rate_limiter.acquire()
     llm_meta = await extract_metadata_llm(full_text, llm)
     metadata = merge_metadata(parquet_metadata, llm_meta)
 
@@ -141,7 +151,7 @@ async def ingest_judgment(
         # ------------------------------------------------------------------
         # 7. GENERATE EMBEDDINGS
         # ------------------------------------------------------------------
-        embeddings = await _embed_chunks(chunks, embedder)
+        embeddings = await _embed_chunks(chunks, embedder, rate_limiter=rate_limiter)
         if len(embeddings) != len(chunks):
             raise RuntimeError(
                 f"Embedding count mismatch: {len(embeddings)} embeddings "
@@ -320,6 +330,8 @@ async def _embed_chunks(
     chunks: list[Chunk],
     embedder: EmbeddingProvider,
     max_retries: int = 3,
+    *,
+    rate_limiter: AsyncRateLimiter | None = None,
 ) -> list[list[float]]:
     """Generate embeddings for chunks in batches with retry logic."""
     all_embeddings: list[list[float]] = []
@@ -329,6 +341,8 @@ async def _embed_chunks(
         batch = texts[i : i + _EMBED_BATCH_SIZE]
         for attempt in range(max_retries):
             try:
+                if rate_limiter:
+                    await rate_limiter.acquire()
                 batch_embeddings = await embedder.embed_batch(batch)
                 all_embeddings.extend(batch_embeddings)
                 break
@@ -495,3 +509,288 @@ async def _persist_citation_equivalents(
             },
         )
     await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Batch / bulk ingestion helpers
+# ---------------------------------------------------------------------------
+
+# Maximum rows per INSERT statement for batch operations.
+_BATCH_CHUNK_SIZE: int = 250
+
+
+@dataclass
+class BatchStats:
+    """Statistics returned by ``ingest_batch``."""
+
+    inserted: int = 0
+    updated: int = 0
+    skipped: int = 0
+    failed: int = 0
+    errors: list[str] | None = None
+
+
+async def bulk_upsert_cases(
+    cases_data: list[dict[str, Any]],
+    db: AsyncSession,
+    *,
+    batch_size: int = _BATCH_CHUNK_SIZE,
+) -> list[str]:
+    """Bulk upsert cases into PostgreSQL using multi-value INSERT.
+
+    Each dict in *cases_data* should have the same keys as the columns in the
+    ``cases`` table (see ``_insert_case`` for reference).  At minimum: ``id``,
+    ``title``, ``court``.
+
+    Uses ``INSERT ... ON CONFLICT (citation) DO UPDATE`` so rows with an
+    existing citation are updated rather than duplicated.
+
+    Returns:
+        List of case IDs (UUIDs as strings) that were inserted or updated.
+    """
+    if not cases_data:
+        return []
+
+    all_ids: list[str] = []
+
+    stmt = text(
+        """
+        INSERT INTO cases (
+            id, title, citation, case_id, cnr, court, year, case_type,
+            jurisdiction, bench_type, judge, author_judge, petitioner,
+            respondent, decision_date, disposal_nature, description,
+            keywords, acts_cited, cases_cited, ratio_decidendi,
+            full_text, searchable_text, pdf_storage_path, s3_source_path,
+            source, language, available_languages, chunk_count
+        ) VALUES (
+            :id, :title, :citation, :case_id, :cnr, :court, :year, :case_type,
+            :jurisdiction, :bench_type, :judge, :author_judge, :petitioner,
+            :respondent, :decision_date, :disposal_nature, :description,
+            :keywords, :acts_cited, :cases_cited, :ratio_decidendi,
+            :full_text,
+            to_tsvector('english', COALESCE(:title, '') || ' '
+                || COALESCE(:citation, '') || ' '
+                || COALESCE(LEFT(:full_text, 50000), '')),
+            :pdf_storage_path, :s3_source_path, :source,
+            :language, :available_languages, :chunk_count
+        )
+        ON CONFLICT (citation) WHERE citation IS NOT NULL DO UPDATE SET
+            full_text = EXCLUDED.full_text,
+            pdf_storage_path = EXCLUDED.pdf_storage_path,
+            ratio_decidendi = COALESCE(EXCLUDED.ratio_decidendi, cases.ratio_decidendi),
+            acts_cited = COALESCE(EXCLUDED.acts_cited, cases.acts_cited),
+            cases_cited = COALESCE(EXCLUDED.cases_cited, cases.cases_cited),
+            keywords = COALESCE(EXCLUDED.keywords, cases.keywords),
+            bench_type = COALESCE(EXCLUDED.bench_type, cases.bench_type),
+            jurisdiction = COALESCE(EXCLUDED.jurisdiction, cases.jurisdiction),
+            searchable_text = EXCLUDED.searchable_text
+        RETURNING id
+        """
+    )
+
+    for start in range(0, len(cases_data), batch_size):
+        batch = cases_data[start : start + batch_size]
+
+        for row in batch:
+            row_id = str(row.get("id") or uuid.uuid4())
+            params = {
+                "id": row_id,
+                "title": row.get("title", "Untitled"),
+                "citation": row.get("citation"),
+                "case_id": row.get("case_id"),
+                "cnr": row.get("cnr"),
+                "court": row.get("court", "Supreme Court of India"),
+                "year": row.get("year"),
+                "case_type": row.get("case_type"),
+                "jurisdiction": row.get("jurisdiction"),
+                "bench_type": row.get("bench_type"),
+                "judge": row.get("judge"),
+                "author_judge": row.get("author_judge"),
+                "petitioner": row.get("petitioner"),
+                "respondent": row.get("respondent"),
+                "decision_date": row.get("decision_date"),
+                "disposal_nature": row.get("disposal_nature"),
+                "description": row.get("description"),
+                "keywords": row.get("keywords"),
+                "acts_cited": row.get("acts_cited"),
+                "cases_cited": row.get("cases_cited"),
+                "ratio_decidendi": row.get("ratio_decidendi"),
+                "full_text": row.get("full_text"),
+                "pdf_storage_path": row.get("pdf_storage_path"),
+                "s3_source_path": row.get("s3_source_path"),
+                "source": row.get("source", "aws_open_data"),
+                "language": row.get("language", "english"),
+                "available_languages": row.get("available_languages"),
+                "chunk_count": row.get("chunk_count", 0),
+            }
+            result = await db.execute(stmt, params)
+            returned = result.fetchone()
+            all_ids.append(str(returned[0]) if returned else row_id)
+
+    await db.flush()
+    logger.info("bulk_upsert_cases: processed %d rows", len(all_ids))
+    return all_ids
+
+
+async def bulk_insert_sections(
+    sections_data: list[dict[str, Any]],
+    db: AsyncSession,
+    *,
+    batch_size: int = _BATCH_CHUNK_SIZE,
+) -> int:
+    """Bulk INSERT into ``case_sections`` using executemany pattern.
+
+    Each dict must contain: ``case_id``, ``section_type``, ``content``,
+    ``section_index``.  An ``id`` (UUID) will be generated if absent.
+
+    Returns:
+        Number of rows inserted.
+    """
+    if not sections_data:
+        return 0
+
+    inserted = 0
+    stmt = text(
+        "INSERT INTO case_sections (id, case_id, section_type, content, section_index) "
+        "VALUES (:id, :case_id, :section_type, :content, :section_index) "
+        "ON CONFLICT DO NOTHING"
+    )
+
+    for start in range(0, len(sections_data), batch_size):
+        batch = sections_data[start : start + batch_size]
+        for row in batch:
+            params = {
+                "id": str(row.get("id") or uuid.uuid4()),
+                "case_id": str(row["case_id"]),
+                "section_type": row["section_type"],
+                "content": row["content"],
+                "section_index": row.get("section_index", 0),
+            }
+            await db.execute(stmt, params)
+            inserted += 1
+
+    await db.flush()
+    logger.info("bulk_insert_sections: inserted %d rows", inserted)
+    return inserted
+
+
+async def bulk_insert_citations(
+    citations_data: list[dict[str, Any]],
+    db: AsyncSession,
+    *,
+    batch_size: int = _BATCH_CHUNK_SIZE,
+) -> int:
+    """Bulk INSERT into ``case_citation_equivalents`` with ON CONFLICT DO NOTHING.
+
+    Each dict must contain: ``case_id``, ``reporter``, ``citation_text``.
+    Optional: ``year``.
+
+    Returns:
+        Number of rows processed (some may be skipped due to conflicts).
+    """
+    if not citations_data:
+        return 0
+
+    processed = 0
+    stmt = text(
+        "INSERT INTO case_citation_equivalents (id, case_id, reporter, citation_text, year) "
+        "VALUES (:id, :case_id, :reporter, :citation_text, :year) "
+        "ON CONFLICT DO NOTHING"
+    )
+
+    for start in range(0, len(citations_data), batch_size):
+        batch = citations_data[start : start + batch_size]
+        for row in batch:
+            params = {
+                "id": str(row.get("id") or uuid.uuid4()),
+                "case_id": str(row["case_id"]),
+                "reporter": row["reporter"],
+                "citation_text": row["citation_text"],
+                "year": row.get("year"),
+            }
+            await db.execute(stmt, params)
+            processed += 1
+
+    await db.flush()
+    logger.info("bulk_insert_citations: processed %d rows", processed)
+    return processed
+
+
+async def ingest_batch(
+    judgments: list[dict[str, Any]],
+    db: AsyncSession,
+) -> BatchStats:
+    """Orchestrate bulk ingestion of pre-processed judgments.
+
+    Each dict in *judgments* should have:
+    - All ``cases`` table columns (same keys as ``bulk_upsert_cases``).
+    - ``"sections"`` (optional): list of section dicts for the case.
+    - ``"citation_equivalents"`` (optional): list of citation-equivalent dicts.
+
+    Everything runs inside the caller's transaction (no internal commit).
+    The caller should ``await db.commit()`` after a successful return.
+
+    Returns:
+        A ``BatchStats`` dataclass with counts.
+    """
+    stats = BatchStats(errors=[])
+    if not judgments:
+        return stats
+
+    # ---- 1. Prepare cases data (strip nested keys) ----
+    cases_data: list[dict[str, Any]] = []
+    all_sections: list[dict[str, Any]] = []
+    all_citations: list[dict[str, Any]] = []
+
+    for jdg in judgments:
+        # Pull out nested collections before passing to bulk upsert
+        sections = jdg.pop("sections", None) or []
+        cit_equivalents = jdg.pop("citation_equivalents", None) or []
+
+        case_id = str(jdg.get("id") or uuid.uuid4())
+        jdg["id"] = case_id
+        cases_data.append(jdg)
+
+        # Tag child rows with the parent case_id
+        for sec in sections:
+            sec.setdefault("case_id", case_id)
+            all_sections.append(sec)
+
+        for cit in cit_equivalents:
+            cit.setdefault("case_id", case_id)
+            all_citations.append(cit)
+
+    # ---- 2. Bulk upsert cases ----
+    try:
+        inserted_ids = await bulk_upsert_cases(cases_data, db)
+        stats.inserted = len(inserted_ids)
+    except Exception as exc:
+        logger.exception("bulk_upsert_cases failed")
+        stats.failed = len(cases_data)
+        if stats.errors is not None:
+            stats.errors.append(f"bulk_upsert_cases: {exc}")
+        return stats
+
+    # ---- 3. Bulk insert sections ----
+    if all_sections:
+        try:
+            await bulk_insert_sections(all_sections, db)
+        except Exception as exc:
+            logger.exception("bulk_insert_sections failed")
+            if stats.errors is not None:
+                stats.errors.append(f"bulk_insert_sections: {exc}")
+
+    # ---- 4. Bulk insert citation equivalents ----
+    if all_citations:
+        try:
+            await bulk_insert_citations(all_citations, db)
+        except Exception as exc:
+            logger.exception("bulk_insert_citations failed")
+            if stats.errors is not None:
+                stats.errors.append(f"bulk_insert_citations: {exc}")
+
+    logger.info(
+        "ingest_batch complete: inserted=%d, skipped=%d, failed=%d",
+        stats.inserted, stats.skipped, stats.failed,
+    )
+    return stats

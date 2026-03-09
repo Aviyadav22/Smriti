@@ -89,6 +89,93 @@ async def _cleanup_expired_uploads() -> None:
         logger.warning("User upload cleanup failed", exc_info=True)
 
 
+async def _validate_startup() -> None:
+    """Run non-blocking startup health checks and log results.
+
+    Each check is wrapped individually so a single failure does not
+    prevent the remaining checks from running.  Failures are logged as
+    warnings — they never block application startup.
+    """
+    checks_passed = 0
+    checks_total = 4
+    failures: list[str] = []
+
+    # 1. PostgreSQL connectivity
+    try:
+        from app.db.postgres import engine
+        from sqlalchemy import text as sa_text
+
+        async with engine.connect() as conn:
+            await conn.execute(sa_text("SELECT 1"))
+        checks_passed += 1
+        logger.info("Startup check: PostgreSQL OK")
+    except Exception as exc:
+        failures.append("PostgreSQL")
+        logger.warning("Startup check: PostgreSQL unavailable — %s", exc)
+
+    # 2. Redis connectivity
+    try:
+        from app.db.redis_client import get_redis
+
+        redis = await get_redis()
+        if redis is not None:
+            await redis.ping()
+            checks_passed += 1
+            logger.info("Startup check: Redis OK")
+        else:
+            failures.append("Redis")
+            logger.warning("Startup check: Redis unavailable — no connection")
+    except Exception as exc:
+        failures.append("Redis")
+        logger.warning("Startup check: Redis unavailable — %s", exc)
+
+    # 3. Pinecone dimension validation
+    try:
+        from pinecone import Pinecone
+
+        pc = Pinecone(api_key=settings.pinecone_api_key)
+        index = pc.Index(host=settings.pinecone_host)
+        stats = index.describe_index_stats()
+        dimension = stats.get("dimension") or getattr(stats, "dimension", None)
+        expected_dim = 1536
+        if dimension and int(dimension) != expected_dim:
+            failures.append("Pinecone")
+            logger.warning(
+                "Startup check: Pinecone dimension mismatch — got %s, expected %d",
+                dimension,
+                expected_dim,
+            )
+        else:
+            checks_passed += 1
+            logger.info("Startup check: Pinecone OK (dimension=%s)", dimension)
+    except Exception as exc:
+        failures.append("Pinecone")
+        logger.warning("Startup check: Pinecone unavailable — %s", exc)
+
+    # 4. Gemini API key validation
+    try:
+        from google import genai
+
+        client = genai.Client(api_key=settings.gemini_api_key)
+        client.models.list(config={"page_size": 1})
+        checks_passed += 1
+        logger.info("Startup check: Gemini OK")
+    except Exception as exc:
+        failures.append("Gemini")
+        logger.warning("Startup check: Gemini unavailable — %s", exc)
+
+    # Summary
+    if checks_passed == checks_total:
+        logger.info("Startup validation: %d/%d checks passed", checks_passed, checks_total)
+    else:
+        logger.warning(
+            "Startup validation: %d/%d checks passed (%s unavailable)",
+            checks_passed,
+            checks_total,
+            ", ".join(failures),
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Configure structured logging
@@ -122,6 +209,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Startup — run DB migrations
     _run_migrations()
+
+    # Run startup health validation (non-blocking, logs warnings only)
+    await _validate_startup()
 
     # Cleanup expired user-uploaded PDFs (DPDP: purpose-limited retention)
     if settings.user_upload_retention_days > 0:

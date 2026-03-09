@@ -30,3 +30,19 @@ class GraphStore(Protocol):
         direction: str = "both",
         depth: int = 1,
     ) -> dict: ...
+
+    async def ensure_constraints(self) -> None: ...
+
+    async def batch_create_nodes(
+        self,
+        nodes: list[dict],
+        *,
+        batch_size: int = 500,
+    ) -> int: ...
+
+    async def batch_create_citation_edges(
+        self,
+        edges: list[dict],
+        *,
+        batch_size: int = 500,
+    ) -> int: ...

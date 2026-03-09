@@ -72,17 +72,23 @@ class PineconeStore:
         filters: dict | None = None,
     ) -> list[SearchResult]:
         try:
-            results = await asyncio.to_thread(
-                self._index.query,
-                vector=query_vector,
-                top_k=top_k,
-                filter=filters,
-                include_metadata=True,
+            results = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self._index.query,
+                    vector=query_vector,
+                    top_k=top_k,
+                    filter=filters,
+                    include_metadata=True,
+                ),
+                timeout=10,
             )
             return [
                 SearchResult(id=m.id, score=m.score, metadata=m.metadata or {})
                 for m in results.matches
             ]
+        except asyncio.TimeoutError:
+            logger.warning("Pinecone search timed out after 10s (top_k=%d)", top_k)
+            return []
         except PineconeException as exc:
             logger.error("Pinecone search failed (top_k=%d): %s", top_k, exc)
             return []

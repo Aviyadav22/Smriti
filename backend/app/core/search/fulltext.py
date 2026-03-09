@@ -224,11 +224,15 @@ def _build_filter_clauses(
         params["bench_type"] = filters.bench_type
 
     if filters.judge:
-        clauses.append("array_to_string(judge, ' ') ILIKE :judge")
+        clauses.append(
+            "EXISTS (SELECT 1 FROM unnest(judge) AS j WHERE j ILIKE :judge)"
+        )
         params["judge"] = f"%{filters.judge}%"
 
     if filters.act:
-        clauses.append("array_to_string(acts_cited, ' ') ILIKE :act")
+        clauses.append(
+            "EXISTS (SELECT 1 FROM unnest(acts_cited) AS a WHERE a ILIKE :act)"
+        )
         params["act"] = f"%{filters.act}%"
 
     return clauses, params

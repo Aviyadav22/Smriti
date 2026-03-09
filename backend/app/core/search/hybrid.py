@@ -275,8 +275,8 @@ async def hybrid_search(
         reranked_ids = top_ids[: settings.search_rerank_top_n]
         reranked_scores = dict(merged[: settings.search_rerank_top_n])
 
-    # 6. Paginate
-    total_count = len(reranked_ids)
+    # 6. Paginate — use total merged result count (not truncated reranked count)
+    total_count = len(merged)
     start = (page - 1) * effective_page_size
     end = start + effective_page_size
     page_ids = reranked_ids[start:end]
@@ -655,6 +655,40 @@ async def _check_outcome_bias(
 # ---------------------------------------------------------------------------
 # Redis caching
 # ---------------------------------------------------------------------------
+
+
+async def invalidate_search_cache(redis_client) -> int:
+    """Delete all search-related cache keys (search results, facets, suggestions).
+
+    Uses SCAN to avoid blocking Redis on large key spaces. Call this after
+    bulk ingestion to prevent serving stale results.
+
+    Returns the number of keys deleted.
+    """
+    if redis_client is None:
+        return 0
+
+    deleted = 0
+    # Patterns covering search result cache, facets, and suggestions
+    patterns = ["search:*", "suggest:*"]
+
+    try:
+        for pattern in patterns:
+            cursor = "0"
+            while True:
+                cursor, keys = await redis_client.scan(
+                    cursor=cursor, match=pattern, count=200
+                )
+                if keys:
+                    await redis_client.delete(*keys)
+                    deleted += len(keys)
+                if cursor == 0 or cursor == "0" or cursor == b"0":
+                    break
+        logger.info("Invalidated %d search cache keys", deleted)
+    except (ConnectionError, TimeoutError, Exception) as exc:
+        logger.warning("Failed to invalidate search cache: %s", exc)
+
+    return deleted
 
 
 def _make_cache_key(

@@ -41,6 +41,7 @@ from app.core.dependencies import (  # noqa: E402
     get_vector_store,
 )
 from app.core.ingestion.pipeline import ingest_judgment  # noqa: E402
+from app.core.ingestion.rate_limiter import RateLimiterPool  # noqa: E402
 from app.core.providers.embeddings.gemini import GeminiEmbedder  # noqa: E402
 from app.core.providers.llm.gemini import GeminiLLM  # noqa: E402
 from app.db.postgres import async_session_factory  # noqa: E402
@@ -409,6 +410,7 @@ async def ingest_year(
     *,
     limit: int | None = None,
     concurrency: int = 5,
+    rpm_limit: int = 30,
 ) -> dict[str, int]:
     """Ingest all judgments for a given year.
 
@@ -418,6 +420,7 @@ async def ingest_year(
         tracker: Progress tracker for resume support.
         limit: Maximum number of judgments to process (None = all).
         concurrency: Number of concurrent ingestion tasks.
+        rpm_limit: Max Gemini API requests per minute per key (0 = no limit).
 
     Returns:
         Stats dict with success/failure counts.
@@ -443,14 +446,22 @@ async def ingest_year(
     api_keys = _build_key_pool()
     logger.info("Using %d Gemini API key(s) for parallel ingestion", len(api_keys))
 
+    # Build per-key rate limiter pool (0 = disabled)
+    rate_limiter_pool: RateLimiterPool | None = None
+    if rpm_limit > 0:
+        rate_limiter_pool = RateLimiterPool(rpm_per_key=rpm_limit)
+        logger.info("Rate limiting enabled: %d RPM per key", rpm_limit)
+    else:
+        logger.info("Rate limiting disabled (--rpm-limit 0)")
+
     llm_pool: list[GeminiLLM] = []
     embedder_pool: list[GeminiEmbedder] = []
     for key in api_keys:
         llm_pool.append(GeminiLLM(api_key=key))
         embedder_pool.append(GeminiEmbedder(api_key=key))
 
-    # Round-robin iterator over (llm, embedder) pairs
-    provider_cycle = itertools.cycle(zip(llm_pool, embedder_pool))
+    # Round-robin iterator over (llm, embedder, key) triples
+    provider_cycle = itertools.cycle(zip(llm_pool, embedder_pool, api_keys))
 
     vector_store = get_vector_store()
     graph_store = get_graph_store()
@@ -461,7 +472,9 @@ async def ingest_year(
     stats = {"success": 0, "skipped": 0, "failed": 0}
     processed = 0
 
-    async def _process_one(pdf_path: Path, llm: GeminiLLM, embedder: GeminiEmbedder) -> None:
+    async def _process_one(
+        pdf_path: Path, llm: GeminiLLM, embedder: GeminiEmbedder, api_key: str,
+    ) -> None:
         nonlocal processed
         doc_key = f"year={year}/{pdf_path.name}"
         tracker.init_doc(doc_key, year)
@@ -469,6 +482,9 @@ async def ingest_year(
         if tracker.is_processed(doc_key):
             stats["skipped"] += 1
             return
+
+        # Get the per-key rate limiter (or None if disabled)
+        limiter = rate_limiter_pool.get(api_key) if rate_limiter_pool else None
 
         async with semaphore:
             try:
@@ -483,6 +499,7 @@ async def ingest_year(
                         vector_store=vector_store,
                         graph_store=graph_store,
                         storage=storage,
+                        rate_limiter=limiter,
                     )
                 tracker.mark_success(doc_key, case_id)
                 # Mark all stages complete (since ingest_judgment does them all)
@@ -503,11 +520,11 @@ async def ingest_year(
     # Apply limit
     pdfs_to_process = pdf_paths[:limit] if limit else pdf_paths
 
-    # Run concurrently — assign each PDF a (llm, embedder) pair via round-robin
+    # Run concurrently — assign each PDF a (llm, embedder, key) triple via round-robin
     tasks = []
     for p in pdfs_to_process:
-        llm, embedder = next(provider_cycle)
-        tasks.append(_process_one(p, llm, embedder))
+        llm, embedder, api_key = next(provider_cycle)
+        tasks.append(_process_one(p, llm, embedder, api_key))
     await asyncio.gather(*tasks)
 
     logger.info("Year %d complete: %s", year, stats)
@@ -533,6 +550,7 @@ def parse_args() -> argparse.Namespace:
     run_parser.add_argument("--resume", action="store_true", help="Resume interrupted run")
     run_parser.add_argument("--limit", type=int, default=None, help="Max judgments per year")
     run_parser.add_argument("--concurrency", type=int, default=5, help="Concurrent tasks")
+    run_parser.add_argument("--rpm-limit", type=int, default=30, help="Max Gemini API requests per minute per key (0 = no limit)")
     run_parser.add_argument("--data-dir", type=str, default="data", help="Data directory")
 
     # --- report command ---
@@ -620,6 +638,7 @@ async def main() -> None:
             tracker,
             limit=args.limit,
             concurrency=args.concurrency,
+            rpm_limit=args.rpm_limit,
         )
         for k, v in year_stats.items():
             total_stats[k] = total_stats.get(k, 0) + v
