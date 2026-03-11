@@ -12,7 +12,7 @@ def translator():
     mock_genai_module.Client.return_value = mock_client
 
     with patch.dict("sys.modules", {"google": MagicMock(), "google.genai": mock_genai_module}), \
-         patch("app.core.providers.translation.gemini_translator.settings") as mock_settings:
+         patch("app.core.config.settings") as mock_settings:
         mock_settings.gemini_api_key = "test-key"
         mock_settings.gemini_flash_model = "gemini-2.0-flash"
 
