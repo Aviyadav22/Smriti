@@ -49,9 +49,10 @@ def _parse_judge_names(raw: str | list | None) -> list[str] | None:
         name = name.strip()
         if not name:
             continue
-        # Strip common honorific prefixes
+        # Strip common honorific prefixes (order matters: most specific first)
         for prefix in ["Hon'ble Mr. Justice", "Hon'ble Justice", "Hon'ble",
-                       "Mr. Justice", "Justice", "J."]:
+                       "Dr. Justice", "Mr. Justice", "Justice",
+                       "Dr.", "Smt.", "Shri", "J."]:
             if name.startswith(prefix):
                 name = name[len(prefix):].strip()
                 break
@@ -206,13 +207,20 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
     valid_jurisdictions = {
         "civil", "criminal", "constitutional", "tax", "labor", "company",
         "family", "environmental", "arbitration", "consumer", "election",
-        "service", "other",
+        "service", "ip/commercial", "other",
     }
-    if metadata.jurisdiction and metadata.jurisdiction.lower() not in valid_jurisdictions:
-        logger.warning("Unknown jurisdiction '%s', clearing field", metadata.jurisdiction)
-        metadata.jurisdiction = None
-    elif metadata.jurisdiction:
-        metadata.jurisdiction = metadata.jurisdiction.lower()
+    # Alias normalization
+    _jurisdiction_aliases = {
+        "ip": "ip/commercial",
+    }
+    if metadata.jurisdiction:
+        normalized = metadata.jurisdiction.lower()
+        normalized = _jurisdiction_aliases.get(normalized, normalized)
+        if normalized not in valid_jurisdictions:
+            logger.warning("Unknown jurisdiction '%s', clearing field", metadata.jurisdiction)
+            metadata.jurisdiction = None
+        else:
+            metadata.jurisdiction = normalized
 
     # -- Validate disposal_nature --
     valid_disposals = {
@@ -288,6 +296,39 @@ def validate_cross_fields(metadata: CaseMetadata) -> CaseMetadata:
         except (ValueError, TypeError):
             pass
 
+    # bench_type vs judge count: single bench shouldn't have 3+ judges
+    if metadata.bench_type == "single" and metadata.judge and len(metadata.judge) >= 3:
+        logger.warning(
+            "bench_type is 'single' but %d judges listed, clearing bench_type",
+            len(metadata.judge),
+        )
+        metadata.bench_type = None
+
+    # author_judge should appear in judge list
+    if metadata.author_judge and metadata.judge:
+        author_lower = metadata.author_judge.lower()
+        judge_names_lower = [j.lower() for j in metadata.judge]
+        if author_lower not in judge_names_lower:
+            logger.warning(
+                "author_judge '%s' not found in judge list %s",
+                metadata.author_judge, metadata.judge,
+            )
+
+    # petitioner != respondent
+    if metadata.petitioner and metadata.respondent:
+        if metadata.petitioner.strip().lower() == metadata.respondent.strip().lower():
+            logger.warning(
+                "petitioner and respondent are the same ('%s'), clearing respondent",
+                metadata.petitioner,
+            )
+            metadata.respondent = None
+
+    # case_type vs jurisdiction consistency
+    if metadata.case_type == "Writ Petition" and metadata.jurisdiction == "criminal":
+        logger.warning(
+            "case_type 'Writ Petition' with jurisdiction 'criminal' is unusual"
+        )
+
     return metadata
 
 
@@ -320,6 +361,22 @@ _CASE_TYPE_MAP: dict[str, str] = {
     "conmt.pet.": "Contempt Petition",
     "original suit": "Original Suit",
     "reference": "Reference",
+    "curative petition": "Curative Petition",
+    "cur.pet.": "Curative Petition",
+    "miscellaneous application": "Miscellaneous Application",
+    "m.a.": "Miscellaneous Application",
+    "arbitration petition": "Arbitration Petition",
+    "arb.p.": "Arbitration Petition",
+    "suo motu": "Suo Motu",
+    "election petition": "Election Petition",
+    "slp (civil)": "Special Leave Petition",
+    "slp (criminal)": "Special Leave Petition",
+    "c.a.": "Civil Appeal",
+    "crl.a.": "Criminal Appeal",
+    "i.a.": "Interlocutory Application",
+    "interlocutory application": "Interlocutory Application",
+    "l.p.a.": "Letters Patent Appeal",
+    "letters patent appeal": "Letters Patent Appeal",
 }
 
 
