@@ -416,6 +416,8 @@ async def _vector_search(
             pinecone_filter["disposal_nature"] = {"$eq": filters.disposal_nature}
         if filters.judge:
             pinecone_filter["author_judge"] = {"$eq": filters.judge}
+        if filters.act:
+            pinecone_filter["acts_cited"] = {"$eq": filters.act}
 
     results = await vector_store.search(
         query_vector,

@@ -60,6 +60,11 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         String(20), nullable=False, server_default="complete"
     )
 
+    # --- Migration 010 columns ---
+    cited_by_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+
     # --- Migration 011 columns (legal completeness) ---
     # C1: Coram size — exact number of judges on bench
     coram_size: Mapped[int | None] = mapped_column(Integer, nullable=True)

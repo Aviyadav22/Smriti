@@ -533,7 +533,9 @@ METADATA_OUTPUT_SCHEMA: Final[dict] = {
             "enum": [
                 "Allowed", "Dismissed", "Partly Allowed",
                 "Withdrawn", "Remanded", "Disposed Of",
-                "Settled", "Transferred", "Modified", "Other",
+                "Settled", "Transferred", "Modified",
+                "Referred to Larger Bench", "Abated", "Not Pressed",
+                "Other",
             ],
             "description": "How the case was disposed of",
         },
