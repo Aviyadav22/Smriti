@@ -4,6 +4,8 @@
 Reads all cases from PostgreSQL and creates:
   - Case nodes with properties (id, title, citation, court, year, etc.)
   - CITES edges between cases based on cases_cited arrays
+  - Act nodes and INTERPRETS edges from acts_cited arrays
+  - Judge nodes with DECIDED_BY and AUTHORED_BY edges
 
 Usage:
     cd backend
@@ -134,6 +136,29 @@ def _resolve_citation(
     return None
 
 
+def _extract_act_name(act_string: str) -> str | None:
+    """Extract act name from citation like 'Section 302 of Indian Penal Code, 1860'.
+
+    Handles formats:
+    - "Section X of Act Name, Year"
+    - "Act Name, Year"
+    - "Order X Rule Y of Act Name"
+    """
+    if not act_string or not act_string.strip():
+        return None
+
+    name = act_string.strip()
+
+    # Remove "Section X of " prefix
+    name = re.sub(r'^Section\s+\S+\s+of\s+', '', name, flags=re.IGNORECASE).strip()
+    # Remove "Order X Rule Y of " prefix
+    name = re.sub(r'^Order\s+\S+\s+Rule\s+\S+\s+of\s+', '', name, flags=re.IGNORECASE).strip()
+    # Remove "Article X of " prefix
+    name = re.sub(r'^Article\s+\S+\s+of\s+', '', name, flags=re.IGNORECASE).strip()
+
+    return name if name else None
+
+
 # ---------------------------------------------------------------------------
 # PostgreSQL queries (using raw asyncpg)
 # ---------------------------------------------------------------------------
@@ -240,6 +265,20 @@ async def create_constraints(driver, database: str) -> None:
             )
         except Exception:
             pass
+        try:
+            await session.run(
+                "CREATE CONSTRAINT judge_name_unique IF NOT EXISTS "
+                "FOR (j:Judge) REQUIRE j.name IS UNIQUE"
+            )
+        except Exception:
+            pass
+        try:
+            await session.run(
+                "CREATE CONSTRAINT act_name_unique IF NOT EXISTS "
+                "FOR (a:Act) REQUIRE a.name IS UNIQUE"
+            )
+        except Exception:
+            pass
     logger.info("Created constraints and indexes")
 
 
@@ -292,7 +331,10 @@ async def batch_create_edges(
     title_map: dict[str, str],
     dry_run: bool = False,
 ) -> tuple[int, int]:
-    """Create CITES edges between cases. Returns (created, unresolved)."""
+    """Create CITES edges between cases with treatment property.
+
+    Returns (created, unresolved).
+    """
     edges = []
     unresolved = 0
     seen_edges: set[tuple[str, str]] = set()
@@ -321,10 +363,115 @@ async def batch_create_edges(
         await session.run(
             "UNWIND $edges AS e "
             "MATCH (a:Case {id: e.from_id}), (b:Case {id: e.to_id}) "
-            "MERGE (a)-[:CITES]->(b)",
+            "MERGE (a)-[r:CITES]->(b) "
+            "SET r.treatment = COALESCE(r.treatment, 'referred_to')",
             edges=edges,
         )
     return len(edges), unresolved
+
+
+async def batch_create_act_nodes(
+    driver, database: str, cases: list[dict], dry_run: bool = False
+) -> tuple[int, int]:
+    """Create Act nodes and INTERPRETS edges.
+
+    Returns (unique_act_count, edge_count).
+    """
+    act_edges: list[dict[str, str]] = []
+    unique_acts: set[str] = set()
+
+    for case in cases:
+        acts = case.get("acts_cited") or []
+        source_id = str(case["id"])
+        for act_str in acts:
+            if not act_str or not isinstance(act_str, str):
+                continue
+            act_name = _extract_act_name(act_str)
+            if act_name:
+                unique_acts.add(act_name)
+                act_edges.append({"case_id": source_id, "act_name": act_name})
+
+    if dry_run or not unique_acts:
+        return len(unique_acts), len(act_edges)
+
+    # Create Act nodes
+    async with driver.session(database=database) as session:
+        await session.run(
+            "UNWIND $acts AS name MERGE (a:Act {name: name})",
+            acts=list(unique_acts),
+        )
+
+    # Create INTERPRETS edges
+    if act_edges:
+        async with driver.session(database=database) as session:
+            await session.run(
+                "UNWIND $edges AS e "
+                "MATCH (c:Case {id: e.case_id}), (a:Act {name: e.act_name}) "
+                "MERGE (c)-[:INTERPRETS]->(a)",
+                edges=act_edges,
+            )
+
+    return len(unique_acts), len(act_edges)
+
+
+async def batch_create_judge_nodes(
+    driver, database: str, cases: list[dict], dry_run: bool = False
+) -> tuple[int, int]:
+    """Create Judge nodes and DECIDED_BY/AUTHORED_BY edges.
+
+    Returns (unique_judge_count, decided_by_edge_count).
+    """
+    judge_edges: list[dict[str, str]] = []
+    author_edges: list[dict[str, str]] = []
+    unique_judges: set[str] = set()
+
+    for case in cases:
+        case_id = str(case["id"])
+        judges = case.get("judge") or []
+        author = case.get("author_judge")
+
+        for judge_name in judges:
+            if judge_name and judge_name.strip():
+                name = judge_name.strip()
+                unique_judges.add(name)
+                judge_edges.append({"case_id": case_id, "judge_name": name})
+
+        if author and author.strip():
+            author_name = author.strip()
+            unique_judges.add(author_name)
+            author_edges.append({"case_id": case_id, "judge_name": author_name})
+
+    if dry_run or not unique_judges:
+        return len(unique_judges), len(judge_edges)
+
+    # Create Judge nodes
+    async with driver.session(database=database) as session:
+        await session.run(
+            "UNWIND $judges AS name MERGE (j:Judge {name: name})",
+            judges=list(unique_judges),
+        )
+
+    # Create DECIDED_BY edges
+    if judge_edges:
+        async with driver.session(database=database) as session:
+            await session.run(
+                "UNWIND $edges AS e "
+                "MATCH (c:Case {id: e.case_id}), (j:Judge {name: e.judge_name}) "
+                "MERGE (c)-[:DECIDED_BY]->(j)",
+                edges=judge_edges,
+            )
+
+    # Create AUTHORED_BY edges
+    if author_edges:
+        async with driver.session(database=database) as session:
+            await session.run(
+                "UNWIND $edges AS e "
+                "MATCH (c:Case {id: e.case_id}), (j:Judge {name: e.judge_name}) "
+                "MERGE (c)-[:AUTHORED_BY]->(j)",
+                edges=author_edges,
+            )
+
+    return len(unique_judges), len(judge_edges)
 
 
 async def update_cited_by_counts(driver, database: str) -> None:
@@ -348,7 +495,41 @@ async def get_neo4j_stats(driver, database: str) -> dict:
         edge_record = await edge_result.single()
         edge_count = edge_record["cnt"] if edge_record else 0
 
-    return {"nodes": node_count, "edges": edge_count}
+        judge_result = await session.run("MATCH (j:Judge) RETURN count(j) AS cnt")
+        judge_record = await judge_result.single()
+        judge_count = judge_record["cnt"] if judge_record else 0
+
+        act_result = await session.run("MATCH (a:Act) RETURN count(a) AS cnt")
+        act_record = await act_result.single()
+        act_count = act_record["cnt"] if act_record else 0
+
+        interprets_result = await session.run(
+            "MATCH ()-[r:INTERPRETS]->() RETURN count(r) AS cnt"
+        )
+        interprets_record = await interprets_result.single()
+        interprets_count = interprets_record["cnt"] if interprets_record else 0
+
+        decided_by_result = await session.run(
+            "MATCH ()-[r:DECIDED_BY]->() RETURN count(r) AS cnt"
+        )
+        decided_by_record = await decided_by_result.single()
+        decided_by_count = decided_by_record["cnt"] if decided_by_record else 0
+
+        authored_by_result = await session.run(
+            "MATCH ()-[r:AUTHORED_BY]->() RETURN count(r) AS cnt"
+        )
+        authored_by_record = await authored_by_result.single()
+        authored_by_count = authored_by_record["cnt"] if authored_by_record else 0
+
+    return {
+        "nodes": node_count,
+        "edges": edge_count,
+        "judges": judge_count,
+        "acts": act_count,
+        "interprets_edges": interprets_count,
+        "decided_by_edges": decided_by_count,
+        "authored_by_edges": authored_by_count,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -367,7 +548,11 @@ async def populate(batch_size: int = 200, dry_run: bool = False) -> None:
         # Test Neo4j connection
         logger.info("Testing Neo4j connection...")
         stats = await get_neo4j_stats(driver, database)
-        logger.info("Neo4j connected. Current: %d nodes, %d edges", stats["nodes"], stats["edges"])
+        logger.info(
+            "Neo4j connected. Current: %d Case nodes, %d CITES edges, "
+            "%d Judge nodes, %d Act nodes",
+            stats["nodes"], stats["edges"], stats["judges"], stats["acts"],
+        )
 
         if stats["nodes"] > 0 and not dry_run:
             logger.warning(
@@ -392,6 +577,10 @@ async def populate(batch_size: int = 200, dry_run: bool = False) -> None:
         total_nodes = 0
         total_edges = 0
         total_unresolved = 0
+        total_acts = 0
+        total_act_edges = 0
+        total_judges = 0
+        total_judge_edges = 0
         start_time = time.time()
 
         for offset in range(0, total_cases, batch_size):
@@ -405,19 +594,35 @@ async def populate(batch_size: int = 200, dry_run: bool = False) -> None:
             created = await batch_create_nodes(driver, database, cases, dry_run=dry_run)
             total_nodes += created
 
-            # Create edges
+            # Create CITES edges
             edges_created, unresolved = await batch_create_edges(
                 driver, database, cases, citation_map, title_map, dry_run=dry_run
             )
             total_edges += edges_created
             total_unresolved += unresolved
 
+            # Create Act nodes and INTERPRETS edges
+            act_count, act_edge_count = await batch_create_act_nodes(
+                driver, database, cases, dry_run=dry_run
+            )
+            total_acts += act_count
+            total_act_edges += act_edge_count
+
+            # Create Judge nodes and DECIDED_BY/AUTHORED_BY edges
+            judge_count, judge_edge_count = await batch_create_judge_nodes(
+                driver, database, cases, dry_run=dry_run
+            )
+            total_judges += judge_count
+            total_judge_edges += judge_edge_count
+
             elapsed = time.time() - batch_start
             progress = min(offset + batch_size, total_cases)
             logger.info(
-                "Batch %d-%d/%d: %d nodes, %d edges (%d unresolved) [%.1fs]",
+                "Batch %d-%d/%d: %d nodes, %d edges (%d unresolved), "
+                "%d acts, %d judges [%.1fs]",
                 offset + 1, progress, total_cases,
-                created, edges_created, unresolved, elapsed,
+                created, edges_created, unresolved,
+                act_count, judge_count, elapsed,
             )
 
         # Update cited_by_count
@@ -428,14 +633,25 @@ async def populate(batch_size: int = 200, dry_run: bool = False) -> None:
         total_time = time.time() - start_time
         prefix = "[DRY RUN] " if dry_run else ""
         logger.info(
-            "%sPopulation complete: %d nodes, %d edges "
-            "(%d citations unresolved) in %.1fs",
-            prefix, total_nodes, total_edges, total_unresolved, total_time,
+            "%sPopulation complete: %d Case nodes, %d CITES edges "
+            "(%d unresolved), %d Act nodes (%d INTERPRETS edges), "
+            "%d Judge nodes (%d DECIDED_BY edges) in %.1fs",
+            prefix, total_nodes, total_edges, total_unresolved,
+            total_acts, total_act_edges,
+            total_judges, total_judge_edges, total_time,
         )
 
         if not dry_run:
             stats = await get_neo4j_stats(driver, database)
-            logger.info("Final Neo4j stats: %d nodes, %d edges", stats["nodes"], stats["edges"])
+            logger.info(
+                "Final Neo4j stats: %d Case nodes, %d CITES edges, "
+                "%d Judge nodes, %d Act nodes, "
+                "%d INTERPRETS, %d DECIDED_BY, %d AUTHORED_BY",
+                stats["nodes"], stats["edges"],
+                stats["judges"], stats["acts"],
+                stats["interprets_edges"], stats["decided_by_edges"],
+                stats["authored_by_edges"],
+            )
 
     finally:
         await conn.close()
@@ -448,7 +664,15 @@ async def show_stats() -> None:
     database = os.getenv("NEO4J_DATABASE", "neo4j")
     try:
         stats = await get_neo4j_stats(driver, database)
-        logger.info("Neo4j: %d Case nodes, %d CITES edges", stats["nodes"], stats["edges"])
+        logger.info(
+            "Neo4j: %d Case nodes, %d CITES edges, "
+            "%d Judge nodes, %d Act nodes, "
+            "%d INTERPRETS, %d DECIDED_BY, %d AUTHORED_BY",
+            stats["nodes"], stats["edges"],
+            stats["judges"], stats["acts"],
+            stats["interprets_edges"], stats["decided_by_edges"],
+            stats["authored_by_edges"],
+        )
     finally:
         await driver.close()
 
