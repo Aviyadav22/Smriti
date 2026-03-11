@@ -15,8 +15,9 @@ EXTRACTION RULES:
 1. Extract ONLY information explicitly stated in the judgment text. If a field \
 cannot be determined, return null (for strings/integers) or an empty array [] (for arrays).
 2. DATES: Use ISO 8601 format (YYYY-MM-DD). Extract from the header or judgment preamble.
-3. JUDGE NAMES: Strip honorifics like "Hon'ble" and "Mr./Mrs./Ms." but keep "Justice" prefix. \
-E.g., "Justice D.Y. Chandrachud".
+3. JUDGE NAMES: Strip ALL honorifics and prefixes including "Hon'ble", "Mr.", "Mrs.", "Ms.", \
+"Dr.", "Smt.", "Shri", "Justice", and trailing ", J." Return only the judge's name. \
+E.g., "D.Y. Chandrachud" (not "Justice D.Y. Chandrachud").
 4. AUTHOR JUDGE: The judge who delivered/authored the majority opinion. Usually indicated \
 by "Judgment delivered by" or the judge whose name appears before the opinion text.
 5. ACTS CITED: Use format "Section X of Act Name, Year". Capture BOTH old and new \
@@ -88,8 +89,8 @@ EXAMPLE OUTPUT:
   "title": "Rajesh Kumar v. State of Uttar Pradesh",
   "citation": "(2022) 8 SCC 215",
   "court": "Supreme Court of India",
-  "judge": ["Justice U.U. Lalit", "Justice S. Ravindra Bhat"],
-  "author_judge": "Justice U.U. Lalit",
+  "judge": ["U.U. Lalit", "S. Ravindra Bhat"],
+  "author_judge": "U.U. Lalit",
   "year": 2022,
   "decision_date": "2022-07-14",
   "case_type": "Criminal Appeal",
