@@ -238,4 +238,8 @@ def _build_filter_clauses(
         )
         params["act"] = f"%{filters.act}%"
 
+    if filters.disposal_nature:
+        clauses.append("disposal_nature ILIKE :disposal_nature")
+        params["disposal_nature"] = f"%{filters.disposal_nature}%"
+
     return clauses, params

@@ -239,7 +239,12 @@ async def ingest_judgment(
         logger.error(
             "Pipeline failed for case_id=%s: %s", case_id, pipeline_exc,
         )
-        # Mark ingestion_status as 'failed' if DB records were committed
+        # Rollback uncommitted partial writes, or mark status as failed
+        if not db_committed:
+            try:
+                await db.rollback()
+            except Exception:
+                logger.error("Rollback failed for case_id=%s", case_id)
         if db_committed:
             try:
                 await db.execute(
@@ -325,6 +330,10 @@ async def _insert_case(
             if parquet_meta.get("available_languages")
             else None
         ),
+        "case_number": metadata.case_number,
+        "is_reportable": metadata.is_reportable,
+        "headnotes": metadata.headnotes,
+        "outcome_summary": metadata.outcome_summary,
     }
 
     # Check if a case with this citation already exists
@@ -358,7 +367,8 @@ async def _insert_case(
                 respondent, decision_date, disposal_nature, description,
                 keywords, acts_cited, cases_cited, ratio_decidendi,
                 full_text, searchable_text, pdf_storage_path, s3_source_path,
-                source, language, available_languages, chunk_count
+                source, language, available_languages, chunk_count,
+                case_number, is_reportable, headnotes, outcome_summary
             ) VALUES (
                 :id, :title, :citation, :case_id, :cnr, :court, :year, :case_type,
                 :jurisdiction, :bench_type, :judge, :author_judge, :petitioner,
@@ -367,7 +377,8 @@ async def _insert_case(
                 :full_text,
                 to_tsvector('english', COALESCE(:title, '') || ' ' || COALESCE(:citation, '') || ' ' || COALESCE(LEFT(:full_text, 50000), '')),
                 :pdf_storage_path, :s3_source_path, :source,
-                :language, :available_languages, 0
+                :language, :available_languages, 0,
+                :case_number, :is_reportable, :headnotes, :outcome_summary
             )
             ON CONFLICT (citation) WHERE citation IS NOT NULL DO UPDATE SET
                 full_text = EXCLUDED.full_text,
@@ -378,7 +389,11 @@ async def _insert_case(
                 keywords = COALESCE(EXCLUDED.keywords, cases.keywords),
                 bench_type = COALESCE(EXCLUDED.bench_type, cases.bench_type),
                 jurisdiction = COALESCE(EXCLUDED.jurisdiction, cases.jurisdiction),
-                searchable_text = EXCLUDED.searchable_text
+                searchable_text = EXCLUDED.searchable_text,
+                case_number = COALESCE(EXCLUDED.case_number, cases.case_number),
+                is_reportable = COALESCE(EXCLUDED.is_reportable, cases.is_reportable),
+                headnotes = COALESCE(EXCLUDED.headnotes, cases.headnotes),
+                outcome_summary = COALESCE(EXCLUDED.outcome_summary, cases.outcome_summary)
             RETURNING id
             """
         ),
@@ -487,6 +502,8 @@ async def _upsert_vectors(
                 "disposal_nature": metadata.disposal_nature or "",
                 "title": (metadata.title or "")[:200],
                 "citation": metadata.citation or "",
+                "author_judge": metadata.author_judge or "",
+                "acts_cited": ",".join(metadata.acts_cited[:10]) if metadata.acts_cited else "",
                 "text": chunk.text[:2000],  # Pinecone metadata size limit
             },
         })
