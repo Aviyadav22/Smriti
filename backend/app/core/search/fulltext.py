@@ -68,8 +68,9 @@ async def search_fulltext(
 
     sql = text(
         f"SELECT id, title, citation, "
-        f"ts_rank_cd(searchable_text, ({tsquery_expr})) AS rank, "
-        f"ts_headline('english', COALESCE(LEFT(full_text, 50000), COALESCE(description, '')), "
+        f"ts_rank_cd(searchable_text, ({tsquery_expr})) "
+        f"  * (1.0 + LN(1 + COALESCE(cited_by_count, 0))) AS rank, "
+        f"ts_headline('english', COALESCE(full_text, COALESCE(description, '')), "
         f"({tsquery_expr}), "
         f"'StartSel=**, StopSel=**, MaxWords=50, MinWords=20') AS snippet "
         f"FROM cases "
@@ -161,14 +162,18 @@ async def _search_sections(
 
     sql = text(
         "SELECT cs.case_id AS id, c.title, c.citation, "
-        "ts_rank_cd(to_tsvector('english', cs.content), websearch_to_tsquery('english', :query)) AS rank, "
+        "ts_rank_cd("
+        "  COALESCE(cs.searchable_content, to_tsvector('english', cs.content)),"
+        "  websearch_to_tsquery('english', :query)"
+        ") AS rank, "
         "ts_headline('english', LEFT(cs.content, 500), "
         "websearch_to_tsquery('english', :query), "
         "'StartSel=**, StopSel=**, MaxWords=50, MinWords=20') AS snippet "
         "FROM case_sections cs "
         "JOIN cases c ON c.id = cs.case_id "
         "WHERE cs.section_type = :section_type "
-        "AND to_tsvector('english', cs.content) @@ websearch_to_tsquery('english', :query) "
+        "AND COALESCE(cs.searchable_content, to_tsvector('english', cs.content)) "
+        "    @@ websearch_to_tsquery('english', :query) "
         "ORDER BY rank DESC "
         "LIMIT :limit"
     )

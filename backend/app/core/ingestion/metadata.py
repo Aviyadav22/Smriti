@@ -126,13 +126,26 @@ async def extract_metadata_llm(
         METADATA_OUTPUT_SCHEMA,
     )
 
-    # Head+tail truncation for long judgments
+    # Truncation strategy for long judgments
     if len(text) <= _MAX_INPUT_CHARS:
         truncated = text
     else:
-        head = text[:_HEAD_CHARS]
-        tail = text[-_TAIL_CHARS:]
-        truncated = head + "\n\n[...MIDDLE OF JUDGMENT OMITTED FOR LENGTH...]\n\n" + tail
+        # For very long texts (>50K chars), use 3-segment strategy:
+        # head (20K) + middle sample (15K from 40-60% position) + tail (15K)
+        # This preserves: parties/header (head), analysis/reasoning (middle),
+        # and order/disposition (tail).
+        head = text[:20_000]
+        mid_start = int(len(text) * 0.4)
+        mid_end = mid_start + 15_000
+        middle = text[mid_start:mid_end]
+        tail = text[-15_000:]
+        truncated = (
+            head
+            + "\n\n[...EARLY MIDDLE OMITTED...]\n\n"
+            + middle
+            + "\n\n[...LATE MIDDLE OMITTED...]\n\n"
+            + tail
+        )
 
     prompt = METADATA_EXTRACTION_USER.format(judgment_text=truncated)
 

@@ -484,6 +484,44 @@ async def update_cited_by_counts(driver, database: str) -> None:
     logger.info("Updated cited_by_count for all nodes")
 
 
+async def sync_cited_by_counts_to_pg(
+    driver, database: str, conn
+) -> int:
+    """Sync cited_by_count from Neo4j back to PostgreSQL.
+
+    Returns the number of rows updated.
+    """
+    async with driver.session(database=database) as session:
+        result = await session.run(
+            "MATCH (c:Case) WHERE c.cited_by_count > 0 "
+            "RETURN c.id AS id, c.cited_by_count AS count"
+        )
+        records = [record async for record in result]
+
+    if not records:
+        logger.info("No cited_by_count data to sync to PostgreSQL")
+        return 0
+
+    # Batch update PostgreSQL
+    updated = 0
+    batch_size = 500
+    for i in range(0, len(records), batch_size):
+        batch = records[i : i + batch_size]
+        # Build VALUES list for batch update
+        values = ", ".join(
+            f"('{r['id']}', {r['count']})" for r in batch
+        )
+        await conn.execute(
+            f"UPDATE cases SET cited_by_count = v.count "
+            f"FROM (VALUES {values}) AS v(id, count) "
+            f"WHERE cases.id::text = v.id"
+        )
+        updated += len(batch)
+
+    logger.info("Synced cited_by_count to PostgreSQL for %d cases", updated)
+    return updated
+
+
 async def get_neo4j_stats(driver, database: str) -> dict:
     """Get current Neo4j statistics."""
     async with driver.session(database=database) as session:
@@ -625,10 +663,12 @@ async def populate(batch_size: int = 200, dry_run: bool = False) -> None:
                 act_count, judge_count, elapsed,
             )
 
-        # Update cited_by_count
+        # Update cited_by_count on Neo4j nodes, then sync back to PostgreSQL
         if not dry_run and total_edges > 0:
             logger.info("Updating cited_by_count on all nodes...")
             await update_cited_by_counts(driver, database)
+            logger.info("Syncing cited_by_count to PostgreSQL...")
+            await sync_cited_by_counts_to_pg(driver, database, conn)
 
         total_time = time.time() - start_time
         prefix = "[DRY RUN] " if dry_run else ""

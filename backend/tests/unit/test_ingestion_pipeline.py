@@ -176,7 +176,7 @@ class TestIngestJudgment:
         mock_merge_meta.return_value = metadata
         mock_validate.return_value = metadata
         mock_validate_cross.return_value = metadata
-        mock_insert_case.return_value = "case-id-123"
+        mock_insert_case.return_value = ("case-id-123", False)
         mock_detect_sections.return_value = _make_sections()
         mock_chunk.return_value = chunks
         mock_embed_chunks.return_value = embeddings
@@ -293,7 +293,7 @@ class TestIngestJudgment:
         mock_merge_meta.return_value = metadata
         mock_validate.return_value = metadata
         mock_validate_cross.return_value = metadata
-        mock_insert_case.return_value = "case-id-123"
+        mock_insert_case.return_value = ("case-id-123", False)
         mock_detect_sections.return_value = _make_sections()
         mock_chunk.return_value = _make_chunks()
 
@@ -395,7 +395,7 @@ class TestIngestJudgment:
         mock_merge_meta.return_value = metadata
         mock_validate.return_value = metadata
         mock_validate_cross.return_value = metadata
-        mock_insert_case.return_value = "case-id-456"
+        mock_insert_case.return_value = ("case-id-456", False)
         mock_detect_sections.return_value = sections
         mock_chunk.return_value = chunks
         mock_embed_chunks.return_value = _make_embeddings()

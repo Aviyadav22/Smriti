@@ -56,6 +56,8 @@ async def ingest_judgment(
     graph_store: GraphStore,
     storage: FileStorage,
     rate_limiter: AsyncRateLimiter | None = None,
+    llm_rate_limiter: AsyncRateLimiter | None = None,
+    embed_rate_limiter: AsyncRateLimiter | None = None,
 ) -> str:
     """Full ingestion pipeline for a single Indian court judgment.
 
@@ -79,7 +81,9 @@ async def ingest_judgment(
         vector_store: Vector DB for similarity search.
         graph_store: Graph DB for citation network.
         storage: File storage for PDF archival.
-        rate_limiter: Optional rate limiter to throttle Gemini API calls.
+        rate_limiter: Shared rate limiter for all API calls (backward compat).
+        llm_rate_limiter: Separate rate limiter for LLM metadata extraction.
+        embed_rate_limiter: Separate rate limiter for embedding API calls.
 
     Returns:
         The case UUID as a string.
@@ -107,9 +111,16 @@ async def ingest_judgment(
     # ------------------------------------------------------------------
     # 2. MERGE METADATA (Parquet + LLM)
     # ------------------------------------------------------------------
-    if rate_limiter:
-        await rate_limiter.acquire()
-    llm_meta = await extract_metadata_llm(full_text, llm)
+    _llm_limiter = llm_rate_limiter or rate_limiter
+    if _llm_limiter:
+        await _llm_limiter.acquire()
+    try:
+        llm_meta = await asyncio.wait_for(
+            extract_metadata_llm(full_text, llm), timeout=120.0
+        )
+    except asyncio.TimeoutError:
+        logger.warning("LLM metadata extraction timed out for %s, using empty", pdf_path)
+        llm_meta = CaseMetadata()
     metadata = merge_metadata(parquet_metadata, llm_meta)
 
     # ------------------------------------------------------------------
@@ -148,13 +159,27 @@ async def ingest_judgment(
     # ------------------------------------------------------------------
     # 5. INSERT CASE INTO POSTGRESQL (upsert on citation conflict)
     # ------------------------------------------------------------------
-    case_id = await _insert_case(
+    original_case_id = case_id
+    case_id, already_ingested = await _insert_case(
         db, case_id, metadata, full_text, storage_path, parquet_metadata
     )
+
+    if already_ingested:
+        logger.info(
+            "Case %s already fully ingested (case_id=%s), skipping pipeline",
+            metadata.citation, case_id,
+        )
+        return case_id
 
     # ------------------------------------------------------------------
     # 6–9: Remaining pipeline steps wrapped for failure handling
     # ------------------------------------------------------------------
+    # Mark ingestion as in-progress
+    await db.execute(
+        text("UPDATE cases SET ingestion_status = 'processing' WHERE id = :id"),
+        {"id": case_id},
+    )
+
     db_committed = False
     try:
         # --------------------------------------------------------------
@@ -178,7 +203,11 @@ async def ingest_judgment(
         # --------------------------------------------------------------
         # 7. GENERATE EMBEDDINGS
         # --------------------------------------------------------------
-        embeddings = await _embed_chunks(chunks, embedder, rate_limiter=rate_limiter)
+        _embed_limiter = embed_rate_limiter or rate_limiter
+        embeddings = await asyncio.wait_for(
+            _embed_chunks(chunks, embedder, rate_limiter=_embed_limiter),
+            timeout=300.0,  # 5 min for large documents with many chunks
+        )
         if len(embeddings) != len(chunks):
             raise RuntimeError(
                 f"Embedding count mismatch: {len(embeddings)} embeddings "
@@ -208,9 +237,12 @@ async def ingest_judgment(
                 )
             raise
 
-        # Update chunk_count in PostgreSQL
+        # Update chunk_count and mark ingestion complete
         await db.execute(
-            text("UPDATE cases SET chunk_count = :count WHERE id = :id"),
+            text(
+                "UPDATE cases SET chunk_count = :count, ingestion_status = 'complete' "
+                "WHERE id = :id"
+            ),
             {"count": len(chunks), "id": case_id},
         )
 
@@ -228,8 +260,11 @@ async def ingest_judgment(
         # 9. BUILD CITATION GRAPH (non-critical, idempotent)
         # --------------------------------------------------------------
         try:
-            await _build_citation_graph(case_id, metadata, full_text, graph_store)
-        except Exception as graph_exc:
+            await asyncio.wait_for(
+                _build_citation_graph(case_id, metadata, full_text, graph_store),
+                timeout=60.0,
+            )
+        except (Exception, asyncio.TimeoutError) as graph_exc:
             # Graph build is non-critical; log but don't fail the pipeline
             logger.error(
                 "Citation graph build failed for case_id=%s: %s",
@@ -289,8 +324,12 @@ async def _insert_case(
     full_text: str,
     storage_path: str,
     parquet_meta: dict,
-) -> str:
-    """Insert or update a case record into PostgreSQL. Returns the case_id used."""
+) -> tuple[str, bool]:
+    """Insert or update a case record into PostgreSQL.
+
+    Returns (case_id, already_ingested) where already_ingested is True
+    if the case already has vectors and should be skipped.
+    """
     # Parse decision_date to a proper date object
     decision_date: date | None = None
     if metadata.decision_date:
@@ -367,9 +406,9 @@ async def _insert_case(
             chunk_row = chunk_check.fetchone()
             if chunk_row and chunk_row[0] and chunk_row[0] > 0:
                 logger.info("Case %s already fully ingested, skipping", metadata.citation)
-                return existing_id
+                return existing_id, True
             logger.info("Case %s exists but missing vectors, re-ingesting", metadata.citation)
-            return existing_id  # reuse existing ID, let pipeline continue
+            return existing_id, False  # reuse existing ID, let pipeline continue
 
     # Use INSERT ... ON CONFLICT to handle duplicate citation race condition
     result = await db.execute(
@@ -445,9 +484,9 @@ async def _insert_case(
                 "Case with citation %s already exists (id=%s), skipping insert",
                 metadata.citation, existing_row[0],
             )
-            return str(existing_row[0])
+            return str(existing_row[0]), False
 
-    return case_id
+    return case_id, False
 
 
 async def _record_ingestion_failure(
@@ -498,7 +537,7 @@ async def _embed_chunks(
             except Exception as exc:
                 if attempt == max_retries - 1:
                     raise
-                wait = 2 ** attempt
+                wait = min(2 ** (attempt + 2), 60)  # 4s, 8s, 16s — aligned with Gemini limits
                 logger.warning(
                     "Embedding batch %d failed (attempt %d/%d), retrying in %ds: %s",
                     i // _EMBED_BATCH_SIZE, attempt + 1, max_retries, wait, exc,
@@ -536,6 +575,8 @@ async def _upsert_vectors(
                 "citation": metadata.citation or "",
                 "author_judge": metadata.author_judge or "",
                 "acts_cited": " | ".join(metadata.acts_cited[:10]) if metadata.acts_cited else "",
+                "para_start": chunk.para_start or 0,
+                "para_end": chunk.para_end or 0,
                 "text": chunk.text[:2000],  # Pinecone metadata size limit
             },
         })
