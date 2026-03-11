@@ -13,7 +13,7 @@ You never hallucinate or fabricate information not present in the source text.
 
 EXTRACTION RULES:
 1. Extract ONLY information explicitly stated in the judgment text. If a field \
-cannot be determined, return null (for strings/integers) or an empty array [] (for arrays).
+cannot be determined, return null (for strings/integers/booleans) or an empty array [] (for arrays).
 2. DATES: Use ISO 8601 format (YYYY-MM-DD). Extract from the header or judgment preamble.
 3. JUDGE NAMES: Strip ALL honorifics and prefixes including "Hon'ble", "Mr.", "Mrs.", "Ms.", \
 "Dr.", "Smt.", "Shri", "Justice", and trailing ", J." Return only the judge's name. \
@@ -44,16 +44,32 @@ legal principles (e.g., "beyond reasonable doubt"). Do NOT include generic terms
 Use contextual understanding to interpret the correct text. Do not include OCR noise.
 12. CASE TYPE must be one of: "Civil Appeal", "Criminal Appeal", "Special Leave Petition", \
 "Writ Petition", "Transfer Petition", "Review Petition", "Contempt Petition", \
-"Original Suit", "Reference", "Other".
+"Original Suit", "Reference", "Curative Petition", "Miscellaneous Application", \
+"Arbitration Petition", "Suo Motu", "Election Petition", "Interlocutory Application", \
+"Letters Patent Appeal", "Other".
 13. CASE NUMBER: Extract the registry number exactly as it appears, e.g., \
 "Criminal Appeal No. 1234 of 2020", "W.P.(C) No. 494 of 2012".
-14. HEADNOTES: Write 2-4 structured legal propositions (headnotes) summarizing the key \
-holdings, in the style used by SCC or AIR reporters. Each headnote should state a \
-distinct legal proposition.
+14. HEADNOTES: Extract 2-4 structured legal propositions (headnotes) summarizing the key \
+holdings, in the style used by SCC or AIR reporters. Return as an array of objects, each \
+with a "proposition" field (a distinct legal holding) and an optional "acts_sections" \
+field (relevant statute sections for that proposition).
 15. OUTCOME SUMMARY: A 1-2 sentence description of the specific outcome, e.g., \
 "Conviction under Section 302 IPC upheld; sentence reduced from death to life imprisonment."
 16. IS REPORTABLE: Check if the judgment header contains "REPORTABLE" or "NON-REPORTABLE" \
 and extract accordingly. If not stated, return null.
+17. CORAM SIZE: Count the exact number of judges on the bench. Return as integer. \
+A 5-judge bench = 5, a 7-judge bench = 7.
+18. LOWER COURT: If this is an appeal, identify the court whose decision is being appealed. \
+Extract the lower court name, case number, and the specific court from which appeal arises.
+19. OPINION TYPE: Determine if the judgment is "unanimous" (all judges agree), \
+"majority" (some dissent), "plurality" (no single opinion commands a majority), or \
+"per_curiam" (by the court, no individual author). Identify dissenting and concurring \
+judges separately.
+20. PARTY TYPE: Classify petitioner and respondent as one of: individual, \
+government_central, government_state, PSU, company, NGO, statutory_body, other. \
+Also determine if this is a PIL (Public Interest Litigation).
+21. COMPANION CASES: If the judgment disposes of multiple cases together (e.g., \
+"With Civil Appeal Nos. 1234-1236 of 2022"), extract all companion case numbers.
 """
 
 METADATA_EXTRACTION_USER: Final[str] = """\
@@ -70,10 +86,16 @@ Return a JSON object with these fields:
 - case_type: Type of case (see CASE TYPE rule)
 - case_number: Registry number as it appears (e.g., "Criminal Appeal No. 1234 of 2020")
 - bench_type: Type of bench (single, division, full, constitutional)
+- coram_size: Number of judges on the bench (integer)
 - jurisdiction: Area of law (civil, criminal, constitutional, tax, labor, company, \
 family, environmental, arbitration, consumer, election, service, other)
 - petitioner: Name of the petitioner/appellant
 - respondent: Name of the respondent
+- petitioner_type: Classification of petitioner (individual, government_central, \
+government_state, PSU, company, NGO, statutory_body, other)
+- respondent_type: Classification of respondent (individual, government_central, \
+government_state, PSU, company, NGO, statutory_body, other)
+- is_pil: Whether this is a Public Interest Litigation (true/false/null)
 - ratio_decidendi: Core legal principle(s) decided (2-5 sentences)
 - acts_cited: List of statutes/acts cited with section numbers
 - cases_cited: List of case citations referenced
@@ -81,10 +103,19 @@ family, environmental, arbitration, consumer, election, service, other)
 - disposal_nature: How the case was disposed (Allowed, Dismissed, Partly Allowed, \
 Withdrawn, Remanded, Disposed Of, Settled, Transferred, Modified, Other)
 - is_reportable: Whether the judgment is marked REPORTABLE (true/false/null)
-- headnotes: 2-4 structured legal propositions summarizing key holdings
+- headnotes: Array of objects, each with "proposition" (legal holding) and optional \
+"acts_sections" (relevant statute sections)
 - outcome_summary: 1-2 sentence description of the specific outcome
+- lower_court: Name of the court whose decision is being appealed (null if not an appeal)
+- lower_court_case_number: Case number in the lower court (null if not an appeal)
+- appeal_from: Specific court the appeal comes from (e.g., "High Court of Delhi")
+- opinion_type: Type of opinion (unanimous, majority, plurality, per_curiam)
+- dissenting_judges: List of judges who wrote dissenting opinions
+- concurring_judges: List of judges who wrote concurring but separate opinions
+- split_ratio: Vote split ratio (e.g., "3:2", "4:1"), null if unanimous
+- companion_cases: Case numbers disposed of together in the same judgment
 
-EXAMPLE OUTPUT:
+EXAMPLE 1 (Criminal Appeal, Division Bench, Unanimous):
 {{
   "title": "Rajesh Kumar v. State of Uttar Pradesh",
   "citation": "(2022) 8 SCC 215",
@@ -96,9 +127,13 @@ EXAMPLE OUTPUT:
   "case_type": "Criminal Appeal",
   "case_number": "Criminal Appeal No. 1087 of 2022",
   "bench_type": "division",
+  "coram_size": 2,
   "jurisdiction": "criminal",
   "petitioner": "Rajesh Kumar",
   "respondent": "State of Uttar Pradesh",
+  "petitioner_type": "individual",
+  "respondent_type": "government_state",
+  "is_pil": false,
   "ratio_decidendi": "The dying declaration of the victim, corroborated by \
 medical evidence and circumstantial evidence, is sufficient to sustain a \
 conviction under Section 302 IPC without further corroboration; the requirement \
@@ -112,12 +147,181 @@ of corroboration is a rule of prudence, not law.",
 "corroboration requirement", "medical evidence", "circumstantial evidence"],
   "disposal_nature": "Dismissed",
   "is_reportable": true,
-  "headnotes": "A dying declaration that is consistent, coherent, and \
-corroborated by medical evidence can form the sole basis of conviction. \
-The absence of a Magistrate during recording does not by itself render a \
-dying declaration unreliable if other safeguards exist.",
+  "headnotes": [
+    {{"proposition": "A dying declaration that is consistent, coherent, and \
+corroborated by medical evidence can form the sole basis of conviction.", \
+"acts_sections": "Section 32(1) of Indian Evidence Act, 1872"}},
+    {{"proposition": "The absence of a Magistrate during recording does not by \
+itself render a dying declaration unreliable if other safeguards exist.", \
+"acts_sections": null}}
+  ],
   "outcome_summary": "Criminal appeal dismissed; conviction under Section 302 \
-IPC and sentence of life imprisonment upheld."
+IPC and sentence of life imprisonment upheld.",
+  "lower_court": "High Court of Allahabad",
+  "lower_court_case_number": "Criminal Appeal No. 456 of 2019",
+  "appeal_from": "High Court of Allahabad",
+  "opinion_type": "unanimous",
+  "dissenting_judges": [],
+  "concurring_judges": [],
+  "split_ratio": null,
+  "companion_cases": []
+}}
+
+EXAMPLE 2 (Civil Appeal, Division Bench, Property Dispute, Unanimous):
+{{
+  "title": "Suresh Chand v. Rameshwar Prasad",
+  "citation": "(2023) 3 SCC 451",
+  "court": "Supreme Court of India",
+  "judge": ["M.R. Shah", "B.V. Nagarathna"],
+  "author_judge": "M.R. Shah",
+  "year": 2023,
+  "decision_date": "2023-02-10",
+  "case_type": "Civil Appeal",
+  "case_number": "Civil Appeal No. 2345 of 2021",
+  "bench_type": "division",
+  "coram_size": 2,
+  "jurisdiction": "civil",
+  "petitioner": "Suresh Chand",
+  "respondent": "Rameshwar Prasad",
+  "petitioner_type": "individual",
+  "respondent_type": "individual",
+  "is_pil": false,
+  "ratio_decidendi": "A registered sale deed takes precedence over an \
+unregistered agreement to sell when both parties claim title to the same \
+immovable property; mere possession without registered title does not \
+create ownership rights under the Transfer of Property Act.",
+  "acts_cited": ["Section 54 of Transfer of Property Act, 1882", \
+"Section 17 of Registration Act, 1908"],
+  "cases_cited": ["Suraj Lamp & Industries v. State of Haryana, (2012) 1 SCC 656"],
+  "keywords": ["sale deed", "agreement to sell", "Section 54 TPA", \
+"registration requirement", "immovable property", "title dispute"],
+  "disposal_nature": "Allowed",
+  "is_reportable": true,
+  "headnotes": [
+    {{"proposition": "A registered sale deed prevails over an unregistered \
+agreement to sell for the same property.", \
+"acts_sections": "Section 54 of Transfer of Property Act, 1882; Section 17 of Registration Act, 1908"}},
+    {{"proposition": "Possession alone, without registered title, does not \
+confer ownership rights in immovable property.", "acts_sections": null}}
+  ],
+  "outcome_summary": "Civil appeal allowed; High Court decree set aside and \
+trial court decree restoring title to the appellant upheld.",
+  "lower_court": "High Court of Madhya Pradesh",
+  "lower_court_case_number": "First Appeal No. 112 of 2018",
+  "appeal_from": "High Court of Madhya Pradesh",
+  "opinion_type": "unanimous",
+  "dissenting_judges": [],
+  "concurring_judges": [],
+  "split_ratio": null,
+  "companion_cases": ["Civil Appeal No. 2346 of 2021"]
+}}
+
+EXAMPLE 3 (Writ Petition, Constitution Bench 5-judge, Dissent 3:2):
+{{
+  "title": "People's Union for Civil Liberties v. Union of India",
+  "citation": "(2023) 5 SCC 1",
+  "court": "Supreme Court of India",
+  "judge": ["D.Y. Chandrachud", "Sanjay Kishan Kaul", "S. Ravindra Bhat", \
+"Hima Kohli", "P.S. Narasimha"],
+  "author_judge": "D.Y. Chandrachud",
+  "year": 2023,
+  "decision_date": "2023-05-05",
+  "case_type": "Writ Petition",
+  "case_number": "W.P.(C) No. 1031 of 2019",
+  "bench_type": "constitutional",
+  "coram_size": 5,
+  "jurisdiction": "constitutional",
+  "petitioner": "People's Union for Civil Liberties",
+  "respondent": "Union of India",
+  "petitioner_type": "NGO",
+  "respondent_type": "government_central",
+  "is_pil": false,
+  "ratio_decidendi": "The right to privacy encompasses the right to digital \
+privacy and protection of personal data; any surveillance mechanism must satisfy \
+the test of proportionality under Article 21 and be subject to independent \
+judicial oversight.",
+  "acts_cited": ["Article 14 of Constitution of India", \
+"Article 19(1)(a) of Constitution of India", \
+"Article 21 of Constitution of India", \
+"Section 69 of Information Technology Act, 2000"],
+  "cases_cited": ["K.S. Puttaswamy v. Union of India, (2017) 10 SCC 1", \
+"Maneka Gandhi v. Union of India, (1978) 1 SCC 248"],
+  "keywords": ["right to privacy", "digital surveillance", "Article 21", \
+"proportionality test", "fundamental rights", "judicial oversight"],
+  "disposal_nature": "Partly Allowed",
+  "is_reportable": true,
+  "headnotes": [
+    {{"proposition": "Digital surveillance by the State must satisfy the \
+four-pronged proportionality test under Article 21.", \
+"acts_sections": "Article 21 of Constitution of India; Section 69 of IT Act, 2000"}},
+    {{"proposition": "An independent judicial oversight mechanism is a \
+constitutional prerequisite for any surveillance programme.", \
+"acts_sections": "Article 14 of Constitution of India"}}
+  ],
+  "outcome_summary": "Writ petition partly allowed; surveillance framework \
+held constitutionally valid but direction issued to constitute an independent \
+oversight committee within six months.",
+  "lower_court": null,
+  "lower_court_case_number": null,
+  "appeal_from": null,
+  "opinion_type": "majority",
+  "dissenting_judges": ["Hima Kohli", "P.S. Narasimha"],
+  "concurring_judges": ["Sanjay Kishan Kaul"],
+  "split_ratio": "3:2",
+  "companion_cases": ["W.P.(C) No. 1032 of 2019", "W.P.(C) No. 1035 of 2019"]
+}}
+
+EXAMPLE 4 (PIL / Suo Motu, Government Respondent):
+{{
+  "title": "In Re: Alarming Rise in Air Pollution in Delhi-NCR",
+  "citation": "2024 SCC OnLine SC 987",
+  "court": "Supreme Court of India",
+  "judge": ["A.S. Oka", "Augustine George Masih"],
+  "author_judge": "A.S. Oka",
+  "year": 2024,
+  "decision_date": "2024-11-15",
+  "case_type": "Suo Motu",
+  "case_number": "Suo Motu W.P.(C) No. 13 of 2024",
+  "bench_type": "division",
+  "coram_size": 2,
+  "jurisdiction": "environmental",
+  "petitioner": "Supreme Court of India (Suo Motu)",
+  "respondent": "Union of India & Ors.",
+  "petitioner_type": "statutory_body",
+  "respondent_type": "government_central",
+  "is_pil": true,
+  "ratio_decidendi": "The right to breathe clean air is a facet of the right \
+to life under Article 21; the State has an affirmative obligation to enforce \
+environmental standards and the polluter-pays principle applies to both \
+government and private actors.",
+  "acts_cited": ["Article 21 of Constitution of India", \
+"Section 5 of Environment (Protection) Act, 1986", \
+"Air (Prevention and Control of Pollution) Act, 1981"],
+  "cases_cited": ["M.C. Mehta v. Union of India, (1987) 1 SCC 395", \
+"Subhash Kumar v. State of Bihar, (1991) 1 SCC 598"],
+  "keywords": ["air pollution", "right to clean air", "Article 21", \
+"polluter pays principle", "environmental protection", "suo motu PIL"],
+  "disposal_nature": "Disposed Of",
+  "is_reportable": true,
+  "headnotes": [
+    {{"proposition": "The right to clean air is a fundamental right under \
+Article 21, imposing an affirmative duty on the State.", \
+"acts_sections": "Article 21 of Constitution of India"}},
+    {{"proposition": "The polluter-pays principle applies to both government \
+and private actors responsible for environmental degradation.", \
+"acts_sections": "Section 5 of Environment (Protection) Act, 1986"}}
+  ],
+  "outcome_summary": "Court directed the Central and State Governments to \
+implement an emergency action plan within 30 days and imposed costs on \
+non-compliant authorities.",
+  "lower_court": null,
+  "lower_court_case_number": null,
+  "appeal_from": null,
+  "opinion_type": "unanimous",
+  "dissenting_judges": [],
+  "concurring_judges": [],
+  "split_ratio": null,
+  "companion_cases": []
 }}
 
 Now extract metadata from the following judgment text:
@@ -191,31 +395,70 @@ does not contain enough information, say so clearly rather than speculating."""
 METADATA_OUTPUT_SCHEMA: Final[dict] = {
     "type": "object",
     "properties": {
-        "title": {"type": "string", "nullable": True},
-        "citation": {"type": "string", "nullable": True},
-        "court": {"type": "string", "nullable": True},
+        "title": {
+            "type": "string",
+            "nullable": True,
+            "description": "Full case title, e.g., 'State of Maharashtra v. Xyz'",
+        },
+        "citation": {
+            "type": "string",
+            "nullable": True,
+            "description": "Official reporter citation, e.g., '(2022) 8 SCC 215'",
+        },
+        "court": {
+            "type": "string",
+            "nullable": True,
+            "description": "Name of the court, e.g., 'Supreme Court of India'",
+        },
         "judge": {
             "type": "array",
             "items": {"type": "string"},
             "nullable": True,
+            "description": "List of judge names on the bench, without honorifics",
         },
-        "author_judge": {"type": "string", "nullable": True},
-        "year": {"type": "integer", "nullable": True},
-        "decision_date": {"type": "string", "nullable": True},
+        "author_judge": {
+            "type": "string",
+            "nullable": True,
+            "description": "Name of the judge who authored the majority opinion",
+        },
+        "year": {
+            "type": "integer",
+            "nullable": True,
+            "description": "Year of the judgment as an integer, e.g., 2022",
+        },
+        "decision_date": {
+            "type": "string",
+            "nullable": True,
+            "description": "Date of judgment in ISO 8601 format (YYYY-MM-DD)",
+        },
         "case_type": {
             "type": "string",
             "nullable": True,
             "enum": [
                 "Civil Appeal", "Criminal Appeal", "Special Leave Petition",
                 "Writ Petition", "Transfer Petition", "Review Petition",
-                "Contempt Petition", "Original Suit", "Reference", "Other",
+                "Contempt Petition", "Original Suit", "Reference",
+                "Curative Petition", "Miscellaneous Application",
+                "Arbitration Petition", "Suo Motu", "Election Petition",
+                "Interlocutory Application", "Letters Patent Appeal", "Other",
             ],
+            "description": "Type of case proceeding",
         },
-        "case_number": {"type": "string", "nullable": True},
+        "case_number": {
+            "type": "string",
+            "nullable": True,
+            "description": "Registry number as it appears, e.g., 'Criminal Appeal No. 1234 of 2020'",
+        },
         "bench_type": {
             "type": "string",
             "nullable": True,
             "enum": ["single", "division", "full", "constitutional"],
+            "description": "Type of bench hearing the case",
+        },
+        "coram_size": {
+            "type": "integer",
+            "nullable": True,
+            "description": "Exact number of judges on the bench",
         },
         "jurisdiction": {
             "type": "string",
@@ -226,24 +469,63 @@ METADATA_OUTPUT_SCHEMA: Final[dict] = {
                 "family", "environmental", "arbitration",
                 "consumer", "election", "service", "other",
             ],
+            "description": "Area of law the case falls under",
         },
-        "petitioner": {"type": "string", "nullable": True},
-        "respondent": {"type": "string", "nullable": True},
-        "ratio_decidendi": {"type": "string", "nullable": True},
+        "petitioner": {
+            "type": "string",
+            "nullable": True,
+            "description": "Name of the petitioner or appellant",
+        },
+        "respondent": {
+            "type": "string",
+            "nullable": True,
+            "description": "Name of the respondent",
+        },
+        "petitioner_type": {
+            "type": "string",
+            "nullable": True,
+            "enum": [
+                "individual", "government_central", "government_state",
+                "PSU", "company", "NGO", "statutory_body", "other",
+            ],
+            "description": "Classification of the petitioner/appellant",
+        },
+        "respondent_type": {
+            "type": "string",
+            "nullable": True,
+            "enum": [
+                "individual", "government_central", "government_state",
+                "PSU", "company", "NGO", "statutory_body", "other",
+            ],
+            "description": "Classification of the respondent",
+        },
+        "is_pil": {
+            "type": "boolean",
+            "nullable": True,
+            "description": "Whether this is a Public Interest Litigation",
+        },
+        "ratio_decidendi": {
+            "type": "string",
+            "nullable": True,
+            "description": "The binding legal principle(s) established, 2-5 sentences",
+        },
         "acts_cited": {
             "type": "array",
             "items": {"type": "string"},
             "nullable": True,
+            "description": "List of statutes/acts cited with section numbers",
         },
         "cases_cited": {
             "type": "array",
             "items": {"type": "string"},
             "nullable": True,
+            "description": "List of case citations referenced in the judgment",
         },
         "keywords": {
             "type": "array",
             "items": {"type": "string"},
             "nullable": True,
+            "description": "5-10 specific legal keywords/topics for research",
         },
         "disposal_nature": {
             "type": "string",
@@ -253,17 +535,93 @@ METADATA_OUTPUT_SCHEMA: Final[dict] = {
                 "Withdrawn", "Remanded", "Disposed Of",
                 "Settled", "Transferred", "Modified", "Other",
             ],
+            "description": "How the case was disposed of",
         },
-        "is_reportable": {"type": "boolean", "nullable": True},
-        "headnotes": {"type": "string", "nullable": True},
-        "outcome_summary": {"type": "string", "nullable": True},
+        "is_reportable": {
+            "type": "boolean",
+            "nullable": True,
+            "description": "Whether the judgment is marked REPORTABLE in the header",
+        },
+        "headnotes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "proposition": {
+                        "type": "string",
+                        "description": "A distinct legal proposition or holding",
+                    },
+                    "acts_sections": {
+                        "type": "string",
+                        "nullable": True,
+                        "description": "Relevant statute sections for this proposition",
+                    },
+                },
+                "required": ["proposition"],
+            },
+            "nullable": True,
+            "description": "Structured legal propositions summarizing key holdings",
+        },
+        "outcome_summary": {
+            "type": "string",
+            "nullable": True,
+            "description": "1-2 sentence description of the specific outcome of the case",
+        },
+        "lower_court": {
+            "type": "string",
+            "nullable": True,
+            "description": "Name of the court whose decision is being appealed",
+        },
+        "lower_court_case_number": {
+            "type": "string",
+            "nullable": True,
+            "description": "Case number in the lower court",
+        },
+        "appeal_from": {
+            "type": "string",
+            "nullable": True,
+            "description": "Specific court the appeal comes from (e.g., 'High Court of Delhi')",
+        },
+        "opinion_type": {
+            "type": "string",
+            "nullable": True,
+            "enum": ["unanimous", "majority", "plurality", "per_curiam"],
+            "description": "Type of judicial opinion",
+        },
+        "dissenting_judges": {
+            "type": "array",
+            "items": {"type": "string"},
+            "nullable": True,
+            "description": "Judges who wrote dissenting opinions",
+        },
+        "concurring_judges": {
+            "type": "array",
+            "items": {"type": "string"},
+            "nullable": True,
+            "description": "Judges who wrote concurring but separate opinions",
+        },
+        "split_ratio": {
+            "type": "string",
+            "nullable": True,
+            "description": "Vote split ratio, e.g., '3:2', '4:1'",
+        },
+        "companion_cases": {
+            "type": "array",
+            "items": {"type": "string"},
+            "nullable": True,
+            "description": "Case numbers disposed of together in the same judgment",
+        },
     },
     "required": [
         "title", "citation", "court", "judge", "author_judge", "year",
         "decision_date", "case_type", "case_number", "bench_type",
-        "jurisdiction", "petitioner", "respondent", "ratio_decidendi",
-        "acts_cited", "cases_cited", "keywords", "disposal_nature",
-        "is_reportable", "headnotes", "outcome_summary",
+        "coram_size", "jurisdiction", "petitioner", "respondent",
+        "petitioner_type", "respondent_type", "is_pil",
+        "ratio_decidendi", "acts_cited", "cases_cited", "keywords",
+        "disposal_nature", "is_reportable", "headnotes", "outcome_summary",
+        "lower_court", "lower_court_case_number", "appeal_from",
+        "opinion_type", "dissenting_judges", "concurring_judges",
+        "split_ratio", "companion_cases",
     ],
 }
 
