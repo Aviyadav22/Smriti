@@ -4,8 +4,8 @@ import uuid
 from datetime import date, datetime
 
 import sqlalchemy as sa
-from sqlalchemy import Boolean, CheckConstraint, Index, Integer, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, TSVECTOR
+from sqlalchemy import Boolean, CheckConstraint, Float, Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -90,6 +90,14 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     companion_cases: Mapped[list[str] | None] = mapped_column(
         ARRAY(String), nullable=True
     )
+
+    # --- Migration 013 columns (enterprise readiness) ---
+    # F1: Provenance tracking — which source provided each field
+    metadata_provenance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # F2: Overall LLM extraction confidence score (0.0-1.0)
+    extraction_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # F7: SHA-256 hash of normalized full_text for dedup
+    text_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     __table_args__ = (
         CheckConstraint("year >= 1800 AND year <= 2200", name="ck_cases_year_range"),

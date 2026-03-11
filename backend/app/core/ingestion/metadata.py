@@ -189,6 +189,46 @@ async def extract_metadata_llm(
 # Regex / heuristic validation
 # ---------------------------------------------------------------------------
 
+def compute_extraction_confidence(metadata: CaseMetadata) -> float:
+    """Compute a confidence score (0.0-1.0) for the LLM extraction quality.
+
+    Weights critical fields more heavily: title, citation, court, year, judge,
+    and ratio_decidendi are high-value; optional fields contribute less.
+
+    Returns a float between 0.0 (no fields extracted) and 1.0 (all key fields present).
+    """
+    weighted_fields: list[tuple[str, float]] = [
+        ("title", 0.12),
+        ("citation", 0.12),
+        ("court", 0.10),
+        ("year", 0.10),
+        ("judge", 0.08),
+        ("decision_date", 0.06),
+        ("petitioner", 0.05),
+        ("respondent", 0.05),
+        ("ratio_decidendi", 0.08),
+        ("acts_cited", 0.05),
+        ("cases_cited", 0.05),
+        ("keywords", 0.04),
+        ("case_type", 0.03),
+        ("disposal_nature", 0.03),
+        ("bench_type", 0.02),
+        ("jurisdiction", 0.02),
+    ]
+    score = 0.0
+    for field_name, weight in weighted_fields:
+        val = getattr(metadata, field_name, None)
+        if val is not None:
+            # Lists must be non-empty to count
+            if isinstance(val, list) and len(val) == 0:
+                continue
+            # Empty strings don't count
+            if isinstance(val, str) and not val.strip():
+                continue
+            score += weight
+    return round(min(score, 1.0), 3)
+
+
 def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
     """Validate and sanitize LLM-extracted metadata using deterministic checks.
 
@@ -470,7 +510,67 @@ def normalize_case_type(raw: str) -> str:
 # Merge Parquet ground truth with LLM extraction
 # ---------------------------------------------------------------------------
 
-def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> CaseMetadata:
+def validate_parquet_data(parquet_meta: dict) -> dict:
+    """Validate and sanitize Parquet metadata before merge.
+
+    Catches common data issues: NaN values, extreme years, truncated titles,
+    invalid date formats. Returns a cleaned copy.
+    """
+    import math
+
+    cleaned = {}
+    for key, val in parquet_meta.items():
+        # Convert NaN/inf to None
+        if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+            cleaned[key] = None
+            continue
+        # Convert pandas NaT/None-like strings
+        if isinstance(val, str) and val.strip().lower() in ("nan", "nat", "none", "null", ""):
+            cleaned[key] = None
+            continue
+        cleaned[key] = val
+
+    # Validate year range
+    year = cleaned.get("year")
+    if year is not None:
+        try:
+            year_int = int(year)
+            if year_int < 1800 or year_int > datetime.now().year:
+                logger.warning("Parquet year %d out of range, clearing", year_int)
+                cleaned["year"] = None
+            else:
+                cleaned["year"] = year_int
+        except (ValueError, TypeError):
+            cleaned["year"] = None
+
+    # Validate decision_date format
+    date_val = cleaned.get("decision_date")
+    if date_val is not None and isinstance(date_val, str):
+        try:
+            datetime.fromisoformat(date_val)
+        except (ValueError, TypeError):
+            # Try common date formats
+            for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+                try:
+                    parsed = datetime.strptime(date_val, fmt)
+                    cleaned["decision_date"] = parsed.date().isoformat()
+                    break
+                except ValueError:
+                    continue
+            else:
+                logger.warning("Invalid parquet date format '%s', clearing", date_val)
+                cleaned["decision_date"] = None
+
+    # Truncate excessively long titles (likely data corruption)
+    title = cleaned.get("title")
+    if isinstance(title, str) and len(title) > 1000:
+        cleaned["title"] = title[:500]
+        logger.warning("Parquet title truncated from %d chars", len(title))
+
+    return cleaned
+
+
+def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> tuple[CaseMetadata, dict[str, str]]:
     """Merge Parquet ground-truth metadata with LLM-extracted metadata.
 
     Strategy:
@@ -486,9 +586,10 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> CaseMetadata:
         llm_meta: ``CaseMetadata`` from the LLM.
 
     Returns:
-        A merged ``CaseMetadata`` instance.
+        A tuple of (merged CaseMetadata, provenance dict mapping field -> source).
     """
     result = CaseMetadata()
+    provenance: dict[str, str] = {}
 
     # -- Parquet-priority fields --
     parquet_priority = (
@@ -506,17 +607,27 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> CaseMetadata:
                 parquet_val = str(parquet_val)
         # Use parquet value if non-None and non-empty, otherwise fall back to LLM.
         # Truthiness fix: empty strings from parquet should not override LLM values.
-        val = parquet_val if (parquet_val is not None and str(parquet_val).strip() != "") else llm_val
+        if parquet_val is not None and str(parquet_val).strip() != "":
+            val = parquet_val
+            provenance[field] = "parquet"
+        elif llm_val is not None:
+            val = llm_val
+            provenance[field] = "llm"
+        else:
+            val = None
         setattr(result, field, val)
 
     # -- Judge array (parquet may store as comma-separated string) --
     judge_raw = parquet_meta.get("judge", "")
     if isinstance(judge_raw, str) and judge_raw.strip():
         result.judge = _parse_judge_names(judge_raw)
+        provenance["judge"] = "parquet"
     elif isinstance(judge_raw, list) and judge_raw:
         result.judge = _parse_judge_names(judge_raw)
+        provenance["judge"] = "parquet"
     elif llm_meta.judge:
         result.judge = _parse_judge_names(llm_meta.judge)
+        provenance["judge"] = "llm"
 
     # -- LLM-priority fields --
     llm_priority = (
@@ -524,7 +635,10 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> CaseMetadata:
         "keywords", "bench_type", "jurisdiction",
     )
     for field in llm_priority:
-        setattr(result, field, getattr(llm_meta, field, None))
+        val = getattr(llm_meta, field, None)
+        setattr(result, field, val)
+        if val is not None:
+            provenance[field] = "llm"
 
     # -- LLM-only fields (added in March 2026 ingestion overhaul) --
     llm_only_fields = (
@@ -538,9 +652,14 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> CaseMetadata:
         llm_val = getattr(llm_meta, field, None)
         if llm_val is not None:
             setattr(result, field, llm_val)
+            provenance[field] = "llm"
 
     # -- case_type: prefer parquet nc_display, fall back to LLM --
     raw_case_type = parquet_meta.get("nc_display") or llm_meta.case_type
     result.case_type = normalize_case_type(raw_case_type) if raw_case_type else raw_case_type
+    if parquet_meta.get("nc_display"):
+        provenance["case_type"] = "parquet"
+    elif llm_meta.case_type:
+        provenance["case_type"] = "llm"
 
-    return result
+    return result, provenance

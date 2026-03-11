@@ -157,6 +157,24 @@ TAXMANN_PATTERN: re.Pattern[str] = re.compile(
     r"[\[\(](\d{4})[\]\)]\s+(\d+)\s+taxmann\.com\s+(\d+)", re.IGNORECASE
 )
 
+# --- Name-based citations ---
+
+# Matches "X v. Y" or "X vs. Y" or "X versus Y" style case names when preceded
+# by contextual phrasing like "in", "decision in", "case of", "relied on", etc.
+# Captures party names (2+ word sequences) separated by v./vs./versus.
+# Requires at least 2 words on each side to reduce false positives.
+NAME_CITATION_PATTERN: re.Pattern[str] = re.compile(
+    r"(?:(?:in|decision\s+in|case\s+of|relied\s+on|referred\s+to|overruled\s+in|"
+    r"followed\s+in|distinguished\s+in|held\s+in|observed\s+in|reported\s+in)"
+    r"\s+)"
+    r"((?:[A-Z][a-zA-Z.']+(?:\s+(?:of|the|&|and)\s+)?)+)"  # petitioner name
+    r"\s+(?:v\.?s?\.?|versus)\s+"
+    r"((?:[A-Z][a-zA-Z.']+(?:\s+(?:of|the|&|and)\s+)?)+)"  # respondent name
+    r"(?:\s*\(supra\))?",
+    re.MULTILINE,
+)
+
+
 # --- Company Cases ---
 
 # (2020) 123 CompCas 456
@@ -579,6 +597,20 @@ def extract_citations(text: str) -> list[Citation]:
             raw_text=match.group(0),
         ))
 
+    # Name-based citations -- "in Kesavananda Bharati v. State of Kerala"
+    for match in NAME_CITATION_PATTERN.finditer(text):
+        petitioner_name = match.group(1).strip().rstrip(".")
+        respondent_name = match.group(2).strip().rstrip(".")
+        case_name = f"{petitioner_name} v. {respondent_name}"
+        _add(Citation(
+            reporter="NameCitation",
+            year=0,  # Unknown from name alone
+            volume=None,
+            page="0",
+            court=None,
+            raw_text=case_name,
+        ))
+
     return citations
 
 
@@ -701,9 +733,14 @@ def extract_acts_cited(text: str) -> list[ActReference]:
 def normalize_citation(citation: str) -> str:
     """Normalize a citation string to a canonical format.
 
-    Standardizes spacing, punctuation, and reporter abbreviations to
-    produce a consistent citation form suitable for deduplication and
-    comparison.
+    Performs structural canonicalization:
+    1. Collapse whitespace
+    2. Standardize reporter abbreviations (CrLJ, AIR, SCC OnLine)
+    3. Standardize bracket styles ([] -> () for SCC)
+    4. Normalize neutral citation separators (colon-delimited)
+    5. Standardize MANU path separators
+    6. Remove trailing periods and punctuation from citations
+    7. Normalize "v." / "vs." / "versus" in party name citations
 
     Args:
         citation: Raw citation string.
@@ -731,6 +768,28 @@ def normalize_citation(citation: str) -> str:
         r"\[(\d{4})\](\s+\d+\s+SCC\s+)",
         r"(\1)\2",
         normalized,
+    )
+
+    # Standardize neutral citation separators: spaces around colons
+    # "2023 : INSC : 1234" -> "2023:INSC:1234"
+    normalized = re.sub(r"(\d{4})\s*:\s*(\w+)\s*:\s*(\d+)", r"\1:\2:\3", normalized)
+
+    # Normalize MANU path separators: "MANU / SC / 1234 / 2020" -> "MANU/SC/1234/2020"
+    normalized = re.sub(r"MANU\s*/\s*(\w+)\s*/\s*(\d+)\s*/\s*(\d{4})", r"MANU/\1/\2/\3", normalized)
+
+    # Normalize "vs." / "versus" -> "v." in party name citations
+    normalized = re.sub(r"\bvs\.?\b", "v.", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\bversus\b", "v.", normalized, flags=re.IGNORECASE)
+
+    # Remove trailing period that isn't part of an abbreviation
+    normalized = re.sub(r"(\d)\.\s*$", r"\1", normalized)
+
+    # Normalize ITR/Taxmann bracket style: [2020] -> (2020)
+    normalized = re.sub(
+        r"\[(\d{4})\](\s+\d+\s+(?:ITR|taxmann\.com)\s+)",
+        r"(\1)\2",
+        normalized,
+        flags=re.IGNORECASE,
     )
 
     return normalized

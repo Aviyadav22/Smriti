@@ -173,7 +173,7 @@ class TestIngestJudgment:
             ocr_used=False, legal_keyword_count=5, page_count=10,
         )
         mock_extract_meta_llm.return_value = metadata
-        mock_merge_meta.return_value = metadata
+        mock_merge_meta.return_value = (metadata, {"title": "parquet"})
         mock_validate.return_value = metadata
         mock_validate_cross.return_value = metadata
         mock_insert_case.return_value = ("case-id-123", False)
@@ -290,7 +290,7 @@ class TestIngestJudgment:
             ocr_used=False, legal_keyword_count=5, page_count=10,
         )
         mock_extract_meta_llm.return_value = metadata
-        mock_merge_meta.return_value = metadata
+        mock_merge_meta.return_value = (metadata, {"title": "parquet"})
         mock_validate.return_value = metadata
         mock_validate_cross.return_value = metadata
         mock_insert_case.return_value = ("case-id-123", False)
@@ -392,7 +392,7 @@ class TestIngestJudgment:
             ocr_used=False, legal_keyword_count=5, page_count=10,
         )
         mock_extract_meta_llm.return_value = metadata
-        mock_merge_meta.return_value = metadata
+        mock_merge_meta.return_value = (metadata, {"title": "parquet"})
         mock_validate.return_value = metadata
         mock_validate_cross.return_value = metadata
         mock_insert_case.return_value = ("case-id-456", False)

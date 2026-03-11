@@ -29,7 +29,7 @@ class Chunk:
     """A text chunk ready for embedding, annotated with section metadata."""
 
     text: str
-    section_type: str  # HEADER, FACTS, ARGUMENTS, ISSUES, ANALYSIS, RATIO, ORDER, DISSENT, CONCURRENCE, PRELIMINARY, EVIDENCE, STATUTORY, DIRECTIONS, PER_CURIAM, FULL
+    section_type: str  # HEADER, FACTS, ARGUMENTS, ISSUES, ANALYSIS, RATIO, ORDER, DISSENT, CONCURRENCE, PRELIMINARY, EVIDENCE, STATUTORY, DIRECTIONS, TOC, EDITORIAL, PER_CURIAM, FULL
     chunk_index: int
     case_id: str
     page_number: int | None = None
@@ -213,6 +213,31 @@ SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
     "STATUTORY": re.compile(
         r"(?:STATUTORY\s+FRAMEWORK|RELEVANT\s+PROVISIONS|STATUTORY\s+PROVISIONS|THE\s+LAW)",
+        re.IGNORECASE,
+    ),
+    "TOC": re.compile(
+        r"(?:"
+        r"TABLE\s+OF\s+CONTENTS"
+        r"|INDEX"
+        r"|CONTENTS"
+        r"|LIST\s+OF\s+(?:DATES|EVENTS)"
+        r"|SYNOPSIS"
+        r"|HEADNOTE"
+        r"|HEAD\s*NOTE"
+        r")",
+        re.IGNORECASE,
+    ),
+    "EDITORIAL": re.compile(
+        r"(?:"
+        r"EDITOR(?:'S)?\s+NOTE"
+        r"|EDITORIAL\s+NOTE"
+        r"|CATCHWORDS"
+        r"|CATCH\s+WORDS"
+        r"|CITATOR"
+        r"|REPORTER'?S?\s+NOTE"
+        r"|SUMMARY\s+OF\s+THE\s+CASE"
+        r"|BENCH\s*:\s*"
+        r")",
         re.IGNORECASE,
     ),
     "DIRECTIONS": re.compile(

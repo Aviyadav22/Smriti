@@ -98,36 +98,36 @@ class TestMergeMetadata:
     def test_parquet_wins_for_title(self):
         parquet = {"title": "Parquet Title"}
         llm = CaseMetadata(title="LLM Title")
-        result = merge_metadata(parquet, llm)
+        result, _ = merge_metadata(parquet, llm)
         assert result.title == "Parquet Title"
 
     def test_llm_fallback_for_title(self):
         parquet = {"title": ""}
         llm = CaseMetadata(title="LLM Title")
-        result = merge_metadata(parquet, llm)
+        result, _ = merge_metadata(parquet, llm)
         assert result.title == "LLM Title"
 
     def test_llm_wins_for_ratio(self):
         parquet = {}
         llm = CaseMetadata(ratio_decidendi="The court held that...")
-        result = merge_metadata(parquet, llm)
+        result, _ = merge_metadata(parquet, llm)
         assert result.ratio_decidendi == "The court held that..."
 
     def test_judge_from_comma_string(self):
         parquet = {"judge": "Justice D.Y. Chandrachud, Justice Sanjiv Khanna"}
         llm = CaseMetadata()
-        result = merge_metadata(parquet, llm)
+        result, _ = merge_metadata(parquet, llm)
         # _parse_judge_names strips "Justice" prefix for normalized storage
         assert result.judge == ["D.Y. Chandrachud", "Sanjiv Khanna"]
 
     def test_nc_display_used_for_case_type(self):
         parquet = {"nc_display": "Criminal Appeal"}
         llm = CaseMetadata(case_type="Civil")
-        result = merge_metadata(parquet, llm)
+        result, _ = merge_metadata(parquet, llm)
         assert result.case_type == "Criminal Appeal"
 
     def test_empty_parquet_and_llm(self):
-        result = merge_metadata({}, CaseMetadata())
+        result, _ = merge_metadata({}, CaseMetadata())
         assert result.title is None
         assert result.court is None
 

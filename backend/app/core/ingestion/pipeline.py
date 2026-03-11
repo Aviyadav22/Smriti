@@ -11,8 +11,10 @@ bulk_insert_citations, ingest_batch).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+import re
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
@@ -24,9 +26,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ingestion.chunker import Chunk, chunk_judgment, detect_judgment_sections
 from app.core.ingestion.metadata import (
     CaseMetadata,
+    compute_extraction_confidence,
     extract_metadata_llm,
     merge_metadata,
     validate_cross_fields,
+    validate_parquet_data,
     validate_with_regex,
 )
 from app.core.ingestion.pdf import extract_and_score, extract_pdf_text, extract_with_ocr
@@ -121,7 +125,8 @@ async def ingest_judgment(
     except asyncio.TimeoutError:
         logger.warning("LLM metadata extraction timed out for %s, using empty", pdf_path)
         llm_meta = CaseMetadata()
-    metadata = merge_metadata(parquet_metadata, llm_meta)
+    validated_parquet = validate_parquet_data(parquet_metadata)
+    metadata, provenance = merge_metadata(validated_parquet, llm_meta)
 
     # ------------------------------------------------------------------
     # 3. VALIDATE METADATA
@@ -137,6 +142,7 @@ async def ingest_judgment(
             act_str = f"{ref.act_name}, {ref.year}" if ref.year else ref.act_name
             llm_acts.add(act_str)
         metadata.acts_cited = sorted(llm_acts)
+        provenance["acts_cited"] = "llm+regex"
 
     # Supplement LLM cases_cited with regex extraction
     regex_citations = extract_citations(full_text)
@@ -145,6 +151,13 @@ async def ingest_judgment(
         for cit in regex_citations:
             llm_cases.add(cit.raw_text)
         metadata.cases_cited = sorted(llm_cases)
+        provenance["cases_cited"] = "llm+regex"
+
+    # Compute text_hash for dedup (SHA-256 of whitespace-normalized text)
+    text_hash = _compute_text_hash(full_text)
+
+    # Compute extraction confidence score
+    extraction_confidence = compute_extraction_confidence(metadata)
 
     # ------------------------------------------------------------------
     # 4. STORE PDF
@@ -161,7 +174,9 @@ async def ingest_judgment(
     # ------------------------------------------------------------------
     original_case_id = case_id
     case_id, already_ingested = await _insert_case(
-        db, case_id, metadata, full_text, storage_path, parquet_metadata
+        db, case_id, metadata, full_text, storage_path, parquet_metadata,
+        provenance=provenance, text_hash=text_hash,
+        extraction_confidence=extraction_confidence,
     )
 
     if already_ingested:
@@ -237,13 +252,19 @@ async def ingest_judgment(
                 )
             raise
 
-        # Update chunk_count and mark ingestion complete
+        # Update chunk_count and mark ingestion status
+        # Low confidence extractions are flagged for human review
+        _REVIEW_THRESHOLD = 0.5
+        final_status = (
+            "needs_review" if extraction_confidence < _REVIEW_THRESHOLD
+            else "complete"
+        )
         await db.execute(
             text(
-                "UPDATE cases SET chunk_count = :count, ingestion_status = 'complete' "
+                "UPDATE cases SET chunk_count = :count, ingestion_status = :status "
                 "WHERE id = :id"
             ),
-            {"count": len(chunks), "id": case_id},
+            {"count": len(chunks), "status": final_status, "id": case_id},
         )
 
         # --------------------------------------------------------------
@@ -264,6 +285,11 @@ async def ingest_judgment(
                 _build_citation_graph(case_id, metadata, full_text, graph_store),
                 timeout=60.0,
             )
+            # Link citation equivalents in graph (F10)
+            if citation_equivalents:
+                await _link_citation_equivalents(
+                    case_id, metadata.citation, citation_equivalents, graph_store,
+                )
         except (Exception, asyncio.TimeoutError) as graph_exc:
             # Graph build is non-critical; log but don't fail the pipeline
             logger.error(
@@ -309,6 +335,12 @@ async def ingest_judgment(
 # ---------------------------------------------------------------------------
 
 
+def _compute_text_hash(text: str) -> str:
+    """Compute SHA-256 hash of whitespace-normalized text for dedup."""
+    normalized = re.sub(r'\s+', ' ', text.strip().lower())
+    return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+
+
 def _safe_filename(parquet_meta: dict) -> str:
     """Generate a safe filename from parquet metadata."""
     title = parquet_meta.get("title", "unknown")
@@ -324,6 +356,10 @@ async def _insert_case(
     full_text: str,
     storage_path: str,
     parquet_meta: dict,
+    *,
+    provenance: dict[str, str] | None = None,
+    text_hash: str | None = None,
+    extraction_confidence: float | None = None,
 ) -> tuple[str, bool]:
     """Insert or update a case record into PostgreSQL.
 
@@ -387,7 +423,25 @@ async def _insert_case(
         "respondent_type": metadata.respondent_type,
         "is_pil": metadata.is_pil,
         "companion_cases": metadata.companion_cases,
+        "metadata_provenance": json.dumps(provenance) if provenance else None,
+        "text_hash": text_hash,
+        "extraction_confidence": extraction_confidence,
     }
+
+    # Check for content-based duplicate via text_hash
+    if text_hash:
+        existing_hash = await db.execute(
+            text("SELECT id, chunk_count FROM cases WHERE text_hash = :hash"),
+            {"hash": text_hash},
+        )
+        hash_row = existing_hash.fetchone()
+        if hash_row:
+            existing_id = str(hash_row[0])
+            if hash_row[1] and hash_row[1] > 0:
+                logger.info("Duplicate content detected via text_hash (case_id=%s)", existing_id)
+                return existing_id, True
+            logger.info("Duplicate content but missing vectors, re-ingesting (case_id=%s)", existing_id)
+            return existing_id, False
 
     # Check if a case with this citation already exists
     if metadata.citation:
@@ -424,7 +478,8 @@ async def _insert_case(
                 case_number, is_reportable, headnotes, outcome_summary,
                 coram_size, lower_court, lower_court_case_number, appeal_from,
                 opinion_type, dissenting_judges, concurring_judges, split_ratio,
-                petitioner_type, respondent_type, is_pil, companion_cases
+                petitioner_type, respondent_type, is_pil, companion_cases,
+                metadata_provenance, text_hash, extraction_confidence
             ) VALUES (
                 :id, :title, :citation, :case_id, :cnr, :court, :year, :case_type,
                 :jurisdiction, :bench_type, :judge, :author_judge, :petitioner,
@@ -437,7 +492,8 @@ async def _insert_case(
                 :case_number, :is_reportable, :headnotes, :outcome_summary,
                 :coram_size, :lower_court, :lower_court_case_number, :appeal_from,
                 :opinion_type, :dissenting_judges, :concurring_judges, :split_ratio,
-                :petitioner_type, :respondent_type, :is_pil, :companion_cases
+                :petitioner_type, :respondent_type, :is_pil, :companion_cases,
+                :metadata_provenance, :text_hash, :extraction_confidence
             )
             ON CONFLICT (citation) WHERE citation IS NOT NULL DO UPDATE SET
                 full_text = EXCLUDED.full_text,
@@ -464,7 +520,10 @@ async def _insert_case(
                 petitioner_type = COALESCE(EXCLUDED.petitioner_type, cases.petitioner_type),
                 respondent_type = COALESCE(EXCLUDED.respondent_type, cases.respondent_type),
                 is_pil = COALESCE(EXCLUDED.is_pil, cases.is_pil),
-                companion_cases = COALESCE(EXCLUDED.companion_cases, cases.companion_cases)
+                companion_cases = COALESCE(EXCLUDED.companion_cases, cases.companion_cases),
+                metadata_provenance = COALESCE(EXCLUDED.metadata_provenance, cases.metadata_provenance),
+                text_hash = COALESCE(EXCLUDED.text_hash, cases.text_hash),
+                extraction_confidence = COALESCE(EXCLUDED.extraction_confidence, cases.extraction_confidence)
             RETURNING id
             """
         ),
@@ -655,6 +714,43 @@ async def _build_citation_graph(
         )
     except (OSError, ConnectionError, RuntimeError) as exc:
         logger.warning("Failed to batch-create citation edges for %s: %s", case_id, exc)
+
+
+async def _link_citation_equivalents(
+    case_id: str,
+    primary_citation: str | None,
+    equivalents: list[dict],
+    graph_store: GraphStore,
+) -> None:
+    """Link equivalent citation nodes in Neo4j so graph queries can resolve them.
+
+    For each citation equivalent, creates a bidirectional EQUIVALENT_TO relationship
+    between the primary citation node and the alternative citation node.
+    """
+    if not primary_citation or not equivalents:
+        return
+
+    equiv_data = [
+        {"citation": eq["citation_text"]}
+        for eq in equivalents
+        if eq["citation_text"] != primary_citation
+    ]
+    if not equiv_data:
+        return
+
+    try:
+        await graph_store.query(
+            "UNWIND $equivs AS e "
+            "MATCH (a:Case {citation: $primary}) "
+            "MERGE (b:Case {citation: e.citation}) "
+            "MERGE (a)-[:EQUIVALENT_TO]->(b) "
+            "MERGE (b)-[:EQUIVALENT_TO]->(a)",
+            params={"primary": primary_citation, "equivs": equiv_data},
+        )
+    except (OSError, ConnectionError, RuntimeError) as exc:
+        logger.warning(
+            "Failed to link citation equivalents for %s: %s", case_id, exc
+        )
 
 
 def _extract_citation_equivalents(full_text: str, case_id: str) -> list[dict]:

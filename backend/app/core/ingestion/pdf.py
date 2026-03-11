@@ -60,6 +60,15 @@ _BOILERPLATE_PATTERNS = [
     re.compile(r"^\s*UPON\s+hearing\b.*$", re.IGNORECASE),
 ]
 
+# Footnote reference in body text: superscript digits or [1], [2] etc.
+_FOOTNOTE_REF_RE = re.compile(r"(?:\[(\d{1,3})\]|(?<!\d)(\d{1,2})(?=\s))")
+
+# Footnote definition at bottom of page: "1. Some footnote text" or "[1] text"
+_FOOTNOTE_DEF_RE = re.compile(
+    r"^\s*(?:\[(\d{1,3})\]|(\d{1,3})[\.\)])\s+(.+)$",
+    re.MULTILINE,
+)
+
 
 @dataclass
 class TextQuality:
@@ -123,6 +132,43 @@ def clean_extracted_text(text: str) -> str:
     text = _EXCESS_NEWLINES_RE.sub("\n\n", text)
 
     return text.strip()
+
+
+def reattach_footnotes(text: str) -> str:
+    """Detect footnote definitions and inline them near their references.
+
+    Indian SC judgments often have footnotes at the end of pages that get
+    separated during extraction. This function:
+    1. Finds footnote definitions (e.g., "1. See AIR 1978 SC 248")
+    2. Removes them from their original location
+    3. Inserts them inline as "[Footnote N: text]" after the reference
+
+    Only processes footnotes numbered 1-99 to avoid false positives.
+    """
+    # Extract footnote definitions
+    footnotes: dict[int, str] = {}
+    for match in _FOOTNOTE_DEF_RE.finditer(text):
+        num = int(match.group(1) or match.group(2))
+        if num > 99:
+            continue
+        fn_text = match.group(3).strip()
+        if fn_text and len(fn_text) > 5:  # Skip trivially short "footnotes"
+            footnotes[num] = fn_text
+
+    if not footnotes:
+        return text
+
+    # Remove footnote definitions from the text
+    cleaned = _FOOTNOTE_DEF_RE.sub("", text)
+
+    # Insert footnotes inline where referenced
+    for num, fn_text in sorted(footnotes.items()):
+        # Look for [N] references and append footnote text
+        pattern = re.compile(rf"\[{num}\]")
+        replacement = f"[{num}] [Footnote {num}: {fn_text}]"
+        cleaned = pattern.sub(replacement, cleaned, count=1)
+
+    return cleaned
 
 
 def _remove_repeated_headers_footers(text: str) -> str:
@@ -576,3 +622,54 @@ async def extract_and_score(file_path: str) -> TextQuality:
         )
 
     return quality
+
+
+def extract_tables(file_path: str, *, max_pages: int = MAX_PAGES) -> list[dict]:
+    """Extract tables from a PDF using pdfplumber's table detection.
+
+    Returns a list of dicts with:
+    - page: page number (1-indexed)
+    - headers: list of column headers (first row) or None
+    - rows: list of row lists (excluding header)
+    - markdown: markdown-formatted table string
+
+    Used to preserve tabular data (schedules, appendices, financial data)
+    that would otherwise be lost during text extraction.
+    """
+    tables: list[dict] = []
+    try:
+        with pdfplumber.open(file_path) as pdf:
+            for page_num, page in enumerate(pdf.pages[:max_pages], start=1):
+                page_tables = page.extract_tables()
+                if not page_tables:
+                    continue
+                for raw_table in page_tables:
+                    if not raw_table or len(raw_table) < 2:
+                        continue
+                    # Clean cells: replace None with empty string, strip whitespace
+                    cleaned = [
+                        [(cell or "").strip() for cell in row]
+                        for row in raw_table
+                        if row  # skip None rows
+                    ]
+                    if not cleaned:
+                        continue
+                    headers = cleaned[0]
+                    rows = cleaned[1:]
+                    # Convert to markdown
+                    md_lines = ["| " + " | ".join(headers) + " |"]
+                    md_lines.append("| " + " | ".join("---" for _ in headers) + " |")
+                    for row in rows:
+                        # Pad row to match header length
+                        padded = row + [""] * (len(headers) - len(row))
+                        md_lines.append("| " + " | ".join(padded[:len(headers)]) + " |")
+                    tables.append({
+                        "page": page_num,
+                        "headers": headers,
+                        "rows": rows,
+                        "markdown": "\n".join(md_lines),
+                    })
+    except Exception as exc:
+        logger.warning("Table extraction failed for %s: %s", file_path, exc)
+
+    return tables
