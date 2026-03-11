@@ -152,54 +152,112 @@ async def ingest_judgment(
     )
 
     # ------------------------------------------------------------------
-    # 6. DETECT SECTIONS + CHUNK
+    # 6–9: Remaining pipeline steps wrapped for failure handling
     # ------------------------------------------------------------------
-    sections = detect_judgment_sections(full_text)
-    chunks = chunk_judgment(full_text, sections, case_id=case_id)
-    logger.info(
-        "case_id=%s: %d sections, %d chunks",
-        case_id, len(sections), len(chunks),
-    )
-
-    # ------------------------------------------------------------------
-    # 6b. PERSIST SECTIONS + CITATION EQUIVALENTS
-    # ------------------------------------------------------------------
-    await _persist_sections(str(case_id), sections, db)
-    citation_equivalents = _extract_citation_equivalents(full_text, str(case_id))
-    if citation_equivalents:
-        await _persist_citation_equivalents(citation_equivalents, db)
-
-    # ------------------------------------------------------------------
-    # 7. GENERATE EMBEDDINGS
-    # ------------------------------------------------------------------
-    embeddings = await _embed_chunks(chunks, embedder, rate_limiter=rate_limiter)
-    if len(embeddings) != len(chunks):
-        raise RuntimeError(
-            f"Embedding count mismatch: {len(embeddings)} embeddings "
-            f"for {len(chunks)} chunks (case_id={case_id})"
+    db_committed = False
+    try:
+        # --------------------------------------------------------------
+        # 6. DETECT SECTIONS + CHUNK
+        # --------------------------------------------------------------
+        sections = detect_judgment_sections(full_text)
+        chunks = chunk_judgment(full_text, sections, case_id=case_id)
+        logger.info(
+            "case_id=%s: %d sections, %d chunks",
+            case_id, len(sections), len(chunks),
         )
 
-    # ------------------------------------------------------------------
-    # 8. UPSERT TO VECTOR STORE
-    # ------------------------------------------------------------------
-    # Clean up stale vectors from any previous ingestion
-    try:
-        await vector_store.delete(filter={"case_id": case_id})
-    except Exception:
-        logger.warning("Failed to clean stale vectors for case_id=%s", case_id)
+        # --------------------------------------------------------------
+        # 6b. PERSIST SECTIONS + CITATION EQUIVALENTS
+        # --------------------------------------------------------------
+        await _persist_sections(str(case_id), sections, db)
+        citation_equivalents = _extract_citation_equivalents(full_text, str(case_id))
+        if citation_equivalents:
+            await _persist_citation_equivalents(citation_equivalents, db)
 
-    await _upsert_vectors(case_id, chunks, embeddings, metadata, vector_store)
+        # --------------------------------------------------------------
+        # 7. GENERATE EMBEDDINGS
+        # --------------------------------------------------------------
+        embeddings = await _embed_chunks(chunks, embedder, rate_limiter=rate_limiter)
+        if len(embeddings) != len(chunks):
+            raise RuntimeError(
+                f"Embedding count mismatch: {len(embeddings)} embeddings "
+                f"for {len(chunks)} chunks (case_id={case_id})"
+            )
 
-    # Update chunk_count in PostgreSQL
-    await db.execute(
-        text("UPDATE cases SET chunk_count = :count WHERE id = :id"),
-        {"count": len(chunks), "id": case_id},
-    )
+        # --------------------------------------------------------------
+        # 8. UPSERT TO VECTOR STORE
+        # --------------------------------------------------------------
+        # Clean up stale vectors from any previous ingestion
+        pinecone_deleted = False
+        try:
+            await vector_store.delete(filter={"case_id": case_id})
+            pinecone_deleted = True
+        except Exception:
+            logger.warning("Failed to clean stale vectors for case_id=%s", case_id)
 
-    # ------------------------------------------------------------------
-    # 9. BUILD CITATION GRAPH (outside transaction -- non-critical, idempotent)
-    # ------------------------------------------------------------------
-    await _build_citation_graph(case_id, metadata, full_text, graph_store)
+        try:
+            await _upsert_vectors(case_id, chunks, embeddings, metadata, vector_store)
+        except Exception:
+            if pinecone_deleted:
+                logger.critical(
+                    "MANUAL RECOVERY NEEDED: Pinecone delete succeeded but upsert "
+                    "failed for case_id=%s. Vectors are permanently lost until "
+                    "re-ingestion.",
+                    case_id,
+                )
+            raise
+
+        # Update chunk_count in PostgreSQL
+        await db.execute(
+            text("UPDATE cases SET chunk_count = :count WHERE id = :id"),
+            {"count": len(chunks), "id": case_id},
+        )
+
+        # --------------------------------------------------------------
+        # COMMIT all DB writes (insert, sections, citations, chunk_count)
+        # --------------------------------------------------------------
+        try:
+            await db.commit()
+            db_committed = True
+        except Exception as commit_exc:
+            logger.error("DB commit failed for case_id=%s: %s", case_id, commit_exc)
+            raise
+
+        # --------------------------------------------------------------
+        # 9. BUILD CITATION GRAPH (non-critical, idempotent)
+        # --------------------------------------------------------------
+        try:
+            await _build_citation_graph(case_id, metadata, full_text, graph_store)
+        except Exception as graph_exc:
+            # Graph build is non-critical; log but don't fail the pipeline
+            logger.error(
+                "Citation graph build failed for case_id=%s: %s",
+                case_id, graph_exc,
+            )
+
+    except Exception as pipeline_exc:
+        logger.error(
+            "Pipeline failed for case_id=%s: %s", case_id, pipeline_exc,
+        )
+        # Mark ingestion_status as 'failed' if DB records were committed
+        if db_committed:
+            try:
+                await db.execute(
+                    text(
+                        "UPDATE cases SET ingestion_status = 'failed' "
+                        "WHERE id = :id"
+                    ),
+                    {"id": case_id},
+                )
+                await db.commit()
+            except Exception:
+                logger.error(
+                    "Failed to update ingestion_status for case_id=%s", case_id,
+                )
+        await _record_ingestion_failure(
+            db, case_id, pdf_path, str(pipeline_exc),
+        )
+        raise
 
     logger.info("Ingestion complete: case_id=%s, chunks=%d", case_id, len(chunks))
     return case_id
@@ -496,10 +554,16 @@ async def _build_citation_graph(
 
 
 def _extract_citation_equivalents(full_text: str, case_id: str) -> list[dict]:
-    """Extract all citation formats from judgment text for the equivalents table."""
+    """Extract parallel citation formats from judgment header for the equivalents table.
+
+    Citation equivalents are parallel citations for THIS case (e.g., different
+    reporters citing the same judgment).  These appear in the header section
+    (first ~2000 chars), not scattered throughout the full text.
+    """
     if not full_text:
         return []
-    citations = extract_citations(full_text)
+    header_text = full_text[:2000]
+    citations = extract_citations(header_text)
     results = []
     for c in citations:
         results.append({
