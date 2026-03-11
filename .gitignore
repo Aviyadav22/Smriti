@@ -55,3 +55,4 @@ htmlcov/
 
 # Logs
 *.log
+.worktrees/
