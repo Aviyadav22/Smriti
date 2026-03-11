@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass, fields
 from datetime import datetime
@@ -88,8 +89,21 @@ class CaseMetadata:
     disposal_nature: str | None = None
     case_number: str | None = None
     is_reportable: bool | None = None
-    headnotes: str | None = None
+    headnotes: str | None = None  # JSON string of structured headnotes array
     outcome_summary: str | None = None
+    # Phase C: Legal completeness fields
+    coram_size: int | None = None
+    lower_court: str | None = None
+    lower_court_case_number: str | None = None
+    appeal_from: str | None = None
+    opinion_type: str | None = None  # unanimous, majority, plurality, per_curiam
+    dissenting_judges: list[str] | None = None
+    concurring_judges: list[str] | None = None
+    split_ratio: str | None = None  # e.g., "3:2"
+    petitioner_type: str | None = None
+    respondent_type: str | None = None
+    is_pil: bool | None = None
+    companion_cases: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +147,9 @@ async def extract_metadata_llm(
             # Build CaseMetadata only from keys that match its fields.
             field_names = {f.name for f in fields(CaseMetadata)}
             filtered = {k: v for k, v in result.items() if k in field_names}
+            # Convert structured headnotes list to JSON string for DB storage
+            if isinstance(filtered.get("headnotes"), list):
+                filtered["headnotes"] = json.dumps(filtered["headnotes"])
             return CaseMetadata(**filtered)
         except (ValueError, KeyError, RuntimeError) as exc:
             # Non-transient errors -- don't retry
@@ -262,12 +279,50 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
                 cleaned = cleaned[:max_items]
             setattr(metadata, list_field, cleaned if cleaned else None)
 
+    # -- Validate opinion_type --
+    valid_opinion_types = {"unanimous", "majority", "plurality", "per_curiam"}
+    if metadata.opinion_type and metadata.opinion_type.lower() not in valid_opinion_types:
+        logger.warning("Unknown opinion_type '%s', clearing field", metadata.opinion_type)
+        metadata.opinion_type = None
+    elif metadata.opinion_type:
+        metadata.opinion_type = metadata.opinion_type.lower()
+
+    # -- Validate party types --
+    valid_party_types = {
+        "individual", "government_central", "government_state", "PSU",
+        "company", "NGO", "statutory_body", "other",
+    }
+    for party_field in ("petitioner_type", "respondent_type"):
+        val = getattr(metadata, party_field, None)
+        if val and val not in valid_party_types:
+            # Try lowercase match
+            lower_val = val.lower()
+            match = next((v for v in valid_party_types if v.lower() == lower_val), None)
+            if match:
+                setattr(metadata, party_field, match)
+            else:
+                logger.warning("Unknown %s '%s', clearing field", party_field, val)
+                setattr(metadata, party_field, None)
+
+    # -- Validate coram_size --
+    if metadata.coram_size is not None:
+        if not isinstance(metadata.coram_size, int) or metadata.coram_size < 1 or metadata.coram_size > 15:
+            logger.warning("Invalid coram_size %s, clearing field", metadata.coram_size)
+            metadata.coram_size = None
+
+    # -- Clean new list fields --
+    _MAX_LIST_ITEMS["dissenting_judges"] = 10
+    _MAX_LIST_ITEMS["concurring_judges"] = 10
+    _MAX_LIST_ITEMS["companion_cases"] = 50
+
     # -- String length validation --
     _MAX_LENGTHS = {
         "title": 500, "citation": 200, "court": 200, "petitioner": 500,
-        "respondent": 500, "ratio_decidendi": 3000, "headnotes": 3000,
+        "respondent": 500, "ratio_decidendi": 3000, "headnotes": 5000,
         "outcome_summary": 500, "author_judge": 200, "case_type": 100,
         "disposal_nature": 50, "case_number": 200,
+        "lower_court": 200, "lower_court_case_number": 200, "appeal_from": 200,
+        "split_ratio": 20,
     }
     for field_name, max_len in _MAX_LENGTHS.items():
         val = getattr(metadata, field_name, None)
@@ -449,7 +504,14 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> CaseMetadata:
         setattr(result, field, getattr(llm_meta, field, None))
 
     # -- LLM-only fields (added in March 2026 ingestion overhaul) --
-    for field in ("case_number", "is_reportable", "headnotes", "outcome_summary"):
+    llm_only_fields = (
+        "case_number", "is_reportable", "headnotes", "outcome_summary",
+        # Phase C: legal completeness fields
+        "coram_size", "lower_court", "lower_court_case_number", "appeal_from",
+        "opinion_type", "dissenting_judges", "concurring_judges", "split_ratio",
+        "petitioner_type", "respondent_type", "is_pil", "companion_cases",
+    )
+    for field in llm_only_fields:
         llm_val = getattr(llm_meta, field, None)
         if llm_val is not None:
             setattr(result, field, llm_val)

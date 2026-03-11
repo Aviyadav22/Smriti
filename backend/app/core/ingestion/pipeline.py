@@ -335,6 +335,19 @@ async def _insert_case(
         "is_reportable": metadata.is_reportable,
         "headnotes": metadata.headnotes,
         "outcome_summary": metadata.outcome_summary,
+        # Phase C: legal completeness fields
+        "coram_size": metadata.coram_size,
+        "lower_court": metadata.lower_court,
+        "lower_court_case_number": metadata.lower_court_case_number,
+        "appeal_from": metadata.appeal_from,
+        "opinion_type": metadata.opinion_type,
+        "dissenting_judges": metadata.dissenting_judges,
+        "concurring_judges": metadata.concurring_judges,
+        "split_ratio": metadata.split_ratio,
+        "petitioner_type": metadata.petitioner_type,
+        "respondent_type": metadata.respondent_type,
+        "is_pil": metadata.is_pil,
+        "companion_cases": metadata.companion_cases,
     }
 
     # Check if a case with this citation already exists
@@ -369,7 +382,10 @@ async def _insert_case(
                 keywords, acts_cited, cases_cited, ratio_decidendi,
                 full_text, searchable_text, pdf_storage_path, s3_source_path,
                 source, language, available_languages, chunk_count,
-                case_number, is_reportable, headnotes, outcome_summary
+                case_number, is_reportable, headnotes, outcome_summary,
+                coram_size, lower_court, lower_court_case_number, appeal_from,
+                opinion_type, dissenting_judges, concurring_judges, split_ratio,
+                petitioner_type, respondent_type, is_pil, companion_cases
             ) VALUES (
                 :id, :title, :citation, :case_id, :cnr, :court, :year, :case_type,
                 :jurisdiction, :bench_type, :judge, :author_judge, :petitioner,
@@ -379,7 +395,10 @@ async def _insert_case(
                 NULL,  -- searchable_text computed by BEFORE INSERT trigger (weighted tsvector)
                 :pdf_storage_path, :s3_source_path, :source,
                 :language, :available_languages, 0,
-                :case_number, :is_reportable, :headnotes, :outcome_summary
+                :case_number, :is_reportable, :headnotes, :outcome_summary,
+                :coram_size, :lower_court, :lower_court_case_number, :appeal_from,
+                :opinion_type, :dissenting_judges, :concurring_judges, :split_ratio,
+                :petitioner_type, :respondent_type, :is_pil, :companion_cases
             )
             ON CONFLICT (citation) WHERE citation IS NOT NULL DO UPDATE SET
                 full_text = EXCLUDED.full_text,
@@ -394,7 +413,17 @@ async def _insert_case(
                 case_number = COALESCE(EXCLUDED.case_number, cases.case_number),
                 is_reportable = COALESCE(EXCLUDED.is_reportable, cases.is_reportable),
                 headnotes = COALESCE(EXCLUDED.headnotes, cases.headnotes),
-                outcome_summary = COALESCE(EXCLUDED.outcome_summary, cases.outcome_summary)
+                outcome_summary = COALESCE(EXCLUDED.outcome_summary, cases.outcome_summary),
+                coram_size = COALESCE(EXCLUDED.coram_size, cases.coram_size),
+                lower_court = COALESCE(EXCLUDED.lower_court, cases.lower_court),
+                opinion_type = COALESCE(EXCLUDED.opinion_type, cases.opinion_type),
+                dissenting_judges = COALESCE(EXCLUDED.dissenting_judges, cases.dissenting_judges),
+                concurring_judges = COALESCE(EXCLUDED.concurring_judges, cases.concurring_judges),
+                split_ratio = COALESCE(EXCLUDED.split_ratio, cases.split_ratio),
+                petitioner_type = COALESCE(EXCLUDED.petitioner_type, cases.petitioner_type),
+                respondent_type = COALESCE(EXCLUDED.respondent_type, cases.respondent_type),
+                is_pil = COALESCE(EXCLUDED.is_pil, cases.is_pil),
+                companion_cases = COALESCE(EXCLUDED.companion_cases, cases.companion_cases)
             RETURNING id
             """
         ),
