@@ -7,48 +7,120 @@ from typing import Final
 # ---------------------------------------------------------------------------
 
 METADATA_EXTRACTION_SYSTEM: Final[str] = """\
-You are an expert Indian legal research assistant specializing in metadata \
-extraction from court judgments. You extract structured metadata from judgment \
-text with high accuracy. You never hallucinate or fabricate information that \
-is not present in the source text.
+You are an expert Indian legal metadata extraction system. You extract structured \
+metadata from Supreme Court and High Court judgment text with high accuracy. \
+You never hallucinate or fabricate information not present in the source text.
 
-Rules:
-- Extract ONLY information explicitly stated in the judgment text.
-- If a field cannot be determined from the text, return null for that field.
-- For dates, use ISO 8601 format (YYYY-MM-DD).
-- For citations, preserve the exact citation format used in the judgment.
-- For judge names, use the format as it appears in the judgment (e.g., "Hon'ble Mr. Justice X").
-- For acts cited, include section numbers where mentioned (e.g., "Section 302 of IPC").
-- For cases cited, include the full citation as referenced in the judgment.
-- The ratio_decidendi should be a concise 1-3 sentence summary of the core legal principle.
-- bench_type should be one of: single, division, full, constitutional.
-- jurisdiction should be one of: civil, criminal, constitutional, tax, labor, company, other.
-- disposal_nature should be one of: Allowed, Dismissed, Partly Allowed, Withdrawn, Remanded, Other.
+EXTRACTION RULES:
+1. Extract ONLY information explicitly stated in the judgment text. If a field \
+cannot be determined, return null (for strings/integers) or an empty array [] (for arrays).
+2. DATES: Use ISO 8601 format (YYYY-MM-DD). Extract from the header or judgment preamble.
+3. JUDGE NAMES: Strip honorifics like "Hon'ble" and "Mr./Mrs./Ms." but keep "Justice" prefix. \
+E.g., "Justice D.Y. Chandrachud".
+4. AUTHOR JUDGE: The judge who delivered/authored the majority opinion. Usually indicated \
+by "Judgment delivered by" or the judge whose name appears before the opinion text.
+5. ACTS CITED: Use format "Section X of Act Name, Year". Capture BOTH old and new \
+statute names where applicable. Since July 2024, IPC is replaced by BNS, CrPC by BNSS, \
+Indian Evidence Act by BSA. If both are referenced, include both entries.
+6. CASES CITED: Use format "Party1 v. Party2, (Year) Citation" with reporter citation \
+if available. Normalize "vs" and "versus" to "v.".
+7. CITATION: Preserve the exact reporter citation. Recognized formats include: \
+"(YYYY) Vol SCC Page", "AIR YYYY Court Page", "YYYY INSC Number", \
+"YYYY SCC OnLine Court Number", "[YYYY] Vol SCR Page", "YYYY:INSC:Number".
+8. BENCH TYPE: Determine from judge count and explicit designation. \
+1 judge = "single", 2 judges = "division", 3+ judges = "full", \
+5+ judges or explicitly labeled "Constitution Bench" = "constitutional".
+9. RATIO DECIDENDI: The binding legal principle established by the court — the abstract \
+rule of law that applies beyond the specific facts of this case. This is NOT a case \
+summary or outcome description. It is the legal proposition that constitutes precedent. \
+2-5 sentences. If multiple distinct legal principles are established, include all of \
+them separated by semicolons.
+10. KEYWORDS: Use specific legal terms useful for research: doctrines (e.g., "res judicata"), \
+statute sections (e.g., "Section 302 IPC"), areas of law (e.g., "bail jurisprudence"), \
+legal principles (e.g., "beyond reasonable doubt"). Do NOT include generic terms like \
+"law", "court", "judgment", "India".
+11. The text may contain OCR artifacts (garbled characters, misrecognized symbols). \
+Use contextual understanding to interpret the correct text. Do not include OCR noise.
+12. CASE TYPE must be one of: "Civil Appeal", "Criminal Appeal", "Special Leave Petition", \
+"Writ Petition", "Transfer Petition", "Review Petition", "Contempt Petition", \
+"Original Suit", "Reference", "Other".
+13. CASE NUMBER: Extract the registry number exactly as it appears, e.g., \
+"Criminal Appeal No. 1234 of 2020", "W.P.(C) No. 494 of 2012".
+14. HEADNOTES: Write 2-4 structured legal propositions (headnotes) summarizing the key \
+holdings, in the style used by SCC or AIR reporters. Each headnote should state a \
+distinct legal proposition.
+15. OUTCOME SUMMARY: A 1-2 sentence description of the specific outcome, e.g., \
+"Conviction under Section 302 IPC upheld; sentence reduced from death to life imprisonment."
+16. IS REPORTABLE: Check if the judgment header contains "REPORTABLE" or "NON-REPORTABLE" \
+and extract accordingly. If not stated, return null.
 """
 
 METADATA_EXTRACTION_USER: Final[str] = """\
 Extract structured metadata from the following Indian court judgment text. \
-Return a JSON object with the following fields:
+Return a JSON object with these fields:
 
 - title: Case title (e.g., "State of Maharashtra v. Xyz")
-- citation: Official citation if present (e.g., "(2023) 5 SCC 123" or "AIR 2023 SC 456")
+- citation: Official reporter citation if present
 - court: Name of the court
 - judge: List of judge names on the bench
 - author_judge: Name of the judge who authored the judgment
 - year: Year of the judgment (integer)
-- decision_date: Date of the judgment in ISO format (YYYY-MM-DD)
-- case_type: Type of case (e.g., "Civil Appeal", "Criminal Appeal", "Writ Petition")
+- decision_date: Date of judgment in ISO format (YYYY-MM-DD)
+- case_type: Type of case (see CASE TYPE rule)
+- case_number: Registry number as it appears (e.g., "Criminal Appeal No. 1234 of 2020")
 - bench_type: Type of bench (single, division, full, constitutional)
-- jurisdiction: Area of law (civil, criminal, constitutional, tax, labor, company, other)
+- jurisdiction: Area of law (civil, criminal, constitutional, tax, labor, company, \
+family, environmental, arbitration, consumer, election, service, other)
 - petitioner: Name of the petitioner/appellant
 - respondent: Name of the respondent
-- ratio_decidendi: Core legal principle decided (1-3 sentences)
-- acts_cited: List of statutes/acts cited in the judgment
-- cases_cited: List of case citations referenced in the judgment
-- keywords: List of 5-10 relevant legal keywords/topics
-- disposal_nature: How the case was disposed (Allowed, Dismissed, Partly Allowed, Withdrawn, Remanded, Other)
+- ratio_decidendi: Core legal principle(s) decided (2-5 sentences)
+- acts_cited: List of statutes/acts cited with section numbers
+- cases_cited: List of case citations referenced
+- keywords: List of 5-10 specific legal keywords/topics
+- disposal_nature: How the case was disposed (Allowed, Dismissed, Partly Allowed, \
+Withdrawn, Remanded, Disposed Of, Settled, Transferred, Modified, Other)
+- is_reportable: Whether the judgment is marked REPORTABLE (true/false/null)
+- headnotes: 2-4 structured legal propositions summarizing key holdings
+- outcome_summary: 1-2 sentence description of the specific outcome
 
-Judgment text:
+EXAMPLE OUTPUT:
+{{
+  "title": "Rajesh Kumar v. State of Uttar Pradesh",
+  "citation": "(2022) 8 SCC 215",
+  "court": "Supreme Court of India",
+  "judge": ["Justice U.U. Lalit", "Justice S. Ravindra Bhat"],
+  "author_judge": "Justice U.U. Lalit",
+  "year": 2022,
+  "decision_date": "2022-07-14",
+  "case_type": "Criminal Appeal",
+  "case_number": "Criminal Appeal No. 1087 of 2022",
+  "bench_type": "division",
+  "jurisdiction": "criminal",
+  "petitioner": "Rajesh Kumar",
+  "respondent": "State of Uttar Pradesh",
+  "ratio_decidendi": "The dying declaration of the victim, corroborated by \
+medical evidence and circumstantial evidence, is sufficient to sustain a \
+conviction under Section 302 IPC without further corroboration; the requirement \
+of corroboration is a rule of prudence, not law.",
+  "acts_cited": ["Section 302 of Indian Penal Code, 1860", \
+"Section 32(1) of Indian Evidence Act, 1872", \
+"Section 161 of Code of Criminal Procedure, 1973"],
+  "cases_cited": ["Laxman v. State of Maharashtra, (2002) 6 SCC 710", \
+"Panneerselvam v. State of Tamil Nadu, (2008) 17 SCC 190"],
+  "keywords": ["dying declaration", "Section 302 IPC", "murder conviction", \
+"corroboration requirement", "medical evidence", "circumstantial evidence"],
+  "disposal_nature": "Dismissed",
+  "is_reportable": true,
+  "headnotes": "A dying declaration that is consistent, coherent, and \
+corroborated by medical evidence can form the sole basis of conviction. \
+The absence of a Magistrate during recording does not by itself render a \
+dying declaration unreliable if other safeguards exist.",
+  "outcome_summary": "Criminal appeal dismissed; conviction under Section 302 \
+IPC and sentence of life imprisonment upheld."
+}}
+
+Now extract metadata from the following judgment text:
+
 {judgment_text}
 """
 
@@ -118,56 +190,79 @@ does not contain enough information, say so clearly rather than speculating."""
 METADATA_OUTPUT_SCHEMA: Final[dict] = {
     "type": "object",
     "properties": {
-        "title": {"type": ["string", "null"]},
-        "citation": {"type": ["string", "null"]},
-        "court": {"type": ["string", "null"]},
+        "title": {"type": "string", "nullable": True},
+        "citation": {"type": "string", "nullable": True},
+        "court": {"type": "string", "nullable": True},
         "judge": {
-            "type": ["array", "null"],
+            "type": "array",
             "items": {"type": "string"},
+            "nullable": True,
         },
-        "author_judge": {"type": ["string", "null"]},
-        "year": {"type": ["integer", "null"]},
-        "decision_date": {"type": ["string", "null"]},
-        "case_type": {"type": ["string", "null"]},
+        "author_judge": {"type": "string", "nullable": True},
+        "year": {"type": "integer", "nullable": True},
+        "decision_date": {"type": "string", "nullable": True},
+        "case_type": {
+            "type": "string",
+            "nullable": True,
+            "enum": [
+                "Civil Appeal", "Criminal Appeal", "Special Leave Petition",
+                "Writ Petition", "Transfer Petition", "Review Petition",
+                "Contempt Petition", "Original Suit", "Reference", "Other",
+            ],
+        },
+        "case_number": {"type": "string", "nullable": True},
         "bench_type": {
-            "type": ["string", "null"],
+            "type": "string",
+            "nullable": True,
             "enum": ["single", "division", "full", "constitutional"],
         },
         "jurisdiction": {
-            "type": ["string", "null"],
+            "type": "string",
+            "nullable": True,
             "enum": [
                 "civil", "criminal", "constitutional",
-                "tax", "labor", "company", "other",
+                "tax", "labor", "company",
+                "family", "environmental", "arbitration",
+                "consumer", "election", "service", "other",
             ],
         },
-        "petitioner": {"type": ["string", "null"]},
-        "respondent": {"type": ["string", "null"]},
-        "ratio_decidendi": {"type": ["string", "null"]},
+        "petitioner": {"type": "string", "nullable": True},
+        "respondent": {"type": "string", "nullable": True},
+        "ratio_decidendi": {"type": "string", "nullable": True},
         "acts_cited": {
-            "type": ["array", "null"],
+            "type": "array",
             "items": {"type": "string"},
+            "nullable": True,
         },
         "cases_cited": {
-            "type": ["array", "null"],
+            "type": "array",
             "items": {"type": "string"},
+            "nullable": True,
         },
         "keywords": {
-            "type": ["array", "null"],
+            "type": "array",
             "items": {"type": "string"},
+            "nullable": True,
         },
         "disposal_nature": {
-            "type": ["string", "null"],
+            "type": "string",
+            "nullable": True,
             "enum": [
                 "Allowed", "Dismissed", "Partly Allowed",
-                "Withdrawn", "Remanded", "Other",
+                "Withdrawn", "Remanded", "Disposed Of",
+                "Settled", "Transferred", "Modified", "Other",
             ],
         },
+        "is_reportable": {"type": "boolean", "nullable": True},
+        "headnotes": {"type": "string", "nullable": True},
+        "outcome_summary": {"type": "string", "nullable": True},
     },
     "required": [
         "title", "citation", "court", "judge", "author_judge", "year",
-        "decision_date", "case_type", "bench_type", "jurisdiction",
-        "petitioner", "respondent", "ratio_decidendi", "acts_cited",
-        "cases_cited", "keywords", "disposal_nature",
+        "decision_date", "case_type", "case_number", "bench_type",
+        "jurisdiction", "petitioner", "respondent", "ratio_decidendi",
+        "acts_cited", "cases_cited", "keywords", "disposal_nature",
+        "is_reportable", "headnotes", "outcome_summary",
     ],
 }
 

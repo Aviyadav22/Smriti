@@ -111,10 +111,11 @@ class TestMergeMetadata:
         assert result.ratio_decidendi == "The court held that..."
 
     def test_judge_from_comma_string(self):
-        parquet = {"judge": "Justice A, Justice B"}
+        parquet = {"judge": "Justice D.Y. Chandrachud, Justice Sanjiv Khanna"}
         llm = CaseMetadata()
         result = merge_metadata(parquet, llm)
-        assert result.judge == ["Justice A", "Justice B"]
+        # _parse_judge_names strips "Justice" prefix for normalized storage
+        assert result.judge == ["D.Y. Chandrachud", "Sanjiv Khanna"]
 
     def test_nc_display_used_for_case_type(self):
         parquet = {"nc_display": "Criminal Appeal"}

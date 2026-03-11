@@ -17,15 +17,18 @@ import asyncio
 import json
 import logging
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 
 import pyarrow.parquet as pq
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 # Ensure the backend package is importable when running as a script.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -73,6 +76,18 @@ logger = logging.getLogger("ingest_s3")
 S3_BUCKET = "s3://indian-supreme-court-judgments"
 TRACKER_DB = Path("data/ingest_tracker.db")
 
+# ---------------------------------------------------------------------------
+# Graceful shutdown
+# ---------------------------------------------------------------------------
+
+shutdown_event = asyncio.Event()
+
+
+def _handle_shutdown(sig: int, frame: object) -> None:
+    """Signal handler for graceful shutdown."""
+    logger.warning("Received signal %s, initiating graceful shutdown...", signal.Signals(sig).name)
+    shutdown_event.set()
+
 
 # ---------------------------------------------------------------------------
 # Progress tracker (SQLite)
@@ -85,6 +100,8 @@ class IngestTracker:
     def __init__(self, db_path: Path = TRACKER_DB) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(db_path))
+        # WAL mode for better concurrent access
+        self._conn.execute("PRAGMA journal_mode=WAL")
         self._migrate_schema()
 
     def _migrate_schema(self) -> None:
@@ -119,11 +136,17 @@ class IngestTracker:
                 case_id TEXT,
                 status TEXT DEFAULT 'success',
                 error TEXT,
+                retry_count INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT (datetime('now'))
             )
             """
         )
         self._conn.commit()
+        # Migrate existing DBs that lack retry_count column
+        try:
+            self._conn.execute("ALTER TABLE processed ADD COLUMN retry_count INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
     def is_processed(self, doc_key: str) -> bool:
         """Check if a document has been fully processed (all stages complete)."""
@@ -141,6 +164,20 @@ class IngestTracker:
             (doc_key,),
         ).fetchone()
         return row is not None
+
+    def is_permanently_failed(self, doc_key: str, max_retries: int = 3) -> bool:
+        """Check if a document has exceeded the maximum retry count."""
+        row = self._conn.execute(
+            "SELECT retry_count FROM processed WHERE doc_key = ? AND status = 'failed'",
+            (doc_key,),
+        ).fetchone()
+        if row is not None and row[0] >= max_retries:
+            return True
+        row = self._conn.execute(
+            "SELECT retry_count FROM ingestion_progress WHERE doc_key = ? AND last_error IS NOT NULL",
+            (doc_key,),
+        ).fetchone()
+        return row is not None and row[0] >= max_retries
 
     def init_doc(self, doc_key: str, year: int) -> None:
         """Initialize a document entry if it doesn't exist."""
@@ -207,8 +244,9 @@ class IngestTracker:
             (error, doc_key),
         )
         self._conn.execute(
-            "INSERT OR REPLACE INTO processed (doc_key, status, error) VALUES (?, 'failed', ?)",
-            (doc_key, error),
+            "INSERT INTO processed (doc_key, status, error, retry_count) VALUES (?, 'failed', ?, 1) "
+            "ON CONFLICT(doc_key) DO UPDATE SET status='failed', error=?, retry_count=retry_count+1",
+            (doc_key, error, error),
         )
         self._conn.commit()
 
@@ -289,6 +327,15 @@ class IngestTracker:
 # ---------------------------------------------------------------------------
 
 
+@retry(wait=wait_exponential(multiplier=1, min=2, max=30), stop=stop_after_attempt(3), reraise=True)
+def _download_with_timeout(url: str, dest: Path, timeout: int = 120) -> None:
+    """Download a URL to a file with timeout and retry."""
+    req = urllib.request.Request(url)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with open(dest, "wb") as f:
+            shutil.copyfileobj(resp, f)
+
+
 def _s3_download(s3_path: str, local_path: Path) -> bool:
     """Download a file from S3 via HTTPS (public bucket, no auth required).
 
@@ -305,11 +352,11 @@ def _s3_download(s3_path: str, local_path: Path) -> bool:
     # Try HTTPS download first (no AWS CLI needed)
     try:
         logger.info("Downloading %s", https_url)
-        urllib.request.urlretrieve(https_url, str(local_path))
+        _download_with_timeout(https_url, local_path)
         logger.info("Downloaded: %s (%.1f MB)", local_path.name, local_path.stat().st_size / 1e6)
         return True
     except (urllib.error.URLError, OSError) as exc:
-        logger.warning("HTTPS download failed: %s — %s", https_url, exc)
+        logger.warning("HTTPS download failed: %s -- %s", https_url, exc)
 
     # Fallback to AWS CLI if available
     if shutil.which("aws"):
@@ -322,7 +369,7 @@ def _s3_download(s3_path: str, local_path: Path) -> bool:
             )
             return True
         except subprocess.CalledProcessError as exc:
-            logger.error("AWS CLI download failed: %s → %s", s3_path, exc.stderr.strip())
+            logger.error("AWS CLI download failed: %s -> %s", s3_path, exc.stderr.strip())
 
     return False
 
@@ -385,11 +432,20 @@ def load_parquet_metadata(parquet_path: Path) -> dict[str, dict]:
 def _match_pdf_to_metadata(
     pdf_path: Path,
     metadata_map: dict[str, dict],
+    stem_index: dict[str, str] | None = None,
 ) -> dict:
-    """Best-effort match a PDF file to its Parquet metadata row."""
+    """Best-effort match a PDF file to its Parquet metadata row.
+
+    Uses a pre-built stem_index for O(1) lookup when available,
+    with substring fallback.
+    """
     pdf_name = pdf_path.stem
 
-    # Try exact path match
+    # O(1) lookup via pre-built index
+    if stem_index and pdf_name in stem_index:
+        return metadata_map[stem_index[pdf_name]]
+
+    # Try exact path match (substring fallback)
     for key, meta in metadata_map.items():
         if pdf_name in str(key):
             return meta
@@ -411,6 +467,7 @@ async def ingest_year(
     limit: int | None = None,
     concurrency: int = 5,
     rpm_limit: int = 30,
+    model_override: str | None = None,
 ) -> dict[str, int]:
     """Ingest all judgments for a given year.
 
@@ -421,6 +478,7 @@ async def ingest_year(
         limit: Maximum number of judgments to process (None = all).
         concurrency: Number of concurrent ingestion tasks.
         rpm_limit: Max Gemini API requests per minute per key (0 = no limit).
+        model_override: Override Gemini model name (None = use settings default).
 
     Returns:
         Stats dict with success/failure counts.
@@ -442,7 +500,13 @@ async def ingest_year(
     if parquet_path and parquet_path.exists():
         metadata_map = load_parquet_metadata(parquet_path)
 
-    # Initialize providers — build a pool of LLM+embedder clients for key rotation
+    # Build stem index for O(1) PDF-to-metadata matching
+    stem_index: dict[str, str] = {}
+    for key in metadata_map:
+        stem = Path(str(key)).stem
+        stem_index[stem] = key
+
+    # Initialize providers -- build a pool of LLM+embedder clients for key rotation
     api_keys = _build_key_pool()
     logger.info("Using %d Gemini API key(s) for parallel ingestion", len(api_keys))
 
@@ -457,7 +521,10 @@ async def ingest_year(
     llm_pool: list[GeminiLLM] = []
     embedder_pool: list[GeminiEmbedder] = []
     for key in api_keys:
-        llm_pool.append(GeminiLLM(api_key=key))
+        llm_kwargs: dict[str, str] = {"api_key": key}
+        if model_override:
+            llm_kwargs["model"] = model_override
+        llm_pool.append(GeminiLLM(**llm_kwargs))
         embedder_pool.append(GeminiEmbedder(api_key=key))
 
     # Round-robin iterator over (llm, embedder, key) triples
@@ -467,65 +534,114 @@ async def ingest_year(
     graph_store = get_graph_store()
     storage = get_storage()
 
-    # Process PDFs with bounded concurrency
-    semaphore = asyncio.Semaphore(concurrency)
+    # Apply limit
+    pdfs_to_process = pdf_paths[:limit] if limit else pdf_paths
+
+    # Circuit breaker
+    consecutive_failures = 0
+    MAX_CONSECUTIVE_FAILURES = 10
+    shutdown_flag = False
+
+    # Progress tracking with ETA
     stats = {"success": 0, "skipped": 0, "failed": 0}
     processed = 0
+    start_time = time.monotonic()
 
     async def _process_one(
         pdf_path: Path, llm: GeminiLLM, embedder: GeminiEmbedder, api_key: str,
     ) -> None:
-        nonlocal processed
+        nonlocal processed, consecutive_failures, shutdown_flag
         doc_key = f"year={year}/{pdf_path.name}"
         tracker.init_doc(doc_key, year)
 
-        if tracker.is_processed(doc_key):
+        # Skip if already processed or permanently failed
+        if tracker.is_processed(doc_key) or tracker.is_permanently_failed(doc_key):
             stats["skipped"] += 1
             return
 
         # Get the per-key rate limiter (or None if disabled)
         limiter = rate_limiter_pool.get(api_key) if rate_limiter_pool else None
 
-        async with semaphore:
-            try:
-                parquet_meta = _match_pdf_to_metadata(pdf_path, metadata_map)
-                async with async_session_factory() as db:
-                    case_id = await ingest_judgment(
-                        str(pdf_path),
-                        parquet_meta,
-                        db=db,
-                        llm=llm,
-                        embedder=embedder,
-                        vector_store=vector_store,
-                        graph_store=graph_store,
-                        storage=storage,
-                        rate_limiter=limiter,
-                    )
-                tracker.mark_success(doc_key, case_id)
-                # Mark all stages complete (since ingest_judgment does them all)
-                tracker.mark_stage(doc_key, "extracted", case_id=case_id)
-                tracker.mark_stage(doc_key, "metadata", case_id=case_id)
-                tracker.mark_stage(doc_key, "embedded", case_id=case_id)
-                tracker.mark_stage(doc_key, "stored", case_id=case_id)
-                tracker.mark_stage(doc_key, "graphed", case_id=case_id)
-                stats["success"] += 1
-                processed += 1
-                if processed % 50 == 0:
-                    logger.info("Progress: %d/%d processed", processed, len(pdf_paths))
-            except Exception as exc:
-                tracker.mark_failed(doc_key, str(exc))
-                stats["failed"] += 1
-                logger.error("Failed to ingest %s: %s", pdf_path.name, exc)
+        try:
+            parquet_meta = _match_pdf_to_metadata(pdf_path, metadata_map, stem_index)
+            async with async_session_factory() as db:
+                case_id = await ingest_judgment(
+                    str(pdf_path),
+                    parquet_meta,
+                    db=db,
+                    llm=llm,
+                    embedder=embedder,
+                    vector_store=vector_store,
+                    graph_store=graph_store,
+                    storage=storage,
+                    rate_limiter=limiter,
+                )
+            tracker.mark_success(doc_key, case_id)
+            # Mark all stages complete (since ingest_judgment does them all)
+            tracker.mark_stage(doc_key, "extracted", case_id=case_id)
+            tracker.mark_stage(doc_key, "metadata", case_id=case_id)
+            tracker.mark_stage(doc_key, "embedded", case_id=case_id)
+            tracker.mark_stage(doc_key, "stored", case_id=case_id)
+            tracker.mark_stage(doc_key, "graphed", case_id=case_id)
+            stats["success"] += 1
+            processed += 1
+            consecutive_failures = 0
 
-    # Apply limit
-    pdfs_to_process = pdf_paths[:limit] if limit else pdf_paths
+            # Progress logging with ETA
+            if processed % 25 == 0 or processed == len(pdfs_to_process):
+                elapsed = time.monotonic() - start_time
+                rate = processed / max(elapsed / 60, 0.01)  # cases/minute
+                remaining = len(pdfs_to_process) - processed - stats["skipped"]
+                eta_min = remaining / max(rate, 0.01)
+                eta_str = f"{int(eta_min // 60)}h {int(eta_min % 60)}m" if eta_min >= 60 else f"{int(eta_min)}m"
+                logger.info(
+                    "[%d] %d/%d (%.1f%%) | %.1f cases/min | ETA: %s | %d failed",
+                    year, processed, len(pdfs_to_process),
+                    processed / max(len(pdfs_to_process), 1) * 100,
+                    rate, eta_str, stats["failed"],
+                )
+        except Exception as exc:
+            tracker.mark_failed(doc_key, str(exc))
+            stats["failed"] += 1
+            consecutive_failures += 1
+            logger.error("Failed to ingest %s: %s", pdf_path.name, exc)
 
-    # Run concurrently — assign each PDF a (llm, embedder, key) triple via round-robin
-    tasks = []
+            # Circuit breaker check
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                logger.critical("Circuit breaker: %d consecutive failures. Stopping.", MAX_CONSECUTIVE_FAILURES)
+                shutdown_flag = True
+
+    # Queue-based workers for bounded concurrency
+    queue: asyncio.Queue[tuple[Path, GeminiLLM, GeminiEmbedder, str] | None] = asyncio.Queue()
     for p in pdfs_to_process:
         llm, embedder, api_key = next(provider_cycle)
-        tasks.append(_process_one(p, llm, embedder, api_key))
-    await asyncio.gather(*tasks)
+        await queue.put((p, llm, embedder, api_key))
+
+    # Sentinel values to signal workers to stop
+    for _ in range(concurrency):
+        await queue.put(None)
+
+    async def _worker(worker_id: int) -> None:
+        while True:
+            item = await queue.get()
+            if item is None:
+                queue.task_done()
+                break
+            # Check shutdown signals before processing
+            if shutdown_event.is_set() or shutdown_flag:
+                queue.task_done()
+                continue
+            try:
+                pdf_path, llm, embedder, api_key = item
+                await _process_one(pdf_path, llm, embedder, api_key)
+            finally:
+                queue.task_done()
+
+    workers = []
+    for i in range(concurrency):
+        workers.append(asyncio.create_task(_worker(i)))
+
+    await asyncio.gather(*workers, return_exceptions=True)
 
     logger.info("Year %d complete: %s", year, stats)
     return stats
@@ -552,6 +668,7 @@ def parse_args() -> argparse.Namespace:
     run_parser.add_argument("--concurrency", type=int, default=5, help="Concurrent tasks")
     run_parser.add_argument("--rpm-limit", type=int, default=30, help="Max Gemini API requests per minute per key (0 = no limit)")
     run_parser.add_argument("--data-dir", type=str, default="data", help="Data directory")
+    run_parser.add_argument("--model", type=str, default=None, help="Override Gemini model (default: from settings)")
 
     # --- report command ---
     report_parser = subparsers.add_parser("report", help="Show ingestion quality report")
@@ -576,6 +693,11 @@ def parse_args() -> argparse.Namespace:
 
 async def main() -> None:
     args = parse_args()
+
+    # Register graceful shutdown handlers
+    signal.signal(signal.SIGINT, _handle_shutdown)
+    signal.signal(signal.SIGTERM, _handle_shutdown)
+
     tracker = IngestTracker()
 
     if args.command == "report":
@@ -632,6 +754,10 @@ async def main() -> None:
     total_stats: dict[str, int] = {"success": 0, "skipped": 0, "failed": 0}
 
     for year in years:
+        if shutdown_event.is_set():
+            logger.warning("Shutdown requested, skipping remaining years.")
+            break
+
         year_stats = await ingest_year(
             year,
             data_dir,
@@ -639,6 +765,7 @@ async def main() -> None:
             limit=args.limit,
             concurrency=args.concurrency,
             rpm_limit=args.rpm_limit,
+            model_override=getattr(args, "model", None),
         )
         for k, v in year_stats.items():
             total_stats[k] = total_stats.get(k, 0) + v

@@ -77,11 +77,14 @@ class Neo4jGraph:
 
     @_neo4j_retry
     async def create_node(self, label: str, properties: dict) -> str:
+        """Create or merge a node. Uses MERGE for idempotency (safe to call multiple times)."""
         _validate_label(label)
+        node_id = properties.get("id", "")
         try:
             async with self._driver.session(database=self._database) as session:
                 result = await session.run(
-                    f"CREATE (n:{label} $props) RETURN n.id AS id",
+                    f"MERGE (n:{label} {{id: $id}}) SET n += $props RETURN n.id AS id",
+                    id=node_id,
                     props=properties,
                 )
                 record = await result.single()

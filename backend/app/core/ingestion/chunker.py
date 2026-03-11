@@ -29,10 +29,31 @@ class Chunk:
     """A text chunk ready for embedding, annotated with section metadata."""
 
     text: str
-    section_type: str  # HEADER, FACTS, ARGUMENTS, ISSUES, ANALYSIS, RATIO, ORDER, FULL
+    section_type: str  # HEADER, FACTS, ARGUMENTS, ISSUES, ANALYSIS, RATIO, ORDER, DISSENT, CONCURRENCE, FULL
     chunk_index: int
     case_id: str
     page_number: int | None = None
+    para_start: int | None = None
+    para_end: int | None = None
+
+
+# ---------------------------------------------------------------------------
+# Paragraph number detection
+# ---------------------------------------------------------------------------
+
+_PARA_NUM_PATTERN = re.compile(r"^\s*(\d+)\.\s+", re.MULTILINE)
+
+
+def _detect_paragraph_range(text: str) -> tuple[int | None, int | None]:
+    """Detect the range of paragraph numbers in a chunk of text.
+
+    Indian SC judgments use numbered paragraphs: '1. The appellant...', '2. The facts...'
+    """
+    matches = _PARA_NUM_PATTERN.findall(text)
+    if not matches:
+        return None, None
+    nums = [int(m) for m in matches]
+    return min(nums), max(nums)
 
 
 # ---------------------------------------------------------------------------
@@ -56,23 +77,29 @@ SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
     "FACTS": re.compile(
         r"(?:"
-        r"FACTS"
+        r"FACTS\s+OF\s+THE\s+CASE"
+        r"|MATERIAL\s+FACTS"
+        r"|CASE\s+OF\s+THE\s+(?:APPELLANT|PETITIONER|PROSECUTION)"
         r"|FACTUAL\s+BACKGROUND"
         r"|THE\s+FACTS"
         r"|BRIEF\s+FACTS"
         r"|FACTUAL\s+MATRIX"
         r"|BACKGROUND\s+FACTS"
+        r"|FACTS"
         r")",
         re.IGNORECASE,
     ),
     "ARGUMENTS": re.compile(
         r"(?:"
-        r"ARGUMENTS"
+        r"SUBMISSIONS\s+OF\s+THE\s+PARTIES"
+        r"|SUBMISSIONS\s+ON\s+BEHALF\s+OF"
+        r"|HEARD\s+(?:LEARNED\s+)?COUNSEL"
+        r"|RIVAL\s+(?:SUBMISSIONS|CONTENTIONS)"
+        r"|ARGUMENTS\s+(?:ON\s+BEHALF|ADVANCED)"
+        r"|ARGUMENTS"
         r"|SUBMISSIONS"
         r"|CONTENTIONS"
         r"|LEARNED\s+COUNSEL"
-        r"|RIVAL\s+(?:SUBMISSIONS|CONTENTIONS)"
-        r"|ARGUMENTS\s+(?:ON\s+BEHALF|ADVANCED)"
         r")",
         re.IGNORECASE,
     ),
@@ -88,14 +115,14 @@ SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
     "ANALYSIS": re.compile(
         r"(?:"
-        r"ANALYSIS"
+        r"ANALYSIS\s+AND\s+DISCUSSION"
+        r"|OUR\s+ANALYSIS"
+        r"|ANALYSIS"
         r"|DISCUSSION"
         r"|CONSIDERATION"
         r"|HAVING\s+HEARD"
         r"|I\s+HAVE\s+CONSIDERED"
         r"|WE\s+HAVE\s+CONSIDERED"
-        r"|ANALYSIS\s+AND\s+DISCUSSION"
-        r"|OUR\s+ANALYSIS"
         r"|REASONING"
         r")",
         re.IGNORECASE,
@@ -103,24 +130,36 @@ SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
     "RATIO": re.compile(
         r"(?:"
         r"RATIO\s+DECIDENDI"
-        r"|WE\s+HOLD\s+THAT"
-        r"|IN\s+MY\s+CONSIDERED\s+VIEW"
-        r"|THE\s+LAW\s+IS"
-        r"|WE\s+ARE\s+OF\s+THE\s+(?:CONSIDERED\s+)?VIEW"
-        r"|IN\s+VIEW\s+OF\s+THE\s+ABOVE"
-        r"|FOR\s+THE\s+(?:AFORESAID|FOREGOING)\s+REASONS"
+        r"|CONCLUSION"
+        r"|FINDINGS\s+AND\s+CONCLUSION"
+        r"|FINDINGS"
+        r"|WE\s+(?:ACCORDINGLY\s+)?HOLD"
         r")",
         re.IGNORECASE,
     ),
     "ORDER": re.compile(
         r"(?:"
         r"O\s*R\s*D\s*E\s*R"
-        r"|RESULT"
+        r"|FINAL\s+ORDER"
         r"|DISPOSITION"
-        r"|THE\s+APPEAL\s+IS"
         r"|IN\s+THE\s+RESULT"
-        r"|ACCORDINGLY"
-        r"|THE\s+(?:PETITION|WRIT\s+PETITION|APPEAL|SUIT)\s+IS\s+(?:HEREBY\s+)?(?:ALLOWED|DISMISSED)"
+        r"|THE\s+(?:PETITION|WRIT\s+PETITION|APPEAL|SUIT|SLP)\s+IS\s+(?:HEREBY\s+)?(?:ALLOWED|DISMISSED|DISPOSED)"
+        r")",
+        re.IGNORECASE,
+    ),
+    "DISSENT": re.compile(
+        r"(?:"
+        r"DISSENTING\s+(?:OPINION|JUDGMENT|VIEW)"
+        r"|PER\s+.*?\s*\(?\s*DISSENTING\s*\)?"
+        r"|MINORITY\s+(?:VIEW|OPINION|JUDGMENT)"
+        r")",
+        re.IGNORECASE,
+    ),
+    "CONCURRENCE": re.compile(
+        r"(?:"
+        r"CONCURRING\s+(?:OPINION|JUDGMENT|VIEW)"
+        r"|PER\s+.*?\s*\(?\s*CONCURRING\s*\)?"
+        r"|SEPARATE\s+(?:BUT\s+CONCURRING\s+)?OPINION"
         r")",
         re.IGNORECASE,
     ),
@@ -135,6 +174,53 @@ CHUNK_OVERLAP: int = 200
 
 
 # ---------------------------------------------------------------------------
+# Heading position check
+# ---------------------------------------------------------------------------
+
+
+def _is_heading_position(text: str, match_start: int) -> bool:
+    """Check if a match is at a line-start heading position, not mid-sentence."""
+    # Find the start of the line containing this match
+    line_start = text.rfind('\n', 0, match_start)
+    line_start = line_start + 1 if line_start != -1 else 0
+
+    # Text between line start and match should be empty or only numbering/whitespace
+    prefix = text[line_start:match_start].strip()
+    if not prefix:
+        return True
+    # Allow Roman numerals, digits, letters with dots: "I.", "1.", "A)", "(a)"
+    if re.match(r'^(?:[IVXLC]+[\.\):]|[0-9]+[\.\):]|[A-Z][\.\)]|\([a-zA-Z0-9]+\))\s*$', prefix):
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Break-point detection for sentence-boundary-aware chunking
+# ---------------------------------------------------------------------------
+
+
+def _find_break_point(text: str, start: int, end: int, min_chunk: int = 500) -> int:
+    """Find best break point near end, preferring paragraph > sentence > word."""
+    if end >= len(text):
+        return end
+    search_start = max(start + min_chunk, end - 400)
+    # Try paragraph break
+    para = text.rfind('\n\n', search_start, end)
+    if para != -1:
+        return para + 2
+    # Try sentence break
+    for sep in ['. ', '.\n', ';\n', '?\n', '!\n']:
+        sent = text.rfind(sep, search_start, end)
+        if sent != -1:
+            return sent + len(sep)
+    # Try word break
+    word = text.rfind(' ', search_start, end)
+    if word != -1:
+        return word + 1
+    return end
+
+
+# ---------------------------------------------------------------------------
 # Section detection
 # ---------------------------------------------------------------------------
 
@@ -145,6 +231,9 @@ def detect_judgment_sections(text: str) -> list[Section]:
     Scans the full text for known section headings, sorts matches by their
     character position, and returns non-overlapping ``Section`` objects whose
     ``text`` spans from one heading to the next.
+
+    Only matches at heading positions (line-start) are considered, preventing
+    mid-sentence false positives.
 
     Args:
         text: Full judgment text.
@@ -161,7 +250,8 @@ def detect_judgment_sections(text: str) -> list[Section]:
 
     for section_type, pattern in SECTION_PATTERNS.items():
         for match in pattern.finditer(text):
-            markers.append((match.start(), section_type))
+            if _is_heading_position(text, match.start()):
+                markers.append((match.start(), section_type))
 
     if not markers:
         return []
@@ -169,12 +259,13 @@ def detect_judgment_sections(text: str) -> list[Section]:
     # Sort by position in the text.
     markers.sort(key=lambda m: m[0])
 
-    # De-duplicate: if the same section_type appears at nearly the same
-    # position (within 50 chars), keep only the first occurrence.
+    # De-duplicate: drop ANY marker within 50 chars of the previous,
+    # regardless of type, to avoid spurious section splits (cross-type
+    # proximity dedup).
     deduped: list[tuple[int, str]] = []
     for pos, stype in markers:
-        if deduped and deduped[-1][1] == stype and (pos - deduped[-1][0]) < 50:
-            continue
+        if deduped and (pos - deduped[-1][0]) < 50:
+            continue  # Drop any marker too close to previous, regardless of type
         deduped.append((pos, stype))
 
     # If the first section does not start at the beginning of the text,
@@ -210,6 +301,9 @@ def chunk_judgment(
     metadata on every chunk and avoids mixing content from different
     structural parts of the judgment.
 
+    Uses intelligent break-point detection that prefers paragraph boundaries
+    over sentence boundaries over word boundaries.
+
     Args:
         text: Full judgment text.
         sections: Pre-detected sections (if ``None``, detection runs
@@ -241,37 +335,28 @@ def chunk_judgment(
 
         pos = 0
         while pos < section_len:
-            end = min(pos + CHUNK_SIZE, section_len)
-
-            # Avoid mid-word/mid-sentence breaks: if we are not at the end
-            # of the section, try to break at a sentence boundary (". ")
-            # within the last 200 chars, falling back to a space boundary.
-            if end < section_len:
-                search_start = max(end - 200, pos)
-                last_sentence = section_text.rfind(". ", search_start, end)
-                if last_sentence > search_start:
-                    end = last_sentence + 2  # include the period and space
-                else:
-                    last_space = section_text.rfind(" ", search_start, end)
-                    if last_space > search_start:
-                        end = last_space + 1
-
+            raw_end = min(pos + CHUNK_SIZE, section_len)
+            end = _find_break_point(section_text, pos, raw_end)
             chunk_text = section_text[pos:end]
 
             # Only emit non-empty chunks.
             if chunk_text.strip():
+                para_start, para_end = _detect_paragraph_range(chunk_text)
                 chunks.append(
                     Chunk(
                         text=chunk_text,
                         section_type=section.type,
                         chunk_index=chunk_idx,
                         case_id=case_id,
+                        para_start=para_start,
+                        para_end=para_end,
                     )
                 )
                 chunk_idx += 1
 
-            # Advance by (CHUNK_SIZE - CHUNK_OVERLAP) for overlap.
-            next_pos = pos + CHUNK_SIZE - CHUNK_OVERLAP
+            # Advance by (actual_chunk_len - CHUNK_OVERLAP) for overlap.
+            actual_chunk_len = end - pos
+            next_pos = pos + max(actual_chunk_len - CHUNK_OVERLAP, 1)
 
             # If the remaining text after next_pos is smaller than the
             # overlap, we have already captured it -- stop to avoid a

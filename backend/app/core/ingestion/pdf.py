@@ -1,9 +1,17 @@
-"""PDF text extraction with pdfplumber and OCR fallback."""
+"""PDF text extraction with pdfplumber and OCR fallback.
+
+Provides clean, high-quality text extraction from Indian court judgment PDFs.
+Includes per-page hybrid extraction (pdfplumber + OCR fallback), Unicode
+normalization, header/footer deduplication, and extraction quality assessment.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import unicodedata
+from collections import Counter
 from dataclasses import dataclass
 
 import pdfplumber
@@ -16,6 +24,28 @@ MAX_PAGES = 5000
 
 # OCR batch size to avoid memory exhaustion on large scanned PDFs
 _OCR_BATCH_SIZE = 10
+
+# Characters to strip: zero-width space, ZWNJ, ZWJ, BOM, soft hyphen
+_ZERO_WIDTH_RE = re.compile(r"[\u200B\u200C\u200D\uFEFF\u00AD]")
+
+# Standalone page numbers on their own line: optional dash, 1-4 digits, optional dash
+_PAGE_NUMBER_RE = re.compile(r"^\s*-?\s*\d{1,4}\s*-?\s*$", re.MULTILINE)
+
+# Three or more newlines -> collapse to two
+_EXCESS_NEWLINES_RE = re.compile(r"\n{3,}")
+
+# Trailing whitespace per line
+_TRAILING_SPACES_RE = re.compile(r"[ \t]+$", re.MULTILINE)
+
+# Terminal punctuation at end of text (ignoring trailing whitespace)
+_TERMINAL_PUNCT_RE = re.compile(r"[.?!:]\s*$")
+
+# Common court boilerplate that appears on every page
+_BOILERPLATE_PATTERNS = [
+    re.compile(r"^\s*REPORTABLE\s*$", re.IGNORECASE),
+    re.compile(r"^\s*NON[- ]?REPORTABLE\s*$", re.IGNORECASE),
+    re.compile(r"^\s*IN THE SUPREME COURT OF INDIA\s*$", re.IGNORECASE),
+]
 
 
 @dataclass
@@ -38,61 +68,153 @@ LEGAL_KEYWORDS = {
 }
 
 
-def _extract_pdf_text_sync(file_path: str) -> str:
-    """Synchronous PDF text extraction (blocking I/O)."""
-    text_parts: list[str] = []
-    try:
-        with pdfplumber.open(file_path) as pdf:
-            if len(pdf.pages) > MAX_PAGES:
-                logger.error(
-                    "PDF %s has %d pages, exceeds MAX_PAGES=%d",
-                    file_path, len(pdf.pages), MAX_PAGES,
-                )
-                return ""
-            for page_num, page in enumerate(pdf.pages, start=1):
-                try:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text_parts.append(page_text)
-                except (ValueError, TypeError, KeyError):
-                    logger.warning(
-                        "Failed to extract text from page %d of %s", page_num, file_path
-                    )
-    except (OSError, PSException, ValueError) as exc:
-        logger.error("Failed to open PDF %s: %s", file_path, exc)
+# ---------------------------------------------------------------------------
+# Text cleaning utilities
+# ---------------------------------------------------------------------------
+
+
+def clean_extracted_text(text: str) -> str:
+    """Clean and normalize extracted PDF text.
+
+    Applies Unicode normalization, removes zero-width characters, deduplicates
+    repeated headers/footers, strips page numbers, normalizes dashes and
+    whitespace.
+
+    Args:
+        text: Raw extracted text from PDF.
+
+    Returns:
+        Cleaned text ready for downstream processing.
+    """
+    if not text:
         return ""
 
-    return "\n\n".join(text_parts)
+    # 1. Unicode NFKC normalization -- collapse ligatures and compatibility chars
+    text = unicodedata.normalize("NFKC", text)
+
+    # 2. Remove zero-width characters and soft hyphens
+    text = _ZERO_WIDTH_RE.sub("", text)
+
+    # 3. Detect and remove repeated headers/footers
+    text = _remove_repeated_headers_footers(text)
+
+    # 4. Remove standalone page numbers
+    text = _PAGE_NUMBER_RE.sub("", text)
+
+    # 5. Normalize dashes: em/en dashes between word characters -> hyphen
+    #    e.g., "self\u2014defence" -> "self-defence" but preserve "-- " (em dash as punctuation)
+    text = re.sub(r"(?<=\w)[\u2013\u2014](?=\w)", "-", text)
+
+    # 6. Collapse excessive newlines and strip trailing spaces per line
+    text = _TRAILING_SPACES_RE.sub("", text)
+    text = _EXCESS_NEWLINES_RE.sub("\n\n", text)
+
+    return text.strip()
 
 
-async def extract_pdf_text(file_path: str) -> str:
-    """Extract text from a PDF using pdfplumber.
+def _remove_repeated_headers_footers(text: str) -> str:
+    """Remove lines that appear as headers/footers on 3+ pages.
 
-    Runs blocking I/O in a thread to avoid blocking the event loop.
-
-    Args:
-        file_path: Absolute path to the PDF file.
-
-    Returns:
-        Concatenated text from all pages, separated by double newlines.
-        Returns an empty string if no text could be extracted.
+    Splits text into page-like chunks using form-feed or triple-newline
+    boundaries, finds lines appearing on 3+ pages, and removes duplicates
+    (keeping the first occurrence).
     """
-    return await asyncio.to_thread(_extract_pdf_text_sync, file_path)
+    # Split into page-like segments
+    pages = re.split(r"\f|\n{3,}", text)
+    if len(pages) < 3:
+        # Not enough pages to detect repetition
+        return text
+
+    # Count how many pages each stripped line appears on
+    line_page_count: Counter[str] = Counter()
+    for page in pages:
+        # Use a set so each line is counted once per page
+        unique_lines = {line.strip() for line in page.splitlines() if line.strip()}
+        for line in unique_lines:
+            line_page_count[line] += 1
+
+    # Lines appearing on 3+ pages are likely headers/footers
+    repeated_lines = {
+        line for line, count in line_page_count.items()
+        if count >= 3 and len(line) < 200  # short lines only -- not real content
+    }
+
+    # Also add common boilerplate patterns
+    for page in pages:
+        for line in page.splitlines():
+            stripped = line.strip()
+            for pattern in _BOILERPLATE_PATTERNS:
+                if pattern.match(stripped) and stripped:
+                    repeated_lines.add(stripped)
+
+    if not repeated_lines:
+        return text
+
+    # Remove duplicates but keep first occurrence of each
+    seen_repeated: set[str] = set()
+    output_lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped in repeated_lines:
+            if stripped not in seen_repeated:
+                seen_repeated.add(stripped)
+                output_lines.append(line)
+            # else: skip duplicate header/footer
+        else:
+            output_lines.append(line)
+
+    return "\n".join(output_lines)
 
 
-async def extract_with_ocr(file_path: str) -> str:
-    """Fallback OCR extraction for scanned PDFs.
+def _smart_page_join(pages: list[str]) -> str:
+    """Join page texts with intelligent paragraph continuity detection.
 
-    Uses pdf2image to convert pages to images and pytesseract
-    for optical character recognition. Processes pages in batches
-    to avoid memory exhaustion on large PDFs.
+    If a page ends without terminal punctuation and the next page starts
+    with a lowercase letter, join with a single space (mid-sentence break).
+    Otherwise join with double newline.
 
     Args:
-        file_path: Absolute path to the PDF file.
+        pages: List of per-page extracted text strings.
 
     Returns:
-        OCR-extracted text from all pages, separated by double newlines.
-        Returns an empty string on failure.
+        Combined text with smart joining.
+    """
+    if not pages:
+        return ""
+    if len(pages) == 1:
+        return pages[0]
+
+    parts: list[str] = [pages[0]]
+    for i in range(1, len(pages)):
+        prev = pages[i - 1].rstrip()
+        curr = pages[i].lstrip()
+        if not prev or not curr:
+            parts.append(curr)
+            continue
+
+        # Check if previous page ends without terminal punctuation
+        # AND next page starts with a lowercase letter
+        ends_without_punct = not _TERMINAL_PUNCT_RE.search(prev)
+        starts_lower = curr[0].islower() if curr else False
+
+        if ends_without_punct and starts_lower:
+            # Mid-sentence page break -- join with space
+            parts.append(" " + curr)
+        else:
+            parts.append("\n\n" + curr)
+
+    return "".join(parts)
+
+
+def _ocr_single_page(file_path: str, page_num: int) -> str:
+    """OCR a single page of a PDF. Must be called from a sync context.
+
+    Args:
+        file_path: Path to the PDF file.
+        page_num: 1-indexed page number.
+
+    Returns:
+        OCR text for the page, or empty string on failure.
     """
     try:
         import pytesseract
@@ -105,34 +227,173 @@ async def extract_with_ocr(file_path: str) -> str:
         )
         return ""
 
-    def _ocr_sync() -> str:
+    try:
+        images = convert_from_path(
+            file_path, dpi=300, first_page=page_num, last_page=page_num
+        )
+        if not images:
+            return ""
+        img = images[0]
         try:
-            images = convert_from_path(file_path)
-            if len(images) > MAX_PAGES:
+            page_text = pytesseract.image_to_string(
+                img, config="--oem 3 --psm 6 -l eng+hin"
+            )
+            return page_text.strip() if page_text else ""
+        finally:
+            img.close()
+    except (OSError, RuntimeError, PDFPageCountError, PDFSyntaxError) as exc:
+        logger.warning("OCR failed on page %d of %s: %s", page_num, file_path, exc)
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# PDF text extraction (synchronous helpers)
+# ---------------------------------------------------------------------------
+
+
+def _extract_pdf_text_sync(file_path: str) -> str:
+    """Synchronous per-page hybrid PDF text extraction.
+
+    For each page, extracts text with pdfplumber. If a page yields fewer
+    than 30 characters, falls back to OCR for that specific page.
+
+    Args:
+        file_path: Absolute path to the PDF file.
+
+    Returns:
+        Cleaned, joined text from all pages.
+    """
+    page_texts: list[str] = []
+    try:
+        with pdfplumber.open(file_path) as pdf:
+            if len(pdf.pages) > MAX_PAGES:
                 logger.error(
-                    "PDF %s has %d pages for OCR, exceeds MAX_PAGES=%d",
-                    file_path, len(images), MAX_PAGES,
+                    "PDF %s has %d pages, exceeds MAX_PAGES=%d",
+                    file_path, len(pdf.pages), MAX_PAGES,
                 )
                 return ""
-            text_parts: list[str] = []
-            # Process in batches to avoid memory bomb
-            for batch_start in range(0, len(images), _OCR_BATCH_SIZE):
-                batch = images[batch_start : batch_start + _OCR_BATCH_SIZE]
-                for i, img in enumerate(batch, start=batch_start + 1):
-                    try:
-                        page_text = pytesseract.image_to_string(img)
-                        if page_text and page_text.strip():
-                            text_parts.append(page_text)
-                    except (OSError, RuntimeError):
-                        logger.warning("OCR failed on page %d of %s", i, file_path)
-                    finally:
-                        img.close()
-            return "\n\n".join(text_parts)
-        except (OSError, PDFPageCountError, PDFSyntaxError) as exc:
-            logger.error("OCR extraction failed for %s: %s", file_path, exc)
+            total_pages = len(pdf.pages)
+            for page_num, page in enumerate(pdf.pages, start=1):
+                page_text = ""
+                try:
+                    page_text = page.extract_text() or ""
+                except (ValueError, TypeError, KeyError) as exc:
+                    logger.warning(
+                        "pdfplumber failed on page %d/%d of %s: %s",
+                        page_num, total_pages, file_path, exc,
+                    )
+
+                # If pdfplumber got very little text, try OCR on this page
+                if len(page_text.strip()) < 30:
+                    logger.debug(
+                        "Page %d/%d has < 30 chars, attempting OCR: %s",
+                        page_num, total_pages, file_path,
+                    )
+                    ocr_text = _ocr_single_page(file_path, page_num)
+                    if len(ocr_text) > len(page_text.strip()):
+                        page_text = ocr_text
+
+                if page_text.strip():
+                    page_texts.append(page_text.strip())
+
+    except (OSError, PSException, ValueError) as exc:
+        logger.error("Failed to open PDF %s: %s", file_path, exc)
+        return ""
+
+    # Smart join and clean
+    result = _smart_page_join(page_texts)
+    result = clean_extracted_text(result)
+    return result
+
+
+async def extract_pdf_text(file_path: str) -> str:
+    """Extract text from a PDF using pdfplumber with per-page OCR fallback.
+
+    For each page, attempts pdfplumber extraction first. If a page yields
+    fewer than 30 characters, falls back to OCR for that specific page.
+    Applies Unicode normalization, header/footer deduplication, and
+    whitespace cleanup.
+
+    Runs blocking I/O in a thread to avoid blocking the event loop.
+
+    Args:
+        file_path: Absolute path to the PDF file.
+
+    Returns:
+        Cleaned text from all pages. Returns empty string on failure.
+    """
+    return await asyncio.to_thread(_extract_pdf_text_sync, file_path)
+
+
+async def extract_with_ocr(file_path: str) -> str:
+    """Fallback OCR extraction for scanned PDFs.
+
+    Uses pdf2image to convert pages to images and pytesseract
+    for optical character recognition. Processes pages in batches
+    to avoid memory exhaustion on large PDFs. Uses Tesseract with
+    English + Hindi language support.
+
+    Args:
+        file_path: Absolute path to the PDF file.
+
+    Returns:
+        OCR-extracted text from all pages, separated by double newlines.
+        Returns an empty string on failure.
+    """
+    try:
+        import pytesseract  # noqa: F401
+        from pdf2image import convert_from_path  # noqa: F401
+        from pdf2image.exceptions import PDFPageCountError, PDFSyntaxError  # noqa: F401
+    except ImportError:
+        logger.error(
+            "pdf2image or pytesseract not installed. "
+            "Install with: pip install pdf2image pytesseract"
+        )
+        return ""
+
+    def _ocr_sync() -> str:
+        # Determine page count
+        try:
+            from pdf2image import pdfinfo_from_path
+
+            info = pdfinfo_from_path(file_path)
+            total_pages = info.get("Pages", 0)
+        except Exception:
+            # Fallback: try pdfplumber for page count
+            try:
+                with pdfplumber.open(file_path) as pdf:
+                    total_pages = len(pdf.pages)
+            except Exception as exc:
+                logger.error("Cannot determine page count for %s: %s", file_path, exc)
+                return ""
+
+        if total_pages == 0:
+            logger.warning("PDF has 0 pages: %s", file_path)
             return ""
 
+        if total_pages > MAX_PAGES:
+            logger.error(
+                "PDF %s has %d pages for OCR, exceeds MAX_PAGES=%d",
+                file_path, total_pages, MAX_PAGES,
+            )
+            return ""
+
+        page_texts: list[str] = []
+        for page_num in range(1, total_pages + 1):
+            page_text = _ocr_single_page(file_path, page_num)
+            if page_text:
+                page_texts.append(page_text)
+
+        result = _smart_page_join(page_texts)
+        result = clean_extracted_text(result)
+        return result
+
     return await asyncio.to_thread(_ocr_sync)
+
+
+# ---------------------------------------------------------------------------
+# Quality scoring
+# ---------------------------------------------------------------------------
 
 
 def score_text_quality(text: str, ocr_used: bool = False, page_count: int = 0) -> TextQuality:
@@ -162,6 +423,35 @@ def score_text_quality(text: str, ocr_used: bool = False, page_count: int = 0) -
         legal_keyword_count=legal_keyword_count,
         page_count=page_count,
     )
+
+
+def assess_extraction_quality(text: str) -> dict:
+    """Assess the quality of extracted text.
+
+    Checks alphabetic character ratio and presence of common legal terms
+    to determine if extraction produced usable text.
+
+    Args:
+        text: Extracted text to assess.
+
+    Returns:
+        Dictionary with alpha_ratio, char_count, quality ("good"/"poor"),
+        and has_legal_markers boolean.
+    """
+    alpha_ratio = sum(c.isalpha() for c in text) / max(len(text), 1)
+    has_legal_markers = bool(
+        re.search(
+            r"(?:Section|Article|Act|Court|Judge|appellant|respondent)",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    return {
+        "alpha_ratio": round(alpha_ratio, 3),
+        "char_count": len(text),
+        "quality": "good" if alpha_ratio > 0.6 and has_legal_markers else "poor",
+        "has_legal_markers": has_legal_markers,
+    }
 
 
 async def extract_and_score(file_path: str) -> TextQuality:

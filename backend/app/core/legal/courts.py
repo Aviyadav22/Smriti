@@ -7,7 +7,7 @@ tribunals / specialized bodies.
 from typing import Final
 
 # ---------------------------------------------------------------------------
-# Short-name → canonical full name mapping
+# Short-name -> canonical full name mapping
 # ---------------------------------------------------------------------------
 
 # Supreme Court
@@ -115,7 +115,7 @@ _TRIBUNALS: Final[dict[str, str]] = {
     "DFC": "District Consumer Forum",
 }
 
-# Unified lookup — merge all dictionaries
+# Unified lookup -- merge all dictionaries
 COURT_NAME_MAP: Final[dict[str, str]] = {
     **_SUPREME_COURT,
     **_HIGH_COURTS,
@@ -123,7 +123,7 @@ COURT_NAME_MAP: Final[dict[str, str]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Long-form aliases → canonical full name
+# Long-form aliases -> canonical full name
 # ---------------------------------------------------------------------------
 
 COURT_ALIASES: Final[dict[str, str]] = {
@@ -164,7 +164,7 @@ COURT_ALIASES: Final[dict[str, str]] = {
 }
 
 # ---------------------------------------------------------------------------
-# AIR court code → canonical full name
+# AIR court code -> canonical full name
 # ---------------------------------------------------------------------------
 
 AIR_COURT_CODES: Final[dict[str, str]] = {
@@ -197,7 +197,7 @@ AIR_COURT_CODES: Final[dict[str, str]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Reverse lookups — canonical name → court level
+# Reverse lookups -- canonical name -> court level
 # ---------------------------------------------------------------------------
 
 _COURT_LEVEL_MAP: Final[dict[str, str]] = {}
@@ -220,6 +220,22 @@ for _name in AIR_COURT_CODES.values():
         elif "High Court" in _name:
             _COURT_LEVEL_MAP[_name] = "high"
 
+# Common LLM output patterns -> canonical names
+_LLM_COURT_PATTERNS: Final[list[tuple[str, str]]] = [
+    ("the supreme court of india", "Supreme Court of India"),
+    ("hon'ble supreme court", "Supreme Court of India"),
+    ("hon'ble sc", "Supreme Court of India"),
+    ("supreme court", "Supreme Court of India"),
+    ("high court of judicature at bombay", "High Court of Bombay"),
+    ("high court of judicature at madras", "High Court of Madras"),
+    ("high court of judicature at calcutta", "High Court of Calcutta"),
+    ("high court of judicature at allahabad", "High Court of Allahabad"),
+    ("high court for the state of telangana", "High Court of Telangana"),
+    ("high court for the state of andhra pradesh", "High Court of Andhra Pradesh"),
+    ("high court for the state of karnataka", "High Court of Karnataka"),
+    ("high court for the state of kerala", "High Court of Kerala"),
+]
+
 # District-level keywords for heuristic matching
 _DISTRICT_KEYWORDS: Final[list[str]] = [
     "district",
@@ -239,11 +255,13 @@ def normalize_court_name(name: str) -> str:
     """Resolve a short name, AIR code, or alias to the canonical full name.
 
     Lookup order:
-    1. Exact match in COURT_NAME_MAP (abbreviation → full name)
+    1. Exact match in COURT_NAME_MAP (abbreviation -> full name)
     2. Exact match in AIR_COURT_CODES
     3. Exact match in COURT_ALIASES (long-form aliases)
     4. Case-insensitive search across all maps
-    5. Return the input unchanged if no match is found
+    5. Check if input is already a canonical name
+    6. Substring/pattern matching for verbose LLM outputs
+    7. Return the input unchanged if no match is found
 
     Args:
         name: Short name, abbreviation, AIR court code, or long-form alias.
@@ -279,6 +297,11 @@ def normalize_court_name(name: str) -> str:
     if name in _COURT_LEVEL_MAP:
         return name
 
+    # 6. Substring/pattern matching for verbose LLM outputs
+    for pattern, canonical in _LLM_COURT_PATTERNS:
+        if pattern in name_lower:
+            return canonical
+
     return name
 
 
@@ -286,7 +309,7 @@ def get_court_level(court: str) -> str:
     """Determine the hierarchy level of a court.
 
     Args:
-        court: Court name — may be a short code, AIR code, or full canonical
+        court: Court name -- may be a short code, AIR code, or full canonical
             name.
 
     Returns:

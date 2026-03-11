@@ -69,7 +69,7 @@ async def search_fulltext(
     sql = text(
         f"SELECT id, title, citation, "
         f"ts_rank_cd(searchable_text, ({tsquery_expr})) AS rank, "
-        f"ts_headline('english', COALESCE(description, ''), "
+        f"ts_headline('english', COALESCE(LEFT(full_text, 50000), COALESCE(description, '')), "
         f"({tsquery_expr}), "
         f"'StartSel=**, StopSel=**, MaxWords=50, MinWords=20') AS snippet "
         f"FROM cases "
@@ -109,13 +109,13 @@ def _build_tsquery_expr(query: str, params: dict) -> str:
     the phrase proximity requirement is enforced.
 
     Updates *params* in-place with the bind values for each query fragment.
-    Returns a raw SQL expression string (safe — all user input goes through
+    Returns a raw SQL expression string (safe -- all user input goes through
     bind parameters).
     """
     phrases = _QUOTED_PHRASE_RE.findall(query)
     remainder = _QUOTED_PHRASE_RE.sub("", query).strip()
 
-    # No quoted phrases — use the simple plainto_tsquery path
+    # No quoted phrases -- use the simple plainto_tsquery path
     if not phrases:
         params["query"] = query
         return "plainto_tsquery('english', :query)"
@@ -135,7 +135,7 @@ def _build_tsquery_expr(query: str, params: dict) -> str:
         parts.append("plainto_tsquery('english', :query)")
 
     if not parts:
-        # Edge case: only empty quotes — fall back to full query
+        # Edge case: only empty quotes -- fall back to full query
         params["query"] = query
         return "plainto_tsquery('english', :query)"
 

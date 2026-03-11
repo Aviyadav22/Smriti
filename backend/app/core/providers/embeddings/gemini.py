@@ -23,10 +23,31 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Build retry exception tuple with granular Google exceptions when available
+_EMBEDDING_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    GoogleAPIError, ConnectionError, OSError, TimeoutError,
+)
+
+try:
+    from google.api_core.exceptions import (
+        InternalServerError,
+        ResourceExhausted,
+        ServiceUnavailable,
+    )
+
+    _EMBEDDING_RETRY_EXCEPTIONS = (
+        *_EMBEDDING_RETRY_EXCEPTIONS,
+        ResourceExhausted,
+        ServiceUnavailable,
+        InternalServerError,
+    )
+except ImportError:
+    pass
+
 _embedding_retry = retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=10),
-    retry=retry_if_exception_type((GoogleAPIError, ConnectionError, OSError)),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=2, max=60),
+    retry=retry_if_exception_type(_EMBEDDING_RETRY_EXCEPTIONS),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )
