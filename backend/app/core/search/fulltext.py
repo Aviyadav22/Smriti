@@ -103,7 +103,10 @@ _QUOTED_PHRASE_RE = re.compile(r'"([^"]+)"')
 
 def _build_tsquery_expr(query: str, params: dict) -> str:
     """Build a tsquery SQL expression that uses ``phraseto_tsquery`` for quoted
-    phrases and ``plainto_tsquery`` for the remaining unquoted text.
+    phrases and ``websearch_to_tsquery`` for the remaining unquoted text.
+
+    ``websearch_to_tsquery`` supports Google-like search syntax including
+    boolean operators (AND, OR), negation (-term), and quoted phrases natively.
 
     Quoted parts are combined with ``&&`` (AND) with the plain part so that
     the phrase proximity requirement is enforced.
@@ -115,10 +118,10 @@ def _build_tsquery_expr(query: str, params: dict) -> str:
     phrases = _QUOTED_PHRASE_RE.findall(query)
     remainder = _QUOTED_PHRASE_RE.sub("", query).strip()
 
-    # No quoted phrases -- use the simple plainto_tsquery path
+    # No quoted phrases -- use websearch_to_tsquery for boolean operator support
     if not phrases:
         params["query"] = query
-        return "plainto_tsquery('english', :query)"
+        return "websearch_to_tsquery('english', :query)"
 
     parts: list[str] = []
 
@@ -132,12 +135,12 @@ def _build_tsquery_expr(query: str, params: dict) -> str:
 
     if remainder:
         params["query"] = remainder
-        parts.append("plainto_tsquery('english', :query)")
+        parts.append("websearch_to_tsquery('english', :query)")
 
     if not parts:
         # Edge case: only empty quotes -- fall back to full query
         params["query"] = query
-        return "plainto_tsquery('english', :query)"
+        return "websearch_to_tsquery('english', :query)"
 
     return " && ".join(parts)
 
@@ -158,14 +161,14 @@ async def _search_sections(
 
     sql = text(
         "SELECT cs.case_id AS id, c.title, c.citation, "
-        "ts_rank_cd(to_tsvector('english', cs.content), plainto_tsquery('english', :query)) AS rank, "
+        "ts_rank_cd(to_tsvector('english', cs.content), websearch_to_tsquery('english', :query)) AS rank, "
         "ts_headline('english', LEFT(cs.content, 500), "
-        "plainto_tsquery('english', :query), "
+        "websearch_to_tsquery('english', :query), "
         "'StartSel=**, StopSel=**, MaxWords=50, MinWords=20') AS snippet "
         "FROM case_sections cs "
         "JOIN cases c ON c.id = cs.case_id "
         "WHERE cs.section_type = :section_type "
-        "AND to_tsvector('english', cs.content) @@ plainto_tsquery('english', :query) "
+        "AND to_tsvector('english', cs.content) @@ websearch_to_tsquery('english', :query) "
         "ORDER BY rank DESC "
         "LIMIT :limit"
     )
