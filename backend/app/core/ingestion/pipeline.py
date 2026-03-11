@@ -37,6 +37,7 @@ from app.core.interfaces.llm import LLMProvider
 from app.core.interfaces.storage import FileStorage
 from app.core.interfaces.vector_store import VectorStore
 from app.core.legal.extractor import extract_acts_cited, extract_citations
+from app.core.legal.treatment import detect_treatment_in_text
 
 logger = logging.getLogger(__name__)
 
@@ -375,7 +376,7 @@ async def _insert_case(
                 :respondent, :decision_date, :disposal_nature, :description,
                 :keywords, :acts_cited, :cases_cited, :ratio_decidendi,
                 :full_text,
-                to_tsvector('english', COALESCE(:title, '') || ' ' || COALESCE(:citation, '') || ' ' || COALESCE(LEFT(:full_text, 50000), '')),
+                NULL,  -- searchable_text computed by BEFORE INSERT trigger (weighted tsvector)
                 :pdf_storage_path, :s3_source_path, :source,
                 :language, :available_languages, 0,
                 :case_number, :is_reportable, :headnotes, :outcome_summary
@@ -503,7 +504,7 @@ async def _upsert_vectors(
                 "title": (metadata.title or "")[:200],
                 "citation": metadata.citation or "",
                 "author_judge": metadata.author_judge or "",
-                "acts_cited": ",".join(metadata.acts_cited[:10]) if metadata.acts_cited else "",
+                "acts_cited": " | ".join(metadata.acts_cited[:10]) if metadata.acts_cited else "",
                 "text": chunk.text[:2000],  # Pinecone metadata size limit
             },
         })
@@ -556,14 +557,29 @@ async def _build_citation_graph(
                     "placeholder_id": f"ref_{uuid.uuid4().hex[:12]}",
                 },
             )
-            # Create the CITES edge with reporter metadata
+
+            # Detect treatment by extracting context window around the citation
+            treatment = "referred_to"
+            pos = full_text.find(cited_ref)
+            if pos >= 0:
+                ctx_start = max(0, pos - 500)
+                ctx_end = min(len(full_text), pos + len(cited_ref) + 500)
+                context_window = full_text[ctx_start:ctx_end]
+                treatment_results = detect_treatment_in_text(context_window)
+                if treatment_results:
+                    best = max(treatment_results, key=lambda r: r.confidence)
+                    treatment = best.treatment.value
+
+            # Create the CITES edge with reporter and treatment metadata
             await graph_store.query(
                 "MATCH (a:Case {id: $from_id}), (b:Case {citation: $to_citation}) "
-                "MERGE (a)-[:CITES {reporter: $reporter}]->(b)",
+                "MERGE (a)-[r:CITES]->(b) "
+                "SET r.reporter = $reporter, r.treatment = $treatment",
                 params={
                     "from_id": case_id,
                     "to_citation": cited_ref,
                     "reporter": citation.reporter,
+                    "treatment": treatment,
                 },
             )
         except (OSError, ConnectionError, RuntimeError):
@@ -698,9 +714,7 @@ async def bulk_upsert_cases(
             :respondent, :decision_date, :disposal_nature, :description,
             :keywords, :acts_cited, :cases_cited, :ratio_decidendi,
             :full_text,
-            to_tsvector('english', COALESCE(:title, '') || ' '
-                || COALESCE(:citation, '') || ' '
-                || COALESCE(LEFT(:full_text, 50000), '')),
+            NULL,  -- searchable_text computed by BEFORE INSERT trigger (weighted tsvector)
             :pdf_storage_path, :s3_source_path, :source,
             :language, :available_languages, :chunk_count
         )
