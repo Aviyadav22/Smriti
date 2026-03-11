@@ -416,6 +416,8 @@ async def _insert_case(
                 outcome_summary = COALESCE(EXCLUDED.outcome_summary, cases.outcome_summary),
                 coram_size = COALESCE(EXCLUDED.coram_size, cases.coram_size),
                 lower_court = COALESCE(EXCLUDED.lower_court, cases.lower_court),
+                lower_court_case_number = COALESCE(EXCLUDED.lower_court_case_number, cases.lower_court_case_number),
+                appeal_from = COALESCE(EXCLUDED.appeal_from, cases.appeal_from),
                 opinion_type = COALESCE(EXCLUDED.opinion_type, cases.opinion_type),
                 dissenting_judges = COALESCE(EXCLUDED.dissenting_judges, cases.dissenting_judges),
                 concurring_judges = COALESCE(EXCLUDED.concurring_judges, cases.concurring_judges),

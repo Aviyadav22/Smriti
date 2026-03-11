@@ -243,6 +243,7 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
     valid_disposals = {
         "Allowed", "Dismissed", "Partly Allowed", "Withdrawn", "Remanded",
         "Disposed Of", "Settled", "Transferred", "Modified", "Other",
+        "Referred to Larger Bench", "Abated", "Not Pressed",
     }
     if metadata.disposal_nature and metadata.disposal_nature not in valid_disposals:
         # Try title-casing in case LLM returned lowercase
@@ -260,14 +261,21 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
             setattr(metadata, field_name, None)
 
     # -- Ensure list fields are actually lists --
-    for list_field in ("judge", "acts_cited", "cases_cited", "keywords"):
+    _ALL_LIST_FIELDS = (
+        "judge", "acts_cited", "cases_cited", "keywords",
+        "dissenting_judges", "concurring_judges", "companion_cases",
+    )
+    for list_field in _ALL_LIST_FIELDS:
         val = getattr(metadata, list_field, None)
         if val is not None and not isinstance(val, list):
             logger.warning("Field '%s' is not a list, clearing field", list_field)
             setattr(metadata, list_field, None)
 
     # -- List content quality: deduplicate, strip, cap count --
-    _MAX_LIST_ITEMS = {"judge": 20, "acts_cited": 50, "cases_cited": 100, "keywords": 15}
+    _MAX_LIST_ITEMS = {
+        "judge": 20, "acts_cited": 50, "cases_cited": 100, "keywords": 15,
+        "dissenting_judges": 10, "concurring_judges": 10, "companion_cases": 50,
+    }
     for list_field, max_items in _MAX_LIST_ITEMS.items():
         val = getattr(metadata, list_field, None)
         if isinstance(val, list):
@@ -310,15 +318,17 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
             logger.warning("Invalid coram_size %s, clearing field", metadata.coram_size)
             metadata.coram_size = None
 
-    # -- Clean new list fields --
-    _MAX_LIST_ITEMS["dissenting_judges"] = 10
-    _MAX_LIST_ITEMS["concurring_judges"] = 10
-    _MAX_LIST_ITEMS["companion_cases"] = 50
+    # -- Validate split_ratio format (e.g., "3:2", "4:1") --
+    if metadata.split_ratio is not None:
+        import re as _re
+        if not _re.match(r'^\d+:\d+$', metadata.split_ratio):
+            logger.warning("Invalid split_ratio '%s', clearing field", metadata.split_ratio)
+            metadata.split_ratio = None
 
     # -- String length validation --
     _MAX_LENGTHS = {
         "title": 500, "citation": 200, "court": 200, "petitioner": 500,
-        "respondent": 500, "ratio_decidendi": 3000, "headnotes": 5000,
+        "respondent": 500, "ratio_decidendi": 3000,
         "outcome_summary": 500, "author_judge": 200, "case_type": 100,
         "disposal_nature": 50, "case_number": 200,
         "lower_court": 200, "lower_court_case_number": 200, "appeal_from": 200,
