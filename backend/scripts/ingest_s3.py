@@ -81,12 +81,20 @@ TRACKER_DB = Path("data/ingest_tracker.db")
 # ---------------------------------------------------------------------------
 
 shutdown_event = asyncio.Event()
+_event_loop: asyncio.AbstractEventLoop | None = None
 
 
 def _handle_shutdown(sig: int, frame: object) -> None:
-    """Signal handler for graceful shutdown."""
+    """Signal handler for graceful shutdown.
+
+    Uses loop.call_soon_threadsafe to safely set the asyncio Event from a
+    signal handler context (which may run on a different thread).
+    """
     logger.warning("Received signal %s, initiating graceful shutdown...", signal.Signals(sig).name)
-    shutdown_event.set()
+    if _event_loop is not None and _event_loop.is_running():
+        _event_loop.call_soon_threadsafe(shutdown_event.set)
+    else:
+        shutdown_event.set()
 
 
 # ---------------------------------------------------------------------------
@@ -455,6 +463,76 @@ def _match_pdf_to_metadata(
 
 
 # ---------------------------------------------------------------------------
+# Circuit breaker
+# ---------------------------------------------------------------------------
+
+
+class CircuitBreaker:
+    """Circuit breaker with half-open recovery.
+
+    States:
+    - CLOSED: normal operation, counts consecutive failures.
+    - OPEN: tripped after ``threshold`` failures, rejects immediately.
+    - HALF_OPEN: after ``cooldown_secs`` has elapsed since opening, allows
+      one probe request. If it succeeds → CLOSED; if it fails → OPEN again.
+
+    All state mutations are guarded by an asyncio.Lock for safety under
+    concurrent workers.
+    """
+
+    def __init__(self, threshold: int = 10, cooldown_secs: float = 60.0) -> None:
+        self._threshold = threshold
+        self._cooldown = cooldown_secs
+        self._failures = 0
+        self._state = "closed"  # closed | open | half_open
+        self._opened_at: float = 0.0
+        self._lock = asyncio.Lock()
+
+    @property
+    def is_tripped(self) -> bool:
+        return self._state == "open"
+
+    async def check(self) -> bool:
+        """Return True if the request should proceed, False to reject."""
+        async with self._lock:
+            if self._state == "closed":
+                return True
+            if self._state == "open":
+                if (time.monotonic() - self._opened_at) >= self._cooldown:
+                    self._state = "half_open"
+                    logger.info("Circuit breaker entering half-open state (probing)")
+                    return True
+                return False
+            # half_open — only one probe at a time; lock ensures serialisation
+            return True
+
+    async def record_success(self) -> None:
+        async with self._lock:
+            if self._state == "half_open":
+                logger.info("Circuit breaker probe succeeded — closing")
+            self._failures = 0
+            self._state = "closed"
+
+    async def record_failure(self) -> bool:
+        """Returns True if the breaker just tripped open."""
+        async with self._lock:
+            self._failures += 1
+            if self._state == "half_open":
+                logger.warning("Circuit breaker probe failed — reopening")
+                self._state = "open"
+                self._opened_at = time.monotonic()
+                return True
+            if self._failures >= self._threshold:
+                self._state = "open"
+                self._opened_at = time.monotonic()
+                logger.critical(
+                    "Circuit breaker OPEN: %d consecutive failures", self._failures
+                )
+                return True
+            return False
+
+
+# ---------------------------------------------------------------------------
 # Core ingestion loop
 # ---------------------------------------------------------------------------
 
@@ -537,26 +615,27 @@ async def ingest_year(
     # Apply limit
     pdfs_to_process = pdf_paths[:limit] if limit else pdf_paths
 
-    # Circuit breaker
-    consecutive_failures = 0
-    MAX_CONSECUTIVE_FAILURES = 10
-    shutdown_flag = False
+    # Circuit breaker with half-open recovery
+    breaker = CircuitBreaker(threshold=10, cooldown_secs=60.0)
 
     # Progress tracking with ETA
     stats = {"success": 0, "skipped": 0, "failed": 0}
     processed = 0
+    total_attempted = 0  # success + failed + skipped for accurate %
     start_time = time.monotonic()
 
     async def _process_one(
         pdf_path: Path, llm: GeminiLLM, embedder: GeminiEmbedder, api_key: str,
     ) -> None:
-        nonlocal processed, consecutive_failures, shutdown_flag
+        nonlocal processed, total_attempted
         doc_key = f"year={year}/{pdf_path.name}"
-        tracker.init_doc(doc_key, year)
+        await asyncio.to_thread(tracker.init_doc, doc_key, year)
 
         # Skip if already processed or permanently failed
-        if tracker.is_processed(doc_key) or tracker.is_permanently_failed(doc_key):
+        if await asyncio.to_thread(tracker.is_processed, doc_key) or \
+           await asyncio.to_thread(tracker.is_permanently_failed, doc_key):
             stats["skipped"] += 1
+            total_attempted += 1
             return
 
         # Get the per-key rate limiter (or None if disabled)
@@ -576,40 +655,34 @@ async def ingest_year(
                     storage=storage,
                     rate_limiter=limiter,
                 )
-            tracker.mark_success(doc_key, case_id)
+            await asyncio.to_thread(tracker.mark_success, doc_key, case_id)
             # Mark all stages complete (since ingest_judgment does them all)
-            tracker.mark_stage(doc_key, "extracted", case_id=case_id)
-            tracker.mark_stage(doc_key, "metadata", case_id=case_id)
-            tracker.mark_stage(doc_key, "embedded", case_id=case_id)
-            tracker.mark_stage(doc_key, "stored", case_id=case_id)
-            tracker.mark_stage(doc_key, "graphed", case_id=case_id)
+            for stage in ("extracted", "metadata", "embedded", "stored", "graphed"):
+                await asyncio.to_thread(tracker.mark_stage, doc_key, stage, case_id)
             stats["success"] += 1
             processed += 1
-            consecutive_failures = 0
+            total_attempted += 1
+            await breaker.record_success()
 
-            # Progress logging with ETA
-            if processed % 25 == 0 or processed == len(pdfs_to_process):
+            # Progress logging with ETA (include all attempted for accurate %)
+            if processed % 25 == 0 or total_attempted == len(pdfs_to_process):
                 elapsed = time.monotonic() - start_time
                 rate = processed / max(elapsed / 60, 0.01)  # cases/minute
-                remaining = len(pdfs_to_process) - processed - stats["skipped"]
+                remaining = len(pdfs_to_process) - total_attempted
                 eta_min = remaining / max(rate, 0.01)
                 eta_str = f"{int(eta_min // 60)}h {int(eta_min % 60)}m" if eta_min >= 60 else f"{int(eta_min)}m"
                 logger.info(
-                    "[%d] %d/%d (%.1f%%) | %.1f cases/min | ETA: %s | %d failed",
+                    "[%d] %d/%d (%.1f%%) | %.1f cases/min | ETA: %s | %d skipped | %d failed",
                     year, processed, len(pdfs_to_process),
-                    processed / max(len(pdfs_to_process), 1) * 100,
-                    rate, eta_str, stats["failed"],
+                    total_attempted / max(len(pdfs_to_process), 1) * 100,
+                    rate, eta_str, stats["skipped"], stats["failed"],
                 )
         except Exception as exc:
-            tracker.mark_failed(doc_key, str(exc))
+            await asyncio.to_thread(tracker.mark_failed, doc_key, str(exc))
             stats["failed"] += 1
-            consecutive_failures += 1
+            total_attempted += 1
             logger.error("Failed to ingest %s: %s", pdf_path.name, exc)
-
-            # Circuit breaker check
-            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                logger.critical("Circuit breaker: %d consecutive failures. Stopping.", MAX_CONSECUTIVE_FAILURES)
-                shutdown_flag = True
+            await breaker.record_failure()
 
     # Queue-based workers for bounded concurrency
     queue: asyncio.Queue[tuple[Path, GeminiLLM, GeminiEmbedder, str] | None] = asyncio.Queue()
@@ -628,9 +701,14 @@ async def ingest_year(
                 queue.task_done()
                 break
             # Check shutdown signals before processing
-            if shutdown_event.is_set() or shutdown_flag:
-                queue.task_done()
-                continue
+            if shutdown_event.is_set() or breaker.is_tripped:
+                # When breaker is tripped, check if cooldown elapsed (half-open)
+                if breaker.is_tripped and not await breaker.check():
+                    queue.task_done()
+                    continue
+                if shutdown_event.is_set():
+                    queue.task_done()
+                    continue
             try:
                 pdf_path, llm, embedder, api_key = item
                 await _process_one(pdf_path, llm, embedder, api_key)
@@ -692,7 +770,11 @@ def parse_args() -> argparse.Namespace:
 
 
 async def main() -> None:
+    global _event_loop
     args = parse_args()
+
+    # Capture event loop for thread-safe signal handling (E2)
+    _event_loop = asyncio.get_running_loop()
 
     # Register graceful shutdown handlers
     signal.signal(signal.SIGINT, _handle_shutdown)

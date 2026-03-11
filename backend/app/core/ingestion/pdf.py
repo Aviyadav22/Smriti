@@ -52,6 +52,12 @@ _BOILERPLATE_PATTERNS = [
     re.compile(r"^\s*REPORTABLE\s*$", re.IGNORECASE),
     re.compile(r"^\s*NON[- ]?REPORTABLE\s*$", re.IGNORECASE),
     re.compile(r"^\s*IN THE SUPREME COURT OF INDIA\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Page\s+\d+\s+of\s+\d+\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Digitally\s+signed\s+by\b.*$", re.IGNORECASE),
+    re.compile(r"^\s*Date:\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s*$", re.IGNORECASE),
+    re.compile(r"^\s*ITEM\s+NO\.?\s*", re.IGNORECASE),
+    re.compile(r"^\s*WWW\.LIVELAW\.IN\s*$", re.IGNORECASE),
+    re.compile(r"^\s*UPON\s+hearing\b.*$", re.IGNORECASE),
 ]
 
 
@@ -475,9 +481,13 @@ def score_text_quality(text: str, ocr_used: bool = False, page_count: int = 0) -
     """Score the quality of extracted judgment text.
 
     Tiers:
-    - high: >2000 chars, >=3 legal keywords
+    - high: >2000 chars, >=3 legal keywords, reasonable alpha ratio
     - medium: >500 chars, >=1 legal keyword
     - low: everything else (flag for manual review)
+
+    Also forces "low" for:
+    - Very low chars-per-page (OCR garbage)
+    - Very low alphabetic character ratio (<0.4)
     """
     char_count = len(text)
     text_lower = text.lower()
@@ -489,6 +499,18 @@ def score_text_quality(text: str, ocr_used: bool = False, page_count: int = 0) -
         tier = "medium"
     else:
         tier = "low"
+
+    # Alpha ratio check: OCR garbage often has <40% alphabetic characters
+    if char_count > 0:
+        alpha_ratio = sum(c.isalpha() for c in text) / char_count
+        if alpha_ratio < 0.4:
+            tier = "low"
+
+    # Chars-per-page check: if we know page count and text is suspiciously sparse
+    if page_count > 0 and char_count > 0:
+        chars_per_page = char_count / page_count
+        if chars_per_page < 100:
+            tier = "low"
 
     return TextQuality(
         text=text,

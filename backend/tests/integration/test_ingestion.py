@@ -14,12 +14,18 @@ import pytest
 
 from app.core.ingestion.chunker import Chunk
 from app.core.ingestion.metadata import CaseMetadata
+from app.core.ingestion.pdf import TextQuality, score_text_quality
 from app.core.ingestion.pipeline import (
     _EMBED_BATCH_SIZE,
     _embed_chunks,
     _safe_filename,
     ingest_judgment,
 )
+
+
+def _make_text_quality(text: str, *, ocr_used: bool = False) -> TextQuality:
+    """Build a TextQuality result for mocking extract_and_score."""
+    return score_text_quality(text, ocr_used=ocr_used, page_count=10)
 
 
 # ---------------------------------------------------------------------------
@@ -134,8 +140,8 @@ class TestIngestJudgment:
 
         with (
             patch(
-                "app.core.ingestion.pipeline.extract_pdf_text",
-                new=AsyncMock(return_value=sample_judgment_text),
+                "app.core.ingestion.pipeline.extract_and_score",
+                new=AsyncMock(return_value=_make_text_quality(sample_judgment_text)),
             ),
             patch(
                 "app.core.ingestion.pipeline.extract_metadata_llm",
@@ -182,8 +188,8 @@ class TestIngestJudgment:
         assert node_call[0][0] == "Case"
         assert node_call[0][1]["id"] == case_id
 
-        # DB was committed (at least for insert + chunk_count update).
-        assert db.commit.await_count >= 2
+        # DB was committed (single commit after all writes complete).
+        assert db.commit.await_count >= 1
 
     @pytest.mark.asyncio
     async def test_pipeline_with_ocr_fallback(
@@ -197,16 +203,16 @@ class TestIngestJudgment:
         graph_store = _make_graph_store_mock()
         storage = _make_storage_mock()
 
-        mock_pdf_extract = AsyncMock(return_value="short")  # < 100 chars
+        mock_pdf_extract = AsyncMock(return_value=("short", 1))  # < 100 chars, 1 page
         mock_ocr_extract = AsyncMock(return_value=sample_judgment_text)
 
         with (
             patch(
-                "app.core.ingestion.pipeline.extract_pdf_text",
+                "app.core.ingestion.pdf.extract_pdf_text",
                 new=mock_pdf_extract,
             ),
             patch(
-                "app.core.ingestion.pipeline.extract_with_ocr",
+                "app.core.ingestion.pdf.extract_with_ocr",
                 new=mock_ocr_extract,
             ),
             patch(
@@ -225,7 +231,7 @@ class TestIngestJudgment:
                 storage=storage,
             )
 
-        # PDF extraction was attempted first.
+        # PDF extraction was attempted first (inside extract_and_score).
         mock_pdf_extract.assert_awaited_once_with("/tmp/test.pdf")
         # OCR fallback was invoked because pdfplumber returned too little text.
         mock_ocr_extract.assert_awaited_once_with("/tmp/test.pdf")
@@ -246,15 +252,9 @@ class TestIngestJudgment:
         graph_store = _make_graph_store_mock()
         storage = _make_storage_mock()
 
-        with (
-            patch(
-                "app.core.ingestion.pipeline.extract_pdf_text",
-                new=AsyncMock(return_value=""),
-            ),
-            patch(
-                "app.core.ingestion.pipeline.extract_with_ocr",
-                new=AsyncMock(return_value=""),
-            ),
+        with patch(
+            "app.core.ingestion.pipeline.extract_and_score",
+            new=AsyncMock(return_value=_make_text_quality("")),
         ):
             case_id = await ingest_judgment(
                 pdf_path="/tmp/empty.pdf",
@@ -307,8 +307,8 @@ class TestIngestJudgment:
 
         with (
             patch(
-                "app.core.ingestion.pipeline.extract_pdf_text",
-                new=AsyncMock(return_value=sample_judgment_text),
+                "app.core.ingestion.pipeline.extract_and_score",
+                new=AsyncMock(return_value=_make_text_quality(sample_judgment_text)),
             ),
             patch(
                 "app.core.ingestion.pipeline.extract_metadata_llm",
@@ -350,8 +350,8 @@ class TestIngestJudgment:
 
         with (
             patch(
-                "app.core.ingestion.pipeline.extract_pdf_text",
-                new=AsyncMock(return_value=sample_judgment_text),
+                "app.core.ingestion.pipeline.extract_and_score",
+                new=AsyncMock(return_value=_make_text_quality(sample_judgment_text)),
             ),
             patch(
                 "app.core.ingestion.pipeline.extract_metadata_llm",
@@ -395,8 +395,8 @@ class TestIngestJudgment:
 
         with (
             patch(
-                "app.core.ingestion.pipeline.extract_pdf_text",
-                new=AsyncMock(return_value=sample_judgment_text),
+                "app.core.ingestion.pipeline.extract_and_score",
+                new=AsyncMock(return_value=_make_text_quality(sample_judgment_text)),
             ),
             patch(
                 "app.core.ingestion.pipeline.extract_metadata_llm",
@@ -458,8 +458,8 @@ class TestIngestJudgment:
 
         with (
             patch(
-                "app.core.ingestion.pipeline.extract_pdf_text",
-                new=AsyncMock(return_value=sample_judgment_text),
+                "app.core.ingestion.pipeline.extract_and_score",
+                new=AsyncMock(return_value=_make_text_quality(sample_judgment_text)),
             ),
             patch(
                 "app.core.ingestion.pipeline.extract_metadata_llm",

@@ -49,16 +49,18 @@ async def verify(sample_size: int = 100) -> dict:
         for case_id, citation, expected_chunks in samples:
             case_id_str = str(case_id)
             try:
-                # Query Pinecone for vectors with this case_id
-                # Use a dummy vector query with filter
+                # Query Pinecone for vectors with this case_id.
+                # Use top_k matching expected chunks to detect partial failures
+                # (top_k=1 can't distinguish "1 of 20" from "all present").
+                check_k = min(expected_chunks or 1, 10000)
                 query_result = await vector_store.query(
                     vector=[0.0] * 1536,  # dummy
-                    top_k=1,
+                    top_k=check_k,
                     filter={"case_id": case_id_str},
                     include_metadata=False,
                 )
                 actual_count = len(query_result.get("matches", []))
-                if expected_chunks and expected_chunks > 0 and actual_count == 0:
+                if expected_chunks and expected_chunks > 0 and actual_count < expected_chunks:
                     results["vector_mismatches"].append({
                         "case_id": case_id_str,
                         "citation": citation,

@@ -574,8 +574,24 @@ async def get_neo4j_stats(driver, database: str) -> dict:
 # Main pipeline
 # ---------------------------------------------------------------------------
 
-async def populate(batch_size: int = 200, dry_run: bool = False) -> None:
-    """Main population pipeline."""
+async def _get_neo4j_case_ids(driver, database: str) -> set[str]:
+    """Return the set of Case node IDs currently in Neo4j."""
+    async with driver.session(database=database) as session:
+        result = await session.run("MATCH (c:Case) WHERE c.id IS NOT NULL RETURN c.id AS cid")
+        records = [record async for record in result]
+    return {str(r["cid"]) for r in records}
+
+
+async def populate(
+    batch_size: int = 200, dry_run: bool = False, incremental: bool = False,
+) -> None:
+    """Main population pipeline.
+
+    Args:
+        batch_size: Number of cases per batch.
+        dry_run: Preview without writing.
+        incremental: Only process cases not already in Neo4j (skip clear).
+    """
     dsn = get_pg_dsn()
     driver = get_neo4j_driver()
     database = os.getenv("NEO4J_DATABASE", "neo4j")
@@ -592,7 +608,15 @@ async def populate(batch_size: int = 200, dry_run: bool = False) -> None:
             stats["nodes"], stats["edges"], stats["judges"], stats["acts"],
         )
 
-        if stats["nodes"] > 0 and not dry_run:
+        # In incremental mode, collect existing IDs and skip clearing
+        existing_ids: set[str] = set()
+        if incremental:
+            existing_ids = await _get_neo4j_case_ids(driver, database)
+            logger.info(
+                "Incremental mode: %d cases already in Neo4j, will skip them",
+                len(existing_ids),
+            )
+        elif stats["nodes"] > 0 and not dry_run:
             logger.warning(
                 "Neo4j already has %d nodes. Clearing and repopulating...", stats["nodes"]
             )
@@ -627,6 +651,12 @@ async def populate(batch_size: int = 200, dry_run: bool = False) -> None:
 
             if not cases:
                 break
+
+            # In incremental mode, filter out cases already in Neo4j
+            if incremental and existing_ids:
+                cases = [c for c in cases if str(c["id"]) not in existing_ids]
+                if not cases:
+                    continue
 
             # Create nodes
             created = await batch_create_nodes(driver, database, cases, dry_run=dry_run)
@@ -734,13 +764,21 @@ def main():
     parser.add_argument(
         "--stats", action="store_true", help="Show current Neo4j statistics"
     )
+    parser.add_argument(
+        "--incremental", action="store_true",
+        help="Only process cases not already in Neo4j (skip graph clearing)",
+    )
 
     args = parser.parse_args()
 
     if args.stats:
         asyncio.run(show_stats())
     else:
-        asyncio.run(populate(batch_size=args.batch, dry_run=args.dry_run))
+        asyncio.run(populate(
+            batch_size=args.batch,
+            dry_run=args.dry_run,
+            incremental=args.incremental,
+        ))
 
 
 if __name__ == "__main__":

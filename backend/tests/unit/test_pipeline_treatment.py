@@ -107,10 +107,14 @@ async def test_default_referred_to_when_no_treatment(mock_detect, mock_extract):
 
     await _build_citation_graph("case-123", metadata, full_text, graph_store)
 
-    # The CITES edge query is the second graph_store.query call per citation
-    # (first is the MERGE placeholder, second is the CITES edge)
-    cites_call = graph_store.query.call_args_list[-1]
-    assert cites_call.kwargs["params"]["treatment"] == "referred_to"
+    # With batched approach, the CITES edge query uses UNWIND with edges param
+    cites_call = [
+        c for c in graph_store.query.call_args_list
+        if "r:CITES" in str(c.args[0])
+    ]
+    assert len(cites_call) == 1
+    edges = cites_call[0].kwargs["params"]["edges"]
+    assert edges[0]["treatment"] == "referred_to"
 
 
 @pytest.mark.asyncio
@@ -131,17 +135,18 @@ async def test_treatment_property_passed_to_graph_store(mock_detect, mock_extrac
 
     await _build_citation_graph("case-123", metadata, full_text, graph_store)
 
-    # Find the CITES edge call (contains "MERGE (a)-[r:CITES]")
+    # Find the CITES edge call (uses UNWIND with edges param)
     cites_calls = [
         c for c in graph_store.query.call_args_list
-        if "CITES" in str(c.args[0]) and "r:CITES" in str(c.args[0])
+        if "r:CITES" in str(c.args[0])
     ]
     assert len(cites_calls) == 1
 
     params = cites_calls[0].kwargs["params"]
-    assert params["treatment"] == "distinguished"
-    assert params["reporter"] == "SCC"
     assert params["from_id"] == "case-123"
+    edges = params["edges"]
+    assert edges[0]["treatment"] == "distinguished"
+    assert edges[0]["reporter"] == "SCC"
 
 
 @pytest.mark.asyncio
@@ -168,7 +173,8 @@ async def test_highest_confidence_treatment_picked(mock_detect, mock_extract):
         c for c in graph_store.query.call_args_list
         if "r:CITES" in str(c.args[0])
     ]
-    assert cites_calls[0].kwargs["params"]["treatment"] == "overruled"
+    edges = cites_calls[0].kwargs["params"]["edges"]
+    assert edges[0]["treatment"] == "overruled"
 
 
 @pytest.mark.asyncio
@@ -194,4 +200,5 @@ async def test_citation_not_found_in_text_defaults_referred_to(mock_detect, mock
         c for c in graph_store.query.call_args_list
         if "r:CITES" in str(c.args[0])
     ]
-    assert cites_calls[0].kwargs["params"]["treatment"] == "referred_to"
+    edges = cites_calls[0].kwargs["params"]["edges"]
+    assert edges[0]["treatment"] == "referred_to"

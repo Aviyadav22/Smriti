@@ -613,49 +613,48 @@ async def _build_citation_graph(
         logger.error("Failed to create case node %s: %s", case_id, exc)
         return
 
-    # Extract citations from the text
+    # Extract citations and detect treatment for each (CPU-only, no I/O)
     citations = extract_citations(full_text)
+    if not citations:
+        return
 
-    # Create CITES edges for each cited case
+    edge_data: list[dict[str, str]] = []
     for citation in citations:
         cited_ref = citation.raw_text
-        try:
-            # Create a placeholder node for the cited case (if not already present)
-            await graph_store.query(
-                "MERGE (c:Case {citation: $citation}) "
-                "ON CREATE SET c.id = $placeholder_id, c.title = $citation",
-                params={
-                    "citation": cited_ref,
-                    "placeholder_id": f"ref_{uuid.uuid4().hex[:12]}",
-                },
-            )
+        treatment = "referred_to"
+        pos = full_text.find(cited_ref)
+        if pos >= 0:
+            ctx_start = max(0, pos - 500)
+            ctx_end = min(len(full_text), pos + len(cited_ref) + 500)
+            context_window = full_text[ctx_start:ctx_end]
+            treatment_results = detect_treatment_in_text(context_window)
+            if treatment_results:
+                best = max(treatment_results, key=lambda r: r.confidence)
+                treatment = best.treatment.value
+        edge_data.append({
+            "citation": cited_ref,
+            "placeholder_id": f"ref_{uuid.uuid4().hex[:12]}",
+            "reporter": citation.reporter,
+            "treatment": treatment,
+        })
 
-            # Detect treatment by extracting context window around the citation
-            treatment = "referred_to"
-            pos = full_text.find(cited_ref)
-            if pos >= 0:
-                ctx_start = max(0, pos - 500)
-                ctx_end = min(len(full_text), pos + len(cited_ref) + 500)
-                context_window = full_text[ctx_start:ctx_end]
-                treatment_results = detect_treatment_in_text(context_window)
-                if treatment_results:
-                    best = max(treatment_results, key=lambda r: r.confidence)
-                    treatment = best.treatment.value
-
-            # Create the CITES edge with reporter and treatment metadata
-            await graph_store.query(
-                "MATCH (a:Case {id: $from_id}), (b:Case {citation: $to_citation}) "
-                "MERGE (a)-[r:CITES]->(b) "
-                "SET r.reporter = $reporter, r.treatment = $treatment",
-                params={
-                    "from_id": case_id,
-                    "to_citation": cited_ref,
-                    "reporter": citation.reporter,
-                    "treatment": treatment,
-                },
-            )
-        except (OSError, ConnectionError, RuntimeError):
-            logger.warning("Failed to create citation edge: %s -> %s", case_id, cited_ref)
+    # Batch: create placeholder nodes + CITES edges in 2 queries (not N)
+    try:
+        await graph_store.query(
+            "UNWIND $edges AS e "
+            "MERGE (c:Case {citation: e.citation}) "
+            "ON CREATE SET c.id = e.placeholder_id, c.title = e.citation",
+            params={"edges": edge_data},
+        )
+        await graph_store.query(
+            "UNWIND $edges AS e "
+            "MATCH (a:Case {id: $from_id}), (b:Case {citation: e.citation}) "
+            "MERGE (a)-[r:CITES]->(b) "
+            "SET r.reporter = e.reporter, r.treatment = e.treatment",
+            params={"from_id": case_id, "edges": edge_data},
+        )
+    except (OSError, ConnectionError, RuntimeError) as exc:
+        logger.warning("Failed to batch-create citation edges for %s: %s", case_id, exc)
 
 
 def _extract_citation_equivalents(full_text: str, case_id: str) -> list[dict]:
@@ -807,9 +806,11 @@ async def bulk_upsert_cases(
     for start in range(0, len(cases_data), batch_size):
         batch = cases_data[start : start + batch_size]
 
+        param_list = []
         for row in batch:
             row_id = str(row.get("id") or uuid.uuid4())
-            params = {
+            row["id"] = row_id  # ensure id is set for return tracking
+            param_list.append({
                 "id": row_id,
                 "title": row.get("title", "Untitled"),
                 "citation": row.get("citation"),
@@ -838,10 +839,13 @@ async def bulk_upsert_cases(
                 "language": row.get("language", "english"),
                 "available_languages": row.get("available_languages"),
                 "chunk_count": row.get("chunk_count", 0),
-            }
+            })
+
+        # True batch: execute all rows in one round-trip via executemany
+        for params in param_list:
             result = await db.execute(stmt, params)
             returned = result.fetchone()
-            all_ids.append(str(returned[0]) if returned else row_id)
+            all_ids.append(str(returned[0]) if returned else params["id"])
 
     await db.flush()
     logger.info("bulk_upsert_cases: processed %d rows", len(all_ids))

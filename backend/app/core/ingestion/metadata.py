@@ -201,9 +201,9 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
     Returns:
         The same instance with invalid fields set to ``None``.
     """
-    # -- Year must be in [1800, current_year + 1] --
+    # -- Year must be in [1800, current_year] --
     current_year = datetime.now().year
-    if metadata.year is not None and (metadata.year < 1800 or metadata.year > current_year + 1):
+    if metadata.year is not None and (metadata.year < 1800 or metadata.year > current_year):
         logger.warning("Invalid year %d detected, clearing field", metadata.year)
         metadata.year = None
 
