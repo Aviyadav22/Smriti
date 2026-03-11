@@ -35,11 +35,44 @@ class Chunk:
     page_number: int | None = None
     para_start: int | None = None
     para_end: int | None = None
+    opinion_author: str | None = None
 
 
 # ---------------------------------------------------------------------------
 # Paragraph number detection
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Per-judge opinion author detection
+# ---------------------------------------------------------------------------
+
+_OPINION_AUTHOR_RE = re.compile(
+    r'^[ \t]*(?:\[?\(?Per[ \t]+)?'              # optional "Per" with optional bracket/paren
+    r'([A-Z][A-Za-z.]+(?:[ \t]+[A-Za-z.]+)*)'  # judge name (initials + surname, single line)
+    r',?[ \t]*(?:C\.?J\.?I\.?|J\.?)[ \t]*'     # J. or CJI
+    r'(?:\)?\]?)[ \t]*$',                       # optional closing bracket/paren
+    re.MULTILINE,
+)
+
+
+def _detect_opinion_authors(text: str) -> list[tuple[int, str]]:
+    """Detect per-judge opinion boundaries in the full text.
+
+    Scans for judge name headers like ``D.Y. CHANDRACHUD, J.`` or
+    ``[Per S. RAVINDRA BHAT, J.]`` and returns their positions.
+
+    Returns:
+        List of ``(position, judge_name)`` tuples sorted by position.
+    """
+    authors: list[tuple[int, str]] = []
+    for match in _OPINION_AUTHOR_RE.finditer(text):
+        name = match.group(1).strip()
+        # Clean up: collapse whitespace, remove trailing comma
+        name = re.sub(r'\s+', ' ', name).strip().rstrip(',')
+        if name and len(name) > 2:  # Skip very short matches
+            authors.append((match.start(), name))
+    return sorted(authors, key=lambda x: x[0])
+
 
 _PARA_NUM_PATTERN = re.compile(
     r"^\s*(?:\((\d+)\)|\[(\d+)\]|(\d+)[\.\)]|(?:Para\.?\s*(\d+)))\s",
@@ -374,6 +407,9 @@ def chunk_judgment(
     if not sections:
         sections = [Section(type="FULL", start=0, end=len(text), text=text)]
 
+    # Detect per-judge opinion boundaries in the full text.
+    opinion_authors = _detect_opinion_authors(text)
+
     chunks: list[Chunk] = []
     chunk_idx = 0
 
@@ -393,6 +429,16 @@ def chunk_judgment(
             # Only emit non-empty chunks.
             if chunk_text.strip():
                 para_start, para_end = _detect_paragraph_range(chunk_text)
+
+                # Determine which opinion author covers this chunk.
+                chunk_pos_in_text = section.start + pos
+                current_author = None
+                for author_pos, author_name in opinion_authors:
+                    if author_pos <= chunk_pos_in_text:
+                        current_author = author_name
+                    else:
+                        break
+
                 chunks.append(
                     Chunk(
                         text=chunk_text,
@@ -401,6 +447,7 @@ def chunk_judgment(
                         case_id=case_id,
                         para_start=para_start,
                         para_end=para_end,
+                        opinion_author=current_author,
                     )
                 )
                 chunk_idx += 1
@@ -410,9 +457,16 @@ def chunk_judgment(
             next_pos = pos + max(actual_chunk_len - CHUNK_OVERLAP, 1)
 
             # Snap overlap start to nearest sentence boundary to avoid mid-word fragments
-            snap = section_text.find('. ', next_pos)
-            if snap != -1 and snap < next_pos + 100:
-                next_pos = snap + 2
+            # Search forward for a period-space that isn't an abbreviation
+            search_pos = next_pos
+            while search_pos < next_pos + 100:
+                snap = section_text.find('. ', search_pos)
+                if snap == -1 or snap >= next_pos + 100:
+                    break
+                if not _is_abbreviation(section_text, snap):
+                    next_pos = snap + 2
+                    break
+                search_pos = snap + 2  # skip this abbreviation, keep searching
 
             # If the remaining text after next_pos is smaller than the
             # overlap, we have already captured it -- stop to avoid a

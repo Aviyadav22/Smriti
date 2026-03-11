@@ -7,6 +7,7 @@ from app.core.ingestion.chunker import (
     CHUNK_SIZE,
     Chunk,
     Section,
+    _detect_opinion_authors,
     _detect_paragraph_range,
     _find_break_point,
     _is_abbreviation,
@@ -417,3 +418,134 @@ class TestCrossTypeProximityDedup:
         sections = detect_judgment_sections(text)
         facts_sections = [s for s in sections if s.type == "FACTS"]
         assert len(facts_sections) == 2
+
+
+# ---------------------------------------------------------------------------
+# C9: Per-judge opinion separation
+# ---------------------------------------------------------------------------
+
+
+class TestDetectOpinionAuthors:
+    """C9: Detect judge name headers marking opinion boundaries."""
+
+    def test_standard_judge_format(self):
+        """D.Y. CHANDRACHUD, J. should be detected."""
+        text = "Some preamble.\nD.Y. CHANDRACHUD, J.\nThe court held that..."
+        authors = _detect_opinion_authors(text)
+        assert len(authors) == 1
+        assert authors[0][1] == "D.Y. CHANDRACHUD"
+
+    def test_cji_format(self):
+        """D.Y. CHANDRACHUD, CJI should be detected."""
+        text = "D.Y. CHANDRACHUD, CJI\nThis is the majority opinion."
+        authors = _detect_opinion_authors(text)
+        assert len(authors) == 1
+        assert authors[0][1] == "D.Y. CHANDRACHUD"
+
+    def test_per_prefix(self):
+        """Per S. RAVINDRA BHAT, J. should be detected."""
+        text = "Per S. RAVINDRA BHAT, J.\nThe learned judge observed..."
+        authors = _detect_opinion_authors(text)
+        assert len(authors) == 1
+        assert authors[0][1] == "S. RAVINDRA BHAT"
+
+    def test_bracketed_per(self):
+        """[Per B.V. NAGARATHNA, J.] should be detected."""
+        text = "[Per B.V. NAGARATHNA, J.]\nIn my considered opinion..."
+        authors = _detect_opinion_authors(text)
+        assert len(authors) == 1
+        assert authors[0][1] == "B.V. NAGARATHNA"
+
+    def test_parenthesized_per(self):
+        """(Per Dr. D.Y. Chandrachud, CJI) should be detected."""
+        text = "(Per Dr. D.Y. Chandrachud, CJI)\nThe constitutional bench held..."
+        authors = _detect_opinion_authors(text)
+        assert len(authors) == 1
+        assert "Chandrachud" in authors[0][1]
+
+    def test_multiple_authors(self):
+        """Multiple opinion boundaries should be detected in order."""
+        text = (
+            "D.Y. CHANDRACHUD, CJI\n"
+            + "This is the majority opinion text.\n" * 5
+            + "S. RAVINDRA BHAT, J.\n"
+            + "This is the concurring opinion.\n" * 5
+        )
+        authors = _detect_opinion_authors(text)
+        assert len(authors) == 2
+        assert authors[0][1] == "D.Y. CHANDRACHUD"
+        assert authors[1][1] == "S. RAVINDRA BHAT"
+        assert authors[0][0] < authors[1][0]
+
+    def test_no_authors(self):
+        """Plain text without judge headers returns empty list."""
+        text = "This is a simple text with no judge headers at all."
+        authors = _detect_opinion_authors(text)
+        assert authors == []
+
+    def test_short_name_filtered(self):
+        """Very short matches (<=2 chars) should be filtered out."""
+        # "J." alone on a line should not match meaningfully
+        text = "Some text here.\nJ.\nMore text."
+        authors = _detect_opinion_authors(text)
+        # Should be empty since the captured name group would be too short
+        assert len(authors) == 0
+
+
+class TestOpinionAuthorOnChunks:
+    """C9: Chunks should carry the correct opinion_author."""
+
+    def test_multi_opinion_chunks(self):
+        """Chunks from a multi-opinion judgment get correct opinion_author."""
+        opinion_a = "A.B. SAPRE, J.\n" + "First judge's analysis. " * 100
+        opinion_b = "R.F. NARIMAN, J.\n" + "Second judge's dissent. " * 100
+        text = opinion_a + "\n" + opinion_b
+        chunks = chunk_judgment(text, case_id="test-opinion")
+        assert len(chunks) > 1
+
+        # Find the boundary: chunks with first author vs second
+        first_author_chunks = [c for c in chunks if c.opinion_author == "A.B. SAPRE"]
+        second_author_chunks = [c for c in chunks if c.opinion_author == "R.F. NARIMAN"]
+        assert len(first_author_chunks) > 0, "Should have chunks attributed to first judge"
+        assert len(second_author_chunks) > 0, "Should have chunks attributed to second judge"
+
+        # First author chunks should come before second author chunks
+        max_first_idx = max(c.chunk_index for c in first_author_chunks)
+        min_second_idx = min(c.chunk_index for c in second_author_chunks)
+        assert max_first_idx < min_second_idx
+
+    def test_single_opinion_author(self):
+        """Single opinion text should attribute all chunks to that author."""
+        text = "D.Y. CHANDRACHUD, CJI\n" + "The court held that this matter. " * 50
+        chunks = chunk_judgment(text, case_id="test-single")
+        assert len(chunks) >= 1
+        for chunk in chunks:
+            assert chunk.opinion_author == "D.Y. CHANDRACHUD"
+
+    def test_no_opinion_header_gives_none(self):
+        """Text without opinion headers should have opinion_author=None."""
+        text = "This is a regular judgment text without any judge headers. " * 50
+        chunks = chunk_judgment(text, case_id="test-none")
+        for chunk in chunks:
+            assert chunk.opinion_author is None
+
+    def test_chunk_dataclass_has_opinion_author_field(self):
+        """The Chunk dataclass should have the opinion_author field."""
+        chunk = Chunk(
+            text="test",
+            section_type="FULL",
+            chunk_index=0,
+            case_id="test",
+            opinion_author="D.Y. CHANDRACHUD",
+        )
+        assert chunk.opinion_author == "D.Y. CHANDRACHUD"
+
+    def test_chunk_opinion_author_defaults_to_none(self):
+        """opinion_author should default to None."""
+        chunk = Chunk(
+            text="test",
+            section_type="FULL",
+            chunk_index=0,
+            case_id="test",
+        )
+        assert chunk.opinion_author is None
