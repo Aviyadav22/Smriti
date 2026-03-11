@@ -61,8 +61,10 @@ SCC_ONLINE_PATTERN: re.Pattern[str] = re.compile(
 # --- AIR ---
 
 # AIR 2020 SC 145 — also matches A.I.R. 2020 SC 145
+# Restrict court code to known AIR_COURT_CODES to avoid false positives
+_AIR_CODES = "|".join(re.escape(k) for k in AIR_COURT_CODES.keys())
 AIR_PATTERN: re.Pattern[str] = re.compile(
-    r"A\.?I\.?R\.?\s+(\d{4})\s+(\w+)\s+(\d+)"
+    rf"A\.?I\.?R\.?\s+(\d{{4}})\s+({_AIR_CODES})\s+(\d+)"
 )
 
 # --- Neutral citations (post-2023) ---
@@ -134,6 +136,41 @@ HC_REPORTER_PATTERN: re.Pattern[str] = re.compile(
     re.IGNORECASE,
 )
 
+# --- LiveLaw ---
+
+# 2024 LiveLaw (SC) 123
+LIVELAW_PATTERN: re.Pattern[str] = re.compile(
+    r"(\d{4})\s+LiveLaw\s+\((\w+)\)\s+(\d+)", re.IGNORECASE
+)
+
+# --- ITR (Income Tax Reports) ---
+
+# [2020] 123 ITR 456 or (2020) 123 ITR 456
+ITR_PATTERN: re.Pattern[str] = re.compile(
+    r"[\[\(](\d{4})[\]\)]\s+(\d+)\s+ITR\s+(\d+)"
+)
+
+# --- Taxmann ---
+
+# [2020] 123 taxmann.com 456
+TAXMANN_PATTERN: re.Pattern[str] = re.compile(
+    r"[\[\(](\d{4})[\]\)]\s+(\d+)\s+taxmann\.com\s+(\d+)", re.IGNORECASE
+)
+
+# --- Company Cases ---
+
+# (2020) 123 CompCas 456
+COMP_CAS_PATTERN: re.Pattern[str] = re.compile(
+    r"[\(\[](\d{4})[\)\]]\s+(\d+)\s+Comp\s*Cas\s+(\d+)", re.IGNORECASE
+)
+
+# --- LLJ (Labour Law Journal) ---
+
+# 2020 LLJ 123
+LLJ_PATTERN: re.Pattern[str] = re.compile(
+    r"(\d{4})\s+LLJ\s+(\d+)"
+)
+
 # ---------------------------------------------------------------------------
 # Backward-compat aliases for state reporter patterns
 # ---------------------------------------------------------------------------
@@ -194,6 +231,20 @@ _SHORT_ACT_NAMES: dict[str, str] = {
     "SALE OF GOODS ACT": "Sale of Goods Act",
     "WILD LIFE ACT": "Wild Life (Protection) Act",
     "EPA": "Environment (Protection) Act",
+    "RERA": "Real Estate (Regulation and Development) Act",
+    "COMPETITION ACT": "Competition Act",
+    "CUSTOMS ACT": "Customs Act",
+    "RBI ACT": "Reserve Bank of India Act",
+    "POSH ACT": "Prevention of Sexual Harassment at Workplace Act",
+    "JJ ACT": "Juvenile Justice (Care and Protection of Children) Act",
+    "MCOCA": "Maharashtra Control of Organised Crime Act",
+    "COFEPOSA": "Conservation of Foreign Exchange and Prevention of Smuggling Activities Act",
+    "ESI ACT": "Employees' State Insurance Act",
+    "ID ACT": "Industrial Disputes Act",
+    "GRATUITY ACT": "Payment of Gratuity Act",
+    "MW ACT": "Minimum Wages Act",
+    "RENT ACT": "Rent Control Act",
+    "IT ACT 2000": "Information Technology Act",
 }
 
 # Build alternation dynamically from dict keys -- longest first to avoid
@@ -212,12 +263,16 @@ _SECTION_FULL_ACT_PATTERN: re.Pattern[str] = re.compile(
     re.IGNORECASE,
 )
 
-# "Section 302 IPC" / "Sections 302, 304 and 307 IPC"
-# Captures comma/slash/and-separated section lists in group(1)
+# "Section 302 IPC" / "Sections 302, 304 and 307 IPC" / "Sections 302-304 IPC"
+# Captures comma/slash/and-separated section lists (including ranges) in group(1)
+# A "section token" is a number/word optionally followed by parenthetical,
+# optionally forming a range with - / – / "to".
+_SEC_TOKEN = r"[\d\w]+(?:\s*\([^)]+\))*"
+_SEC_RANGE = rf"{_SEC_TOKEN}(?:\s*[-–]\s*\d+|\s+to\s+\d+)?"
 _SECTION_SHORT_ACT_PATTERN: re.Pattern[str] = re.compile(
-    r"(?:Sections?|Sec\.?|S\.)\s+([\d\w]+(?:\s*\([^)]+\))*"
-    r"(?:\s*[,/]\s*[\d\w]+(?:\s*\([^)]+\))*)*"
-    r"(?:\s+(?:and|&)\s+[\d\w]+(?:\s*\([^)]+\))*)?)"
+    r"(?:Sections?|Sec\.?|S\.)\s+(" + _SEC_RANGE +
+    r"(?:\s*[,/]\s*" + _SEC_RANGE + r")*"
+    r"(?:\s+(?:and|&)\s+" + _SEC_RANGE + r")?)"
     r"\s+(" + _SHORT_ACT_ALTERNATION + r")",
     re.IGNORECASE,
 )
@@ -226,6 +281,15 @@ _SECTION_SHORT_ACT_PATTERN: re.Pattern[str] = re.compile(
 _ARTICLE_PATTERN: re.Pattern[str] = re.compile(
     r"(?:Article|Art\.?)\s+([\d\w]+(?:\s*\([^)]+\))*)"
     r"(\s+of\s+(?:the\s+)?Constitution)?",
+    re.IGNORECASE,
+)
+
+# "Section 302 read with Section 34 IPC" / "Section 302 r/w Section 34 IPC"
+_READ_WITH_PATTERN: re.Pattern[str] = re.compile(
+    r"(?:Sections?|Sec\.?|S\.)\s+([\d\w]+(?:\s*\([^)]+\))*)"
+    r"\s+(?:read\s+with|r/w|r\.w\.)\s+"
+    r"(?:Sections?|Sec\.?|S\.)?\s*([\d\w]+(?:\s*\([^)]+\))*)"
+    r"\s+(" + _SHORT_ACT_ALTERNATION + r")",
     re.IGNORECASE,
 )
 
@@ -241,10 +305,27 @@ _ORDER_RULE_PATTERN: re.Pattern[str] = re.compile(
 def _parse_section_list(section_str: str) -> list[str]:
     """Parse '302, 304 and 307' into ['302', '304', '307'].
 
+    Also expands ranges like '302-304' or '302 to 307'.
     Splits on commas, slashes, 'and', and '&' separators.
     """
     parts = re.split(r"[,/]\s*|\s+and\s+|\s+&\s+", section_str)
-    return [p.strip() for p in parts if p.strip()]
+    result: list[str] = []
+    for p in parts:
+        p = p.strip()
+        if not p:
+            continue
+        # Check for range: "302-304" or "302–304" (en-dash)
+        range_match = re.match(r'^(\d+)\s*[-–]\s*(\d+)$', p)
+        if not range_match:
+            # Check for "302 to 307"
+            range_match = re.match(r'^(\d+)\s+to\s+(\d+)$', p, re.IGNORECASE)
+        if range_match:
+            start, end = int(range_match.group(1)), int(range_match.group(2))
+            if end > start and (end - start) <= 20:  # sanity limit
+                result.extend(str(i) for i in range(start, end + 1))
+                continue
+        result.append(p)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -443,6 +524,61 @@ def extract_citations(text: str) -> list[Citation]:
             raw_text=match.group(0),
         ))
 
+    # LiveLaw -- 2024 LiveLaw (SC) 123
+    for match in LIVELAW_PATTERN.finditer(text):
+        _add(Citation(
+            reporter="LiveLaw",
+            year=int(match.group(1)),
+            volume=None,
+            page=match.group(3),
+            court=match.group(2),
+            raw_text=match.group(0),
+        ))
+
+    # ITR -- [2020] 123 ITR 456
+    for match in ITR_PATTERN.finditer(text):
+        _add(Citation(
+            reporter="ITR",
+            year=int(match.group(1)),
+            volume=match.group(2),
+            page=match.group(3),
+            court=None,
+            raw_text=match.group(0),
+        ))
+
+    # Taxmann -- [2020] 123 taxmann.com 456
+    for match in TAXMANN_PATTERN.finditer(text):
+        _add(Citation(
+            reporter="Taxmann",
+            year=int(match.group(1)),
+            volume=match.group(2),
+            page=match.group(3),
+            court=None,
+            raw_text=match.group(0),
+        ))
+
+    # Company Cases -- (2020) 123 CompCas 456
+    for match in COMP_CAS_PATTERN.finditer(text):
+        _add(Citation(
+            reporter="CompCas",
+            year=int(match.group(1)),
+            volume=match.group(2),
+            page=match.group(3),
+            court=None,
+            raw_text=match.group(0),
+        ))
+
+    # LLJ -- 2020 LLJ 123
+    for match in LLJ_PATTERN.finditer(text):
+        _add(Citation(
+            reporter="LLJ",
+            year=int(match.group(1)),
+            volume=None,
+            page=match.group(2),
+            court=None,
+            raw_text=match.group(0),
+        ))
+
     return citations
 
 
@@ -465,9 +601,9 @@ def extract_acts_cited(text: str) -> list[ActReference]:
     seen_keys: set[str] = set()
 
     def _add(ref: ActReference) -> None:
-        # Dedup key combines act name and section to allow multiple sections
-        # from a single raw_text (e.g. "Sections 302, 304 and 307 IPC").
-        key = f"{ref.act_name}|{ref.section}|{ref.raw_text}"
+        # Semantic dedup: same act+section is only emitted once regardless
+        # of differing raw_text (e.g. "Section 302 IPC" vs "S. 302 IPC").
+        key = f"{ref.act_name}|{ref.section}"
         if key not in seen_keys:
             seen_keys.add(key)
             references.append(ref)
@@ -484,6 +620,16 @@ def extract_acts_cited(text: str) -> list[ActReference]:
             year=year,
             raw_text=match.group(0).strip(),
         ))
+
+    # Read with: "Section 302 read with Section 34 IPC"
+    for match in _READ_WITH_PATTERN.finditer(text):
+        section1 = match.group(1).strip()
+        section2 = match.group(2).strip()
+        short_code = re.sub(r"\s+", " ", match.group(3).strip()).upper()
+        act_name = _SHORT_ACT_NAMES.get(short_code, short_code)
+        raw = match.group(0).strip()
+        _add(ActReference(act_name=act_name, section=section1, year=None, raw_text=raw))
+        _add(ActReference(act_name=act_name, section=section2, year=None, raw_text=raw))
 
     # Short form: "Section 302 IPC" / "Sections 302, 304 and 307 IPC"
     for match in _SECTION_SHORT_ACT_PATTERN.finditer(text):
@@ -515,8 +661,21 @@ def extract_acts_cited(text: str) -> list[ActReference]:
     for match in _ARTICLE_PATTERN.finditer(text):
         article = match.group(1).strip()
         has_constitution = match.group(2) is not None
-        act_name = "Constitution of India" if has_constitution else "Unknown Act"
-        year = 1950 if has_constitution else None
+        # In Indian legal context, bare "Article N" for N <= 395 means Constitution
+        article_num = None
+        try:
+            num_match = re.match(r'(\d+)', article)
+            article_num = int(num_match.group(1)) if num_match else None
+        except (ValueError, AttributeError):
+            pass
+
+        if has_constitution or (article_num is not None and 1 <= article_num <= 395):
+            act_name = "Constitution of India"
+            year = 1950
+        else:
+            act_name = "Unknown Act"
+            year = None
+
         raw = match.group(0).strip()
         _add(ActReference(
             act_name=act_name,
