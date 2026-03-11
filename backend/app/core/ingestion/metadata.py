@@ -133,6 +133,10 @@ async def extract_metadata_llm(
             field_names = {f.name for f in fields(CaseMetadata)}
             filtered = {k: v for k, v in result.items() if k in field_names}
             return CaseMetadata(**filtered)
+        except (ValueError, KeyError, RuntimeError) as exc:
+            # Non-transient errors -- don't retry
+            logger.error("LLM metadata extraction failed (non-retryable): %s", exc)
+            return CaseMetadata()
         except Exception as exc:
             if attempt == max_retries - 1:
                 logger.error(
@@ -146,10 +150,6 @@ async def extract_metadata_llm(
                 attempt + 1, max_retries, wait, exc,
             )
             await asyncio.sleep(wait)
-        except (ValueError, KeyError, RuntimeError) as exc:
-            # Non-transient errors -- don't retry
-            logger.error("LLM metadata extraction failed (non-retryable): %s", exc)
-            return CaseMetadata()
 
     return CaseMetadata()
 
@@ -390,6 +390,12 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> CaseMetadata:
     )
     for field in llm_priority:
         setattr(result, field, getattr(llm_meta, field, None))
+
+    # -- LLM-only fields (added in March 2026 ingestion overhaul) --
+    for field in ("case_number", "is_reportable", "headnotes", "outcome_summary"):
+        llm_val = getattr(llm_meta, field, None)
+        if llm_val is not None:
+            setattr(result, field, llm_val)
 
     # -- case_type: prefer parquet nc_display, fall back to LLM --
     raw_case_type = parquet_meta.get("nc_display") or llm_meta.case_type
