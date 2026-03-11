@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 
 import sqlalchemy as sa
-from sqlalchemy import CheckConstraint, Index, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,6 +48,46 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         sa.Integer, nullable=False, server_default="0"
     )
     available_languages: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String), nullable=True
+    )
+
+    # --- Migration 009 columns (ingestion improvements) ---
+    case_number: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    is_reportable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    headnotes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    outcome_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ingestion_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="complete"
+    )
+
+    # --- Migration 011 columns (legal completeness) ---
+    # C1: Coram size — exact number of judges on bench
+    coram_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # C2: Lower court / appellate chain
+    lower_court: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lower_court_case_number: Mapped[str | None] = mapped_column(
+        String(200), nullable=True
+    )
+    appeal_from: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    # C3: Opinion type and split tracking
+    opinion_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    dissenting_judges: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String), nullable=True
+    )
+    concurring_judges: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String), nullable=True
+    )
+    split_ratio: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # C10: Party type classification
+    petitioner_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    respondent_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    is_pil: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+    # C11: Companion cases
+    companion_cases: Mapped[list[str] | None] = mapped_column(
         ARRAY(String), nullable=True
     )
 
