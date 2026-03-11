@@ -173,6 +173,59 @@ def _remove_repeated_headers_footers(text: str) -> str:
     return "\n".join(output_lines)
 
 
+def _remove_repeated_headers_footers_pages(pages: list[str]) -> list[str]:
+    """Remove repeated headers/footers from a list of page texts.
+
+    Operates on per-page text list BEFORE smart join, which is more
+    reliable than trying to re-split after joining.
+    """
+    if len(pages) < 3:
+        return pages
+
+    # Count how many pages each stripped line appears on
+    line_page_count: Counter[str] = Counter()
+    for page in pages:
+        unique_lines = {line.strip() for line in page.splitlines() if line.strip()}
+        for line in unique_lines:
+            line_page_count[line] += 1
+
+    # Lines appearing on 3+ pages are likely headers/footers
+    repeated_lines = {
+        line for line, count in line_page_count.items()
+        if count >= 3 and len(line) < 200
+    }
+
+    # Also add common boilerplate patterns
+    for page in pages:
+        for line in page.splitlines():
+            stripped = line.strip()
+            for pattern in _BOILERPLATE_PATTERNS:
+                if pattern.match(stripped) and stripped:
+                    repeated_lines.add(stripped)
+
+    if not repeated_lines:
+        return pages
+
+    # Remove all occurrences of repeated headers/footers from each page
+    # (keep first occurrence globally via tracking)
+    seen_repeated: set[str] = set()
+    cleaned_pages: list[str] = []
+    for page in pages:
+        output_lines: list[str] = []
+        for line in page.splitlines():
+            stripped = line.strip()
+            if stripped in repeated_lines:
+                if stripped not in seen_repeated:
+                    seen_repeated.add(stripped)
+                    output_lines.append(line)
+                # else: skip duplicate
+            else:
+                output_lines.append(line)
+        cleaned_pages.append("\n".join(output_lines))
+
+    return cleaned_pages
+
+
 def _smart_page_join(pages: list[str]) -> str:
     """Join page texts with intelligent paragraph continuity detection.
 
@@ -196,6 +249,12 @@ def _smart_page_join(pages: list[str]) -> str:
         prev = pages[i - 1].rstrip()
         curr = pages[i].lstrip()
         if not prev or not curr:
+            parts.append(curr)
+            continue
+
+        # Hyphenated word rejoining: "juris-\n" + "diction" -> "jurisdiction"
+        if prev.endswith("-") and curr and curr[0].islower():
+            parts[-1] = parts[-1].rstrip()[:-1]  # remove trailing hyphen from previous
             parts.append(curr)
             continue
 
@@ -314,6 +373,8 @@ def _extract_pdf_text_sync(file_path: str) -> tuple[str, int]:
             return "", 0
         raise
 
+    # Remove repeated headers/footers on per-page list (before joining)
+    page_texts = _remove_repeated_headers_footers_pages(page_texts)
     # Smart join and clean
     result = _smart_page_join(page_texts)
     result = clean_extracted_text(result)

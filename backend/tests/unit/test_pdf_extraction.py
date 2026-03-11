@@ -11,6 +11,7 @@ import inspect
 import pytest
 
 from app.core.ingestion.pdf import (
+    _remove_repeated_headers_footers_pages,
     _smart_page_join,
     assess_extraction_quality,
     clean_extracted_text,
@@ -232,3 +233,115 @@ class TestExtractPdfTextAsync:
         )
         # Clean up the coroutine to avoid RuntimeWarning
         result.close()
+
+
+class TestSmartPageJoinHyphenation:
+    """Tests for hyphenated word rejoining in _smart_page_join (B5)."""
+
+    def test_hyphenated_word_rejoining(self):
+        """Pages ending with 'juris-' + 'diction' should rejoin to 'jurisdiction'."""
+        pages = [
+            "The court examined juris-",
+            "diction over this matter.",
+        ]
+        result = _smart_page_join(pages)
+        assert "jurisdiction" in result
+        assert "juris-" not in result
+
+    def test_hyphenated_word_rejoining_mid_word(self):
+        """Another hyphenated word example: 'consti-' + 'tutional'."""
+        pages = [
+            "This is a consti-",
+            "tutional question.",
+        ]
+        result = _smart_page_join(pages)
+        assert "constitutional" in result
+        assert "consti-" not in result
+
+    def test_hyphen_not_rejoined_when_next_starts_uppercase(self):
+        """A hyphen at end of page followed by uppercase start should not rejoin."""
+        pages = [
+            "See Section 302-",
+            "The court held that...",
+        ]
+        result = _smart_page_join(pages)
+        # Should NOT rejoin since next page starts with uppercase
+        assert "302-" in result or "302" in result
+        assert "The court" in result
+
+    def test_hyphen_not_rejoined_when_next_starts_digit(self):
+        """A hyphen at end of page followed by a digit should not rejoin."""
+        pages = [
+            "Reference number A-",
+            "123 was cited.",
+        ]
+        result = _smart_page_join(pages)
+        # Should NOT rejoin since next page starts with a digit, not lowercase
+        assert "A-" in result
+        assert "123" in result
+
+
+class TestRemoveRepeatedHeadersFootersPages:
+    """Tests for _remove_repeated_headers_footers_pages (B6)."""
+
+    def test_removes_lines_on_3_plus_pages(self):
+        """Lines appearing on 3+ pages should be removed (except first occurrence)."""
+        pages = [
+            "SUPREME COURT OF INDIA\nContent of page 1",
+            "SUPREME COURT OF INDIA\nContent of page 2",
+            "SUPREME COURT OF INDIA\nContent of page 3",
+            "SUPREME COURT OF INDIA\nContent of page 4",
+        ]
+        result = _remove_repeated_headers_footers_pages(pages)
+        # First page should still have the header
+        assert "SUPREME COURT OF INDIA" in result[0]
+        # Subsequent pages should have it removed
+        for page in result[1:]:
+            assert "SUPREME COURT OF INDIA" not in page
+        # Unique content preserved on all pages
+        for i, page in enumerate(result):
+            assert f"Content of page {i + 1}" in page
+
+    def test_first_occurrence_preserved(self):
+        """The first occurrence of a repeated header should be kept."""
+        pages = [
+            "HEADER LINE\nFirst page text",
+            "HEADER LINE\nSecond page text",
+            "HEADER LINE\nThird page text",
+        ]
+        result = _remove_repeated_headers_footers_pages(pages)
+        # Collect all text
+        all_text = "\n".join(result)
+        assert all_text.count("HEADER LINE") == 1
+        # And it should be in the first page
+        assert "HEADER LINE" in result[0]
+
+    def test_fewer_than_3_pages_unchanged(self):
+        """With fewer than 3 pages, no dedup should occur."""
+        pages = [
+            "HEADER\nContent A",
+            "HEADER\nContent B",
+        ]
+        result = _remove_repeated_headers_footers_pages(pages)
+        assert result == pages
+
+    def test_unique_lines_not_removed(self):
+        """Lines that only appear once or twice should be preserved."""
+        pages = [
+            "Unique header 1\nContent A",
+            "Unique header 2\nContent B",
+            "Unique header 3\nContent C",
+        ]
+        result = _remove_repeated_headers_footers_pages(pages)
+        assert result == pages
+
+    def test_boilerplate_patterns_removed(self):
+        """Common boilerplate like REPORTABLE should be removed after first occurrence."""
+        pages = [
+            "REPORTABLE\nContent of page 1",
+            "REPORTABLE\nContent of page 2",
+            "REPORTABLE\nContent of page 3",
+        ]
+        result = _remove_repeated_headers_footers_pages(pages)
+        all_text = "\n".join(result)
+        assert all_text.count("REPORTABLE") == 1
