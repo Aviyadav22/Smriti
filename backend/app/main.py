@@ -336,6 +336,9 @@ from app.api.routes.documents import router as documents_router  # noqa: E402
 from app.api.routes.audio import router as audio_router  # noqa: E402
 from app.api.routes.agents import router as agents_router
 from app.api.routes.dpdp import router as dpdp_router  # noqa: E402
+from app.api.routes.admin_review import router as admin_review_router  # noqa: E402
+from app.api.routes.admin_corrections import router as admin_corrections_router  # noqa: E402
+from app.api.routes.data_quality import router as data_quality_router  # noqa: E402
 
 app.include_router(health_router, tags=["health"])
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
@@ -349,3 +352,6 @@ app.include_router(documents_router, prefix="/api/v1/documents", tags=["document
 app.include_router(audio_router, prefix="/api/v1/cases", tags=["audio"])
 app.include_router(agents_router, prefix="/api/v1/agents", tags=["agents"])
 app.include_router(dpdp_router, prefix="/api/v1/dpdp", tags=["dpdp"])
+app.include_router(admin_review_router, prefix="/api/v1/admin/review", tags=["admin"])
+app.include_router(admin_corrections_router, prefix="/api/v1/admin/corrections", tags=["admin"])
+app.include_router(data_quality_router, prefix="/api/v1/admin/data-quality", tags=["admin"])
