@@ -29,7 +29,7 @@ class Chunk:
     """A text chunk ready for embedding, annotated with section metadata."""
 
     text: str
-    section_type: str  # HEADER, FACTS, ARGUMENTS, ISSUES, ANALYSIS, RATIO, ORDER, DISSENT, CONCURRENCE, FULL
+    section_type: str  # HEADER, FACTS, ARGUMENTS, ISSUES, ANALYSIS, RATIO, ORDER, DISSENT, CONCURRENCE, PRELIMINARY, EVIDENCE, STATUTORY, DIRECTIONS, PER_CURIAM, FULL
     chunk_index: int
     case_id: str
     page_number: int | None = None
@@ -41,18 +41,25 @@ class Chunk:
 # Paragraph number detection
 # ---------------------------------------------------------------------------
 
-_PARA_NUM_PATTERN = re.compile(r"^\s*(\d+)\.\s+", re.MULTILINE)
+_PARA_NUM_PATTERN = re.compile(
+    r"^\s*(?:\((\d+)\)|\[(\d+)\]|(\d+)[\.\)]|(?:Para\.?\s*(\d+)))\s",
+    re.MULTILINE,
+)
 
 
 def _detect_paragraph_range(text: str) -> tuple[int | None, int | None]:
     """Detect the range of paragraph numbers in a chunk of text.
 
-    Indian SC judgments use numbered paragraphs: '1. The appellant...', '2. The facts...'
+    Indian SC judgments use numbered paragraphs in various formats:
+    '1. The appellant...', '(1) The facts...', '[1] Held...', 'Para 1 ...'
     """
     matches = _PARA_NUM_PATTERN.findall(text)
     if not matches:
         return None, None
-    nums = [int(m) for m in matches]
+    # Each match is a tuple of capture groups; extract the non-empty one
+    nums = [int(g) for groups in matches for g in groups if g]
+    if not nums:
+        return None, None
     return min(nums), max(nums)
 
 
@@ -163,6 +170,26 @@ SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
         r")",
         re.IGNORECASE,
     ),
+    "PRELIMINARY": re.compile(
+        r"(?:PRELIMINARY|BACKGROUND(?!\s+FACTS))",
+        re.IGNORECASE,
+    ),
+    "EVIDENCE": re.compile(
+        r"(?:EVIDENCE\s+ON\s+RECORD|APPRECIATION\s+OF\s+EVIDENCE|OCULAR\s+EVIDENCE|EVIDENCE)",
+        re.IGNORECASE,
+    ),
+    "STATUTORY": re.compile(
+        r"(?:STATUTORY\s+FRAMEWORK|RELEVANT\s+PROVISIONS|STATUTORY\s+PROVISIONS|THE\s+LAW)",
+        re.IGNORECASE,
+    ),
+    "DIRECTIONS": re.compile(
+        r"(?:DIRECTIONS?\s+(?:ISSUED)?|RELIEF\s+GRANTED)",
+        re.IGNORECASE,
+    ),
+    "PER_CURIAM": re.compile(
+        r"(?:PER\s+CURIAM|BY\s+THE\s+COURT)",
+        re.IGNORECASE,
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -198,6 +225,19 @@ def _is_heading_position(text: str, match_start: int) -> bool:
 # Break-point detection for sentence-boundary-aware chunking
 # ---------------------------------------------------------------------------
 
+_LEGAL_ABBREVS_RE = re.compile(
+    r'\b(?:vs?|Dr|Mr|Mrs|Smt|Hon|Ld|Sr|Jr|No|Art|Sec|Vol|Ch|'
+    r'I\.?P\.?C|Cr\.?P\.?C|C\.?P\.?C|B\.?N\.?S|S\.?C\.?C|'
+    r'A\.?I\.?R|N\.?C\.?L\.?T|I\.?B\.?C|[A-Z])\.$'
+)
+
+
+def _is_abbreviation(text: str, period_pos: int) -> bool:
+    """Check if the period at *period_pos* belongs to a legal abbreviation."""
+    # Look at the preceding text (up to 10 chars before the period)
+    preceding = text[max(0, period_pos - 10):period_pos + 1]
+    return _LEGAL_ABBREVS_RE.search(preceding) is not None
+
 
 def _find_break_point(text: str, start: int, end: int, min_chunk: int = 500) -> int:
     """Find best break point near end, preferring paragraph > sentence > word."""
@@ -208,10 +248,17 @@ def _find_break_point(text: str, start: int, end: int, min_chunk: int = 500) -> 
     para = text.rfind('\n\n', search_start, end)
     if para != -1:
         return para + 2
-    # Try sentence break
+    # Try sentence break (abbreviation-aware)
     for sep in ['. ', '.\n', ';\n', '?\n', '!\n']:
-        sent = text.rfind(sep, search_start, end)
-        if sent != -1:
+        search_pos = end
+        while True:
+            sent = text.rfind(sep, search_start, search_pos)
+            if sent == -1:
+                break
+            # For period-based separators, check abbreviation
+            if sep.startswith('.') and _is_abbreviation(text, sent):
+                search_pos = sent  # skip this one, keep searching earlier
+                continue
             return sent + len(sep)
     # Try word break
     word = text.rfind(' ', search_start, end)
@@ -259,13 +306,17 @@ def detect_judgment_sections(text: str) -> list[Section]:
     # Sort by position in the text.
     markers.sort(key=lambda m: m[0])
 
-    # De-duplicate: drop ANY marker within 50 chars of the previous,
-    # regardless of type, to avoid spurious section splits (cross-type
-    # proximity dedup).
+    # De-duplicate markers by proximity: same type within 50 chars = dedup;
+    # different types within 20 chars = dedup; different types beyond 20 = keep.
     deduped: list[tuple[int, str]] = []
     for pos, stype in markers:
-        if deduped and (pos - deduped[-1][0]) < 50:
-            continue  # Drop any marker too close to previous, regardless of type
+        if deduped:
+            prev_pos, prev_type = deduped[-1]
+            dist = pos - prev_pos
+            if stype == prev_type and dist < 50:
+                continue  # Same type, close together = dedup
+            if stype != prev_type and dist < 20:
+                continue  # Different types, very close = dedup
         deduped.append((pos, stype))
 
     # If the first section does not start at the beginning of the text,
@@ -357,6 +408,11 @@ def chunk_judgment(
             # Advance by (actual_chunk_len - CHUNK_OVERLAP) for overlap.
             actual_chunk_len = end - pos
             next_pos = pos + max(actual_chunk_len - CHUNK_OVERLAP, 1)
+
+            # Snap overlap start to nearest sentence boundary to avoid mid-word fragments
+            snap = section_text.find('. ', next_pos)
+            if snap != -1 and snap < next_pos + 100:
+                next_pos = snap + 2
 
             # If the remaining text after next_pos is smaller than the
             # overlap, we have already captured it -- stop to avoid a
