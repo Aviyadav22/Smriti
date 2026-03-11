@@ -71,8 +71,15 @@ AIR_PATTERN: re.Pattern[str] = re.compile(
 NEUTRAL_SC_PATTERN: re.Pattern[str] = re.compile(r"(\d{4}):INSC:(\d+)")
 
 # 2023:DELHC:1234, 2023:BOMHC:1234 — High Court neutral citations
+# Explicit whitelist of known HC codes to avoid false positives
+# (derived from courts.py _HIGH_COURTS keys)
+_HC_CODES = (
+    "DEL|BOM|ALL|CAL|MAD|KAR|KER|GUJ|RAJ|PAT|"
+    "PNH|AP|TEL|ORI|JHAR|CG|UTT|HP|JK|JKL|GAU|"
+    "TRI|MEG|MAN|SIK|MP|CHH|LAKH"
+)
 NEUTRAL_HC_PATTERN: re.Pattern[str] = re.compile(
-    r"(\d{4}):(\w{2,5}HC?):(\d+)"
+    rf"(\d{{4}}):((?:{_HC_CODES})HC):(\d+)"
 )
 
 # --- INSC (space-delimited, legacy) ---
@@ -316,7 +323,10 @@ def extract_citations(text: str) -> list[Citation]:
         ))
 
     # Neutral SC -- 2023:INSC:1234
+    # Process SC first and record spans so HC matching can skip overlaps
+    sc_spans: list[tuple[int, int]] = []
     for match in NEUTRAL_SC_PATTERN.finditer(text):
+        sc_spans.append((match.start(), match.end()))
         _add(Citation(
             reporter="INSC",
             year=int(match.group(1)),
@@ -327,7 +337,10 @@ def extract_citations(text: str) -> list[Citation]:
         ))
 
     # Neutral HC -- 2023:DELHC:1234, 2023:BOMHC:1234
+    # Skip any match whose position overlaps a previously matched SC span
     for match in NEUTRAL_HC_PATTERN.finditer(text):
+        if any(start <= match.start() < end for start, end in sc_spans):
+            continue
         court_code = match.group(2)
         _add(Citation(
             reporter="Neutral",
