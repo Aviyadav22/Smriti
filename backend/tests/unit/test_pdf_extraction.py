@@ -40,14 +40,16 @@ class TestCleanExtractedTextZeroWidth:
     """Tests for zero-width and invisible character removal."""
 
     def test_clean_extracted_text_removes_zero_width_chars(self):
-        """Zero-width space, ZWNJ, ZWJ, BOM, and soft hyphen must all be removed."""
+        """Zero-width space, BOM, and soft hyphen must be removed.
+        ZWNJ (U+200C) and ZWJ (U+200D) are preserved for Devanagari support."""
         text = "Hello\u200B \u200CWorld\u200D foo\uFEFF bar\u00AD baz"
         result = clean_extracted_text(text)
         assert "\u200B" not in result, "Zero-width space not removed"
-        assert "\u200C" not in result, "ZWNJ not removed"
-        assert "\u200D" not in result, "ZWJ not removed"
         assert "\uFEFF" not in result, "BOM not removed"
         assert "\u00AD" not in result, "Soft hyphen not removed"
+        # ZWNJ and ZWJ must be preserved (Devanagari conjunct control)
+        assert "\u200C" in result, "ZWNJ should be preserved for Devanagari"
+        assert "\u200D" in result, "ZWJ should be preserved for Devanagari"
         # Actual words must be preserved
         assert "Hello" in result
         assert "World" in result

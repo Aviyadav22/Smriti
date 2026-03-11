@@ -17,6 +17,11 @@ from dataclasses import dataclass
 import pdfplumber
 from pdfminer.psparser import PSException
 
+try:
+    from pdfminer.pdfdocument import PDFPasswordIncorrect
+except ImportError:  # pragma: no cover
+    PDFPasswordIncorrect = None  # type: ignore[assignment,misc]
+
 logger = logging.getLogger(__name__)
 
 # Safety limit: refuse to process PDFs with more pages than this
@@ -25,8 +30,10 @@ MAX_PAGES = 5000
 # OCR batch size to avoid memory exhaustion on large scanned PDFs
 _OCR_BATCH_SIZE = 10
 
-# Characters to strip: zero-width space, ZWNJ, ZWJ, BOM, soft hyphen
-_ZERO_WIDTH_RE = re.compile(r"[\u200B\u200C\u200D\uFEFF\u00AD]")
+# Characters to strip: zero-width space, BOM, soft hyphen
+# Note: ZWNJ (U+200C) and ZWJ (U+200D) are preserved -- they are structurally
+# meaningful in Devanagari script (conjunct formation control).
+_ZERO_WIDTH_RE = re.compile(r"[\u200B\uFEFF\u00AD]")
 
 # Standalone page numbers on their own line: optional dash, 1-4 digits, optional dash
 _PAGE_NUMBER_RE = re.compile(r"^\s*-?\s*\d{1,4}\s*-?\s*$", re.MULTILINE)
@@ -251,7 +258,7 @@ def _ocr_single_page(file_path: str, page_num: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _extract_pdf_text_sync(file_path: str) -> str:
+def _extract_pdf_text_sync(file_path: str) -> tuple[str, int]:
     """Synchronous per-page hybrid PDF text extraction.
 
     For each page, extracts text with pdfplumber. If a page yields fewer
@@ -261,9 +268,10 @@ def _extract_pdf_text_sync(file_path: str) -> str:
         file_path: Absolute path to the PDF file.
 
     Returns:
-        Cleaned, joined text from all pages.
+        Tuple of (cleaned joined text, page count).
     """
     page_texts: list[str] = []
+    total_pages = 0
     try:
         with pdfplumber.open(file_path) as pdf:
             if len(pdf.pages) > MAX_PAGES:
@@ -271,7 +279,7 @@ def _extract_pdf_text_sync(file_path: str) -> str:
                     "PDF %s has %d pages, exceeds MAX_PAGES=%d",
                     file_path, len(pdf.pages), MAX_PAGES,
                 )
-                return ""
+                return "", 0
             total_pages = len(pdf.pages)
             for page_num, page in enumerate(pdf.pages, start=1):
                 page_text = ""
@@ -298,15 +306,21 @@ def _extract_pdf_text_sync(file_path: str) -> str:
 
     except (OSError, PSException, ValueError) as exc:
         logger.error("Failed to open PDF %s: %s", file_path, exc)
-        return ""
+        return "", 0
+    except Exception as exc:
+        # Catch PDFPasswordIncorrect (and guard against missing import)
+        if PDFPasswordIncorrect is not None and isinstance(exc, PDFPasswordIncorrect):
+            logger.warning("Skipping password-protected PDF: %s", file_path)
+            return "", 0
+        raise
 
     # Smart join and clean
     result = _smart_page_join(page_texts)
     result = clean_extracted_text(result)
-    return result
+    return result, total_pages
 
 
-async def extract_pdf_text(file_path: str) -> str:
+async def extract_pdf_text(file_path: str) -> tuple[str, int]:
     """Extract text from a PDF using pdfplumber with per-page OCR fallback.
 
     For each page, attempts pdfplumber extraction first. If a page yields
@@ -320,7 +334,7 @@ async def extract_pdf_text(file_path: str) -> str:
         file_path: Absolute path to the PDF file.
 
     Returns:
-        Cleaned text from all pages. Returns empty string on failure.
+        Tuple of (cleaned text, page count). Returns ("", 0) on failure.
     """
     return await asyncio.to_thread(_extract_pdf_text_sync, file_path)
 
@@ -459,15 +473,7 @@ async def extract_and_score(file_path: str) -> TextQuality:
 
     Tries pdfplumber first, falls back to OCR if insufficient text.
     """
-    # Get page count for metrics
-    page_count = 0
-    try:
-        with pdfplumber.open(file_path) as pdf:
-            page_count = len(pdf.pages)
-    except (OSError, PSException, ValueError):
-        pass
-
-    text = await extract_pdf_text(file_path)
+    text, page_count = await extract_pdf_text(file_path)
     ocr_used = False
 
     if not text or len(text) < 100:
