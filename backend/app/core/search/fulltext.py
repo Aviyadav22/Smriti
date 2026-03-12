@@ -68,8 +68,7 @@ async def search_fulltext(
 
     sql = text(
         f"SELECT id, title, citation, "
-        f"ts_rank_cd(searchable_text, ({tsquery_expr})) "
-        f"  * (1.0 + LN(1 + COALESCE(cited_by_count, 0))) AS rank, "
+        f"ts_rank_cd(searchable_text, ({tsquery_expr})) AS rank, "
         f"ts_headline('english', COALESCE(full_text, COALESCE(description, '')), "
         f"({tsquery_expr}), "
         f"'StartSel=**, StopSel=**, MaxWords=50, MinWords=20') AS snippet "
@@ -160,6 +159,14 @@ async def _search_sections(
         "limit": limit,
     }
 
+    # Build additional filter clauses for the cases table (court, year, etc.)
+    extra_clauses, extra_params = _build_filter_clauses(filters, table_alias="c")
+    params.update(extra_params)
+
+    extra_where = ""
+    if extra_clauses:
+        extra_where = "AND " + " AND ".join(extra_clauses) + " "
+
     sql = text(
         "SELECT cs.case_id AS id, c.title, c.citation, "
         "ts_rank_cd("
@@ -174,6 +181,7 @@ async def _search_sections(
         "WHERE cs.section_type = :section_type "
         "AND COALESCE(cs.searchable_content, to_tsvector('english', cs.content)) "
         "    @@ websearch_to_tsquery('english', :query) "
+        f"{extra_where}"
         "ORDER BY rank DESC "
         "LIMIT :limit"
     )
@@ -193,58 +201,73 @@ async def _search_sections(
     ]
 
 
+def _escape_ilike(value: str) -> str:
+    """Escape ILIKE wildcard characters (``%`` and ``_``) in user-provided strings."""
+    return value.replace("%", "\\%").replace("_", "\\_")
+
+
 def _build_filter_clauses(
     filters: SearchFilters | None,
+    table_alias: str = "",
 ) -> tuple[list[str], dict]:
-    """Build SQL WHERE clauses and bind params from search filters."""
+    """Build SQL WHERE clauses and bind params from search filters.
+
+    Args:
+        filters: Search filters to apply.
+        table_alias: Optional table alias prefix (e.g. ``"c"``).  When
+            provided, all column references are qualified as ``c.column``.
+    """
     clauses: list[str] = []
     params: dict = {}
 
     if filters is None:
         return clauses, params
 
+    prefix = f"{table_alias}." if table_alias else ""
+
     if filters.court:
         if len(filters.court) == 1:
-            clauses.append("court ILIKE :court_0")
-            params["court_0"] = f"%{filters.court[0]}%"
+            escaped = _escape_ilike(filters.court[0])
+            clauses.append(f"{prefix}court ILIKE :court_0")
+            params["court_0"] = f"%{escaped}%"
         else:
             court_clauses = []
             for i, c in enumerate(filters.court):
                 key = f"court_{i}"
-                court_clauses.append(f"court ILIKE :{key}")
-                params[key] = f"%{c}%"
+                court_clauses.append(f"{prefix}court ILIKE :{key}")
+                params[key] = f"%{_escape_ilike(c)}%"
             clauses.append(f"({' OR '.join(court_clauses)})")
 
     if filters.year_from is not None:
-        clauses.append("year >= :year_from")
+        clauses.append(f"{prefix}year >= :year_from")
         params["year_from"] = filters.year_from
 
     if filters.year_to is not None:
-        clauses.append("year <= :year_to")
+        clauses.append(f"{prefix}year <= :year_to")
         params["year_to"] = filters.year_to
 
     if filters.case_type:
-        clauses.append("case_type ILIKE :case_type")
-        params["case_type"] = f"%{filters.case_type}%"
+        clauses.append(f"{prefix}case_type ILIKE :case_type")
+        params["case_type"] = f"%{_escape_ilike(filters.case_type)}%"
 
     if filters.bench_type:
-        clauses.append("bench_type = :bench_type")
+        clauses.append(f"{prefix}bench_type = :bench_type")
         params["bench_type"] = filters.bench_type
 
     if filters.judge:
         clauses.append(
-            "EXISTS (SELECT 1 FROM unnest(judge) AS j WHERE j ILIKE :judge)"
+            f"EXISTS (SELECT 1 FROM unnest({prefix}judge) AS j WHERE j ILIKE :judge)"
         )
-        params["judge"] = f"%{filters.judge}%"
+        params["judge"] = f"%{_escape_ilike(filters.judge)}%"
 
     if filters.act:
         clauses.append(
-            "EXISTS (SELECT 1 FROM unnest(acts_cited) AS a WHERE a ILIKE :act)"
+            f"EXISTS (SELECT 1 FROM unnest({prefix}acts_cited) AS a WHERE a ILIKE :act)"
         )
-        params["act"] = f"%{filters.act}%"
+        params["act"] = f"%{_escape_ilike(filters.act)}%"
 
     if filters.disposal_nature:
-        clauses.append("disposal_nature ILIKE :disposal_nature")
-        params["disposal_nature"] = f"%{filters.disposal_nature}%"
+        clauses.append(f"{prefix}disposal_nature ILIKE :disposal_nature")
+        params["disposal_nature"] = f"%{_escape_ilike(filters.disposal_nature)}%"
 
     return clauses, params

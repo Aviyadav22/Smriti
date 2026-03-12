@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy import CheckConstraint, ForeignKey, String, Text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -52,6 +52,11 @@ class ChatMessage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "role IN ('user', 'assistant')",
             name="ck_chat_messages_role",
+        ),
+        Index(
+            "ix_chat_messages_session_created",
+            "session_id",
+            sa.text("created_at DESC"),
         ),
     )
 

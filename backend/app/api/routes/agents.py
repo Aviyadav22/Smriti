@@ -244,7 +244,11 @@ async def _stream_agent_events(
                             "UPDATE agent_executions SET status = 'failed', "
                             "error_message = :msg WHERE id = :id"
                         ),
-                        {"id": exec_id, "msg": str(exc)[:2000]},
+                        {"id": exec_id, "msg": re.sub(
+                            r'(postgresql|redis|neo4j|https?)://[^\s]+',
+                            '[REDACTED_URL]',
+                            str(exc)[:2000],
+                        )},
                     )
                     await db.commit()
             except Exception:

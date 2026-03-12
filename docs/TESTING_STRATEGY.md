@@ -1,80 +1,176 @@
-# Smriti — Testing Strategy
+# Smriti -- Testing Strategy
+
+**Last updated**: March 12, 2026
 
 ---
 
-## 1. Testing Pyramid
+## 1. Test Summary (Current State)
 
-```
-            ┌─────────┐
-            │  Manual  │   5 — Lawyer QA, exploratory testing
-            │   QA     │
-           ┌┴─────────┴┐
-           │   E2E      │  10 — Full user flows (Playwright)
-          ┌┴───────────┴┐
-          │ Integration  │  30 — API + DB + services together
-         ┌┴─────────────┴┐
-         │   Unit Tests   │ 100+ — Functions, modules, components
-         └────────────────┘
-```
+| Category | Count | Location | Runner |
+|----------|------:|----------|--------|
+| Backend unit tests | 1,443 | `backend/tests/unit/` | pytest |
+| Backend integration tests | 31 | `backend/tests/integration/` | pytest |
+| Backend search accuracy | 15 (6 pass, 9 data-dependent) | `backend/tests/quality/` | pytest |
+| Frontend tests | 298 | `frontend/src/__tests__/` | vitest + React Testing Library |
+| **Total** | **~1,772** | | |
 
-**Framework**: pytest (backend), Vitest + React Testing Library (frontend), Playwright (E2E)
+Zero TypeScript errors in frontend build.
 
 ---
 
-## 2. Unit Tests
+## 2. Testing Pyramid
 
-### 2.1 Backend Unit Tests
+```
+            +----------+
+            |  Manual   |   5 -- Lawyer QA, exploratory testing
+            |   QA      |
+           +------------+
+           |    E2E      |  10 -- Full user flows (Playwright, planned)
+          +--------------+
+          | Integration  |  31 -- API + DB + services together
+         +----------------+
+         |   Unit Tests   | 1,443 backend + 298 frontend
+         +----------------+
+```
+
+**Frameworks**: pytest (backend), Vitest + React Testing Library (frontend), Playwright (E2E, planned)
+**Mocking**: unittest.mock + AsyncMock (backend), vi.mock + MSW (frontend)
+
+---
+
+## 3. Backend Unit Tests
 
 **Location**: `backend/tests/unit/`
 **Runner**: `pytest -v --cov=app`
 **Target coverage**: >80% on core modules
 
-#### PDF Extraction (`tests/unit/test_pdf.py`)
+### 3.1 Test File Inventory (90 test files)
+
+#### Ingestion & PDF Processing
+| File | Covers |
+|------|--------|
+| `test_pdf_extraction.py` | Standard PDF text extraction, NFKC normalization, header/footer dedup |
+| `test_pdf_ocr_and_password.py` | OCR fallback for scanned PDFs, password-protected PDF handling |
+| `test_pdf_quality_scoring.py` | PDF quality score computation |
+| `test_chunker.py` | Legal-aware chunking (2000-char, 200-overlap, section boundaries) |
+| `test_ingestion_sections.py` | Section detection (FACTS, ARGUMENTS, RATIO, ORDER, DISSENT, CONCURRENCE) |
+| `test_ingestion_pipeline.py` | Full pipeline unit tests: PDF to chunks to embeddings |
+| `test_concurrent_ingestion.py` | Concurrent ingestion safety |
+| `test_ingestion_rate_limiter.py` | Ingestion-level rate limiting |
+| `test_circuit_breaker.py` | Circuit breaker (10 failures threshold) |
+| `test_graceful_shutdown.py` | Graceful shutdown handling |
+| `test_vector_chunk_text.py` | Chunk text stored in vectors |
+| `test_pipeline_citation_equivalents.py` | Citation equivalent pipeline integration |
+| `test_pipeline_treatment.py` | Treatment classification in pipeline |
+
+#### Metadata & Legal Extraction
+| File | Covers |
+|------|--------|
+| `test_metadata.py` | Regex-based metadata extraction (SCC, AIR, INSC, CNR citations) |
+| `test_metadata_llm_retry.py` | LLM metadata extraction with Tenacity retry |
+| `test_extractor.py` | Legal entity extraction (neutral citations, reporters, acts, sections) |
+| `test_courts.py` | Court name normalization |
+| `test_citation_equivalence.py` | Citation equivalence detection |
+| `test_citation_equivalent_model.py` | Citation equivalent ORM model |
+| `test_devanagari_preservation.py` | Devanagari script preservation in processing |
+| `test_statute_expansion.py` | Short act name expansion (42 mappings) |
+
+#### Search
+| File | Covers |
+|------|--------|
+| `test_hybrid_search.py` | Hybrid search pipeline (vector + FTS + rerank) |
+| `test_fulltext.py` | Full-text search with tsvector, websearch_to_tsquery |
+| `test_rrf.py` | Reciprocal Rank Fusion (k=60) |
+| `test_weighted_rrf.py` | Weighted RRF variants |
+| `test_query_understanding.py` | Query intent classification, filter extraction from NL |
+| `test_search_routes.py` | Search API endpoint tests |
+| `test_section_search.py` | Section-scoped search |
+| `test_hindi_search.py` | Hindi query handling |
+| `test_multi_court_filter.py` | Multi-court filter support |
+
+#### Security & Auth
+| File | Covers |
+|------|--------|
+| `test_auth.py` | JWT create/verify, password hashing (bcrypt), token expiry |
+| `test_auth_routes.py` | Register/login/refresh/logout API flows |
+| `test_rbac.py` | Role-based access control (user, admin, super_admin) |
+| `test_rate_limiter.py` | Rate limiting (Redis-backed + in-memory fallback) |
+| `test_sanitizer.py` | Input sanitization, prompt injection detection |
+| `test_encryption.py` | AES-256-GCM field-level encryption |
+| `test_audit_logging.py` | Audit log creation, IP hashing |
+| `test_dpdp_routes.py` | DPDP Act compliance endpoints (data summary, erasure, consent) |
+| `test_config_validation.py` | Production config validation (secret lengths, CORS) |
+
+#### Chat & RAG
+| File | Covers |
+|------|--------|
+| `test_chat_routes.py` | Chat session management, message sending |
+| `test_rag.py` | RAG pipeline (retrieval + generation) |
+| `test_rag_context.py` | Context assembly for RAG |
+| `test_checkpointer.py` | LangGraph MemorySaver checkpointing |
+
+#### Agents (LangGraph)
+| File | Covers |
+|------|--------|
+| `test_research_agent.py` | Research agent graph execution |
+| `test_research_nodes.py` | Research agent individual nodes |
+| `test_case_prep_agent.py` | Case prep agent |
+| `test_case_prep_nodes.py` | Case prep agent nodes |
+| `test_strategy_graph.py` | Strategy agent graph |
+| `test_strategy_nodes.py` | Strategy agent nodes |
+| `test_drafting_graph.py` | Drafting agent graph |
+| `test_drafting_nodes.py` | Drafting agent nodes |
+| `test_drafting_templates.py` | Legal document templates |
+| `test_agent_execution_model.py` | Agent execution ORM model |
+| `test_agent_graph_execution.py` | Agent graph execution tracking |
+| `test_agent_nodes_common.py` | Shared agent node utilities |
+| `test_agent_prompts.py` | Agent prompt templates (IRAC enforcement) |
+| `test_agent_routes.py` | Agent API routes |
+| `test_agent_state.py` | Agent state management |
+| `test_common_nodes.py` | Common node implementations |
+| `test_routing_utils.py` | Agent routing utilities |
+| `test_citation_verifier.py` | Semantic citation verification |
+| `test_confidence_scoring.py` | Agent confidence scoring |
+
+#### Graph, Analytics & Providers
+| File | Covers |
+|------|--------|
+| `test_graph_routes.py` | Citation graph API routes |
+| `test_graph_traversal.py` | Neo4j graph traversal |
+| `test_neo4j_store.py` | Neo4j provider (MERGE-based, idempotent) |
+| `test_judge_analytics.py` | Judge analytics computations |
+| `test_judge_routes.py` | Judge API routes |
+| `test_document_analyzer.py` | Document analysis |
+| `test_precedent_mapper.py` | Precedent relationship mapping |
+| `test_precedent_strength.py` | Precedent strength classification |
+| `test_treatment.py` | Case treatment classification |
+| `test_treatment_citation_association.py` | Treatment-citation linking |
+| `test_provider_contracts.py` | Protocol contract compliance tests |
+| `test_tts_provider.py` | TTS provider (Sarvam AI) |
+| `test_gcs_storage.py` | GCS storage provider |
+
+#### Models, Routes & Infrastructure
+| File | Covers |
+|------|--------|
+| `test_case_routes.py` | Case detail API (UUID validation) |
+| `test_case_section_model.py` | Case section ORM model |
+| `test_phase5_models.py` | Phase 5 data models |
+| `test_phase5_prompts.py` | Phase 5 LLM prompts |
+| `test_document_routes.py` | Document upload/management routes |
+| `test_document_tasks.py` | Celery document processing tasks |
+| `test_audio_routes.py` | Audio digest API routes |
+| `test_audio_tasks.py` | Audio generation Celery tasks |
+| `test_admin_routes.py` | Admin dashboard routes |
+| `test_health_extended.py` | Extended health check endpoint |
+| `test_logging_config.py` | Structured JSON logging, PII redaction |
+| `test_celery_config.py` | Celery worker configuration |
+| `test_translation.py` | Hindi translation support |
+| `test_migration_011.py` | Database migration correctness |
+
+### 3.2 Example Test Patterns
 
 ```python
-# Test cases:
-# 1. Extract text from a standard SC judgment PDF
-# 2. Handle scanned PDF (triggers OCR fallback)
-# 3. Handle empty/corrupt PDF (returns error, not crash)
-# 4. Handle password-protected PDF (returns error)
-# 5. Extract from multi-page PDF (50+ pages)
-# 6. Handle mixed text + image pages
-
-def test_extract_text_standard_pdf():
-    """Standard digitally-created PDF should return clean text."""
-    text = extract_pdf_text("fixtures/standard_judgment.pdf")
-    assert len(text) > 1000
-    assert "SUPREME COURT" in text
-
-def test_extract_text_scanned_pdf():
-    """Scanned PDF should trigger OCR fallback."""
-    text = extract_pdf_text("fixtures/scanned_judgment.pdf")
-    assert len(text) > 100  # OCR may not be perfect
-
-def test_extract_text_corrupt_pdf():
-    """Corrupt PDF should raise DocumentParseError."""
-    with pytest.raises(DocumentParseError):
-        extract_pdf_text("fixtures/corrupt.pdf")
-```
-
-#### Legal-Aware Chunker (`tests/unit/test_chunker.py`)
-
-```python
-# Test cases:
-# 1. Detect standard judgment sections (FACTS, ARGUMENTS, RATIO, ORDER)
-# 2. Chunk within sections (no cross-section chunks)
-# 3. Chunk size ~2000 chars with 200 overlap
-# 4. Short judgment (<500 chars) returns single chunk
-# 5. Each chunk has correct section_type tag
-# 6. Chunk index is sequential within section
-
-def test_section_detection():
-    text = load_fixture("judgment_with_sections.txt")
-    sections = detect_judgment_sections(text)
-    section_types = [s.type for s in sections]
-    assert "FACTS" in section_types
-    assert "ORDER" in section_types
-
+# Chunking: section boundaries, overlap, size limits
 def test_chunks_respect_sections():
     text = load_fixture("judgment_with_sections.txt")
     chunks = chunk_judgment(text)
@@ -82,227 +178,101 @@ def test_chunks_respect_sections():
         assert chunk.section_type in ["HEADER", "FACTS", "ARGUMENTS", "ANALYSIS", "RATIO", "ORDER"]
         assert len(chunk.text) <= 2200  # 2000 + tolerance
 
-def test_chunk_overlap():
-    text = "A" * 5000  # Long text
-    chunks = chunk_judgment(text)
-    for i in range(1, len(chunks)):
-        overlap = chunks[i-1].text[-200:]
-        assert chunks[i].text.startswith(overlap[:100])  # At least partial overlap
-```
-
-#### Metadata Extraction (`tests/unit/test_metadata.py`)
-
-```python
-# Test cases:
-# 1. Regex: Extract SCC citation from text
-# 2. Regex: Extract AIR citation from text
-# 3. Regex: Extract INSC citation from text
-# 4. Regex: Extract CNR number
-# 5. Regex: Parse judge names from header
-# 6. Regex: Detect bench type from judge count
-# 7. Validate LLM output: reject future dates
-# 8. Validate LLM output: reject non-existent courts
-# 9. Merge: Parquet metadata wins for title, court, year
-# 10. Merge: LLM metadata wins for ratio, acts_cited, keywords
-
-def test_extract_scc_citation():
-    assert extract_citation("(2024) 5 SCC 123") == {"reporter": "SCC", "year": 2024, "volume": "5", "page": "123"}
-
-def test_extract_air_citation():
-    assert extract_citation("AIR 2024 SC 789") == {"reporter": "AIR", "year": 2024, "court": "SC", "page": "789"}
-
-def test_reject_future_date():
-    metadata = {"decision_date": "2030-01-01"}
-    validated = validate_with_regex(metadata)
-    assert validated["decision_date"] is None  # Rejected
-
-def test_merge_parquet_wins_for_title():
-    parquet = {"title": "A v. B"}
-    llm = {"title": "A versus B"}
-    merged = merge_metadata(parquet, llm)
-    assert merged["title"] == "A v. B"  # Parquet wins
-```
-
-#### Search (`tests/unit/test_search.py`)
-
-```python
-# Test cases:
-# 1. RRF: Merge two ranked lists correctly
-# 2. RRF: Handle empty list from one source
-# 3. RRF: Deduplicate by case_id
-# 4. Query understanding: citation lookup intent
-# 5. Query understanding: topic search intent
-# 6. Query understanding: extract year filter from NL query
-
-def test_rrf_merge():
-    vector_results = [("case1", 1), ("case2", 2), ("case3", 3)]
-    fts_results = [("case2", 1), ("case1", 2), ("case4", 3)]
-    merged = reciprocal_rank_fusion([vector_results, fts_results], k=60)
-    # case2 ranked 2+1 should score higher than case1 ranked 1+2 (same) or case3/case4
-    assert merged[0].case_id in ["case1", "case2"]
-
-def test_rrf_empty_source():
-    vector_results = [("case1", 1)]
-    fts_results = []
-    merged = reciprocal_rank_fusion([vector_results, fts_results], k=60)
-    assert len(merged) == 1
-    assert merged[0].case_id == "case1"
-```
-
-#### Security (`tests/unit/test_security.py`)
-
-```python
-# Test cases:
-# 1. JWT: Create token with correct claims
-# 2. JWT: Expired token raises error
-# 3. JWT: Invalid signature raises error
-# 4. JWT: Refresh token rotation (old token invalidated)
-# 5. bcrypt: Hash and verify password
-# 6. RBAC: Admin can access admin routes
-# 7. RBAC: Viewer cannot access admin routes
-# 8. Sanitizer: Strip HTML tags
-# 9. Sanitizer: Escape SQL injection attempts
-# 10. Rate limiter: Block after threshold
-# 11. Encryption: Encrypt and decrypt PII field
-# 12. Audit: Log entry created for API call
-
+# Security: JWT create and verify round-trip
 def test_jwt_create_and_verify():
     token = create_access_token(user_id="user1", role="researcher")
     payload = verify_access_token(token)
     assert payload["sub"] == "user1"
     assert payload["role"] == "researcher"
 
-def test_jwt_expired():
-    token = create_access_token(user_id="user1", role="researcher", expires_delta=timedelta(seconds=-1))
-    with pytest.raises(TokenExpiredError):
-        verify_access_token(token)
-
-def test_sanitize_html():
-    assert sanitize_input("<script>alert('xss')</script>") == "alert('xss')"
-
-def test_encrypt_decrypt_pii():
-    plaintext = "user@example.com"
-    encrypted = encrypt_field(plaintext)
-    assert encrypted != plaintext
-    assert decrypt_field(encrypted) == plaintext
-```
-
-### 2.2 Frontend Unit Tests
-
-**Location**: `frontend/__tests__/`
-**Runner**: `pnpm test`
-
-```typescript
-// Test cases:
-// 1. SearchBar: renders, accepts input, calls onSearch
-// 2. ResultCard: displays title, citation, court, snippet
-// 3. FilterSidebar: renders filters, calls onChange
-// 4. CaseViewer: renders metadata, sections tabs
-// 5. ChatMessage: renders user vs assistant messages differently
-// 6. API client: correctly constructs search request URL
-
-describe("SearchBar", () => {
-  it("calls onSearch with query when submitted", () => {
-    const onSearch = vi.fn();
-    render(<SearchBar onSearch={onSearch} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "right to privacy" } });
-    fireEvent.submit(screen.getByRole("form"));
-    expect(onSearch).toHaveBeenCalledWith("right to privacy");
-  });
-});
-
-describe("ResultCard", () => {
-  it("displays case title and citation", () => {
-    render(<ResultCard case={{ title: "A v. B", citation: "(2024) 5 SCC 123", court: "Supreme Court" }} />);
-    expect(screen.getByText("A v. B")).toBeInTheDocument();
-    expect(screen.getByText("(2024) 5 SCC 123")).toBeInTheDocument();
-  });
-});
+# Search: RRF merge correctness
+def test_rrf_merge():
+    vector_results = [("case1", 1), ("case2", 2)]
+    fts_results = [("case2", 1), ("case3", 2)]
+    merged = reciprocal_rank_fusion([vector_results, fts_results], k=60)
+    assert merged[0].case_id == "case2"  # Best combined rank
 ```
 
 ---
 
-## 3. Integration Tests
+## 4. Frontend Tests
+
+**Location**: `frontend/src/__tests__/`
+**Runner**: `npx vitest` (or `npm test`)
+**Count**: 298 tests across 30 test files
+
+### 4.1 Test File Inventory
+
+| File | Covers |
+|------|--------|
+| `home-page.test.tsx` | Landing page rendering |
+| `search-page.test.tsx` | Search UI, query submission, results display |
+| `search-integration.test.tsx` | Search + API client integration |
+| `case-detail-page.test.tsx` | Case detail view with metadata |
+| `chat-page.test.tsx` | Chat interface, message rendering (react-markdown) |
+| `graph-page.test.tsx` | Citation graph visualization |
+| `upload-page.test.tsx` | Document upload flow |
+| `login-page.test.tsx` | Login form, validation |
+| `register-page.test.tsx` | Registration form, consent checkbox |
+| `agents-hub.test.tsx` | Agents hub page |
+| `research-workspace.test.tsx` | Research agent workspace |
+| `case-prep-workspace.test.tsx` | Case prep agent workspace |
+| `strategy-agent-workspace.test.tsx` | Strategy agent workspace |
+| `drafting-agent-workspace.test.tsx` | Drafting agent workspace |
+| `agent-components.test.tsx` | Shared agent UI components |
+| `agent-history-page.test.tsx` | Agent execution history |
+| `document-detail-page.test.tsx` | Document detail view |
+| `judges-page.test.tsx` | Judge listing page |
+| `judge-profile-page.test.tsx` | Individual judge profile |
+| `judge-compare-page.test.tsx` | Judge comparison view |
+| `courts-page.test.tsx` | Courts listing page |
+| `header.test.tsx` | Header navigation component |
+| `footer.test.tsx` | Footer component |
+| `audio-player.test.tsx` | Audio player component |
+| `error-boundary.test.tsx` | Error boundary component |
+| `api-client.test.ts` | API client (fetch wrapper, error handling) |
+| `legal-components.test.tsx` | Legal disclaimer, citation display |
+| `precedent-badge.test.tsx` | Precedent strength badge |
+| `quality-components.test.tsx` | Quality indicator components |
+| `i18n-integration.test.tsx` | Hindi internationalization |
+
+### 4.2 Testing Approach
+
+- **Server Components**: Tested via async rendering with React Testing Library
+- **Client Components**: Standard RTL with `render()` + user event simulation
+- **API Mocking**: `vi.mock` for the API client module, MSW for HTTP-level mocking
+- **Routing**: Next.js App Router mocked via `next/navigation` stubs
+
+---
+
+## 5. Integration Tests
 
 **Location**: `backend/tests/integration/`
+**Count**: 31 tests across 3 files
 **Requires**: Running PostgreSQL, Redis, Pinecone (test index), Neo4j
 
-### 3.1 Ingestion Pipeline
+| File | Tests | Covers |
+|------|------:|--------|
+| `test_search.py` | ~12 | Search pipeline end-to-end, faceted search |
+| `test_search_accuracy.py` | ~12 | Search result relevance, filter correctness |
+| `test_ingestion.py` | ~7 | Full ingestion pipeline: PDF to all stores |
 
-```python
-# Full pipeline: PDF → text → metadata → chunks → embeddings → stores
-async def test_full_ingestion_pipeline():
-    """Ingest a real SC judgment PDF and verify all stores."""
-    case_id = await ingest_judgment("fixtures/real_sc_judgment.pdf", sample_parquet_metadata)
+### 5.1 Key Integration Scenarios
 
-    # Verify PostgreSQL
-    case = await get_case(case_id)
-    assert case.title is not None
-    assert case.court == "Supreme Court of India"
-    assert len(case.searchable_text) > 0
-
-    # Verify Pinecone
-    results = await vector_store.search(
-        query_vector=await embedder.embed_text(case.title),
-        top_k=1,
-        filters={"case_id": case_id}
-    )
-    assert len(results) >= 1
-
-    # Verify Neo4j
-    node = await graph_store.get_node(case_id)
-    assert node is not None
-```
-
-### 3.2 Search Pipeline
-
-```python
-async def test_search_end_to_end():
-    """Search for an ingested case by topic and verify results."""
-    # Pre-condition: at least 100 cases ingested
-    results = await hybrid_search("right to privacy fundamental right Article 21")
-    assert len(results) > 0
-    # K.S. Puttaswamy should be in top 5 (if ingested)
-    titles = [r.title for r in results[:5]]
-    # At minimum, results should be relevant to privacy/Article 21
-    assert any("privacy" in r.snippet.lower() or "article 21" in r.snippet.lower() for r in results[:5])
-```
-
-### 3.3 Auth Flow
-
-```python
-async def test_auth_register_login_refresh():
-    """Full auth flow: register → login → access protected route → refresh."""
-    # Register
-    resp = await client.post("/auth/register", json={
-        "email": "test@example.com", "password": "SecureP@ss123", "name": "Test User",
-        "consent_given": True, "consent_version": "1.0"
-    })
-    assert resp.status_code == 201
-
-    # Login
-    resp = await client.post("/auth/login", json={"email": "test@example.com", "password": "SecureP@ss123"})
-    assert resp.status_code == 200
-    tokens = resp.json()
-    access_token = tokens["access_token"]
-    refresh_token = tokens["refresh_token"]
-
-    # Access protected route
-    resp = await client.get("/cases/some-id", headers={"Authorization": f"Bearer {access_token}"})
-    assert resp.status_code in [200, 404]  # Auth passed
-
-    # Refresh token
-    resp = await client.post("/auth/refresh", json={"refresh_token": refresh_token})
-    assert resp.status_code == 200
-    new_tokens = resp.json()
-    assert new_tokens["access_token"] != access_token  # New token issued
-```
+- **Ingestion pipeline**: PDF upload to text extraction to metadata to chunks to embeddings to Pinecone + PostgreSQL + Neo4j
+- **Search pipeline**: Query to query understanding to vector search + FTS to RRF merge to reranking to response
+- **Faceted search**: Verify filter accuracy (court, year, case_type, judge, act)
+- **Case detail**: Retrieve full case with metadata, sections, and citation graph
+- **Auth flow**: Register to login to access protected route to refresh token to logout
 
 ---
 
-## 4. Search Accuracy Evaluation
+## 6. Search Accuracy Evaluation
 
-### 4.1 Test Query Set (30 Queries)
+**Location**: `backend/tests/quality/`
+**Status**: 15 tests total -- 6 pass with current data, 9 are data-dependent (need 50K+ ingested cases)
+
+### 6.1 Test Query Set (30 Queries)
 
 **Category 1: Citation Lookup (10 queries)**
 | # | Query | Expected Top Result | Metric |
@@ -358,36 +328,11 @@ async def test_auth_register_login_refresh():
 
 **Target**: >60% have meaningfully relevant results in top 5
 
-### 4.2 Evaluation Script
-
-```python
-# scripts/evaluate_search.py
-# Runs all 30 queries, scores results, generates report
-
-async def evaluate():
-    results = []
-    for query in TEST_QUERIES:
-        search_results = await hybrid_search(query.text, filters=query.filters)
-        score = evaluate_results(search_results, query.expected)
-        results.append({"query": query.text, "score": score, "top_5": search_results[:5]})
-
-    # Generate report
-    citation_recall = mean([r["score"] for r in results[:10]])
-    topic_recall = mean([r["score"] for r in results[10:20]])
-    filter_accuracy = mean([r["score"] for r in results[20:25]])
-    complex_relevance = mean([r["score"] for r in results[25:30]])
-
-    print(f"Citation Recall@5: {citation_recall:.0%} (target: >90%)")
-    print(f"Topic Recall@5: {topic_recall:.0%} (target: >70%)")
-    print(f"Filter Accuracy: {filter_accuracy:.0%} (target: 100%)")
-    print(f"Complex Relevance@5: {complex_relevance:.0%} (target: >60%)")
-```
-
 ---
 
-## 5. AI Output Evaluation
+## 7. AI Output Evaluation
 
-### 5.1 Metadata Extraction Accuracy
+### 7.1 Metadata Extraction Accuracy
 
 **Method**: Manually label metadata for 50 judgments. Compare LLM extraction against labels.
 
@@ -405,8 +350,12 @@ async def evaluate():
 | cases_cited | Set overlap (F1) | >75% |
 | ratio_decidendi | Human rating (1-5) | >3.5 avg |
 | keywords | Set overlap (F1) | >70% |
+| case_number | Exact match | >90% |
+| is_reportable | Exact match | >95% |
+| headnotes | Human rating (1-5) | >3.5 avg |
+| outcome_summary | Human rating (1-5) | >3.5 avg |
 
-### 5.2 RAG Chat Groundedness
+### 7.2 RAG Chat Groundedness
 
 **Method**: For each response, check if every factual claim is supported by retrieved context.
 
@@ -417,7 +366,7 @@ async def evaluate():
 | Completeness | Does the response address the question? (1-5) | >3.5 avg |
 | Hallucination rate | % of responses with fabricated cases/citations | <5% |
 
-### 5.3 Section Detection Accuracy
+### 7.3 Section Detection Accuracy
 
 **Method**: Manually annotate sections in 20 judgments. Compare with detected sections.
 
@@ -429,9 +378,9 @@ async def evaluate():
 
 ---
 
-## 6. Performance Tests
+## 8. Performance Tests
 
-### 6.1 API Response Times
+### 8.1 API Response Times
 
 | Endpoint | p50 Target | p95 Target | p99 Target |
 |----------|-----------|-----------|-----------|
@@ -441,11 +390,12 @@ async def evaluate():
 | `POST /chat/message` (first token) | <2s | <3s | <5s |
 | `GET /graph/neighborhood` | <500ms | <1s | <2s |
 | `POST /ingest/upload` (async start) | <500ms | <1s | <2s |
+| `GET /agents/*/execute` (SSE first event) | <2s | <3s | <5s |
 
-### 6.2 Load Testing
+### 8.2 Load Testing
 
 ```bash
-# Using k6 or locust
+# Using locust (backend/tests/load/locustfile.py)
 # Simulate 50 concurrent users for 5 minutes
 # Mix: 60% search, 20% case view, 10% chat, 10% other
 ```
@@ -458,112 +408,69 @@ async def evaluate():
 
 ---
 
-## 7. Security Tests
+## 9. Security Tests
 
-### 7.1 OWASP Top 10 Checklist
+See `SECURITY_AUDIT.md` for the full OWASP Top 10 audit with implementation references.
 
-| # | Risk | Test | Status |
-|---|------|------|--------|
-| A01 | Broken Access Control | Verify RBAC on all endpoints, test privilege escalation | Pending |
-| A02 | Cryptographic Failures | Verify TLS, JWT signing, password hashing, PII encryption | Pending |
-| A03 | Injection | Test SQL injection on search params, XSS on user inputs | Pending |
-| A04 | Insecure Design | Review auth flow, consent flow, data isolation | Pending |
-| A05 | Security Misconfiguration | Check CORS, CSP headers, debug mode off in prod | Pending |
-| A06 | Vulnerable Components | Run `pip audit`, `pnpm audit` | Pending |
-| A07 | Auth Failures | Test brute force protection, token expiry, session management | Pending |
-| A08 | Data Integrity Failures | Verify signed JWTs, input validation on all endpoints | Pending |
-| A09 | Logging Failures | Verify audit log captures all access, PII redacted | Pending |
-| A10 | SSRF | Verify no user-controllable URLs fetched server-side | Pending |
+### 9.1 Unit-Tested Security Controls
 
-### 7.2 Specific Security Tests
-
-```python
-# tests/security/
-
-def test_sql_injection_search():
-    """Search param should not allow SQL injection."""
-    resp = client.get("/search?q='; DROP TABLE cases; --")
-    assert resp.status_code == 200  # Query treated as text, no crash
-
-def test_xss_in_chat():
-    """Chat input with script tags should be sanitized."""
-    resp = client.post("/chat/session1/message", json={"content": "<script>alert('xss')</script>"})
-    assert "<script>" not in resp.json()["response"]
-
-def test_rate_limiting():
-    """Exceed rate limit and verify 429 response."""
-    for _ in range(101):
-        resp = client.get("/search?q=test")
-    assert resp.status_code == 429
-
-def test_jwt_tampering():
-    """Modified JWT should be rejected."""
-    token = create_access_token(user_id="user1")
-    tampered = token[:-1] + ("a" if token[-1] != "a" else "b")
-    resp = client.get("/cases/1", headers={"Authorization": f"Bearer {tampered}"})
-    assert resp.status_code == 401
-
-def test_user_data_isolation():
-    """User A cannot access User B's chat history."""
-    # Login as user A, create chat
-    # Login as user B, try to access user A's chat
-    resp = client.get(f"/chat/{user_a_session}/history", headers=user_b_headers)
-    assert resp.status_code == 403
-```
+| Control | Test File | Key Assertions |
+|---------|-----------|----------------|
+| JWT auth | `test_auth.py` | Token create/verify, expiry, invalid signature, revocation |
+| Password hashing | `test_auth.py` | bcrypt hash/verify round-trip |
+| RBAC | `test_rbac.py` | Role enforcement (user, admin, super_admin), privilege escalation blocked |
+| Rate limiting | `test_rate_limiter.py` | Redis-backed + in-memory fallback, 429 after threshold |
+| Input sanitization | `test_sanitizer.py` | HTML stripping, null byte removal, prompt injection detection |
+| AES-256-GCM encryption | `test_encryption.py` | Encrypt/decrypt round-trip, tamper detection |
+| Audit logging | `test_audit_logging.py` | Log creation, IP hashing with SHA-256 |
+| DPDP compliance | `test_dpdp_routes.py` | Data summary, erasure, consent withdrawal |
+| Config validation | `test_config_validation.py` | Secret length enforcement, CORS wildcard rejection |
 
 ---
 
-## 8. Test Fixtures
+## 10. Test Fixtures
 
 ### Required Test Data
 
 ```
 backend/tests/fixtures/
-├── pdfs/
-│   ├── standard_judgment.pdf          # Digitally-created SC judgment
-│   ├── scanned_judgment.pdf           # Scanned/OCR judgment
-│   ├── long_judgment.pdf              # 100+ page judgment
-│   ├── short_order.pdf                # 1-2 page order
-│   └── corrupt.pdf                    # Invalid PDF file
-├── texts/
-│   ├── judgment_with_sections.txt     # Full judgment with clear sections
-│   ├── judgment_no_sections.txt       # Unstructured judgment
-│   └── judgment_multiple_citations.txt # Many case citations
-├── metadata/
-│   ├── sample_parquet_row.json        # One row from Parquet metadata
-│   └── sample_llm_output.json        # Expected LLM extraction output
-└── search/
-    ├── test_queries.json              # 30 evaluation queries with expected results
-    └── sample_vectors.json            # Pre-computed embeddings for test
+|-- pdfs/
+|   |-- standard_judgment.pdf          # Digitally-created SC judgment
+|   |-- scanned_judgment.pdf           # Scanned/OCR judgment
+|   |-- long_judgment.pdf              # 100+ page judgment
+|   |-- short_order.pdf                # 1-2 page order
+|   +-- corrupt.pdf                    # Invalid PDF file
+|-- texts/
+|   |-- judgment_with_sections.txt     # Full judgment with clear sections
+|   |-- judgment_no_sections.txt       # Unstructured judgment
+|   +-- judgment_multiple_citations.txt # Many case citations
+|-- metadata/
+|   |-- sample_parquet_row.json        # One row from Parquet metadata
+|   +-- sample_llm_output.json        # Expected LLM extraction output
++-- search/
+    |-- test_queries.json              # 30 evaluation queries with expected results
+    +-- sample_vectors.json            # Pre-computed embeddings for test
 ```
-
-### How to Create Fixtures
-
-1. Download 5 real SC judgment PDFs from S3 (2023-2024, varied types)
-2. Manually extract and verify metadata for each
-3. Manually annotate sections for 3 of them
-4. Store as fixtures (committed to repo, ~5MB total)
 
 ---
 
-## 9. CI/CD Pipeline (Future)
+## 11. CI/CD Pipeline (Planned)
 
 ```yaml
-# .github/workflows/test.yml (when CI is set up)
-# Runs on every PR
-
+# .github/workflows/test.yml
 steps:
-  - Backend lint: ruff check + mypy
-  - Backend unit tests: pytest tests/unit/
+  - Backend lint: ruff check + ruff format --check
+  - Backend unit tests: pytest tests/unit/ -v --cov=app
   - Frontend lint: eslint + tsc --noEmit
-  - Frontend tests: pnpm test
-  - Security scan: pip audit + pnpm audit
+  - Frontend tests: npm test
+  - Security scan: pip-audit + npm audit
   # Integration tests run manually or on merge to main
+  # Search accuracy tests require live services + 50K+ cases
 ```
 
 ---
 
-## 10. Test Execution Commands
+## 12. Test Execution Commands
 
 ```bash
 # All backend tests
@@ -575,21 +482,21 @@ cd backend && pytest tests/unit/ -v
 # Integration tests (requires running services)
 cd backend && pytest tests/integration/ -v
 
+# Search accuracy benchmarks (requires live services + data)
+cd backend && pytest tests/quality/ -v
+
 # With coverage report
 cd backend && pytest --cov=app --cov-report=html
 
-# Security tests
-cd backend && pytest tests/security/ -v
-
-# Search accuracy evaluation
-cd backend && python scripts/evaluate_search.py
-
 # Frontend tests
-cd frontend && pnpm test
+cd frontend && npm test
 
 # Frontend tests with coverage
-cd frontend && pnpm test -- --coverage
+cd frontend && npm test -- --coverage
 
-# E2E tests (requires running backend + frontend)
-cd frontend && pnpm test:e2e
+# E2E tests (requires running backend + frontend, planned)
+cd frontend && npm run test:e2e
+
+# Load tests
+cd backend && locust -f tests/load/locustfile.py
 ```

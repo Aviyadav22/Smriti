@@ -216,7 +216,16 @@ export default function StrategyAgentPage() {
         setError(null);
     }, []);
 
-    if (authLoading || !isAuthenticated) return null;
+    if (authLoading || !isAuthenticated) {
+        return (
+            <div className="min-h-screen flex flex-col">
+                <Header />
+                <div className="flex-1 flex items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+            </div>
+        );
+    }
 
     const showInputForm = !isRunning && !memo && !checkpoint && steps.length === 0;
     const showWorkspace = isRunning || memo || checkpoint || steps.length > 0;

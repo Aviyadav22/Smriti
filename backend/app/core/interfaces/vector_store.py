@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,4 +30,18 @@ class VectorStore(Protocol):
         top_k: int = 20,
         filters: dict | None = None,
     ) -> list[SearchResult]: ...
+
+    async def delete_by_metadata(
+        self,
+        filter: dict[str, Any],
+        *,
+        exclude_ids: list[str] | None = None,
+    ) -> None:
+        """Delete vectors matching the metadata filter.
+
+        Args:
+            filter: Metadata filter to match vectors for deletion.
+            exclude_ids: Optional list of vector IDs to exclude from deletion.
+        """
+        ...
 

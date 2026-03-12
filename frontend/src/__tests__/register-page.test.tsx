@@ -166,6 +166,7 @@ describe("RegisterPage", () => {
         name: "Advocate Sharma",
         email: "sharma@firm.com",
         password: "password123",
+        consent_given: true,
       });
     });
 

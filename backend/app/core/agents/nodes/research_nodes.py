@@ -121,11 +121,15 @@ async def decompose_query_node(
             f"<user_feedback>{sanitized_feedback}</user_feedback>"
         )
 
-    result = await llm.generate_structured(
-        prompt=prompt,
-        system=RESEARCH_DECOMPOSE_SYSTEM,
-        output_schema=RESEARCH_DECOMPOSE_SCHEMA,
-    )
+    try:
+        result = await llm.generate_structured(
+            prompt=prompt,
+            system=RESEARCH_DECOMPOSE_SYSTEM,
+            output_schema=RESEARCH_DECOMPOSE_SCHEMA,
+        )
+    except Exception as exc:
+        logger.warning("Decompose query failed: %s", exc)
+        return {"error": f"Failed to decompose query: {exc}"}
 
     sub_queries = [sq["query"] for sq in result.get("sub_queries", [])]
     return {"sub_queries": sub_queries}
@@ -317,12 +321,16 @@ async def synthesize_memo_node(
     if treatment_text:
         prompt += treatment_text
 
-    memo = await llm.generate(
-        prompt=prompt,
-        system=RESEARCH_SYNTHESIZE_SYSTEM,
-        temperature=0.2,
-        max_tokens=8192,
-    )
+    try:
+        memo = await llm.generate(
+            prompt=prompt,
+            system=RESEARCH_SYNTHESIZE_SYSTEM,
+            temperature=0.2,
+            max_tokens=8192,
+        )
+    except Exception as exc:
+        logger.warning("Memo synthesis failed: %s", exc)
+        return {"error": f"Failed to synthesize memo: {exc}"}
 
     # Append legal disclaimer to the memo
     memo += LEGAL_DISCLAIMER

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { AgentHubCard } from "@/components/agent-hub-card";
-import { Search, FileText, History, Lightbulb, PenTool } from "lucide-react";
+import { Search, FileText, History, Lightbulb, PenTool, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Header } from "@/components/header";
@@ -20,7 +20,16 @@ export default function AgentsPage() {
         if (!authLoading && !isAuthenticated) router.push("/login");
     }, [authLoading, isAuthenticated, router]);
 
-    if (authLoading || !isAuthenticated) return null;
+    if (authLoading || !isAuthenticated) {
+        return (
+            <div className="min-h-screen flex flex-col">
+                <Header />
+                <div className="flex-1 flex items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen flex flex-col">

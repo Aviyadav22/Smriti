@@ -15,8 +15,9 @@ Technical reference for rebuilding or adapting the Smriti UI. Covers every page,
 | Icons | lucide-react | 0.577.x | |
 | Charts | recharts | 3.8.x | Used on judge profile, court stats, judge compare pages |
 | Graph Visualization | react-force-graph-2d | 1.29.x | Canvas-based, loaded via `next/dynamic` (no SSR) |
-| Package Manager | pnpm | | |
-| Testing | Vitest + Testing Library | | 88 frontend tests |
+| Package Manager | npm | | |
+| Testing | Vitest + Testing Library | | 298 frontend tests |
+| i18n | next-intl | | Hindi support (partial) |
 | Fonts | Inter (sans), Lora (serif) | | Loaded via `next/font/google` |
 
 **Design language:** Dark theme with gold accent (`var(--gold)` = `#B89B6A`). Serif font (Lora) for headings and legal text. Minimal, professional aesthetic.
@@ -240,6 +241,101 @@ Key behavior:
 - Shows processing pipeline steps with `ProcessingStatus` component.
 - Completed analysis shows: Case Overview (parties, key facts, relief sought), Legal Issues (expandable cards with supporting precedents), Counter-Arguments, Research Memo (with copy button).
 
+### 2.15 Agent Hub Page
+
+| Property | Value |
+|---|---|
+| Route | `/agents` |
+| File | `frontend/src/app/agents/page.tsx` |
+| Auth required | Yes (redirects to `/login`) |
+| API calls | None |
+| Purpose | Landing page with cards for all 4 agent types |
+
+Key behavior:
+- Shows 4 agent cards: Research, Case Prep (badge: "Requires Document"), Strategy, Drafting.
+- "History" button links to `/agents/history`.
+- Uses `next-intl` translations (`useTranslations("agents")`).
+
+### 2.16 Research Agent Page
+
+| Property | Value |
+|---|---|
+| Route | `/agents/research` |
+| File | `frontend/src/app/agents/research/page.tsx` |
+| Auth required | Yes |
+| API calls | `POST /api/v1/agents/research/run` (SSE), `POST /api/v1/agents/executions/:id/resume` (SSE) |
+| Purpose | Research agent workspace with step timeline, HITL checkpoints, and memo output |
+
+Key behavior:
+- Input form: textarea for legal research question + "Start Research" button.
+- On submit: fires SSE stream via `runResearchAgent()`, displays 10-step timeline.
+- Steps: classify → decompose → checkpoint_plan → search → gather → contradictions → checkpoint_findings → synthesize → verify → checkpoint_memo.
+- On `checkpoint` event: pauses timeline, shows `AgentCheckpointPrompt` for user input.
+- On resume: calls `resumeAgentExecution()` SSE stream.
+- On `memo` event: renders result in `AgentMemoViewer` with confidence score.
+- `AbortController` pattern for cancellation on unmount.
+
+### 2.17 Case Prep Agent Page
+
+| Property | Value |
+|---|---|
+| Route | `/agents/case-prep` |
+| File | `frontend/src/app/agents/case-prep/page.tsx` |
+| Auth required | Yes |
+| API calls | `POST /api/v1/agents/case_prep/run` (SSE), `POST /api/v1/agents/executions/:id/resume` (SSE) |
+| Purpose | Case preparation agent — analyzes an uploaded document |
+
+Key behavior:
+- Requires a document ID (from a previously uploaded document).
+- Same SSE streaming + checkpoint + memo pattern as Research agent.
+
+### 2.18 Strategy Agent Page
+
+| Property | Value |
+|---|---|
+| Route | `/agents/strategy` |
+| File | `frontend/src/app/agents/strategy/page.tsx` |
+| Auth required | Yes |
+| API calls | `POST /api/v1/agents/strategy/run` (SSE), `POST /api/v1/agents/executions/:id/resume` (SSE) |
+| Purpose | Legal strategy advisor — takes case facts and desired relief |
+
+Key behavior:
+- Two input fields: case facts (textarea) and desired relief (text input).
+- Same SSE streaming + checkpoint + memo pattern.
+
+### 2.19 Drafting Agent Page
+
+| Property | Value |
+|---|---|
+| Route | `/agents/drafting` |
+| File | `frontend/src/app/agents/drafting/page.tsx` |
+| Auth required | Yes |
+| API calls | `POST /api/v1/agents/drafting/run` (SSE), `POST /api/v1/agents/executions/:id/resume` (SSE), `GET /api/v1/agents/drafting/templates`, `POST /api/v1/agents/drafting/export` |
+| Purpose | Legal document drafting — generates drafts with DOCX/PDF export |
+
+Key behavior:
+- Template selection dropdown (petition, affidavit, written_statement, etc.).
+- Case facts textarea input.
+- After memo generation, shows "Export DOCX" / "Export PDF" buttons.
+- Export calls `exportDraft()` which returns a `Blob` for download.
+
+### 2.20 Agent History Page
+
+| Property | Value |
+|---|---|
+| Route | `/agents/history` |
+| File | `frontend/src/app/agents/history/page.tsx` |
+| Auth required | Yes |
+| API calls | `GET /api/v1/agents/executions` |
+| Purpose | Paginated list of past agent executions with status and results |
+
+Key behavior:
+- Fetches paginated execution list via `getAgentExecutions()`.
+- Each row shows: agent type badge, status badge (color-coded), input summary, timestamp.
+- Status colors: blue=running, yellow=waiting_input, green=completed, red=failed, gray=cancelled.
+- "View Results" button on completed executions opens a modal with `AgentMemoViewer`.
+- Pagination with Previous/Next buttons.
+
 ---
 
 ## 3. API Surface Map
@@ -319,11 +415,30 @@ All endpoints are prefixed with `/api/v1`. The base URL is configured via `NEXT_
 | `GET` | `/cases/:id/audio/status` | No | | `AudioDigestStatus` | AudioPlayer component |
 | `GET` | `/cases/:id/audio` | No | `language?` | audio/mpeg stream | AudioPlayer component |
 
-### 3.9 Other Endpoints
+### 3.9 Agent Endpoints
+
+| Method | Endpoint | Auth | Request Body | Response | Used By |
+|---|---|---|---|---|---|
+| `POST` | `/agents/research/run` | Yes | `{ query }` | SSE stream (`AgentStreamEvent`) | Research agent page |
+| `POST` | `/agents/case_prep/run` | Yes | `{ document_id }` | SSE stream (`AgentStreamEvent`) | Case prep agent page |
+| `POST` | `/agents/strategy/run` | Yes | `{ case_facts, desired_relief }` | SSE stream (`AgentStreamEvent`) | Strategy agent page |
+| `POST` | `/agents/drafting/run` | Yes | `{ doc_type, case_facts }` | SSE stream (`AgentStreamEvent`) | Drafting agent page |
+| `POST` | `/agents/executions/:id/resume` | Yes | `{ input }` | SSE stream (`AgentStreamEvent`) | All agent pages (checkpoint resume) |
+| `GET` | `/agents/executions` | Yes | `page?`, `page_size?` | `AgentExecutionList` | Agent history page |
+| `GET` | `/agents/drafting/templates` | Yes | | `{ templates: DraftTemplate[] }` | Drafting agent page |
+| `POST` | `/agents/drafting/export` | Yes | `{ execution_id, format }` | Binary (DOCX/PDF) | Drafting agent page |
+
+### 3.10 Other Endpoints
 
 | Method | Endpoint | Auth | Response | Notes |
 |---|---|---|---|---|
 | `GET` | `/health` | No | `{ status, postgres, redis, version }` | Not mounted under `/api/v1` -- at root `/health` |
+| `POST` | `/auth/logout` | Yes | `{ message }` | Invalidates refresh token |
+| `DELETE` | `/auth/account` | Yes | 204 No Content | Account deletion (DPDP) |
+| `GET` | `/dpdp/data-summary` | Yes | `DataSummary` | User data inventory |
+| `POST` | `/dpdp/erasure` | Yes | `{ request_id, status }` | Right to erasure |
+| `POST` | `/dpdp/consent/withdraw` | Yes | `{ status }` | Withdraw consent |
+| `GET` | `/dpdp/consent/status` | Yes | `ConsentStatus` | Check consent status |
 
 ---
 
@@ -492,6 +607,22 @@ fetch(url, { method: "POST", headers: { Authorization: ... }, body: formData });
 | `AudioPlayer` | `frontend/src/components/audio-player.tsx` | Case detail page |
 | `FileUpload` | `frontend/src/components/file-upload.tsx` | Upload page |
 | `ProcessingStatus` | `frontend/src/components/processing-status.tsx` | Document detail page |
+
+| `AgentHubCard` | `frontend/src/components/agent-hub-card.tsx` | Agent hub page |
+| `AgentStepTimeline` | `frontend/src/components/agent-step-timeline.tsx` | All agent pages |
+| `AgentCheckpointPrompt` | `frontend/src/components/agent-checkpoint-prompt.tsx` | All agent pages |
+| `AgentMemoViewer` | `frontend/src/components/agent-memo-viewer.tsx` | All agent pages, History page |
+| `LegalDisclaimer` | `frontend/src/components/legal-disclaimer.tsx` | Agent pages |
+| `ErrorBoundary` | `frontend/src/components/error-boundary.tsx` | Layout wrapper |
+| `Textarea` | `frontend/src/components/ui/textarea.tsx` | Chat, agents, search |
+
+**AgentHubCard**: Card component with icon, title, description, and optional badge. Links to individual agent pages.
+
+**AgentStepTimeline**: Vertical timeline showing agent progress. Steps display as pending (gray), active (pulsing blue), completed (green check), or error (red). Supports both desktop (sidebar) and mobile (inline) layouts.
+
+**AgentCheckpointPrompt**: HITL interaction component. Shows the agent's question, optional context data (rendered recursively for nested objects/arrays), quick suggestion chips ("Looks good, proceed", etc.), a textarea for custom input, and error+retry handling.
+
+**AgentMemoViewer**: Renders the agent's final memo output with markdown formatting, confidence score badge, and copy-to-clipboard button.
 
 **AudioPlayer**: Self-contained component that manages audio digest lifecycle:
 - Checks audio status on mount
@@ -672,13 +803,25 @@ ABORT (user navigates away or starts new chat)
   --> AbortError caught and ignored
 ```
 
-### 8.5 Reusing for Agents
+### 8.5 Agent SSE Streaming
 
-To add a new streaming agent feature:
-1. Create a new backend endpoint that returns `StreamingResponse` with `text/event-stream`.
-2. Define your event types (can reuse the `session/chunk/source/done` pattern or define new ones).
-3. On the frontend, use the same `_streamChat` pattern (or generalize it) -- POST with fetch, read stream, parse SSE lines.
-4. The `AbortController` pattern lets users cancel long-running agent tasks.
+All 4 agent types (Research, Case Prep, Strategy, Drafting) use the same SSE streaming pattern as chat, with different event types:
+
+File: `frontend/src/lib/api.ts`, functions `runResearchAgent()`, `runCasePrepAgent()`, `runStrategyAgent()`, `runDraftingAgent()`
+
+Each agent function internally calls `_streamAgent()` which uses the same fetch + ReadableStream + line-parsing pattern as `_streamChat()`. The `AbortController` pattern lets users cancel long-running agents on unmount.
+
+**Agent-specific event types** (vs chat events):
+
+| Event Type | Purpose | Chat Equivalent |
+|---|---|---|
+| `status` | Step completion + progress | `chunk` (incremental) |
+| `checkpoint` | HITL pause, needs user input | (no equivalent) |
+| `memo` | Final research memo output | (final `chunk` + `source`) |
+| `done` | Agent completed | `done` |
+| `error` | Agent failed | (error handling) |
+
+**Checkpoint resume flow**: When a `checkpoint` event arrives, the stream ends. The frontend shows `AgentCheckpointPrompt`. On user input, `resumeAgentExecution()` starts a new SSE stream for the same execution ID, continuing from where it paused.
 
 ---
 
@@ -761,7 +904,30 @@ DocumentAnalysis { issues, parties, key_facts, relief_sought, counter_arguments,
 DocumentDetail extends DocumentListItem { processing_started_at, processing_completed_at, analysis? }
 ```
 
-### 9.8 Audio Types
+### 9.8 Agent Types
+
+```typescript
+AgentType = "research" | "case_prep" | "strategy" | "drafting"
+AgentStatus = "running" | "waiting_input" | "completed" | "failed" | "cancelled"
+
+AgentExecution { id, agent_type: AgentType, status: AgentStatus, input_data: Record<string, unknown>,
+                 result_data: Record<string, unknown> | null, created_at, updated_at }
+
+AgentStreamEvent { type: "status"|"checkpoint"|"memo"|"done"|"error", step?, message?,
+                   question?, context?, content?, data?, execution_id? }
+
+AgentStep { name, status: "pending"|"active"|"completed"|"error", message? }
+```
+
+Agent SSE event sequence:
+1. `{ type: "status", step: "classify", message: "..." }` -- emitted as each step completes
+2. `{ type: "checkpoint", question: "...", context: {...}, execution_id: "..." }` -- HITL pause
+3. (User resumes with input via `/agents/executions/:id/resume`)
+4. More `status` events...
+5. `{ type: "memo", content: "...", data: { confidence: 0.85 } }` -- final research memo
+6. `{ type: "done", execution_id: "..." }` -- signals completion
+
+### 9.9 Audio Types
 
 ```typescript
 AudioDigestInfo { language, status, duration_seconds }
@@ -792,31 +958,30 @@ frontend/
       upload/page.tsx          # Document upload
       documents/page.tsx       # Document list
       documents/[id]/page.tsx  # Document detail/analysis
+      agents/page.tsx          # Agent hub (4 agent cards)
+      agents/research/page.tsx # Research agent workspace
+      agents/case-prep/page.tsx # Case prep agent workspace
+      agents/strategy/page.tsx # Strategy agent workspace
+      agents/drafting/page.tsx # Drafting agent workspace
+      agents/history/page.tsx  # Agent execution history
     components/
       header.tsx               # Global header with nav
       footer.tsx               # Global footer
       audio-player.tsx         # Audio digest player
       file-upload.tsx          # Drag-and-drop file upload
       processing-status.tsx    # Document processing steps
+      error-boundary.tsx       # Error boundary with fallback UI
+      legal-disclaimer.tsx     # Legal disclaimer notice
+      agent-hub-card.tsx       # Agent type card for hub page
+      agent-step-timeline.tsx  # Agent progress timeline
+      agent-checkpoint-prompt.tsx # HITL checkpoint interaction
+      agent-memo-viewer.tsx    # Agent memo/result renderer
       ui/                      # shadcn/ui primitives
-        badge.tsx, button.tsx, card.tsx, input.tsx,
+        badge.tsx, button.tsx, card.tsx, input.tsx, textarea.tsx,
         select.tsx, separator.tsx, sheet.tsx, tabs.tsx
     lib/
-      api.ts                   # All API client functions + token management
+      api.ts                   # All API client functions + token management + SSE streaming
       types.ts                 # All TypeScript type definitions
       auth-context.tsx         # Auth React context + provider
-
-backend/
-  app/
-    main.py                    # FastAPI app, CORS, route registration
-    api/routes/
-      health.py                # GET /health
-      auth.py                  # POST /auth/login, /auth/register, /auth/refresh
-      cases.py                 # GET /cases/:id, /cases/:id/pdf, /citations, /cited-by, /similar
-      search.py                # GET /search, /search/suggest, /search/facets
-      chat.py                  # POST /chat, /chat/:id/message; GET /chat/sessions, /chat/:id/history; DELETE /chat/:id
-      graph.py                 # GET /graph/:id/neighborhood, /chain, /authorities, /graph/stats
-      judges.py                # GET /judges, /judges/compare, /judges/:name, /judges/:name/cases, /courts/:name/stats
-      documents.py             # POST /documents/upload; GET /documents, /documents/:id, /documents/:id/memo; DELETE /documents/:id
-      audio.py                 # POST /cases/:id/audio/generate; GET /cases/:id/audio/status, /cases/:id/audio
+    __tests__/                 # 298 Vitest + Testing Library tests
 ```

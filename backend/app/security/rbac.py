@@ -5,6 +5,7 @@ user from a JWT token and enforcing role-based authorization.
 """
 
 from collections.abc import Callable, Coroutine
+import logging
 from typing import Any
 
 from fastapi import Depends
@@ -12,6 +13,8 @@ from fastapi.security import OAuth2PasswordBearer
 
 from app.security.auth import verify_access_token, TokenPayload
 from app.security.exceptions import AuthenticationError, AuthorizationError
+
+logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
@@ -49,7 +52,8 @@ async def get_current_user_optional(
         return None
     try:
         return await verify_access_token(token)
-    except Exception:
+    except Exception as exc:
+        logger.debug("Optional auth failed: %s", exc)
         return None
 
 

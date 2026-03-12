@@ -102,9 +102,9 @@ async def stream_audio(
     if row["status"] != "completed":
         raise HTTPException(status_code=404, detail="Audio digest not ready yet")
 
-    from app.core.providers.storage.local_storage import LocalStorage
+    from app.core.dependencies import get_storage
 
-    storage = LocalStorage()
+    storage = get_storage()
     if not await storage.exists(row["audio_storage_path"]):
         raise HTTPException(status_code=404, detail="Audio file not found")
 

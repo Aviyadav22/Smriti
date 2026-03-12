@@ -30,7 +30,7 @@ import type {
     TokenResponse,
 } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 
 // ---------------------------------------------------------------------------
 // Token management
@@ -140,6 +140,8 @@ async function apiFetch<T>(
                 if (retry.status === 204) return undefined as T;
                 return retry.json() as Promise<T>;
             }
+            // Only clear tokens if refresh returned false due to a real 401,
+            // not a network blip. Check if we still have connectivity.
             clearTokens();
             throw new ApiError(401, "UNAUTHORIZED", "Session expired");
         }
@@ -182,7 +184,13 @@ async function _doRefresh(): Promise<boolean> {
         const data: TokenResponse = await res.json();
         setTokens(data.access_token, data.refresh_token);
         return true;
-    } catch {
+    } catch (err) {
+        // Network errors (TypeError from fetch) should not force logout —
+        // the user may just be temporarily offline. Only actual 401 responses
+        // (handled above via !res.ok) should invalidate the session.
+        if (err instanceof TypeError) {
+            console.warn("Token refresh failed due to network error:", err.message);
+        }
         return false;
     }
 }

@@ -155,8 +155,9 @@ function ChatPageInner() {
         try {
             const data = await getChatSessions();
             setSessions(data);
-        } catch {
-            // Silently fail — sessions will show as empty
+        } catch (err) {
+            console.error("Failed to load sessions:", err);
+            // Don't clear sessions on error - keep existing data
         } finally {
             setSessionsLoading(false);
         }
@@ -175,8 +176,10 @@ function ChatPageInner() {
                     created_at: m.created_at,
                 })),
             );
-        } catch {
+        } catch (err) {
+            console.error("Failed to load history:", err);
             setMessages([]);
+            setNetworkError("Failed to load chat history. Please try again.");
         } finally {
             setMessagesLoading(false);
         }
@@ -209,8 +212,8 @@ function ChatPageInner() {
             if (activeSessionId === sessionId) {
                 startNewChat();
             }
-        } catch {
-            // ignore
+        } catch (err) {
+            console.error("Failed to delete session:", err);
         }
     }
 
@@ -637,6 +640,8 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
         navigator.clipboard.writeText(message.content).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
+        }).catch((err) => {
+            console.error("Failed to copy to clipboard:", err);
         });
     }, [message.content]);
 

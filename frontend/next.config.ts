@@ -19,7 +19,7 @@ const nextConfig: NextConfig = {
   /* Security headers */
   async headers() {
     const isDev = process.env.NODE_ENV === "development";
-    const apiUrl = process.env.BACKEND_URL || "http://127.0.0.1:8000";
+    const backendUrl = process.env.BACKEND_URL || "";
 
     // CSP Policy:
     // - script-src: NO 'unsafe-inline' — prevents inline script injection (XSS).
@@ -28,6 +28,12 @@ const nextConfig: NextConfig = {
     // - style-src: 'unsafe-inline' is required because Next.js (styled-jsx)
     //   and Tailwind inject <style> tags at runtime. Nonce-based styles are
     //   not yet fully supported by Next.js (see next.js#26891).
+    // - connect-src: In production, only 'self' + explicit BACKEND_URL.
+    //   In dev, also allow localhost websocket for HMR.
+    const connectSrc = isDev
+      ? `connect-src 'self' ${backendUrl || "http://127.0.0.1:8000"} ws://localhost:*`
+      : `connect-src 'self'${backendUrl ? ` ${backendUrl}` : ""}`;
+
     const csp = [
       "default-src 'self'",
       `script-src 'self'${isDev ? " 'unsafe-eval'" : ""}`,
@@ -35,7 +41,7 @@ const nextConfig: NextConfig = {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://storage.googleapis.com",
       "font-src 'self'",
-      `connect-src 'self' ${apiUrl} ${isDev ? "ws://localhost:*" : ""}`,
+      connectSrc,
       "frame-ancestors 'none'",
       "object-src 'none'",
       "base-uri 'self'",

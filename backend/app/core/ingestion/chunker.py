@@ -285,6 +285,7 @@ def _is_heading_position(text: str, match_start: int) -> bool:
 
 _LEGAL_ABBREVS_RE = re.compile(
     r'\b(?:vs?|Dr|Mr|Mrs|Smt|Hon|Ld|Sr|Jr|No|Art|Sec|Vol|Ch|'
+    r'Ltd|Pvt|Govt|Ors|Anr|St|viz|'
     r'I\.?P\.?C|Cr\.?P\.?C|C\.?P\.?C|B\.?N\.?S|S\.?C\.?C|'
     r'A\.?I\.?R|N\.?C\.?L\.?T|I\.?B\.?C|[A-Z])\.$'
 )

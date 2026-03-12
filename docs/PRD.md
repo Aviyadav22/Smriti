@@ -1,8 +1,8 @@
 # Smriti -- Product Requirements Document
 
-**Version:** 1.0
-**Last Updated:** 2026-03-02
-**Status:** Draft
+**Version:** 1.2
+**Last Updated:** 2026-03-12
+**Status:** Active Development (Phase 9)
 **Product:** Smriti -- AI-Powered Indian Legal Research Platform
 
 ---
@@ -13,11 +13,12 @@
 2. [Market Opportunity](#2-market-opportunity)
 3. [Target Users](#3-target-users)
 4. [Core Features](#4-core-features)
-5. [Indian-Specific Requirements](#5-indian-specific-requirements)
-6. [Out of Scope (MVP)](#6-out-of-scope-mvp)
-7. [Non-Functional Requirements](#7-non-functional-requirements)
-8. [Success Metrics](#8-success-metrics)
-9. [Appendix](#9-appendix)
+5. [Extended Features](#5-extended-features)
+6. [Indian-Specific Requirements](#6-indian-specific-requirements)
+7. [Out of Scope (MVP)](#7-out-of-scope-mvp)
+8. [Non-Functional Requirements](#8-non-functional-requirements)
+9. [Success Metrics](#9-success-metrics)
+10. [Appendix](#10-appendix)
 
 ---
 
@@ -80,11 +81,23 @@ Indian lawyers lack an intelligent research tool that understands legal semantic
 | Tier 2/3 city lawyers | ~500,000 | Medium (INR 200-500/month) | P1 |
 | Law students | ~500,000 active | Low (freemium) | P2 |
 
-### 2.3 Competitive Moat
+### 2.3 Competitive Landscape (Updated March 2026)
 
-- **Indian-law-first** semantic model trained/fine-tuned on Indian judgments, statutes, and legal terminology
-- **Citation graph** built specifically for Indian citation formats (SCC, AIR, SCR, INSC, etc.)
+| Competitor | Key Strength | Recent Development |
+|------------|-------------|-------------------|
+| **Harvey AI + SCC Online** | Harvey partnered with SCC Online (January 2026) to bring AI to India's largest legal database | Major threat: combines Harvey's AI with SCC's 30M+ documents. Pricing and feature depth TBD. |
+| **Jhana AI** | 16M documents, $1.6M funded | Focused on document volume; lacks citation graph and agent framework |
+| **BharatLaw AI** | 1M+ documents, free tier available | Broad corpus but limited AI depth; no structured analysis agents |
+| **CaseMine** | CaseIQ feature for case similarity | Limited to similarity matching; no deep agent-based workflows |
+| **LegitQuest** | Judge Analytics | Strong on analytics but limited AI-assisted research |
+
+### 2.4 Competitive Moat
+
+- **Citation graph (Neo4j)** -- interactive neighborhood, chain, and authorities views built on Indian citation formats (SCC, AIR, SCR, INSC, MANU, JT, HC reporters). No competitor offers this depth of citation network analysis.
+- **AI agent framework (LangGraph)** -- four specialized agents (Research, Case Prep, Strategy, Drafting) with human-in-the-loop checkpoints. Harvey+SCC may have chat but not structured multi-step agent workflows.
+- **Section-aware chunking** -- 2000-char chunks with 200-char overlap, section-tagged, sentence-boundary-aware, paragraph number tracking. Legal-domain-specific, not generic RAG.
 - **Old-to-new law mapping** as a unique feature during the BNS/BNSS/BSA transition window
+- **DPDP Act compliance** -- consent management, data erasure, audit logging. First-mover advantage on Indian data privacy compliance for legal AI.
 - **Structured judgment parsing** extracting ratio decidendi, obiter dicta, and holding from Indian judgment formats
 
 ---
@@ -162,7 +175,7 @@ Indian lawyers lack an intelligent research tool that understands legal semantic
 
 ## 4. Core Features
 
-### 4.1 Hybrid Legal Search
+### 4.1 Hybrid Legal Search -- BUILT
 
 **Description:**
 A search engine that combines semantic understanding (vector similarity), keyword matching (BM25/full-text), and structured metadata filtering to deliver highly relevant Indian legal case results. The system understands legal concepts, not just keywords -- a search for "right to privacy as fundamental right" should surface *K.S. Puttaswamy v. Union of India* even if those exact words do not appear prominently in the judgment text.
@@ -187,15 +200,17 @@ A search engine that combines semantic understanding (vector similarity), keywor
 | HS-11 | User can sort results by: relevance (default), date (newest/oldest), citation count (most cited) | P1 |
 | HS-12 | Empty state: when no results found, system suggests alternative queries or broader filters | P2 |
 
+**Implementation Status:** Built (Phases 1-3). Hybrid search combines Pinecone vector search (Gemini gemini-embedding-001, 1536-dim) with PostgreSQL full-text search (tsvector + ts_rank_cd), merged via RRF (k=60), reranked by Cohere rerank-v4.0-pro. Faceted filtering, suggest/autocomplete, and exact citation lookup all implemented. Query understanding via Gemini 2.5 Pro.
+
 **Technical Notes:**
-- Vector search via embeddings (legal-domain fine-tuned model or high-quality general model with Indian legal corpus)
-- Keyword search via Elasticsearch/OpenSearch BM25
-- Hybrid ranking: weighted combination of vector score and BM25 score, tunable per query type
+- Vector search via Pinecone (Gemini gemini-embedding-001 embeddings, 1536-dim)
+- Keyword search via PostgreSQL tsvector + websearch_to_tsquery (FTS)
+- Hybrid ranking: Reciprocal Rank Fusion (k=60) combining vector and FTS scores, followed by Cohere reranking
 - Metadata stored in structured fields for fast filtering (court, year, case_type, bench_type, jurisdiction, statutes_cited)
 
 ---
 
-### 4.2 Case Viewer
+### 4.2 Case Viewer -- BUILT
 
 **Description:**
 A structured, readable display of individual judgments that breaks down the often 50-200 page Indian judgment format into navigable sections. Combines the original PDF with AI-parsed structured data and rich metadata.
@@ -227,7 +242,7 @@ A structured, readable display of individual judgments that breaks down the ofte
 
 ---
 
-### 4.3 Citation Graph
+### 4.3 Citation Graph -- BUILT
 
 **Description:**
 An interactive network visualization showing how cases cite, overrule, affirm, and distinguish each other. This is the legal equivalent of Google's PageRank -- the more a case is cited, the more authoritative it is. The graph allows lawyers to trace precedent chains, discover landmark cases, and identify when a precedent has been weakened or overruled.
@@ -253,14 +268,17 @@ An interactive network visualization showing how cases cite, overrule, affirm, a
 | CG-12 | Graph is responsive and handles up to 200 visible nodes without significant lag | P1 |
 
 **Technical Notes:**
-- Graph stored in a graph database (Neo4j) or as adjacency lists in the primary database
-- Frontend graph rendering via D3.js, Cytoscape.js, or vis.js
-- Citation relationship extraction is an NLP pipeline task: parse judgment text to identify cited cases and classify the relationship type
-- For MVP, relationship classification can be simplified to "cites" and "overrules" only, with "affirms" and "distinguishes" added in v2
+**Implementation Status:** Built (Phases 3-4). Citation graph stored in Neo4j AuraDB with neighborhood, chain, and authorities views. Citation extraction via LLM + regex with neutral citations (YYYY:INSC:NNNN), SCC sub-reporters, MANU/JT/HC reporters. Precedent strength classification (BINDING/PERSUASIVE/DISTINGUISHABLE) and overruling detection implemented.
+
+**Technical Notes:**
+- Graph stored in Neo4j AuraDB with MERGE-based idempotent node creation
+- Frontend graph rendering via interactive visualization
+- Citation relationship extraction via LLM + regex pipeline with 42 short act names
+- Treatment-strength fusion for precedent classification
 
 ---
 
-### 4.4 RAG Chat (AI Research Assistant)
+### 4.4 RAG Chat (AI Research Assistant) -- BUILT
 
 **Description:**
 A conversational AI assistant that answers legal research questions grounded in actual Indian judgments and statutes. Every factual claim in the response is backed by a citation to a specific case or statutory provision. The system uses Retrieval-Augmented Generation (RAG) to fetch relevant documents before generating a response, ensuring factual accuracy and eliminating hallucination of non-existent cases.
@@ -288,18 +306,21 @@ A conversational AI assistant that answers legal research questions grounded in 
 | RC-14 | Rate limiting: reasonable usage limits per user tier to manage LLM costs | P0 |
 
 **Technical Notes:**
-- RAG pipeline: query embedding -> vector search -> top-K document retrieval -> LLM generation with retrieved context
-- LLM: GPT-4 / Claude / open-source legal-tuned model (configurable)
-- Citation verification: post-generation check that every cited case actually exists in the database
-- Chunk strategy: judgments split into overlapping chunks (~500-1000 tokens) with section metadata preserved
-- Embedding model: must handle Indian legal text well (test against legal benchmarks)
+**Implementation Status:** Built (Phase 4). SSE streaming with Gemini 2.5 Pro, citation verification (3-layer: UUID, human-readable, grounding check), session management with chat history persistence. Renders via react-markdown + remark-gfm.
+
+**Technical Notes:**
+- RAG pipeline: query embedding -> Pinecone vector search -> RRF fusion with FTS -> Cohere reranking -> Gemini 2.5 Pro generation with retrieved context
+- LLM: Gemini 2.5 Pro (1M context window)
+- Citation verification: 3-layer post-generation check (UUID verification, human-readable citation check, grounding against search results)
+- Chunk strategy: 2000-char chunks with 200-char overlap, section-tagged, sentence-boundary-aware
+- Embedding model: Gemini gemini-embedding-001 (1536-dim, Matryoshka)
 
 ---
 
-### 4.5 Document Upload
+### 4.5 Document Upload & Analysis -- BUILT
 
 **Description:**
-Allows users to upload their own PDF judgments or legal documents for personal research. Uploaded documents go through the same processing pipeline as the main corpus -- metadata extraction, section parsing, embedding generation -- and become searchable within the user's personal collection.
+Allows users to upload their own PDF judgments or legal documents for analysis. Uploaded documents go through the same processing pipeline as the main corpus -- metadata extraction, section parsing, embedding generation -- and become searchable within the user's personal collection.
 
 **User Story:**
 > As a lawyer, I want to upload PDF judgments that I have collected or received from colleagues, so that I can search across my personal collection alongside the main database.
@@ -320,19 +341,253 @@ Allows users to upload their own PDF judgments or legal documents for personal r
 | DU-10 | Duplicate detection: system warns if an uploaded document already exists in the main corpus | P2 |
 | DU-11 | Processing time: under 5 minutes for a typical 50-page judgment | P1 |
 
+**Implementation Status:** Built (Phase 5). Full 7-step async document analysis pipeline processed via Celery background tasks.
+
+**Document Analysis Pipeline (7 Steps) -- BUILT:**
+
+The pipeline is implemented as a Celery task (`analyze_document`) with real-time status tracking. Each step updates the document's `status` and `processing_step` fields in PostgreSQL, enabling the frontend to show granular progress:
+
+| Step | Status | Description |
+|------|--------|-------------|
+| 1 | `extracting` | Extract text from PDF via PyMuPDF with NFKC normalization; falls back to OCR if extracted text is under 50 characters |
+| 2 | `analyzing` | Identify legal issues using `DocumentAnalyzerService` -- extracts issues (title + description), parties, key facts, relief sought, and referenced acts via Gemini LLM |
+| 3 | `searching` | Find relevant precedents per issue using `PrecedentMapperService` -- embeds issue descriptions, searches Pinecone, reranks with Cohere, matches statutes |
+| 4 | `generating` | Generate counter-arguments for each issue using LLM, anticipating opposing counsel's positions and preparing responses |
+| 5 | `generating` | Assemble a structured research memo combining document type, parties, relief sought, key facts, issues with precedents, and counter-arguments |
+| 6 | `indexing` | Chunk the document text using legal-aware chunking (`chunk_judgment`), embed in batches of 20, and upsert vectors to Pinecone with metadata (case_id, chunk_index, section_type, source="upload") |
+| 7 | `completed` | Store analysis results in `document_analyses` table (extracted text, issues JSON, parties, key facts, relief sought, counter-arguments, research memo) |
+
+**Key Implementation Details:**
+- Celery task with `max_retries=2` and `default_retry_delay=60` seconds for transient errors
+- Transient errors (ConnectionError, TimeoutError, OSError) trigger Celery retry; other errors are caught and stored as failure status
+- Analysis results stored in `document_analyses` table linked to the document by `document_id`
+- Vector indexing uses batch upsert (100 vectors per batch) to Pinecone, making uploaded documents immediately searchable via hybrid search and RAG chat
+- Chunk count recorded on the document record for verification
+
 **Technical Notes:**
-- PDF text extraction: PyMuPDF (fitz) for text-based PDFs, Tesseract OCR for scanned documents
-- Metadata extraction: NLP pipeline with regex patterns for citations, NER for parties and judges
-- Embeddings generated and stored in user-scoped vector namespace
-- Storage: original PDF in object storage, extracted text and metadata in database
+- Task implementation: `tasks/document_tasks.py`
+- Services: `core/analysis/document_analyzer.py` (issue extraction, counter-args, memo), `core/analysis/precedent_mapper.py` (precedent search)
+- PDF text extraction: PyMuPDF with NFKC normalization and OCR fallback
+- Storage: GCS (prod) / local (dev), extracted text and metadata in PostgreSQL
 
 ---
 
-## 5. Indian-Specific Requirements
+## 5. Extended Features
+
+### 5.1 AI Agents (LangGraph) -- BUILT
+
+**Description:**
+Four specialized AI agents built on LangGraph (StateGraph) for structured, multi-step legal workflows. Each agent includes human-in-the-loop (HITL) checkpoints via `interrupt()`, allowing lawyers to review and revise intermediate outputs before the agent proceeds. All agents stream progress via SSE.
+
+| Agent | Purpose | Key Capabilities |
+|-------|---------|-----------------|
+| **Research Agent** | Deep legal research on any topic | Query classification, decomposition into 3-7 sub-queries, parallel hybrid search, contradiction detection, synthesis into structured research memo |
+| **Case Prep Agent** | Prepare for a specific case hearing | Load document analysis, prioritize issues (4-dimension scoring), deep precedent search with 2-hop citation graph neighbors, argument ordering, strategy memo generation |
+| **Strategy Agent** | Develop litigation strategy | Structured fact analysis, judge profile fetching, precedent search with strength classification, case strength assessment, argument generation, counter-argument anticipation, judge-specific considerations |
+| **Drafting Agent** | Draft legal documents | Template resolution (7 document templates), statutory provision gathering, precedent verification, section-by-section drafting with IRAC structure, document assembly, DOCX/PDF export |
+
+**Supported Document Types (Drafting Agent) -- 7 Templates:**
+
+| Template | Display Name | Statutory Basis | Required Fields |
+|----------|-------------|-----------------|-----------------|
+| `bail_application` | Bail Application (S.439 CrPC) | Section 439, Code of Criminal Procedure, 1973 | accused_name, fir_number, police_station, offences_charged |
+| `writ_petition_226` | Writ Petition (Art.226) | Article 226, Constitution of India | petitioner_details, respondent_details, fundamental_right_violated |
+| `writ_petition_32` | Writ Petition (Art.32) | Article 32, Constitution of India | petitioner_details, respondent_details, fundamental_right_violated |
+| `written_statement` | Written Statement (Order VIII CPC) | Order VIII, Code of Civil Procedure, 1908 | suit_number, plaintiff_claims |
+| `legal_notice` | Legal Notice | Various | sender_name, sender_address, recipient_name, recipient_address |
+| `appeal` | Appeal (Civil/Criminal) | Various | impugned_order_details, lower_court_name |
+| `interim_application` | Interim Application | Various | main_case_number, relief_sought |
+
+Each template is an immutable `DocumentTemplate` dataclass defining: `doc_type`, `display_name`, ordered `sections` tuple, `required_fields`, `statutory_basis`, `court_header` template string, and `prompt_key` for LLM prompt lookup.
+
+**DOCX and PDF Export -- BUILT:**
+- **DOCX export** (`export_to_docx`): Generates properly formatted Indian legal documents using `python-docx` with Times New Roman typography, 1-inch margins, centered title, section headings (Level 1), and auto-numbered paragraphs. Document metadata includes title, author ("Smriti AI"), creation timestamp, and template description.
+- **PDF export** (`export_to_pdf`): Generates A4-formatted PDFs using ReportLab with Times-Roman/Times-Bold fonts, 1-inch margins, section headings, numbered paragraphs, and XML-safe text escaping. Document metadata includes title, author, and subject line.
+- Both formats parse markdown headings and all-caps section headings from generated content, producing structured multi-section output.
+
+**Technical Notes:**
+- Template definitions: `core/drafting/templates.py` (frozen dataclasses)
+- Export functions: `core/drafting/export.py` (async, returns raw bytes)
+- Framework: LangGraph StateGraph with MemorySaver checkpointing (AsyncPostgresSaver for prod)
+- Streaming: SSE with event types (status/progress/checkpoint/memo/done/error)
+- All prompts in `core/legal/prompts.py`, structured output schemas with Gemini 2.5 Pro
+- 3-layer citation verification on all generated memos
+- Precedent strength classification (BINDING/PERSUASIVE/DISTINGUISHABLE)
+- Legal disclaimer appended to all AI-generated output
+
+---
+
+### 5.2 Judge Analytics -- BUILT
+
+**Description:**
+Comprehensive judge and court analytics service providing profile pages, disposal patterns, bench composition analysis, temporal trends, and court-level statistics. Used by the Strategy Agent for judge-specific strategic recommendations and directly available via `/api/judges/` endpoints.
+
+**User Story:**
+> As a litigation lawyer, I want to see a judge's disposal patterns, bench composition history, and case type distribution, so that I can tailor my arguments to the judge hearing my case.
+
+**Key Features:**
+- **Judge Profiles:** Full profile with total cases (participated and authored), cases-by-year timeline, disposal patterns (Allowed/Dismissed/Partly Allowed/Disposed), top 10 cited judgments, top 20 statutes cited, and case type distribution
+- **Disposal Rate Analysis:** Per-judge breakdown of conviction/acquittal/dismissal rates with counts and percentages, computed over all authored cases
+- **Temporal Trends:** Year-over-year analysis of a judge's case volume, allowed/dismissed counts, and allowed percentage -- useful for detecting shifts in judicial approach over time
+- **Bench Composition Analysis:** For any judge, identifies the top 10 co-sitting judges with case counts, revealing frequent bench pairings
+- **Court Statistics:** Court-level analytics including total cases, cases-by-year, case type distribution, disposal patterns, and top 20 judges by case volume
+- **Compare Judges:** Side-by-side comparison of 2-3 judges, returning full profiles for each to highlight differences in disposal rates, case types, and bench composition
+- **Paginated Judge List:** Searchable list of all judges with participation and authorship counts, ordered by total cases
+- **Filterable Case List:** Per-judge case list with filters for year and case type, showing authorship status
+
+**Technical Notes:**
+- Service class: `JudgeAnalyticsService` in `core/analytics/judge_analytics.py`
+- Uses SQLAlchemy ORM with `unnest()` for PostgreSQL array fields (judge[], acts_cited[])
+- Module-level convenience functions for `calculate_disposal_rates()`, `calculate_temporal_trends()`, and `calculate_sentencing_stats()`
+- All queries are async and paginated
+- API endpoints: `GET /judges`, `GET /judges/{name}`, `GET /judges/{name}/cases`, `GET /judges/compare`, `GET /judges/courts/{court}/stats`
+
+---
+
+### 5.3 Audio Digests -- BUILT
+
+**Description:**
+Text-to-speech conversion of case summaries for lawyers who prefer audio consumption. Supports 22 Indian languages via Sarvam AI TTS with Google Cloud TTS as fallback.
+
+**Key Features:**
+- Audio-optimized summaries (400-600 words, ~2-3 minutes)
+- Sarvam AI TTS (22 Indian languages) with Google Cloud TTS fallback
+- Spoken-delivery-optimized: conversational transitions, no visual-only abbreviations
+- MockTTS provider for development/testing
+- Celery background task for async audio generation
+
+---
+
+### 5.4 DPDP Act Compliance & User-Facing Security -- BUILT
+
+**Description:**
+Full compliance with the Digital Personal Data Protection Act, 2023 (India's primary data privacy law), with user-facing privacy controls and field-level encryption. First-mover advantage among Indian legal AI platforms.
+
+**User Story:**
+> As a user, I want to view, export, and delete all my personal data, and manage my consent preferences, so that I have full control over my data as required by Indian privacy law.
+
+**Key Features:**
+
+*Data Subject Rights (DPDP Sections 6, 11, 12):*
+- **Data Summary** (`GET /dpdp/data-summary`): Returns a complete inventory of all personal data held -- chat sessions, chat messages, documents, agent executions, audit entries, and consent records. Rate-limited to 20 requests/minute.
+- **Data Erasure** (`POST /dpdp/erasure`): Atomic deletion of all user data (agent executions, chat messages, chat sessions, documents, consents) within a single database transaction. Deactivates the user account. Logged to a separate `dpdp_audit_log` table for compliance. Rate-limited to 5 requests/hour.
+- **Consent Withdrawal** (`POST /dpdp/consent-withdraw`): Revokes all active consents by setting `revoked_at` timestamps. Logged to DPDP audit trail.
+- **Consent Status** (`GET /dpdp/consent-status`): Returns all consent records with type, grant status, version, grant date, and revocation date.
+
+*Account Deletion:*
+- **Account Deletion** (`DELETE /auth/me`): Full account deletion endpoint that cascades through all user data (chat sessions, messages, documents, agent executions, consents, audit logs) and removes the user record. Logged to both `dpdp_audit_log` and standard `audit_logs`. Distinct from DPDP erasure (which deactivates but retains the user record for compliance).
+
+*Field-Level Encryption:*
+- **AES-256-GCM Encryption** (`security/encryption.py`): Symmetric field-level encryption for sensitive database fields (PII, API keys). Uses a 32-byte key from environment config (hex or base64 encoded). Produces base64-encoded output of `nonce (12 bytes) + ciphertext + tag (16 bytes)`.
+- **Migration-safe decryption** (`safe_decrypt()`): Graceful fallback for pre-existing plaintext values in the database -- avoids crashes when encryption is enabled on existing data.
+- **PII Redaction**: Structured logging with PII fields (emails, names, passwords) automatically redacted.
+
+**Technical Notes:**
+- DPDP endpoints in `api/routes/dpdp.py`, account deletion in `api/routes/auth.py`
+- Encryption module: `security/encryption.py` using `cryptography` library (AESGCM)
+- Separate `dpdp_audit_log` table for DPDP-specific compliance events
+- All deletion operations use nested transactions (`begin_nested()`) for atomicity
+- Rate limiting on all sensitive endpoints via Redis-backed rate limiter
+
+---
+
+### 5.5 Hindi Support -- PARTIALLY BUILT
+
+**Description:**
+Internationalization support for Hindi using next-intl, with a language toggle and Hindi legal glossary (100+ terms). Full translations are in progress.
+
+**Key Features:**
+- next-intl framework setup with language toggle
+- Hindi legal glossary with 100+ terms
+- Agent prompts support Hindi output via `apply_language_suffix()`
+- Full UI translations in progress
+
+---
+
+### 5.6 Admin Tools -- BUILT
+
+**Description:**
+Administrative suite for data quality monitoring, editorial review, and metadata corrections with full audit trail. All admin endpoints require the `admin` role.
+
+**User Story:**
+> As an admin, I want to monitor data quality across the case corpus, review flagged cases before they go live, and correct metadata errors with a full audit trail, so that the platform maintains high data accuracy.
+
+**Key Features:**
+
+*Data Quality Dashboard (`GET /admin/data-quality`):*
+- Computes field population rates for 25 scalar fields (title, citation, court, year, decision_date, case_type, jurisdiction, bench_type, petitioner, respondent, author_judge, disposal_nature, ratio_decidendi, case_number, headnotes, outcome_summary, coram_size, lower_court, opinion_type, split_ratio, petitioner_type, respondent_type, is_pil, extraction_confidence, text_hash) and 7 array fields (judge, acts_cited, cases_cited, keywords, dissenting_judges, concurring_judges, companion_cases)
+- Each field shows absolute count and population rate (0.0-1.0)
+- Ingestion status breakdown (complete, needs_review, failed, processing, rejected)
+- Average non-null metadata fields per case
+- Citation resolution statistics (cases with citations vs. known unique citations in DB)
+
+*Review Queue (`GET /admin/review`, `GET /admin/review/{id}`, `POST /admin/review/{id}/approve`, `POST /admin/review/{id}/reject`):*
+- Lists cases flagged during ingestion with low extraction confidence, missing critical fields, or explicit `needs_review` / `failed` status
+- Sortable by created_at, extraction_confidence, or year (ascending or descending)
+- Paginated with configurable page size (1-100)
+- Full case detail view showing all metadata fields plus extraction confidence and provenance
+- Approve action sets `ingestion_status='complete'`; reject action sets `ingestion_status='rejected'` for re-ingestion
+- Only cases in `needs_review` status can be approved or rejected
+
+*Metadata Corrections (`POST /admin/corrections/{id}/correct`, `GET /admin/corrections/{id}/history`):*
+- Allows correction of 33 metadata fields (25 scalar + 7 array + is_pil)
+- Every correction records the old value, new value, correcting user, and reason in the `audit_logs` table
+- Updates `metadata_provenance` JSON to mark the corrected field as `admin_corrected`
+- Reason field required (5-500 characters) for accountability
+- Correction history endpoint returns chronological audit trail for any case
+- Array fields validated to ensure list values are provided
+
+**Technical Notes:**
+- Route files: `api/routes/data_quality.py`, `api/routes/admin_review.py`, `api/routes/admin_corrections.py`
+- All endpoints protected by `require_role("admin")` via RBAC middleware
+- Uses raw SQL via SQLAlchemy `text()` for complex aggregation queries
+- Audit logs stored in `audit_logs` table with `action='metadata.correction'`
+
+---
+
+### 5.7 Ingestion Pipeline -- BUILT
+
+**Description:**
+Production-ready pipeline for bulk ingestion of Indian court judgments from the AWS S3 Open Data dataset (35K+ Supreme Court judgments).
+
+**Key Features:**
+- PDF extraction with NFKC normalization, OCR fallback, smart page joining
+- 21-rule metadata extraction with Gemini 2.5 Flash, regex supplementation
+- Legal-aware chunking (2000-char, 200-char overlap, section-tagged)
+- Batch vectorization with stale vector cleanup
+- Queue-based workers with circuit breaker (10 failures) and graceful shutdown
+- Enriched Pinecone metadata and Neo4j citation graph nodes
+
+---
+
+### 5.8 Scripts & Operations -- BUILT
+
+**Description:**
+Operational scripts for bulk data ingestion, graph population, scheduled processing, verification, and quality benchmarking. Located in `backend/scripts/`.
+
+**Scripts:**
+
+| Script | Purpose | Key Capabilities |
+|--------|---------|-----------------|
+| `ingest_s3.py` | Bulk ingestion from AWS S3 Open Data | Downloads tar/parquet files from `s3://indian-supreme-court-judgments/`. Supports `--year`, `--year-from`/`--year-to` ranges, `--resume` mode, and `--limit`. Uses SQLite tracker DB (`data/ingest_tracker.db`) for resume support. Multi-key Gemini API pool (`GEMINI_API_KEYS`) with rate limiter. Graceful shutdown via signal handlers. Circuit breaker pattern (10 consecutive failures). Tenacity retry with exponential backoff. ETA logging. |
+| `populate_neo4j.py` | Populate Neo4j citation graph from PostgreSQL | Creates Case nodes (id, title, citation, court, year), CITES edges (from cases_cited arrays), Act nodes with INTERPRETS edges (from acts_cited), and Judge nodes with DECIDED_BY/AUTHORED_BY edges. Supports `--batch` size, `--dry-run` preview, and `--stats` to show current Neo4j statistics. Uses asyncpg for PostgreSQL reads and Neo4j async driver for writes. |
+| `daily_ingest.py` | Scheduled daily ingestion wrapper | Designed for cron or Cloud Scheduler (`0 2 * * *`). Runs incremental ingestion for current year in resume mode, then populates Neo4j graph. Supports `--year`, `--full` (all years), `--limit`, and `--timeout`. Orchestrates `ingest_s3.py` and `populate_neo4j.py` as subprocesses. |
+| `verify_ingestion.py` | Post-ingestion cross-store verification | Checks consistency across PostgreSQL, Pinecone, and Neo4j. Samples N cases (default 100, configurable via `--sample`) and verifies: vector count in Pinecone matches expected chunk_count, case nodes exist in Neo4j, FTS indexes are populated. Reports mismatches, missing graph nodes, and FTS issues. |
+| `benchmark_extraction.py` | Metadata extraction quality benchmarking | Runs the extraction pipeline against a gold-standard dataset of manually verified cases. Computes per-field precision and recall for 18 scalar fields (title, citation, court, year, etc.) and 4 list fields (judge, acts_cited, cases_cited, keywords). Supports `--gold-dir` path and `--fields` filter. Uses `FieldMetrics` dataclass with true_positive/false_positive/false_negative tracking. |
+
+**Technical Notes:**
+- All scripts add the backend package to `sys.path` for import compatibility
+- Environment loaded via `dotenv` from `backend/.env`
+- S3 data accessed via HTTPS (no AWS credentials needed -- public bucket)
+- Scripts are idempotent: resume mode and MERGE-based Neo4j writes prevent duplicates
+
+---
+
+## 6. Indian-Specific Requirements
 
 These requirements are non-negotiable for the product to be useful to Indian legal professionals. They differentiate Smriti from any generic legal AI tool.
 
-### 5.1 Citation Format Support
+### 6.1 Citation Format Support
 
 The system MUST recognize, parse, and normalize all major Indian citation formats:
 
@@ -349,7 +604,7 @@ The system MUST recognize, parse, and normalize all major Indian citation format
 
 Each case may have **multiple citation formats** (e.g., the same judgment cited as SCC, AIR, and INSC). The system must treat these as aliases for the same case and merge them.
 
-### 5.2 Court Hierarchy Awareness
+### 6.2 Court Hierarchy Awareness
 
 The system must encode and use the Indian court hierarchy:
 
@@ -367,7 +622,7 @@ Authority Level 5: Quasi-judicial bodies
 - RAG chat should weight Supreme Court holdings higher than High Court holdings when they conflict
 - When a High Court judgment contradicts a Supreme Court judgment on the same point, the system should flag this
 
-### 5.3 Bare Acts and Statutory Mapping
+### 6.3 Bare Acts and Statutory Mapping
 
 **Old Law to New Law Mapping (Critical for 2024-2027 transition period):**
 
@@ -399,7 +654,7 @@ Authority Level 5: Quasi-judicial bodies
 - Right to Information Act 2005
 - Prevention of Corruption Act 1988
 
-### 5.4 Indian Legal Terminology
+### 6.4 Indian Legal Terminology
 
 The system (especially RAG chat) must understand and correctly use Indian legal terminology:
 
@@ -410,7 +665,7 @@ The system (especially RAG chat) must understand and correctly use Indian legal 
 - **Roles:** Senior Advocate, Advocate, Advocate on Record (AoR), Amicus Curiae, Solicitor General, Attorney General, Additional Solicitor General, Public Prosecutor, Standing Counsel
 - **Identifiers:** CNR (Case Number Register) number format: `XXHCYY-NNNNNN-YYYY` (state code + district code + serial + year)
 
-### 5.5 Language Support (v1)
+### 6.5 Language Support (v1)
 
 - **Search and AI:** English only in v1
 - **Display:** Judgments in Hindi and regional languages must be displayable (UTF-8 support for Devanagari, Tamil, Telugu, Kannada, Bengali, Gujarati, Malayalam, Marathi, Odia, Punjabi scripts)
@@ -419,14 +674,14 @@ The system (especially RAG chat) must understand and correctly use Indian legal 
 
 ---
 
-## 6. Out of Scope (MVP)
+## 7. Out of Scope (MVP)
 
 The following features are explicitly excluded from the MVP (v1) release to maintain focus:
 
 | Feature | Reason for Exclusion | Planned Version |
 |---------|---------------------|-----------------|
 | Multi-language search | Requires translation pipeline and multilingual embeddings | v2 |
-| Contract review / drafting | Different product category (document AI vs. research) | v3 or separate product |
+| Contract review | Different product category (document AI vs. research); legal document drafting is BUILT via Drafting Agent | v3 or separate product |
 | Court date tracking / calendar | Integration with e-courts required | v2 |
 | Billing and time tracking | Practice management, not research | Out of scope |
 | Native mobile app (iOS/Android) | Web responsive is sufficient for v1 | v2 |
@@ -440,9 +695,9 @@ The following features are explicitly excluded from the MVP (v1) release to main
 
 ---
 
-## 7. Non-Functional Requirements
+## 8. Non-Functional Requirements
 
-### 7.1 Performance
+### 8.1 Performance
 
 | Metric | Target | Measurement |
 |--------|--------|-------------|
@@ -454,14 +709,14 @@ The following features are explicitly excluded from the MVP (v1) release to main
 | Document upload processing | < 5 minutes | Time from upload to document being searchable |
 | Concurrent users | 500+ simultaneous | Without performance degradation |
 
-### 7.2 Reliability
+### 8.2 Reliability
 
 - **Uptime:** 99.5% monthly (allows ~3.6 hours downtime/month)
 - **Data durability:** 99.99% (no loss of ingested judgments or user data)
 - **Backup:** Daily automated backups with 30-day retention
 - **Disaster recovery:** RPO < 1 hour, RTO < 4 hours
 
-### 7.3 Security
+### 8.3 Security
 
 - **Authentication:** Email/password with bcrypt hashing; Google OAuth as alternative
 - **Authorization:** Role-based (free user, paid user, admin)
@@ -469,14 +724,14 @@ The following features are explicitly excluded from the MVP (v1) release to main
 - **Encryption:** TLS 1.2+ in transit; AES-256 at rest for user data
 - **Compliance:** Indian IT Act 2000, IT Rules 2011, Digital Personal Data Protection Act 2023
 
-### 7.4 Scalability
+### 8.4 Scalability
 
 - **Corpus size:** System must handle 1 million+ judgments at launch, scaling to 5 million+
 - **Vector store:** Must support 10 million+ vectors (multiple chunks per judgment)
 - **User base:** Architecture must support 100,000+ registered users
 - **Storage:** 5 TB+ for PDFs, 500 GB+ for structured data, 200 GB+ for vector indices
 
-### 7.5 Usability
+### 8.5 Usability
 
 - **Responsive design:** Works on desktop (primary), tablet, and mobile browsers
 - **Browser support:** Chrome 90+, Firefox 90+, Safari 15+, Edge 90+
@@ -485,9 +740,9 @@ The following features are explicitly excluded from the MVP (v1) release to main
 
 ---
 
-## 8. Success Metrics
+## 9. Success Metrics
 
-### 8.1 Search Quality Metrics
+### 9.1 Search Quality Metrics
 
 | Metric | Target | Measurement Method |
 |--------|--------|--------------------|
@@ -497,7 +752,7 @@ The following features are explicitly excluded from the MVP (v1) release to main
 | Mean Reciprocal Rank (MRR) | > 0.5 | Average of 1/rank of first relevant result |
 | Statute mapping accuracy | > 95% | Old section correctly mapped to new section |
 
-### 8.2 RAG Chat Quality Metrics
+### 9.2 RAG Chat Quality Metrics
 
 | Metric | Target | Measurement Method |
 |--------|--------|--------------------|
@@ -506,7 +761,7 @@ The following features are explicitly excluded from the MVP (v1) release to main
 | Answer relevance | > 80% | Human evaluation: does the answer address the question? |
 | Hallucination rate | 0% | No fabricated case names, citations, or legal principles |
 
-### 8.3 User Engagement Metrics
+### 9.3 User Engagement Metrics
 
 | Metric | Target | Measurement Method |
 |--------|--------|--------------------|
@@ -518,7 +773,28 @@ The following features are explicitly excluded from the MVP (v1) release to main
 | User retention (Week 1) | > 40% | Users returning within 7 days of signup |
 | NPS | > 40 | Quarterly survey |
 
-### 8.4 Business Metrics
+### 9.4 Engineering Metrics (Current State)
+
+| Metric | Current Value | Notes |
+|--------|--------------|-------|
+| Backend unit tests | ~1,151 passing | pytest, comprehensive coverage |
+| Frontend tests | ~218 passing | Jest + React Testing Library |
+| Corpus size | 35K+ SC judgments | AWS S3 Open Data, CC-BY-4.0 |
+| Ingestion pipeline capacity | 50K+ cases | Production-ready with circuit breaker |
+| Agent types | 4 | Research, Case Prep, Strategy, Drafting |
+| Document types (Drafting) | 7 | Bail, Writ (Art.226), Writ (Art.32), Written Statement, Notice, Appeal, Interim Application |
+| Export formats | 2 | DOCX (python-docx) and PDF (ReportLab) |
+| Admin correctable fields | 33 | 25 scalar + 7 array + is_pil |
+| Data quality tracked fields | 32 | 25 scalar + 7 array population rates |
+| Document analysis steps | 7 | Extract, issues, precedents, counter-args, memo, index, store |
+| Operational scripts | 5 | ingest_s3, populate_neo4j, daily_ingest, verify_ingestion, benchmark |
+| DPDP endpoints | 4 | data-summary, erasure, consent-withdraw, consent-status |
+| Hindi glossary terms | 100+ | Legal terminology |
+| Metadata extraction rules | 21 | Gemini prompt with few-shot examples |
+| Act short name mappings | 42 | For citation extraction |
+| Phases completed | 8 of 9 | Phase 9 ready to begin |
+
+### 9.5 Business Metrics
 
 | Metric | Target (Month 6) | Target (Month 12) |
 |--------|-------------------|---------------------|
@@ -530,9 +806,9 @@ The following features are explicitly excluded from the MVP (v1) release to main
 
 ---
 
-## 9. Appendix
+## 10. Appendix
 
-### 9.1 Glossary
+### 10.1 Glossary
 
 | Term | Definition |
 |------|-----------|
@@ -547,7 +823,7 @@ The following features are explicitly excluded from the MVP (v1) release to main
 | CNR | Case Number Register, a unique identifier for cases in the Indian e-courts system |
 | Hybrid search | Combination of semantic (vector) search and keyword (BM25) search for improved retrieval |
 
-### 9.2 References
+### 10.2 References
 
 - Bar Council of India advocate enrollment statistics
 - Supreme Court of India: e-SCR portal (https://e-scr.icloud.nic.in)
@@ -556,8 +832,10 @@ The following features are explicitly excluded from the MVP (v1) release to main
 - Indian Kanoon (https://indiankanoon.org)
 - e-Courts Services (https://ecourts.gov.in)
 
-### 9.3 Document History
+### 10.3 Document History
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-03-02 | Smriti Product Team | Initial PRD |
+| 1.1 | 2026-03-12 | Smriti Product Team | Updated feature statuses to Built, added Extended Features section (agents, audio, DPDP, admin, ingestion), updated competitive landscape with Harvey+SCC partnership, added engineering metrics |
+| 1.2 | 2026-03-12 | Smriti Product Team | Expanded documentation for 6 feature areas: Drafting Agent (7 templates, DOCX/PDF export), Document Analysis Pipeline (7-step Celery pipeline), Admin Tools (data quality dashboard, review queue, corrections with audit trail), Judge Analytics (profiles, disposal rates, temporal trends, bench composition, court stats, compare), Scripts & Operations (5 operational scripts), Security & DPDP (account deletion, field-level AES-256-GCM encryption, consent management) |

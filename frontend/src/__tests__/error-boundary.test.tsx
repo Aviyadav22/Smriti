@@ -40,7 +40,7 @@ describe("ErrorBoundary", () => {
     );
 
     expect(screen.getByText("Something went wrong")).toBeInTheDocument();
-    expect(screen.getByText("Test explosion")).toBeInTheDocument();
+    expect(screen.getByText(/unexpected error occurred/i)).toBeInTheDocument();
     expect(screen.getByText("Try again")).toBeInTheDocument();
 
     consoleSpy.mockRestore();

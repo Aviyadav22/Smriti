@@ -37,35 +37,53 @@ Smriti is a purpose-built Indian legal research platform — think Harvey AI but
 
 ```
 smriti/
-├── docs/                          # You are here — project documentation
+├── docs/                          # Project documentation
 ├── frontend/                      # Next.js 15 App Router
-│   ├── app/                       # Pages (search, case, chat, graph, upload, documents, judges, judge, courts)
-│   ├── components/                # UI components (header, footer, audio-player, file-upload, processing-status, ui/)
+│   ├── app/                       # Pages: search, case/[id], chat, graph, agents/*, register, login, documents
+│   ├── components/                # UI: header, footer, audio-player, file-upload, error-boundary, agent-checkpoint-prompt, ui/
 │   └── lib/                       # API client, types, utils
 ├── backend/                       # FastAPI Python
 │   ├── app/
-│   │   ├── api/routes/            # Endpoint handlers
+│   │   ├── api/routes/            # 12 route modules, 61 endpoints
+│   │   │   ├── auth.py            # Register, login, refresh, logout, delete account
+│   │   │   ├── search.py          # Hybrid search, suggest, facets
+│   │   │   ├── cases.py           # Case detail, summary, PDF, citations, cited-by, similar
+│   │   │   ├── chat.py            # SSE chat sessions, message history
+│   │   │   ├── agents.py          # Agent run (SSE), executions, resume, drafting templates/export
+│   │   │   ├── graph.py           # Neighborhood, chain, authorities, stats
+│   │   │   ├── documents.py       # Upload, list, detail, delete, research memo
+│   │   │   ├── audio.py           # Generate, status, stream audio digests
+│   │   │   ├── ingest.py          # Upload, status, dashboard, review queue, approve/retry
+│   │   │   ├── judges.py          # List, profile, cases, compare, court stats
+│   │   │   ├── dpdp.py            # Data summary, erasure, consent withdraw/status
+│   │   │   ├── health.py          # Dependency health checks
+│   │   │   ├── data_quality.py    # Field population metrics (admin)
+│   │   │   ├── admin_corrections.py # Metadata corrections with audit trail (admin)
+│   │   │   └── admin_review.py    # Review queue, approve/reject cases (admin)
 │   │   ├── core/
-│   │   │   ├── interfaces/        # Protocol contracts (plug-and-play)
-│   │   │   ├── providers/         # Concrete implementations (Gemini, Pinecone, etc.)
-│   │   │   ├── search/            # Hybrid search, RRF, query understanding
-│   │   │   ├── ingestion/         # PDF processing, chunking, embedding
-│   │   │   ├── legal/             # Indian legal patterns, courts, citations
-│   │   │   ├── graph/             # Citation graph operations
+│   │   │   ├── interfaces/        # 9 Protocol contracts (LLM, embedder, vector, graph, reranker, storage, translator, TTS, doc parser)
+│   │   │   ├── providers/         # 11 implementations (Gemini, Pinecone, Neo4j, Cohere, GCS, Sarvam, etc.)
+│   │   │   ├── search/            # Hybrid search (RRF), fulltext (FTS), query understanding
+│   │   │   ├── ingestion/         # PDF extraction, chunking, metadata, citation extraction, pipeline
+│   │   │   ├── legal/             # Courts, citations, acts, prompts, precedent strength, treatment
+│   │   │   ├── graph/             # Citation graph traversal (neighborhood, chain, authorities)
 │   │   │   ├── analysis/          # Document analyzer, precedent mapper
-│   │   │   ├── analytics/         # Judge analytics
-│   │   │   └── chat/              # RAG chat pipeline
-│   │   ├── tasks/                 # Celery async tasks (document, audio)
-│   │   ├── worker.py              # Celery worker entry point
-│   │   ├── security/              # Auth, RBAC, encryption, audit, consent
-│   │   ├── models/                # SQLAlchemy ORM models
-│   │   └── db/                    # Database connections
-│   ├── scripts/                   # Bulk ingestion, seeding
-│   ├── migrations/                # Alembic DB migrations
-│   └── tests/                     # Pytest test suite
+│   │   │   ├── analytics/         # Judge analytics (profile, disposition, bench composition)
+│   │   │   ├── chat/              # RAG pipeline (search → rerank → context → generate → verify)
+│   │   │   ├── agents/            # 4 agent types: research, case_prep, strategy, drafting
+│   │   │   │   ├── graphs/        # LangGraph StateGraph definitions
+│   │   │   │   └── nodes/         # Agent node functions (25+ nodes total)
+│   │   │   ├── drafting/          # Document templates, DOCX/PDF export
+│   │   │   └── middleware.py      # RequestID middleware, request logging
+│   │   ├── tasks/                 # Celery: document analysis (6-step), audio generation
+│   │   ├── security/              # Auth (JWT), RBAC, rate limiter, encryption, audit, consent, sanitizer
+│   │   ├── models/                # 12 SQLAlchemy models (User, Case, ChatSession, etc.)
+│   │   └── db/                    # Database connections (PostgreSQL, Redis)
+│   ├── scripts/                   # ingest_s3, populate_neo4j, daily_ingest, verify_ingestion, benchmark
+│   ├── migrations/                # 14 Alembic migrations (001-014)
+│   └── tests/                     # 1,443 unit + 31 integration + 15 quality tests
 ├── docker-compose.yml             # Local dev services
-├── .env.example                   # Environment template
-└── Makefile                       # Common commands
+└── .env.example                   # Environment template
 ```
 
 ---
@@ -187,11 +205,11 @@ celery -A app.worker:celery_app worker --loglevel=info
 
 ## Current Phase
 
-**Phase 8: Production Hardening + Launch (next)**
+**Phases 1-8 COMPLETE. Phase 9: Scalability & Scale (starting)**
 
-Phases 1-7 complete — backend, security, search pipeline, frontend, RAG chat, citation graph, judge analytics, document upload + analysis, audio digests, LangGraph agent framework (Research Agent, Case Prep Agent, Strategy Agent, Drafting Agent), quality excellence sprint, two comprehensive codebase audits with fixes. ~1126 backend unit tests, ~218 frontend tests. Hindi support partially complete (next-intl setup done, translations in progress, Hindi legal glossary added). See `PHASE_PLAN.md` for full status.
+All core features built and tested: hybrid search (FTS + vector + RRF + Cohere reranking), citation graph (Neo4j), RAG chat with SSE streaming and citation verification, 4 LangGraph agents (Research, Case Prep, Strategy, Drafting) with HITL checkpoints, judge analytics, audio digests (Sarvam AI), document upload + analysis, DPDP Act compliance, admin tools (data quality dashboard, review queue, corrections). 1,443 backend unit tests, 31 integration tests, 298 frontend tests. 796 cases loaded, preparing for 50K ingestion. Hindi support partial (next-intl setup, language toggle, 100+ term glossary). Database at migration 014 with 52 columns, 32 indexes, FTS triggers.
 
-**Audit v2 Completed**: Second comprehensive codebase audit addressed remaining quality gaps including IRAC enforcement in agent prompts, legal disclaimers on all AI-generated output, semantic citation verification (holding accuracy checks), treatment-strength fusion for precedent classification, expanded IPC-BNS/CrPC-BNSS/IEA-BSA statute mappings, Hindi legal terminology glossary (100+ terms), and hardened prompt injection detection.
+**Production readiness audit completed** (March 2026): 20-agent comprehensive audit identified and fixed critical issues across security headers, fail-closed auth, ILIKE escaping, SSE session isolation, ingestion pipeline hardening, error sanitization, PII redaction, and CSP. See `PHASE_9_SCALABILITY_AUDIT.md` for remaining scale items.
 
 ---
 
@@ -211,3 +229,7 @@ Phases 1-7 complete — backend, security, search pipeline, frontend, RAG chat, 
 | `DECISIONS.md` | Architecture Decision Records: why we chose each technology. |
 | `ENV_SETUP.md` | All env vars, API keys, local dev setup. |
 | `TESTING_STRATEGY.md` | What to test, how to evaluate AI output, legal accuracy benchmarks. |
+| `SECURITY_AUDIT.md` | OWASP Top 10 checklist, DPDP compliance, security headers. |
+| `FRONTEND_ARCHITECTURE.md` | Frontend page inventory, component architecture, API patterns. |
+| `STRATEGY.md` | Market analysis, competitive landscape, go-to-market. |
+| `PHASE_9_SCALABILITY_AUDIT.md` | Production scalability findings, remediation priorities. |

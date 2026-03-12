@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from neo4j import AsyncGraphDatabase
@@ -34,7 +35,7 @@ _VALID_LABELS = frozenset({"Case", "Statute", "Section", "Judge", "Court", "Act"
 _VALID_RELATIONSHIPS = frozenset({
     "CITES", "CITED_BY", "OVERRULES", "OVERRULED_BY",
     "DISTINGUISHES", "FOLLOWS", "REFERS_TO", "APPLIES",
-    "DECIDED_BY", "HEARD_IN",
+    "DECIDED_BY", "HEARD_IN", "EQUIVALENT_TO",
 })
 
 
@@ -51,6 +52,7 @@ def _validate_relationship(rel_type: str) -> str:
 
 
 _DEFAULT_BATCH_SIZE = 500
+_QUERY_TIMEOUT_SECONDS = 30
 
 
 class Neo4jGraph:
@@ -121,9 +123,16 @@ class Neo4jGraph:
         params: dict | None = None,
     ) -> list[dict]:
         try:
-            async with self._driver.session(database=self._database) as session:
-                result = await session.run(cypher, **(params or {}))
-                return [dict(record) async for record in result]
+
+            async def _run() -> list[dict]:
+                async with self._driver.session(database=self._database) as session:
+                    result = await session.run(cypher, **(params or {}))
+                    return [dict(record) async for record in result]
+
+            return await asyncio.wait_for(_run(), timeout=_QUERY_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
+            logger.error("Neo4j query timed out after %ds (cypher: %.200s)", _QUERY_TIMEOUT_SECONDS, cypher)
+            raise RuntimeError(f"Neo4j query timed out after {_QUERY_TIMEOUT_SECONDS}s")
         except Neo4jError as exc:
             logger.error("Neo4j query failed: %s (cypher: %.200s)", exc, cypher)
             raise RuntimeError(f"Neo4j query failed: {exc}") from exc
@@ -159,15 +168,22 @@ class Neo4jGraph:
             "RETURN DISTINCT m, type(r[-1]) AS rel_type"
         )
         try:
-            async with self._driver.session(database=self._database) as session:
-                result = await session.run(cypher, id=node_id)
-                nodes: list[dict] = []
-                async for record in result:
-                    nodes.append({
-                        "node": dict(record["m"]),
-                        "relationship": record["rel_type"],
-                    })
-                return {"center": node_id, "neighbors": nodes}
+
+            async def _run() -> dict:
+                async with self._driver.session(database=self._database) as session:
+                    result = await session.run(cypher, id=node_id)
+                    nodes: list[dict] = []
+                    async for record in result:
+                        nodes.append({
+                            "node": dict(record["m"]),
+                            "relationship": record["rel_type"],
+                        })
+                    return {"center": node_id, "neighbors": nodes}
+
+            return await asyncio.wait_for(_run(), timeout=_QUERY_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
+            logger.error("Neo4j get_neighbors timed out after %ds (id=%s)", _QUERY_TIMEOUT_SECONDS, node_id)
+            raise RuntimeError(f"Neo4j get_neighbors timed out after {_QUERY_TIMEOUT_SECONDS}s")
         except Neo4jError as exc:
             logger.error("Neo4j get_neighbors failed (id=%s): %s", node_id, exc)
             raise RuntimeError(f"Neo4j get_neighbors failed: {exc}") from exc
@@ -307,6 +323,22 @@ class Neo4jGraph:
             raise RuntimeError(
                 f"Neo4j batch_create_citation_edges failed unexpectedly: {exc}"
             ) from exc
+
+    @_neo4j_retry
+    async def delete_node(self, node_id: str) -> bool:
+        """Delete a node and all its relationships."""
+        query = "MATCH (n:Case {id: $id}) DETACH DELETE n RETURN count(n) AS deleted"
+        try:
+            async with self._driver.session(database=self._database) as session:
+                result = await session.run(query, id=node_id)
+                record = await result.single()
+                return bool(record and record.get("deleted", 0) > 0)
+        except Neo4jError as exc:
+            logger.error("Neo4j delete_node failed (id=%s): %s", node_id, exc)
+            raise RuntimeError(f"Neo4j delete_node failed: {exc}") from exc
+        except Exception as exc:
+            logger.error("Unexpected error in delete_node (id=%s): %s", node_id, exc)
+            raise RuntimeError(f"Neo4j delete_node failed unexpectedly: {exc}") from exc
 
     async def close(self) -> None:
         """Close the Neo4j driver connection."""

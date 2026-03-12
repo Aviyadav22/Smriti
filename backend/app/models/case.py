@@ -131,6 +131,9 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             unique=True,
             postgresql_where=sa.text("citation IS NOT NULL"),
         ),
+        # Production readiness indexes
+        Index("ix_cases_ingestion_status", "ingestion_status"),
+        Index("ix_cases_disposal_nature", "disposal_nature"),
     )
 
     def __repr__(self) -> str:

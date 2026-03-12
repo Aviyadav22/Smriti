@@ -1,36 +1,117 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Smriti Frontend
 
-## Getting Started
+The frontend for **Smriti**, an AI-powered Indian legal research platform. Built with Next.js 15 (App Router), TypeScript, Tailwind CSS, and shadcn/ui.
 
-First, run the development server:
+Provides hybrid semantic + keyword search across Indian Supreme Court judgments, interactive citation graph visualization, RAG-powered legal chat, and AI agent workflows for research, case preparation, strategy analysis, and legal drafting.
+
+---
+
+## Prerequisites
+
+- **Node.js** 20+ (LTS recommended)
+- **npm** (included with Node.js)
+- A running Smriti backend (see `docs/ENV_SETUP.md`)
+
+---
+
+## Setup
 
 ```bash
+# 1. Install dependencies
+npm install
+
+# 2. Create environment file
+cp .env.example .env.local
+# Edit .env.local and set NEXT_PUBLIC_API_URL
+
+# 3. Start development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment Variables
 
-## Learn More
+Create a `.env.local` file in the `frontend/` directory:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+NEXT_PUBLIC_APP_NAME=Smriti
+NEXT_PUBLIC_APP_DESCRIPTION=Indian Legal Research Platform
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | Yes | Backend API base URL (must include `/api/v1`) |
+| `NEXT_PUBLIC_APP_NAME` | No | Application name displayed in UI |
+| `NEXT_PUBLIC_APP_DESCRIPTION` | No | Meta description for the application |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Commands
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run dev       # Start development server (http://localhost:3000)
+npm run build     # Production build
+npm run start     # Start production server
+npm test          # Run tests (vitest + @testing-library/react)
+npm run lint      # Run ESLint
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Test suite**: 298 tests covering pages, components, error boundaries, and API integration.
+
+---
+
+## Project Structure
+
+```
+frontend/
+├── src/
+│   ├── app/                    # Next.js App Router pages
+│   │   ├── search/             # Legal search with hybrid results
+│   │   ├── case/[id]/          # Case detail view
+│   │   ├── chat/               # RAG-powered legal chat
+│   │   ├── graph/              # Citation graph visualization
+│   │   ├── agents/             # AI agent workflows
+│   │   │   ├── research/       # Research agent
+│   │   │   ├── case-prep/      # Case preparation agent
+│   │   │   ├── strategy/       # Strategy analysis agent
+│   │   │   └── drafting/       # Legal drafting agent
+│   │   ├── register/           # User registration
+│   │   ├── login/              # User login
+│   │   └── layout.tsx          # Root layout
+│   ├── components/             # Shared UI components
+│   │   ├── ui/                 # shadcn/ui primitives
+│   │   ├── error-boundary.tsx  # Error boundary with fallback
+│   │   └── agent-checkpoint-prompt.tsx
+│   ├── lib/
+│   │   ├── api.ts              # Centralized API client (/api/v1 prefix)
+│   │   ├── types.ts            # Shared TypeScript types
+│   │   └── utils.ts            # Utility functions
+│   └── __tests__/              # Test files (vitest)
+├── public/                     # Static assets
+├── next.config.ts              # Next.js configuration
+├── tailwind.config.ts          # Tailwind CSS configuration
+└── tsconfig.json               # TypeScript configuration
+```
+
+---
+
+## Key Libraries
+
+| Library | Purpose |
+|---------|---------|
+| [next-intl](https://next-intl.dev/) | Internationalization (Hindi support) |
+| [recharts](https://recharts.org/) | Chart visualizations |
+| [react-force-graph](https://github.com/vasturiano/react-force-graph) | Citation graph visualization |
+| [react-markdown](https://github.com/remarkjs/react-markdown) + remark-gfm | Markdown rendering in chat |
+| [@testing-library/react](https://testing-library.com/) | Component testing |
+| [vitest](https://vitest.dev/) | Test runner |
+
+---
+
+## Architecture
+
+For detailed frontend architecture documentation, see [docs/FRONTEND_ARCHITECTURE.md](../docs/FRONTEND_ARCHITECTURE.md).

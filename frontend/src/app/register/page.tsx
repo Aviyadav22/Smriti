@@ -20,6 +20,7 @@ export default function RegisterPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
+    const [consentGiven, setConsentGiven] = useState(false);
 
     function validate(): boolean {
         const newErrors: { email?: string; password?: string } = {};
@@ -41,7 +42,7 @@ export default function RegisterPage() {
         if (!validate()) return;
         setLoading(true);
         try {
-            await register({ name, email, password });
+            await register({ name, email, password, consent_given: consentGiven });
             router.push("/search");
         } catch (err) {
             setError(err instanceof Error ? err.message : "Registration failed");
@@ -106,7 +107,7 @@ export default function RegisterPage() {
                         </div>
 
                         <div className="flex items-start gap-2 text-xs text-muted-foreground pt-1">
-                            <input type="checkbox" required className="mt-0.5" id="consent" />
+                            <input type="checkbox" required className="mt-0.5" id="consent" checked={consentGiven} onChange={(e) => setConsentGiven(e.target.checked)} />
                             <label htmlFor="consent">
                                 I consent to the processing of my data in accordance with the{" "}
                                 <span className="text-foreground">Digital Personal Data Protection Act, 2023</span>.

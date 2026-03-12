@@ -37,6 +37,11 @@ async def get_case(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Get full case metadata and text by ID."""
+    try:
+        _uuid.UUID(case_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid case_id format")
+
     result = await db.execute(
         text(
             "SELECT id, title, citation, case_id, cnr, court, year, case_type, "
@@ -90,6 +95,11 @@ async def get_case_summary(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Get a case summary, optionally translated to Hindi."""
+    try:
+        _uuid.UUID(case_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid case_id format")
+
     result = await db.execute(
         text(
             "SELECT id, title, citation, court, year, ratio_decidendi "
@@ -130,6 +140,11 @@ async def get_case_pdf(
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     """Serve the PDF document for a case."""
+    try:
+        _uuid.UUID(case_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid case_id format")
+
     result = await db.execute(
         text("SELECT pdf_storage_path, title FROM cases WHERE id = :id"),
         {"id": case_id},
@@ -175,6 +190,11 @@ async def get_citations(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Return cases cited by a specific case (outgoing CITES edges in Neo4j)."""
+    try:
+        _uuid.UUID(case_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid case_id format")
+
     # Verify case exists
     exists = await db.execute(
         text("SELECT 1 FROM cases WHERE id = :id"), {"id": case_id}
@@ -211,6 +231,11 @@ async def get_cited_by(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Return cases that cite this case (incoming CITES edges in Neo4j)."""
+    try:
+        _uuid.UUID(case_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid case_id format")
+
     exists = await db.execute(
         text("SELECT 1 FROM cases WHERE id = :id"), {"id": case_id}
     )
@@ -247,6 +272,11 @@ async def get_similar(
     _current_user: TokenPayload | None = Depends(get_current_user_optional),
 ) -> dict:
     """Find semantically similar cases using vector similarity on ratio_decidendi."""
+    try:
+        _uuid.UUID(case_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid case_id format")
+
     result = await db.execute(
         text(
             "SELECT ratio_decidendi, title FROM cases WHERE id = :id"

@@ -27,12 +27,16 @@ target_metadata = Base.metadata
 def _get_connect_args() -> dict:
     """Build connect_args with SSL for cloud databases."""
     url = config.get_main_option("sqlalchemy.url", "")
+    args: dict = {}
     if "supabase" in url or "neon" in url or os.environ.get("APP_ENV") == "production":
         ssl_ctx = ssl.create_default_context()
         ssl_ctx.check_hostname = False
         ssl_ctx.verify_mode = ssl.CERT_NONE
-        return {"ssl": ssl_ctx}
-    return {}
+        args["ssl"] = ssl_ctx
+    # Disable prepared statement caching for PgBouncer compatibility
+    args["statement_cache_size"] = 0
+    args["prepared_statement_cache_size"] = 0
+    return args
 
 
 def run_migrations_offline() -> None:

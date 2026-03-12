@@ -113,6 +113,7 @@ def get_tts() -> TTSProvider:
     return MockTTS()
 
 
+@lru_cache
 def get_checkpointer():
     """Return the appropriate LangGraph checkpointer for the current environment.
 

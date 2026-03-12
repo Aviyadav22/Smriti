@@ -22,6 +22,7 @@ from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 from app.core.ingestion.chunker import Chunk, chunk_judgment, detect_judgment_sections
 from app.core.ingestion.metadata import (
@@ -113,17 +114,53 @@ async def ingest_judgment(
         )
 
     # ------------------------------------------------------------------
+    # 1b. TEXT-HASH DEDUP CHECK (before costly LLM call)
+    # ------------------------------------------------------------------
+    text_hash = _compute_text_hash(full_text)
+    existing_hash = await db.execute(
+        text("SELECT id, chunk_count FROM cases WHERE text_hash = :hash"),
+        {"hash": text_hash},
+    )
+    hash_row = existing_hash.fetchone()
+    if hash_row:
+        existing_id = str(hash_row[0])
+        if hash_row[1] and hash_row[1] > 0:
+            logger.info(
+                "Duplicate content detected via text_hash BEFORE LLM call "
+                "(case_id=%s, pdf=%s), skipping",
+                existing_id, pdf_path,
+            )
+            return existing_id
+        logger.info(
+            "Duplicate content but missing vectors (case_id=%s), proceeding with re-ingestion",
+            existing_id,
+        )
+
+    # ------------------------------------------------------------------
     # 2. MERGE METADATA (Parquet + LLM)
     # ------------------------------------------------------------------
     _llm_limiter = llm_rate_limiter or rate_limiter
-    if _llm_limiter:
-        await _llm_limiter.acquire()
-    try:
-        llm_meta = await asyncio.wait_for(
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=2, min=2, max=30),
+        retry=retry_if_exception(lambda e: not isinstance(e, (ValueError, asyncio.CancelledError))),
+        reraise=True,
+    )
+    async def _llm_extract_with_retry() -> CaseMetadata:
+        if _llm_limiter:
+            await _llm_limiter.acquire()
+        return await asyncio.wait_for(
             extract_metadata_llm(full_text, llm), timeout=120.0
         )
-    except asyncio.TimeoutError:
-        logger.warning("LLM metadata extraction timed out for %s, using empty", pdf_path)
+
+    try:
+        llm_meta = await _llm_extract_with_retry()
+    except ValueError:
+        logger.warning("LLM returned invalid metadata structure for %s, using empty", pdf_path)
+        llm_meta = CaseMetadata()
+    except Exception:
+        logger.warning("LLM metadata extraction failed after retries for %s, using empty", pdf_path)
         llm_meta = CaseMetadata()
     validated_parquet = validate_parquet_data(parquet_metadata)
     metadata, provenance = merge_metadata(validated_parquet, llm_meta)
@@ -153,8 +190,7 @@ async def ingest_judgment(
         metadata.cases_cited = sorted(llm_cases)
         provenance["cases_cited"] = "llm+regex"
 
-    # Compute text_hash for dedup (SHA-256 of whitespace-normalized text)
-    text_hash = _compute_text_hash(full_text)
+    # text_hash already computed in step 1b (before LLM call)
 
     # Compute extraction confidence score
     extraction_confidence = compute_extraction_confidence(metadata)
@@ -232,25 +268,29 @@ async def ingest_judgment(
         # --------------------------------------------------------------
         # 8. UPSERT TO VECTOR STORE
         # --------------------------------------------------------------
-        # Clean up stale vectors from any previous ingestion
-        pinecone_deleted = False
-        try:
-            await vector_store.delete(filter={"case_id": case_id})
-            pinecone_deleted = True
-        except Exception:
-            logger.warning("Failed to clean stale vectors for case_id=%s", case_id)
+        # Upsert new vectors FIRST, then delete stale ones (excluding the
+        # newly upserted IDs). This avoids the data-loss window where old
+        # vectors are deleted but new ones haven't been written yet.
+        new_vector_ids = [
+            f"{case_id}_{chunk.chunk_index}" for chunk in chunks
+        ]
 
         try:
             await _upsert_vectors(case_id, chunks, embeddings, metadata, vector_store)
         except Exception:
-            if pinecone_deleted:
-                logger.critical(
-                    "MANUAL RECOVERY NEEDED: Pinecone delete succeeded but upsert "
-                    "failed for case_id=%s. Vectors are permanently lost until "
-                    "re-ingestion.",
-                    case_id,
-                )
             raise
+
+        try:
+            await vector_store.delete_by_metadata(
+                {"case_id": case_id},
+                exclude_ids=new_vector_ids,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to clean stale vectors for case_id=%s (new vectors "
+                "are safe)",
+                case_id,
+            )
 
         # Update chunk_count and mark ingestion status
         # Low confidence extractions are flagged for human review
@@ -633,7 +673,9 @@ async def _upsert_vectors(
                 "title": (metadata.title or "")[:200],
                 "citation": metadata.citation or "",
                 "author_judge": metadata.author_judge or "",
-                "acts_cited": " | ".join(metadata.acts_cited[:10]) if metadata.acts_cited else "",
+                "judge": list(metadata.judge[:20]) if metadata.judge else [],
+                "acts_cited": list(metadata.acts_cited[:25]) if metadata.acts_cited else [],
+                "opinion_author": chunk.opinion_author or "",
                 "para_start": chunk.para_start or 0,
                 "para_end": chunk.para_end or 0,
                 "text": chunk.text[:2000],  # Pinecone metadata size limit
@@ -677,9 +719,14 @@ async def _build_citation_graph(
     if not citations:
         return
 
+    # Self-citation filtering: skip citations that reference this case itself
+    own_citation = metadata.citation or ""
     edge_data: list[dict[str, str]] = []
     for citation in citations:
         cited_ref = citation.raw_text
+        # Skip self-citations (case citing itself)
+        if own_citation and cited_ref.strip() == own_citation.strip():
+            continue
         treatment = "referred_to"
         pos = full_text.find(cited_ref)
         if pos >= 0:
@@ -711,6 +758,13 @@ async def _build_citation_graph(
             "MERGE (a)-[r:CITES]->(b) "
             "SET r.reporter = e.reporter, r.treatment = e.treatment",
             params={"from_id": case_id, "edges": edge_data},
+        )
+        # Increment cited_by_count on each cited node
+        await graph_store.query(
+            "UNWIND $edges AS e "
+            "MATCH (b:Case {citation: e.citation}) "
+            "SET b.cited_by_count = COALESCE(b.cited_by_count, 0) + 1",
+            params={"edges": edge_data},
         )
     except (OSError, ConnectionError, RuntimeError) as exc:
         logger.warning("Failed to batch-create citation edges for %s: %s", case_id, exc)
@@ -874,7 +928,10 @@ async def bulk_upsert_cases(
             respondent, decision_date, disposal_nature, description,
             keywords, acts_cited, cases_cited, ratio_decidendi,
             full_text, searchable_text, pdf_storage_path, s3_source_path,
-            source, language, available_languages, chunk_count
+            source, language, available_languages, chunk_count,
+            case_number, is_reportable, headnotes, outcome_summary,
+            metadata_provenance, extraction_confidence, text_hash,
+            ingestion_status
         ) VALUES (
             :id, :title, :citation, :case_id, :cnr, :court, :year, :case_type,
             :jurisdiction, :bench_type, :judge, :author_judge, :petitioner,
@@ -883,7 +940,10 @@ async def bulk_upsert_cases(
             :full_text,
             NULL,  -- searchable_text computed by BEFORE INSERT trigger (weighted tsvector)
             :pdf_storage_path, :s3_source_path, :source,
-            :language, :available_languages, :chunk_count
+            :language, :available_languages, :chunk_count,
+            :case_number, :is_reportable, :headnotes, :outcome_summary,
+            :metadata_provenance, :extraction_confidence, :text_hash,
+            :ingestion_status
         )
         ON CONFLICT (citation) WHERE citation IS NOT NULL DO UPDATE SET
             full_text = EXCLUDED.full_text,
@@ -894,7 +954,15 @@ async def bulk_upsert_cases(
             keywords = COALESCE(EXCLUDED.keywords, cases.keywords),
             bench_type = COALESCE(EXCLUDED.bench_type, cases.bench_type),
             jurisdiction = COALESCE(EXCLUDED.jurisdiction, cases.jurisdiction),
-            searchable_text = EXCLUDED.searchable_text
+            searchable_text = EXCLUDED.searchable_text,
+            case_number = COALESCE(EXCLUDED.case_number, cases.case_number),
+            is_reportable = COALESCE(EXCLUDED.is_reportable, cases.is_reportable),
+            headnotes = COALESCE(EXCLUDED.headnotes, cases.headnotes),
+            outcome_summary = COALESCE(EXCLUDED.outcome_summary, cases.outcome_summary),
+            metadata_provenance = COALESCE(EXCLUDED.metadata_provenance, cases.metadata_provenance),
+            extraction_confidence = COALESCE(EXCLUDED.extraction_confidence, cases.extraction_confidence),
+            text_hash = COALESCE(EXCLUDED.text_hash, cases.text_hash),
+            ingestion_status = COALESCE(EXCLUDED.ingestion_status, cases.ingestion_status)
         RETURNING id
         """
     )
@@ -935,6 +1003,16 @@ async def bulk_upsert_cases(
                 "language": row.get("language", "english"),
                 "available_languages": row.get("available_languages"),
                 "chunk_count": row.get("chunk_count", 0),
+                # Migration 009 columns
+                "case_number": row.get("case_number"),
+                "is_reportable": row.get("is_reportable"),
+                "headnotes": row.get("headnotes"),
+                "outcome_summary": row.get("outcome_summary"),
+                "ingestion_status": row.get("ingestion_status", "completed"),
+                # Migration 013 columns
+                "metadata_provenance": row.get("metadata_provenance"),
+                "extraction_confidence": row.get("extraction_confidence"),
+                "text_hash": row.get("text_hash"),
             })
 
         # True batch: execute all rows in one round-trip via executemany

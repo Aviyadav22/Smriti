@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from app.security.rate_limiter import rate_limit_dependency
 
 from app.core.dependencies import get_graph_store
@@ -15,6 +17,8 @@ from app.core.graph.traversal import (
     get_neighborhood,
 )
 from app.db.redis_client import get_redis
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -32,7 +36,11 @@ async def neighborhood(
 ) -> dict:
     """Return the citation neighborhood around a case as nodes + edges."""
     graph = get_graph_store()
-    return await get_neighborhood(case_id, graph_store=graph, depth=depth)
+    try:
+        return await get_neighborhood(case_id, graph_store=graph, depth=depth)
+    except (ConnectionError, RuntimeError) as exc:
+        logger.warning("Graph service unavailable: %s", exc)
+        raise HTTPException(status_code=502, detail="Citation graph temporarily unavailable")
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +56,11 @@ async def chain(
 ) -> dict:
     """Return the forward citation chain — cases this case cites, recursively."""
     graph = get_graph_store()
-    return await get_citation_chain(case_id, graph_store=graph, max_depth=max_depth)
+    try:
+        return await get_citation_chain(case_id, graph_store=graph, max_depth=max_depth)
+    except (ConnectionError, RuntimeError) as exc:
+        logger.warning("Graph service unavailable: %s", exc)
+        raise HTTPException(status_code=502, detail="Citation graph temporarily unavailable")
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +76,11 @@ async def authorities(
 ) -> dict:
     """Return the most-cited cases in the neighborhood of a given case."""
     graph = get_graph_store()
-    results = await get_authorities(case_id, graph_store=graph, limit=limit)
+    try:
+        results = await get_authorities(case_id, graph_store=graph, limit=limit)
+    except (ConnectionError, RuntimeError) as exc:
+        logger.warning("Graph service unavailable: %s", exc)
+        raise HTTPException(status_code=502, detail="Citation graph temporarily unavailable")
     return {"case_id": case_id, "authorities": results, "total": len(results)}
 
 
@@ -80,4 +96,8 @@ async def stats(
     """Return global citation graph statistics."""
     graph = get_graph_store()
     redis_client = await get_redis()
-    return await get_graph_stats(graph_store=graph, redis_client=redis_client)
+    try:
+        return await get_graph_stats(graph_store=graph, redis_client=redis_client)
+    except (ConnectionError, RuntimeError) as exc:
+        logger.warning("Graph service unavailable: %s", exc)
+        raise HTTPException(status_code=502, detail="Citation graph temporarily unavailable")

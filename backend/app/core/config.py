@@ -145,6 +145,40 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "CORS origins must not contain '*' in production"
                 )
+            # Enforce external service API keys are set
+            if not self.gemini_api_key:
+                raise ValueError(
+                    "gemini_api_key must not be empty in production"
+                )
+            if not self.pinecone_api_key:
+                raise ValueError(
+                    "pinecone_api_key must not be empty in production"
+                )
+            if not self.pinecone_host:
+                raise ValueError(
+                    "pinecone_host must not be empty in production"
+                )
+            if not self.cohere_api_key:
+                raise ValueError(
+                    "cohere_api_key must not be empty in production"
+                )
+            # Enforce no dev defaults in production
+            if self.neo4j_password == "smriti_dev":
+                raise ValueError(
+                    "neo4j_password must not use default 'smriti_dev' in production"
+                )
+            if "localhost" in self.database_url:
+                raise ValueError(
+                    "database_url must not contain 'localhost' in production"
+                )
+            if self.storage_provider == "local":
+                raise ValueError(
+                    "storage_provider must not be 'local' in production"
+                )
+            if self.tts_provider == "mock":
+                raise ValueError(
+                    "tts_provider must not be 'mock' in production"
+                )
         else:
             # Development: warn but allow empty
             import warnings

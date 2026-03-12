@@ -77,7 +77,7 @@ NEUTRAL_SC_PATTERN: re.Pattern[str] = re.compile(r"(\d{4}):INSC:(\d+)")
 # (derived from courts.py _HIGH_COURTS keys)
 _HC_CODES = (
     "DEL|BOM|ALL|CAL|MAD|KAR|KER|GUJ|RAJ|PAT|"
-    "PNH|AP|TEL|ORI|JHAR|CG|UTT|HP|JK|JKL|GAU|"
+    "PNH|PH|AP|TEL|ORI|JHAR|CG|UTT|HP|JK|JKL|GAU|"
     "TRI|MEG|MAN|SIK|MP|CHH|LAKH"
 )
 NEUTRAL_HC_PATTERN: re.Pattern[str] = re.compile(
@@ -95,7 +95,7 @@ INSC_PATTERN: re.Pattern[str] = re.compile(
 
 # [2020] 3 SCR 145
 SCR_PATTERN: re.Pattern[str] = re.compile(
-    r"\[(\d{4})\]\s+(\d+)\s+SCR\s+(\d+)"
+    r"[(\[](\d{4})[)\]]\s+(\d+)\s+SCR\s+(\d+)"
 )
 
 # --- CrLJ ---
@@ -206,8 +206,11 @@ GLR_PATTERN = HC_REPORTER_PATTERN
 # Short-code -> full act name mapping for _SECTION_SHORT_ACT_PATTERN matches
 _SHORT_ACT_NAMES: dict[str, str] = {
     "IPC": "Indian Penal Code",
+    "I.P.C.": "Indian Penal Code",
     "CRPC": "Code of Criminal Procedure",
+    "Cr.P.C.": "Code of Criminal Procedure",
     "CPC": "Code of Civil Procedure",
+    "C.P.C.": "Code of Civil Procedure",
     "BNS": "Bharatiya Nyaya Sanhita",
     "BNSS": "Bharatiya Nagarik Suraksha Sanhita",
     "BSA": "Bharatiya Sakshya Adhiniyam",
@@ -274,7 +277,7 @@ _SHORT_ACT_ALTERNATION: str = "|".join(
 
 # "Section 302 of the Indian Penal Code, 1860"
 _SECTION_FULL_ACT_PATTERN: re.Pattern[str] = re.compile(
-    r"(?:Sections?|Sec\.?|S\.)\s+([\d\w]+(?:\s*\([^)]+\))*)"
+    r"(?:Sections?|Sec\.?|Ss\.|S\.)\s*([\d\w]+(?:\s*\([^)]+\))*)"
     r"\s+of\s+(?:the\s+)?"
     r"([\w\s]+?)"
     r"(?:,\s*(\d{4}))?(?=\s*[.,;)\]]|\s+and\s|\s+read\s|\s+r/w\s|$)",
@@ -288,7 +291,7 @@ _SECTION_FULL_ACT_PATTERN: re.Pattern[str] = re.compile(
 _SEC_TOKEN = r"[\d\w]+(?:\s*\([^)]+\))*"
 _SEC_RANGE = rf"{_SEC_TOKEN}(?:\s*[-–]\s*\d+|\s+to\s+\d+)?"
 _SECTION_SHORT_ACT_PATTERN: re.Pattern[str] = re.compile(
-    r"(?:Sections?|Sec\.?|S\.)\s+(" + _SEC_RANGE +
+    r"(?:Sections?|Sec\.?|Ss\.|S\.)\s*(" + _SEC_RANGE +
     r"(?:\s*[,/]\s*" + _SEC_RANGE + r")*"
     r"(?:\s+(?:and|&)\s+" + _SEC_RANGE + r")?)"
     r"\s+(" + _SHORT_ACT_ALTERNATION + r")",
@@ -304,9 +307,9 @@ _ARTICLE_PATTERN: re.Pattern[str] = re.compile(
 
 # "Section 302 read with Section 34 IPC" / "Section 302 r/w Section 34 IPC"
 _READ_WITH_PATTERN: re.Pattern[str] = re.compile(
-    r"(?:Sections?|Sec\.?|S\.)\s+([\d\w]+(?:\s*\([^)]+\))*)"
+    r"(?:Sections?|Sec\.?|Ss\.|S\.)\s*([\d\w]+(?:\s*\([^)]+\))*)"
     r"\s+(?:read\s+with|r/w|r\.w\.)\s+"
-    r"(?:Sections?|Sec\.?|S\.)?\s*([\d\w]+(?:\s*\([^)]+\))*)"
+    r"(?:Sections?|Sec\.?|Ss\.|S\.)?\s*([\d\w]+(?:\s*\([^)]+\))*)"
     r"\s+(" + _SHORT_ACT_ALTERNATION + r")",
     re.IGNORECASE,
 )

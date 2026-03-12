@@ -55,7 +55,15 @@ class PineconeStore:
         Each dict must contain: id, values, metadata.
         """
         try:
-            await asyncio.to_thread(self._index.upsert, vectors=vectors)
+            await asyncio.wait_for(
+                asyncio.to_thread(self._index.upsert, vectors=vectors),
+                timeout=120,
+            )
+        except asyncio.TimeoutError as exc:
+            logger.error("Pinecone upsert timed out after 120s (%d vectors)", len(vectors))
+            raise RuntimeError(
+                f"Pinecone upsert timed out after 120s ({len(vectors)} vectors)"
+            ) from exc
         except PineconeException as exc:
             logger.error("Pinecone upsert failed (%d vectors): %s", len(vectors), exc)
             raise RuntimeError(f"Pinecone upsert failed: {exc}") from exc
@@ -107,3 +115,55 @@ class PineconeStore:
         except Exception as exc:
             logger.error("Unexpected error during Pinecone delete: %s", exc)
             raise RuntimeError(f"Pinecone delete failed unexpectedly: {exc}") from exc
+
+    @_pinecone_retry
+    async def delete_by_metadata(
+        self,
+        filter: dict,
+        *,
+        exclude_ids: list[str] | None = None,
+    ) -> None:
+        """Delete vectors matching a metadata filter (e.g. case_id).
+
+        Args:
+            filter: Pinecone metadata filter dict.
+            exclude_ids: Optional list of vector IDs to keep (skip deletion).
+        """
+        try:
+            if not exclude_ids:
+                # Fast path: server-side filter delete
+                await asyncio.to_thread(self._index.delete, filter=filter)
+                return
+
+            # When exclude_ids is provided, we must query for matching IDs first,
+            # then delete only those NOT in the exclude set.
+            # Use a zero vector query with high top_k to find matching vectors.
+            # Dimension matches Gemini gemini-embedding-001 (1536-dim).
+            exclude_set = set(exclude_ids)
+            results = await asyncio.to_thread(
+                self._index.query,
+                vector=[0.0] * 1536,
+                top_k=10_000,
+                filter=filter,
+                include_metadata=False,
+            )
+            ids_to_delete = [
+                m.id for m in results.matches
+                if m.id not in exclude_set
+            ]
+            if ids_to_delete:
+                # Delete in batches of 1000 (Pinecone limit)
+                for i in range(0, len(ids_to_delete), 1000):
+                    await asyncio.to_thread(
+                        self._index.delete, ids=ids_to_delete[i : i + 1000]
+                    )
+                logger.info(
+                    "Deleted %d stale vectors (kept %d new), filter=%s",
+                    len(ids_to_delete), len(exclude_ids), filter,
+                )
+        except PineconeException as exc:
+            logger.error("Pinecone delete by metadata failed (filter=%s): %s", filter, exc)
+            raise RuntimeError(f"Pinecone delete by metadata failed: {exc}") from exc
+        except Exception as exc:
+            logger.error("Unexpected error during Pinecone metadata delete: %s", exc)
+            raise RuntimeError(f"Pinecone delete by metadata failed: {exc}") from exc

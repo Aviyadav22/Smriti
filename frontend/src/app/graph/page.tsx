@@ -24,6 +24,7 @@ import {
     ExternalLink,
     BarChart3,
     Network,
+    RotateCcw,
 } from "lucide-react";
 
 // react-force-graph-2d uses canvas/DOM APIs — must load client-side only
@@ -65,6 +66,7 @@ export default function GraphPage() {
     // Graph data state
     const [graphData, setGraphData] = useState<GraphData | null>(null);
     const [graphLoading, setGraphLoading] = useState(false);
+    const [graphError, setGraphError] = useState<string | null>(null);
     const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
     const [authorities, setAuthorities] = useState<GraphNode[]>([]);
 
@@ -78,7 +80,9 @@ export default function GraphPage() {
 
     // Load global stats on mount
     useEffect(() => {
-        getGraphStats().then(setStats).catch(() => {});
+        getGraphStats().then(setStats).catch((err) => {
+            console.error("Failed to load graph stats:", err);
+        });
     }, []);
 
     // Debounced search
@@ -112,6 +116,7 @@ export default function GraphPage() {
     const loadGraph = useCallback(
         async (caseId: string, d: number = depth, m: string = mode) => {
             setGraphLoading(true);
+            setGraphError(null);
             setActiveCaseId(caseId);
             setSearchResults([]);
             try {
@@ -121,10 +126,20 @@ export default function GraphPage() {
                         : getGraphNeighborhood(caseId, d),
                     getGraphAuthorities(caseId),
                 ]);
-                if (data.status === "fulfilled") setGraphData(data.value);
-                if (auth.status === "fulfilled") setAuthorities(auth.value);
-            } catch {
-                // ignore
+                if (data.status === "fulfilled") {
+                    setGraphData(data.value);
+                } else {
+                    console.error("Failed to load graph data:", data.reason);
+                    setGraphError("Failed to load graph data. Please try again.");
+                }
+                if (auth.status === "fulfilled") {
+                    setAuthorities(auth.value);
+                } else {
+                    console.error("Failed to load authorities:", auth.reason);
+                }
+            } catch (err) {
+                console.error("Unexpected error loading graph:", err);
+                setGraphError("An unexpected error occurred. Please try again.");
             } finally {
                 setGraphLoading(false);
             }
@@ -250,6 +265,21 @@ export default function GraphPage() {
                         {graphLoading ? (
                             <div className="flex items-center justify-center h-full">
                                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : graphError ? (
+                            <div className="flex items-center justify-center h-full">
+                                <div className="text-center max-w-sm">
+                                    <p className="text-sm text-red-500 mb-2">{graphError}</p>
+                                    {activeCaseId && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => loadGraph(activeCaseId)}
+                                        >
+                                            <RotateCcw className="h-3 w-3 mr-1.5" /> Retry
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
                         ) : graphData && graphData.nodes.length > 0 ? (
                             <>

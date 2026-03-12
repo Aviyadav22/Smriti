@@ -52,13 +52,21 @@ def _parse_judge_names(raw: str | list | None) -> list[str] | None:
             continue
         # Strip common honorific prefixes (order matters: most specific first)
         for prefix in ["Hon'ble Mr. Justice", "Hon'ble Justice", "Hon'ble",
-                       "Dr. Justice", "Mr. Justice", "Justice",
-                       "Dr.", "Smt.", "Shri", "J."]:
+                       "Dr. Justice", "Mr. Justice", "Mrs. Justice",
+                       "Ms. Justice", "Justice",
+                       "Dr.", "Smt.", "Shri", "Mrs.", "Ms.", "J."]:
             if name.startswith(prefix):
                 name = name[len(prefix):].strip()
                 break
+        # Strip trailing ", JJ." / " JJ." (plural judges) — must check before ", J."
+        if name.endswith(", JJ.") or name.endswith(" JJ."):
+            name = name[:-5].strip() if name.endswith(", JJ.") else name[:-4].strip()
+        elif name.endswith(", JJ") or name.endswith(" JJ"):
+            name = name[:-4].strip() if name.endswith(", JJ") else name[:-3].strip()
+        elif name.endswith("JJ.") and len(name) > 3:
+            name = name[:-3].strip().rstrip(",").strip()
         # Strip trailing ", J." or " J."
-        if name.endswith(", J.") or name.endswith(" J."):
+        elif name.endswith(", J.") or name.endswith(" J."):
             name = name[:-4].strip() if name.endswith(", J.") else name[:-3].strip()
         if name:
             cleaned.append(name)

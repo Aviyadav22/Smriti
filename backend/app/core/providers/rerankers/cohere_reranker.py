@@ -80,3 +80,8 @@ class CohereReranker:
                 RerankResult(index=i, score=1.0 - i * 0.01, text=doc)
                 for i, doc in enumerate(documents[:top_n])
             ]
+
+    async def close(self) -> None:
+        """Close the underlying HTTP client."""
+        if hasattr(self._client, '_client') and hasattr(self._client._client, 'aclose'):
+            await self._client._client.aclose()

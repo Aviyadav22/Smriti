@@ -86,8 +86,8 @@ export default function CasePrepAgentPage() {
                 setDocuments(
                     data.documents.filter((d) => d.status === "completed"),
                 );
-            } catch {
-                // silently fail
+            } catch (err) {
+                console.error("Failed to load documents for case prep:", err);
             } finally {
                 setDocumentsLoading(false);
             }
@@ -231,7 +231,16 @@ export default function CasePrepAgentPage() {
         setError(null);
     }, []);
 
-    if (authLoading || !isAuthenticated) return null;
+    if (authLoading || !isAuthenticated) {
+        return (
+            <div className="min-h-screen flex flex-col">
+                <Header />
+                <div className="flex-1 flex items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+            </div>
+        );
+    }
 
     const selectedDoc = documents.find((d) => d.id === selectedDocId);
     const showSelector = !isRunning && !memo && !checkpoint && steps.length === 0;

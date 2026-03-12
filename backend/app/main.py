@@ -8,6 +8,8 @@ from collections.abc import AsyncGenerator
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
 
 from app.core.config import settings
 from app.security.exceptions import (
@@ -176,6 +178,25 @@ async def _validate_startup() -> None:
         )
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses."""
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+        response.headers["X-XSS-Protection"] = "0"
+        # Apply no-store only to API responses, not static assets
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Configure structured logging
@@ -219,6 +240,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     yield
     # Shutdown — with timeout guards to avoid blocking Cloud Run termination
+
+    # Dispose SQLAlchemy engine to release all DB connections
+    try:
+        from app.db.postgres import engine
+
+        await asyncio.wait_for(engine.dispose(), timeout=10)
+        logger.info("SQLAlchemy engine disposed")
+    except (asyncio.TimeoutError, Exception) as exc:
+        logger.warning("SQLAlchemy engine disposal timeout or error: %s", exc)
+
     from app.db.redis_client import close_redis
 
     try:
@@ -249,7 +280,7 @@ app = FastAPI(
 )
 
 # Middleware is added in reverse order (last added = outermost = runs first).
-# Order: TrustedHost → CORS → RequestID
+# Order: TrustedHost → SecurityHeaders → CORS → RequestID
 
 # Request ID middleware for tracing (innermost — runs last)
 from app.core.middleware import RequestIDMiddleware  # noqa: E402
@@ -264,6 +295,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-CSRF-Token"],
 )
+
+# Security headers (adds X-Content-Type-Options, HSTS, etc.)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Trusted Host middleware in production (outermost — runs first, rejects bad hosts early)
 if settings.app_env == "production":

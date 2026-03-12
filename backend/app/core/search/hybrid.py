@@ -335,6 +335,8 @@ async def _exact_citation_search(
 ) -> list[SearchResultItem]:
     """Search for cases by exact citation match — checks both cases and equivalents tables."""
     query_clean = query.strip()
+    # Escape ILIKE wildcards to prevent user input from acting as patterns
+    escaped_q = query_clean.replace("%", "\\%").replace("_", "\\_")
 
     # 1. Direct match on cases.citation
     result = await db.execute(
@@ -345,7 +347,7 @@ async def _exact_citation_search(
             "ORDER BY year DESC NULLS LAST "
             "LIMIT 5"
         ),
-        {"q": f"%{query_clean}%"},
+        {"q": f"%{escaped_q}%"},
     )
     rows = result.mappings().all()
 
@@ -359,7 +361,7 @@ async def _exact_citation_search(
                 "JOIN cases c ON c.id = cce.case_id "
                 "WHERE cce.citation_text ILIKE :q LIMIT 5"
             ),
-            {"q": f"%{query_clean}%"},
+            {"q": f"%{escaped_q}%"},
         )
         rows = equiv_result.mappings().all()
 
@@ -412,12 +414,14 @@ async def _vector_search(
             pinecone_filter["case_type"] = {"$eq": filters.case_type}
         if filters.judgment_section:
             pinecone_filter["section_type"] = {"$eq": filters.judgment_section}
+        if filters.bench_type:
+            pinecone_filter["bench_type"] = {"$eq": filters.bench_type}
         if filters.disposal_nature:
             pinecone_filter["disposal_nature"] = {"$eq": filters.disposal_nature}
         if filters.judge:
             pinecone_filter["author_judge"] = {"$eq": filters.judge}
         if filters.act:
-            pinecone_filter["acts_cited"] = {"$eq": filters.act}
+            pinecone_filter["acts_cited"] = {"$in": [filters.act]}
 
     results = await vector_store.search(
         query_vector,
@@ -511,17 +515,20 @@ async def _enrich_results(
     rows = {str(row["id"]): row for row in result.mappings().all()}
 
     # Fetch equivalent citations
-    equiv_result = await db.execute(
-        text(
-            f"SELECT case_id, citation_text FROM case_citation_equivalents "
-            f"WHERE case_id IN ({placeholders})"
-        ),
-        params,
-    )
-    equiv_rows = equiv_result.mappings().all()
     equiv_map: dict[str, list[str]] = {}
-    for er in equiv_rows:
-        equiv_map.setdefault(str(er["case_id"]), []).append(er["citation_text"])
+    try:
+        equiv_result = await db.execute(
+            text(
+                f"SELECT case_id, citation_text FROM case_citation_equivalents "
+                f"WHERE case_id IN ({placeholders})"
+            ),
+            params,
+        )
+        equiv_rows = equiv_result.mappings().all()
+        for er in equiv_rows:
+            equiv_map.setdefault(str(er["case_id"]), []).append(er["citation_text"])
+    except Exception:
+        pass  # Table may not exist in all environments
 
     enriched: list[SearchResultItem] = []
     for cid in case_ids:

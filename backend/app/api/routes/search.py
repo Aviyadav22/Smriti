@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from app.security.rate_limiter import rate_limit_dependency
@@ -19,6 +21,8 @@ from app.db.redis_client import get_redis
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user_optional
 from app.security.sanitizer import detect_prompt_injection, sanitize_search_query
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -83,19 +87,43 @@ async def search(
     embedder = get_embedder()
     vector_store = get_vector_store()
     reranker = get_reranker()
-    redis_client = await get_redis()
 
-    search_response = await hybrid_search(
-        query=q,
-        filters=filters,
-        page=page,
-        page_size=page_size,
-        llm=llm,
-        embedder=embedder,
-        vector_store=vector_store,
-        reranker=reranker,
-        db=db,
-        redis_client=redis_client,
+    try:
+        redis_client = await get_redis()
+    except Exception as exc:
+        logger.warning("Redis unavailable, proceeding without cache: %s", exc)
+        redis_client = None
+
+    logger.info("Search query=%r filters=%r page=%d page_size=%d", q, filters, page, page_size)
+    t0 = time.monotonic()
+
+    try:
+        search_response = await asyncio.wait_for(
+            hybrid_search(
+                query=q,
+                filters=filters,
+                page=page,
+                page_size=page_size,
+                llm=llm,
+                embedder=embedder,
+                vector_store=vector_store,
+                reranker=reranker,
+                db=db,
+                redis_client=redis_client,
+            ),
+            timeout=15.0,
+        )
+    except asyncio.TimeoutError:
+        elapsed = time.monotonic() - t0
+        logger.error("Search timed out after %.2fs query=%r", elapsed, q)
+        raise HTTPException(status_code=504, detail="Search timed out")
+
+    elapsed = time.monotonic() - t0
+    logger.info(
+        "Search completed in %.2fs results=%d query=%r",
+        elapsed,
+        search_response.total_count,
+        q,
     )
 
     serialized = _serialize_response(search_response)

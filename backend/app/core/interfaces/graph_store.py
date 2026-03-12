@@ -46,3 +46,7 @@ class GraphStore(Protocol):
         *,
         batch_size: int = 500,
     ) -> int: ...
+
+    async def delete_node(self, node_id: str) -> bool:
+        """Delete a node and its relationships."""
+        ...

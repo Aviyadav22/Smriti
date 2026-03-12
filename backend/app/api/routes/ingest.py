@@ -35,12 +35,13 @@ async def upload_document(
     doc_id = str(uuid.uuid4())
 
     # Save uploaded file temporarily
-    with NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
-
+    tmp_path: str | None = None
     try:
+        with NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+
         # Create document record
         await db.execute(
             text(
@@ -69,11 +70,12 @@ async def upload_document(
             "message": "Document queued for processing",
         }
     except Exception:
-        # Clean up temp file if DB insert or task dispatch fails
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            logger.warning("Failed to clean up temp file: %s", tmp_path)
+        # Clean up temp file if anything fails (read, DB insert, or task dispatch)
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                logger.warning("Failed to clean up temp file: %s", tmp_path)
         raise
 
 

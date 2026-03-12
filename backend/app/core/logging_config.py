@@ -21,6 +21,15 @@ _PII_PATTERNS = re.compile(
     r"|"
     # JWT tokens (three base64 segments separated by dots)
     r"eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+"
+    r"|"
+    # Aadhaar numbers (12 digits, optionally space-separated in groups of 4)
+    r"\b\d{4}\s?\d{4}\s?\d{4}\b"
+    r"|"
+    # PAN numbers (AAAAA9999A format)
+    r"\b[A-Z]{5}\d{4}[A-Z]\b"
+    r"|"
+    # Indian mobile numbers (10 digits starting 6-9, optional +91/91/0 prefix)
+    r"(?:\+91[\s-]?|91[\s-]?|0)?[6-9]\d{9}\b"
     r")",
     re.IGNORECASE,
 )

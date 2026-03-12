@@ -76,24 +76,27 @@ def _mock_db_session() -> AsyncMock:
 
 def _configure_db_for_facets(db: AsyncMock) -> None:
     """Configure db.execute to return appropriate results for facets queries."""
-    courts_result = MagicMock()
-    courts_result.all.return_value = [("Supreme Court of India",), ("Delhi High Court",)]
+    # The facets endpoint now uses a single combined query returning one row
+    combined_mapping = MagicMock()
+    combined_mapping.__getitem__ = lambda self, key: {
+        "courts": ["Delhi High Court", "Supreme Court of India"],
+        "case_types": ["Civil Appeal", "Criminal Appeal"],
+        "bench_types": ["Constitution Bench", "Division Bench"],
+        "min_year": 1950,
+        "max_year": 2024,
+    }[key]
+    combined_mapping.get = lambda key, default=None: {
+        "courts": ["Delhi High Court", "Supreme Court of India"],
+        "case_types": ["Civil Appeal", "Criminal Appeal"],
+        "bench_types": ["Constitution Bench", "Division Bench"],
+        "min_year": 1950,
+        "max_year": 2024,
+    }.get(key, default)
 
-    case_types_result = MagicMock()
-    case_types_result.all.return_value = [("Civil Appeal",), ("Criminal Appeal",)]
+    combined_result = MagicMock()
+    combined_result.mappings.return_value.one_or_none.return_value = combined_mapping
 
-    bench_types_result = MagicMock()
-    bench_types_result.all.return_value = [("Division Bench",), ("Constitution Bench",)]
-
-    years_result = MagicMock()
-    years_mapping = MagicMock()
-    years_mapping.__getitem__ = lambda self, key: {"min_year": 1950, "max_year": 2024}[key]
-    years_result.mappings.return_value.one_or_none.return_value = years_mapping
-
-    # Return results in order of calls in the facets endpoint
-    db.execute = AsyncMock(
-        side_effect=[courts_result, case_types_result, bench_types_result, years_result]
-    )
+    db.execute = AsyncMock(return_value=combined_result)
 
 
 def _configure_db_for_suggest(db: AsyncMock, rows: list[dict] | None = None) -> None:
@@ -229,7 +232,9 @@ class TestSearchEndpoint:
             {"id": CASE_ID_1, "title": "Kesavananda v. State of Kerala", "citation": "(1973) 4 SCC 225", "rank": 5.0, "snippet": "basic structure doctrine"},
             {"id": CASE_ID_2, "title": "Maneka Gandhi v. Union of India", "citation": "(1978) 1 SCC 248", "rank": 4.0, "snippet": "right to travel abroad"},
         ]
-        mock_db.execute = AsyncMock(side_effect=[fts_result, enrich_result, facets_result])
+        equiv_result = MagicMock()
+        equiv_result.mappings.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(side_effect=[fts_result, enrich_result, equiv_result, facets_result])
 
         from app.db.postgres import get_db
 
@@ -279,7 +284,9 @@ class TestSearchEndpoint:
         fts_result.mappings.return_value.all.return_value = [
             {"id": CASE_ID_1, "title": "Test Case", "citation": "(2020) 1 SCC 1", "rank": 3.0, "snippet": "murder conviction"},
         ]
-        mock_db.execute = AsyncMock(side_effect=[fts_result, enrich_result, facets_result])
+        equiv_result = MagicMock()
+        equiv_result.mappings.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(side_effect=[fts_result, enrich_result, equiv_result, facets_result])
 
         from app.db.postgres import get_db
 
@@ -347,7 +354,9 @@ class TestSearchEndpoint:
         fts_result.mappings.return_value.all.return_value = [
             {"id": CASE_ID_1, "title": "Test v. State", "citation": "(2023) 1 SCC 100", "rank": 5.0, "snippet": "snippet text"},
         ]
-        mock_db.execute = AsyncMock(side_effect=[fts_result, enrich_result, facets_result])
+        equiv_result = MagicMock()
+        equiv_result.mappings.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(side_effect=[fts_result, enrich_result, equiv_result, facets_result])
 
         from app.db.postgres import get_db
 
@@ -692,7 +701,9 @@ class TestHybridSearch:
         facets_result.mappings.return_value.all.return_value = [
             {"court": "Supreme Court of India", "case_type": "Civil Appeal", "year": 2023, "bench_type": "Division Bench"},
         ]
-        mock_db.execute = AsyncMock(side_effect=[fts_result, enrich_result, facets_result])
+        equiv_result = MagicMock()
+        equiv_result.mappings.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(side_effect=[fts_result, enrich_result, equiv_result, facets_result])
 
         mock_llm = _mock_llm()
         mock_emb = _mock_embedder()

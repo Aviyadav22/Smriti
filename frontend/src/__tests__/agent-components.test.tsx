@@ -79,12 +79,11 @@ describe("AgentCheckpointPrompt", () => {
     expect(screen.getByText("Add cases from the last 5 years")).toBeDefined();
   });
 
-  it("clicking a suggestion chip populates the textarea", () => {
+  it("clicking a suggestion chip submits immediately", () => {
     const onSubmit = vi.fn();
     render(<AgentCheckpointPrompt question="Review?" onSubmit={onSubmit} />);
     fireEvent.click(screen.getByText("Looks good, proceed"));
-    const textarea = screen.getByPlaceholderText("Type your response...");
-    expect((textarea as HTMLTextAreaElement).value).toBe("Looks good, proceed");
+    expect(onSubmit).toHaveBeenCalledWith("Looks good, proceed");
   });
 
   it("submits user input and clears the textarea", () => {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from app.security.rate_limiter import rate_limit_dependency
@@ -13,13 +14,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.chat.rag import rag_respond
 from app.core.dependencies import get_embedder, get_llm, get_reranker, get_vector_store
-from app.db.postgres import get_db
+from app.db.postgres import async_session_factory, get_db
 from app.db.redis_client import get_redis
 from app.security.auth import TokenPayload
 from app.security.audit import create_audit_log
 from app.security.encryption import safe_decrypt
 from app.security.rbac import get_current_user
 from app.security.sanitizer import sanitize_search_query, detect_prompt_injection
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -55,19 +58,29 @@ async def create_chat(
     reranker = get_reranker()
     redis_client = await get_redis()
 
+    logger.info("Creating new chat session for user %s", user.sub)
+
     async def event_stream():
-        async for event in rag_respond(
-            question=body.message,
-            session_id=None,
-            user_id=user.sub,
-            llm=llm,
-            embedder=embedder,
-            vector_store=vector_store,
-            reranker=reranker,
-            db=db,
-            redis_client=redis_client,
-        ):
-            yield f"data: {json.dumps(event.data | {'type': event.type})}\n\n"
+        # Use an independent DB session for the SSE generator lifetime.
+        # The request-scoped session (from Depends(get_db)) may be closed
+        # before this generator finishes yielding events.
+        async with async_session_factory() as stream_db:
+            try:
+                async for event in rag_respond(
+                    question=body.message,
+                    session_id=None,
+                    user_id=user.sub,
+                    llm=llm,
+                    embedder=embedder,
+                    vector_store=vector_store,
+                    reranker=reranker,
+                    db=stream_db,
+                    redis_client=redis_client,
+                ):
+                    yield f"data: {json.dumps(event.data | {'type': event.type})}\n\n"
+            except Exception:
+                logger.exception("SSE stream error in create_chat for user %s", user.sub)
+                yield f"data: {json.dumps({'type': 'error', 'message': 'An internal error occurred'})}\n\n"
 
     return StreamingResponse(
         event_stream(),
@@ -114,19 +127,29 @@ async def send_message(
     reranker = get_reranker()
     redis_client = await get_redis()
 
+    logger.info("Continuing chat session %s for user %s", session_id, user.sub)
+
     async def event_stream():
-        async for event in rag_respond(
-            question=body.message,
-            session_id=session_id,
-            user_id=user.sub,
-            llm=llm,
-            embedder=embedder,
-            vector_store=vector_store,
-            reranker=reranker,
-            db=db,
-            redis_client=redis_client,
-        ):
-            yield f"data: {json.dumps(event.data | {'type': event.type})}\n\n"
+        # Use an independent DB session for the SSE generator lifetime.
+        # The request-scoped session (from Depends(get_db)) may be closed
+        # before this generator finishes yielding events.
+        async with async_session_factory() as stream_db:
+            try:
+                async for event in rag_respond(
+                    question=body.message,
+                    session_id=session_id,
+                    user_id=user.sub,
+                    llm=llm,
+                    embedder=embedder,
+                    vector_store=vector_store,
+                    reranker=reranker,
+                    db=stream_db,
+                    redis_client=redis_client,
+                ):
+                    yield f"data: {json.dumps(event.data | {'type': event.type})}\n\n"
+            except Exception:
+                logger.exception("SSE stream error in send_message for session %s, user %s", session_id, user.sub)
+                yield f"data: {json.dumps({'type': 'error', 'message': 'An internal error occurred'})}\n\n"
 
     return StreamingResponse(
         event_stream(),

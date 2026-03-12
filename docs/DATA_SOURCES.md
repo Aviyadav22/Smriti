@@ -46,6 +46,14 @@ s3://indian-supreme-court-judgments/
             └── metadata.parquet
 ```
 
+### Current Ingestion Status
+
+| Metric | Value |
+|--------|-------|
+| **Cases loaded** | 796 |
+| **Target** | 50,000+ (full SC dataset) |
+| **Pipeline status** | Production-ready for bulk ingestion |
+
 ### Parquet Metadata Schema (19 Fields)
 
 | Field | Type | Description | Maps To |
@@ -68,6 +76,38 @@ s3://indian-supreme-court-judgments/
 | `nc_display` | STRING | Nature of case | cases.case_type (normalize) |
 | `scraped_at` | TIMESTAMP | When scraped | (internal tracking) |
 | `year` | INTEGER | Year (partition key) | cases.year |
+
+### Enriched Database Schema (52 Columns)
+
+After ingestion, the 19 Parquet fields are expanded to 52 database columns through LLM metadata extraction, regex supplementation, and computed fields. The enrichment happens in the ingestion pipeline via Gemini 2.5 Flash structured output with regex validation/fallback.
+
+#### Fields from LLM extraction (not in Parquet)
+
+| Field | Type | Description | Added In |
+|-------|------|-------------|----------|
+| `ratio_decidendi` | TEXT | Core legal reasoning / holding | Migration 001 |
+| `acts_cited` | TEXT[] | Statutes referenced (42 short name mappings) | Migration 001 |
+| `cases_cited` | TEXT[] | Cases cited (neutral, SCC, MANU, etc.) | Migration 001 |
+| `keywords` | TEXT[] | Legal keywords for discoverability | Migration 001 |
+| `bench_type` | VARCHAR | Single / Division / Constitution bench | Migration 001 |
+| `jurisdiction` | VARCHAR | Original / Appellate / Advisory | Migration 001 |
+| `case_number` | VARCHAR | Official case number (e.g., WP(C) 123/2020) | Migration 009 |
+| `is_reportable` | BOOLEAN | Whether judgment is marked reportable | Migration 009 |
+| `headnotes` | TEXT | Summary headnotes extracted from judgment | Migration 009 |
+| `outcome_summary` | TEXT | Brief outcome description | Migration 009 |
+
+#### Fields from later migrations
+
+| Field | Type | Description | Added In |
+|-------|------|-------------|----------|
+| `coram_size` | INTEGER | Number of judges on the bench | Migration 011 |
+| `lower_court` | VARCHAR | Court appealed from | Migration 011 |
+| `opinion_type` | VARCHAR | Majority / Dissenting / Concurring | Migration 011 |
+| `cited_by_count` | INTEGER | Number of times cited by other cases | Migration 012 |
+| `ingestion_status` | VARCHAR | pending / processing / completed / failed | Migration 009 |
+| `searchable_text` | TSVECTOR | Full-text search index (weighted A/B/C/D) | Migration 010 |
+
+Additional columns for DPDP compliance (Migration 007), agent executions (Migration 005), documents and audio (Migration 002), enterprise readiness (Migration 013), and performance indexes (Migration 006) bring the total to 52 columns across 14 migrations (001-014).
 
 ### Index File Format
 
@@ -173,10 +213,10 @@ S3 Bucket    ──→ Download ──→ Extract ──→ Parse ──→ Enri
 (tar/zip)        (year)       (PDFs)     (text)    (meta)    (legal)   (vec)     (multi)
                                 │          │         │         │         │         │
                                 ▼          ▼         ▼         ▼         ▼         ▼
-                             Local FS   pdfplumber Gemini  LegalChunker Gemini  PostgreSQL
-                                        +Tesseract 3.1 Pro  (sections) embed   Pinecone
-                                                   JSON                 -004    Neo4j
-                                                                                GCS
+                             Local FS   pdfplumber Gemini   LegalChunker Gemini     PostgreSQL
+                                        +Tesseract 2.5 Flash (sections) embedding Pinecone
+                                                   JSON                  -001     Neo4j
+                                                                                  GCS
 ```
 
 ### Pipeline Steps (Per Judgment)
@@ -273,7 +313,7 @@ The Parquet metadata from S3 provides structured fields, but some are missing or
 | **bench_type** | Not available | **LLM only** | LLM |
 | **jurisdiction** | Not available | **LLM only** | LLM |
 
-### Cost Estimation (Gemini 2.5 Pro for Metadata Extraction)
+### Cost Estimation (Gemini 2.5 Flash for Metadata Extraction)
 
 ```
 Per judgment:
@@ -287,8 +327,8 @@ Per year (1000 judgments):
 Full SC dataset (35K judgments):
   - ~$1,610 (within $300 credits if done in batches with strategic model choice)
 
-Optimization: Use Gemini Flash for bulk extraction (~10x cheaper),
-              reserve 3.1 Pro for complex/important cases.
+Note: Bulk ingestion uses Gemini 2.5 Flash (fast/cheap).
+      Gemini 2.5 Pro reserved for chat, analysis, and complex reasoning.
 ```
 
 ---

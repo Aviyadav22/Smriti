@@ -66,8 +66,9 @@ async def is_token_revoked(jti: str) -> bool:
     try:
         r = await _get_revocation_redis()
         return await r.exists(f"{_REVOKED_PREFIX}{jti}") == 1
-    except Exception:
-        return False
+    except Exception as exc:
+        logger.warning("Token revocation check failed, denying access: %s", exc)
+        return True  # Fail closed: treat as revoked if we can't check
 
 
 def clear_revoked_tokens() -> None:

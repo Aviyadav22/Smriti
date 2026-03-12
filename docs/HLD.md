@@ -7,6 +7,19 @@
 ## Table of Contents
 
 1. [Module Breakdown](#module-breakdown)
+   - [Search Module](#1-search-module-coresearch)
+   - [Ingestion Module](#2-ingestion-module-coreingestion)
+   - [Legal Module](#3-legal-module-corelegal)
+   - [Graph Module](#4-graph-module-coregraph)
+   - [Security Module](#5-security-module-security)
+   - [Agent Module](#6-agent-module-coreagents)
+   - [Drafting Module](#7-drafting-module-coredrafting)
+   - [Document Analysis Pipeline](#8-document-analysis-pipeline-tasksdocument_taskspy-apiroutesdocumentspy)
+   - [Audio Digest Pipeline](#9-audio-digest-pipeline-apiroutesaudiopy-tasksaudio_taskspy)
+   - [DPDP Compliance Module](#10-dpdp-compliance-module-apiroutesdpdppy)
+   - [Admin Module](#11-admin-module-apiroutesadmin_correctionspy-admin_reviewpy-data_qualitypy)
+   - [Scripts](#12-scripts-scripts)
+   - [API Module (Complete Route Inventory)](#13-api-module-apiroutes)
 2. [Service Boundaries](#service-boundaries)
 3. [API Design Philosophy](#api-design-philosophy)
 4. [AI Pipeline Detail](#ai-pipeline-detail)
@@ -910,333 +923,603 @@ class GraphQuerier:
 
 ### 5. Security Module (`security/`)
 
-**Purpose**: Handle authentication, authorization, rate limiting, audit logging, and data protection compliance.
+**Purpose**: Handle authentication, authorization, rate limiting, field-level encryption, audit logging, input sanitization, and DPDP Act compliance.
 
 **Responsibilities**:
-- JWT token issuance, validation, and rotation
-- Password hashing with bcrypt
-- Role-based access control (RBAC)
-- Per-user and per-IP rate limiting
-- Comprehensive audit logging
-- DPDP Act consent management and data erasure
+- JWT token issuance, validation, revocation, and rotation (access + refresh tokens)
+- Password hashing with bcrypt (configurable cost factor)
+- Role-based access control (RBAC) via FastAPI dependencies
+- Per-endpoint sliding-window rate limiting (Redis-backed with in-memory fallback)
+- AES-256-GCM field-level encryption for PII
+- Comprehensive audit logging with IP hashing for DPDP compliance
+- Input sanitization and LLM prompt injection detection
+- DPDP Act consent management (inline in auth flow)
 
-**Key Classes**:
+**Submodules**:
 
-#### `JWTAuth`
+#### `auth.py` — JWT Authentication
 
-```python
-class JWTAuth:
-    """JWT authentication with access + refresh token pattern."""
+Implements the access + refresh token pattern using PyJWT with HS256 signing. Tokens include `sub` (user_id), `role`, `type`, `jti` (unique token ID), `iss` ("smriti"), and `aud` ("smriti-api") claims. Access tokens default to `settings.jwt_access_token_expire_minutes`; refresh tokens default to `settings.jwt_refresh_token_expire_days`.
 
-    def __init__(self, secret_key: str, algorithm: str = "HS256"):
-        self.secret_key = secret_key
-        self.algorithm = algorithm
-
-    def create_access_token(
-        self, user_id: str, role: str, expires_delta: timedelta = timedelta(minutes=15)
-    ) -> str:
-        payload = {
-            "sub": user_id,
-            "role": role,
-            "type": "access",
-            "exp": datetime.utcnow() + expires_delta,
-            "iat": datetime.utcnow(),
-            "jti": str(uuid4()),  # unique token ID for revocation
-        }
-        return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
-
-    def create_refresh_token(
-        self, user_id: str, expires_delta: timedelta = timedelta(days=7)
-    ) -> str:
-        payload = {
-            "sub": user_id,
-            "type": "refresh",
-            "exp": datetime.utcnow() + expires_delta,
-            "iat": datetime.utcnow(),
-            "jti": str(uuid4()),
-        }
-        return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
-
-    def verify_token(self, token: str, expected_type: str = "access") -> TokenPayload:
-        try:
-            payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
-            if payload.get("type") != expected_type:
-                raise InvalidTokenError(f"Expected {expected_type} token")
-            return TokenPayload(**payload)
-        except jwt.ExpiredSignatureError:
-            raise TokenExpiredError("Token has expired")
-        except jwt.InvalidTokenError as e:
-            raise InvalidTokenError(str(e))
-```
-
-#### `PasswordHasher`
+Token revocation is Redis-backed: revoked JTIs are stored with auto-expiry matching the token's remaining lifetime. Revocation checks are **fail-closed** — if Redis is unreachable, the token is treated as revoked.
 
 ```python
-class PasswordHasher:
-    """bcrypt password hashing with configurable rounds."""
+@dataclass(frozen=True, slots=True)
+class TokenPayload:
+    """Decoded JWT token payload."""
+    sub: str   # user_id
+    role: str
+    exp: datetime
+    iat: datetime
+    jti: str   # unique token ID for revocation
 
-    def __init__(self, rounds: int = 12):
-        self.rounds = rounds
-
-    def hash(self, password: str) -> str:
-        return bcrypt.hashpw(
-            password.encode("utf-8"),
-            bcrypt.gensalt(rounds=self.rounds),
-        ).decode("utf-8")
-
-    def verify(self, password: str, hashed: str) -> bool:
-        return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+# Key functions:
+create_access_token(user_id, role, expires_delta?) -> str
+create_refresh_token(user_id, expires_delta?) -> str
+verify_access_token(token) -> TokenPayload
+verify_refresh_token(token) -> TokenPayload
+revoke_token(jti, exp_timestamp?) -> None
+is_token_revoked(jti) -> bool
+hash_password(password) -> str       # bcrypt with configurable cost factor
+verify_password(plain, hashed) -> bool
 ```
 
-#### `RBAC`
+#### `rbac.py` — Role-Based Access Control
+
+Provides FastAPI dependency functions that extract the current user from the Bearer token and enforce role-based authorization.
 
 ```python
-class RBAC:
-    """Role-based access control."""
+# Extract authenticated user (required)
+get_current_user(token) -> TokenPayload
 
-    PERMISSIONS: dict[str, set[str]] = {
-        "free": {
-            "search:read",
-            "case:read",
-            "graph:read",
-            "chat:basic",        # limited chat queries per day
-        },
-        "pro": {
-            "search:read",
-            "case:read",
-            "graph:read",
-            "chat:unlimited",
-            "document:download",
-            "history:read",
-        },
-        "admin": {
-            "search:read",
-            "case:read",
-            "graph:read",
-            "chat:unlimited",
-            "document:download",
-            "document:upload",
-            "ingest:write",
-            "user:manage",
-            "audit:read",
-            "history:read",
-        },
-    }
+# Extract authenticated user (optional — returns None if no token)
+get_current_user_optional(token?) -> TokenPayload | None
 
-    @classmethod
-    def has_permission(cls, role: str, permission: str) -> bool:
-        role_permissions = cls.PERMISSIONS.get(role, set())
-        return permission in role_permissions
-
-    @classmethod
-    def require(cls, permission: str):
-        """FastAPI dependency that checks permission."""
-        async def _check(current_user: User = Depends(get_current_user)):
-            if not cls.has_permission(current_user.role, permission):
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Permission denied: {permission}",
-                )
-            return current_user
-        return _check
+# Factory: create a dependency that requires specific role(s)
+require_role(*roles) -> Callable
+# Usage: Depends(require_role("admin"))
+# Usage: Depends(require_role("admin", "editor"))
 ```
 
-#### `RateLimiter`
+#### `rate_limiter.py` — Sliding Window Rate Limiting
+
+Redis-backed sliding window rate limiter using sorted sets. Each request's timestamp is added to a per-key sorted set; expired entries are pruned on every check. Keys follow the pattern `rate:{client_ip}:{endpoint}`.
+
+Features:
+- Human-readable limit strings: `"100/minute"`, `"5/hour"`, `"1000/day"`
+- In-memory fallback when Redis is unavailable (thread-safe, auto-clears at 10K buckets)
+- Per-endpoint configurable via `rate_limit_dependency("60/minute")` FastAPI dependency
 
 ```python
-class RateLimiter:
-    """
-    Sliding window rate limiter backed by Redis.
-    Supports per-user and per-IP limits.
-    """
-
-    def __init__(self, redis: Redis):
-        self.redis = redis
-
-    async def check(
-        self, key: str, limit: int, window_seconds: int
-    ) -> RateLimitResult:
-        now = time.time()
-        window_start = now - window_seconds
-
-        pipe = self.redis.pipeline()
-        pipe.zremrangebyscore(key, 0, window_start)    # remove expired
-        pipe.zadd(key, {str(now): now})                 # add current request
-        pipe.zcard(key)                                  # count in window
-        pipe.expire(key, window_seconds)                 # TTL cleanup
-        _, _, count, _ = await pipe.execute()
-
-        return RateLimitResult(
-            allowed=count <= limit,
-            remaining=max(0, limit - count),
-            reset_at=int(now + window_seconds),
-        )
+# FastAPI dependency factory
+rate_limit_dependency(limit: str) -> Callable
+# Usage: @router.get("/search", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 ```
 
-#### `AuditLogger`
+#### `encryption.py` — AES-256-GCM Field-Level Encryption
+
+Symmetric encryption for sensitive database fields (PII, API keys) using the `cryptography` library's AESGCM implementation. The encryption key is configured via `settings.encryption_key` (64-char hex string or base64-encoded 32-byte key).
+
+Output format: base64-encoded concatenation of `nonce (12 bytes) + ciphertext + tag (16 bytes)`.
 
 ```python
-class AuditLogger:
-    """Append-only audit log for all data access events."""
-
-    def __init__(self, db: AsyncSession):
-        self.db = db
-
-    async def log(
-        self,
-        user_id: str | None,
-        action: str,
-        resource_type: str,
-        resource_id: str,
-        ip_address: str,
-        user_agent: str,
-        metadata: dict | None = None,
-    ) -> None:
-        entry = AuditLogEntry(
-            id=str(uuid4()),
-            timestamp=datetime.utcnow(),
-            user_id=user_id,
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            metadata=metadata or {},
-        )
-        self.db.add(entry)
-        await self.db.flush()  # Immediate write, no waiting for commit
+encrypt_field(plaintext: str) -> str       # Encrypt a field value
+decrypt_field(ciphertext: str) -> str      # Decrypt a field value
+safe_decrypt(value: str) -> str            # Decrypt if encrypted, return as-is if plaintext
+                                           # (migration safety for pre-existing plaintext)
 ```
 
-#### `ConsentManager`
+#### `audit.py` — Audit Logging
+
+Records security-sensitive user actions to the `audit_logs` PostgreSQL table. IP addresses are **hashed** (SHA-256, truncated to 16 hex chars, salted with encryption_key) before storage — raw IP addresses are never persisted, ensuring DPDP compliance.
 
 ```python
-class ConsentManager:
-    """DPDP Act consent management."""
-
-    async def record_consent(
-        self, user_id: str, purpose: str, version: str
-    ) -> None:
-        """Record user consent for a specific data processing purpose."""
-        consent = Consent(
-            user_id=user_id,
-            purpose=purpose,
-            version=version,
-            granted_at=datetime.utcnow(),
-            is_active=True,
-        )
-        self.db.add(consent)
-        await self.db.commit()
-
-    async def withdraw_consent(self, user_id: str, purpose: str) -> None:
-        """Withdraw consent and trigger data handling changes."""
-        await self.db.execute(
-            update(Consent)
-            .where(Consent.user_id == user_id, Consent.purpose == purpose)
-            .values(is_active=False, withdrawn_at=datetime.utcnow())
-        )
-        await self.db.commit()
-
-    async def erase_user_data(self, user_id: str) -> ErasureReport:
-        """
-        Full data erasure per DPDP Act right to erasure.
-        Anonymizes audit logs (keeps event but removes PII).
-        Deletes: user record, search history, chat history, preferences.
-        """
-        report = ErasureReport(user_id=user_id)
-
-        # Anonymize audit logs
-        await self.db.execute(
-            update(AuditLogEntry)
-            .where(AuditLogEntry.user_id == user_id)
-            .values(user_id=None, ip_address="[REDACTED]", user_agent="[REDACTED]")
-        )
-        report.audit_logs_anonymized = True
-
-        # Delete user data
-        for model in [SearchHistory, ChatHistory, UserPreference]:
-            result = await self.db.execute(
-                delete(model).where(model.user_id == user_id)
-            )
-            report.records_deleted += result.rowcount
-
-        # Delete user record
-        await self.db.execute(delete(User).where(User.id == user_id))
-        report.user_deleted = True
-
-        await self.db.commit()
-        return report
+async def create_audit_log(
+    db, action, user_id, resource_type, resource_id,
+    ip_address?, user_agent?, metadata?
+) -> None
+# Actions: "login", "search", "document.view", "document.delete",
+#          "admin.delete_user", "metadata.correction", etc.
 ```
 
-**Dependencies**: PostgreSQL, Redis, `python-jose` (JWT), `bcrypt`
+#### `sanitizer.py` — Input Sanitization and Prompt Injection Detection
+
+Provides three tiers of input cleaning:
+
+1. **`sanitize_input(text)`** — Strips HTML tags, null bytes, and control characters while preserving normal whitespace.
+2. **`sanitize_search_query(query)`** — All of the above plus removes known LLM prompt injection markers (25+ patterns including `"ignore previous instructions"`, `"jailbreak"`, `"DAN mode"`, ChatML tokens like `<|im_start|>`) and role-switching patterns.
+3. **`detect_prompt_injection(text)`** — Boolean detection of injection attempts via marker matching, role-switching patterns, and excessive special character ratio (>15% threshold).
+
+#### `consent.py` — Consent Management
+
+Consent recording is handled inline during user registration in `auth.py`. The `consents` table tracks consent type, version, grant timestamp, and revocation timestamp. Consent status is queried and managed via the DPDP API endpoints.
+
+**Dependencies**: PostgreSQL, Redis (Upstash), PyJWT, bcrypt, `cryptography` (AESGCM)
 
 ---
 
-### 6. API Module (`api/routes/`)
+### 6. Agent Module (`core/agents/`)
 
-**Purpose**: HTTP interface layer. Thin route handlers that delegate to core service classes.
+**Purpose**: Execute multi-step legal research workflows using LangGraph StateGraph, with human-in-the-loop checkpoints and real-time SSE streaming.
+
+**Responsibilities**:
+- Orchestrate complex legal tasks as directed node graphs
+- Pause execution at checkpoints for human review/approval
+- Stream real-time progress updates via SSE
+- Track execution history in PostgreSQL
+- Retry external provider calls with Tenacity
+
+**Agent Types**:
+
+| Agent | Description | Node Graph |
+|-------|------------|------------|
+| `research` | Precedent research | query_expand -> search_precedents -> analyze_results -> (checkpoint) -> synthesize |
+| `case_prep` | Issue analysis + deep search | extract_issues -> score_issues -> (checkpoint) -> deep_search per issue -> compile |
+| `strategy` | Legal strategy + risk analysis | analyze_position -> identify_risks -> (checkpoint) -> develop_arguments -> verify_citations |
+| `drafting` | Document generation + citation verification | select_template -> generate_draft -> (checkpoint) -> verify_citations -> finalize |
+
+**Key Structure**:
+
+```
+core/agents/
+├── graphs/              # LangGraph StateGraph definitions per agent type
+├── nodes/               # Pure async node functions (partial state dicts)
+│   └── research_nodes.py
+└── ...
+```
+
+#### Agent Graph Construction
+
+Each agent is built as a LangGraph `StateGraph`. Nodes are pure async functions that receive the current state and return a partial state dict, which is merged into the graph state. Dependencies (LLM, search, graph store) are captured via closures at graph construction time.
+
+```python
+# Simplified agent graph construction
+from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
+
+def build_research_graph(llm, search, graph_store):
+    graph = StateGraph(ResearchState)
+
+    async def query_expand(state: ResearchState) -> dict:
+        expanded = await llm.expand_query(state["query"])
+        return {"expanded_queries": expanded}
+
+    async def search_precedents(state: ResearchState) -> dict:
+        results = await search.hybrid_search(state["expanded_queries"])
+        return {"search_results": results}
+
+    async def analyze_results(state: ResearchState) -> dict:
+        analysis = await llm.analyze(state["search_results"])
+        return {"analysis": analysis, "__interrupt__": True}  # checkpoint
+
+    async def synthesize(state: ResearchState) -> dict:
+        memo = await llm.synthesize(state["analysis"], state["human_feedback"])
+        return {"memo": memo}
+
+    graph.add_node("query_expand", query_expand)
+    graph.add_node("search_precedents", search_precedents)
+    graph.add_node("analyze_results", analyze_results)
+    graph.add_node("synthesize", synthesize)
+
+    graph.set_entry_point("query_expand")
+    graph.add_edge("query_expand", "search_precedents")
+    graph.add_edge("search_precedents", "analyze_results")
+    graph.add_edge("analyze_results", "synthesize")
+    graph.add_edge("synthesize", END)
+
+    return graph.compile(checkpointer=MemorySaver())
+```
+
+#### SSE Event Types
+
+Agent execution streams events using the same `data: JSON\n\n` format as chat:
+
+| Event Type | Purpose |
+|-----------|---------|
+| `status` | Execution state change (e.g., "Expanding queries...") |
+| `progress` | Intermediate results or progress percentage |
+| `checkpoint` | Human-in-the-loop prompt requiring user input |
+| `memo` | Final or partial output document |
+| `done` | Execution complete with summary |
+| `error` | Error with details |
+
+#### Execution Tracking
+
+Agent executions are persisted to the `agent_executions` PostgreSQL table for history, auditing, and resume capability. Each execution records the agent type, input parameters, output, status, and timing.
+
+**Dependencies**: LangGraph, Gemini 2.5 Pro (LLM), HybridSearchOrchestrator, GraphStore (Neo4j), PostgreSQL (execution tracking), Tenacity (retry)
+
+---
+
+### 7. Drafting Module (`core/drafting/`)
+
+**Purpose**: Generate structured Indian legal documents from LLM-drafted content, with export to DOCX and PDF formats with proper legal formatting.
+
+**Responsibilities**:
+- Define structured templates for common Indian legal document types
+- Export LLM-generated content to DOCX (python-docx) and PDF (ReportLab)
+- Apply Indian legal formatting conventions (Times New Roman, 1-inch margins, numbered paragraphs, centered court headers)
+
+**Submodules**:
+
+#### `templates.py` — Legal Document Templates
+
+Defines 7 immutable `DocumentTemplate` dataclasses, each specifying the document type, ordered section structure, required user-provided fields, statutory basis, court header template, and prompt key.
+
+| Template | Display Name | Statutory Basis | Required Fields |
+|----------|-------------|-----------------|-----------------|
+| `bail_application` | Bail Application (S.439 CrPC) | Section 439, CrPC 1973 | accused_name, fir_number, police_station, offences_charged |
+| `writ_petition_226` | Writ Petition (Art.226) | Article 226, Constitution | petitioner_details, respondent_details, fundamental_right_violated |
+| `writ_petition_32` | Writ Petition (Art.32) | Article 32, Constitution | petitioner_details, respondent_details, fundamental_right_violated |
+| `written_statement` | Written Statement (Order VIII CPC) | Order VIII, CPC 1908 | suit_number, plaintiff_claims |
+| `legal_notice` | Legal Notice | Various | sender_name, sender_address, recipient_name, recipient_address |
+| `appeal` | Appeal (Civil/Criminal) | Various | impugned_order_details, lower_court_name |
+| `interim_application` | Interim Application | Various | main_case_number, relief_sought |
+
+#### `export.py` — DOCX and PDF Export
+
+Two async export functions that transform LLM-generated markdown/text content into properly formatted legal documents:
+
+- **`export_to_docx(content, template, title?)`** — Produces DOCX with python-docx: Times New Roman 12pt body / 14pt headings / 16pt title, 1-inch margins, centered title, auto-numbered paragraphs under each heading, document metadata (author: "Smriti AI").
+- **`export_to_pdf(content, template, title?)`** — Produces PDF with ReportLab: A4 page size, Times-Roman/Times-Bold fonts, same formatting conventions, XML-safe text escaping.
+
+Both functions parse the content into `(heading, body_lines)` pairs using heading detection (markdown `#` headers and ALL-CAPS lines).
+
+**Dependencies**: python-docx, ReportLab, DocumentTemplate definitions
+
+---
+
+### 8. Document Analysis Pipeline (`tasks/document_tasks.py`, `api/routes/documents.py`)
+
+**Purpose**: Accept user-uploaded legal PDFs and run a multi-step async analysis pipeline via Celery, producing issue extraction, precedent mapping, counter-arguments, and a research memo.
+
+**Responsibilities**:
+- Upload and store PDF documents (50MB limit, magic byte validation, filename sanitization)
+- Execute 7-step async analysis pipeline via Celery worker
+- Chunk, embed, and index uploaded documents for search visibility
+- Serve analysis results and research memos
+
+**Analysis Pipeline Steps**:
+
+```
+Step 1: Extract text      — PDFParser (PyMuPDF + OCR fallback)
+Step 2: Identify issues    — DocumentAnalyzerService (Gemini LLM)
+Step 3: Find precedents    — PrecedentMapperService (embed + vector search + rerank)
+Step 4: Counter-arguments  — DocumentAnalyzerService (Gemini LLM)
+Step 5: Research memo      — DocumentAnalyzerService (synthesize all findings)
+Step 6: Index for search   — chunk_judgment() + GeminiEmbedder + Pinecone upsert
+Step 7: Store results      — INSERT into document_analyses table
+```
+
+Status tracking: each step updates the document's `status` and `processing_step` fields in real-time (`extracting` -> `analyzing` -> `searching` -> `generating` -> `indexing` -> `completed` or `failed`).
+
+The Celery task (`analyze_document`) has `max_retries=2` with 60-second retry delay for transient errors (ConnectionError, TimeoutError, OSError).
+
+**API Endpoints** (prefix: `/api/v1/documents`):
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| POST | `/upload` | Upload PDF for analysis (rate: 10/min) | Required |
+| GET | `` | List user's documents (paginated) | Required |
+| GET | `/{document_id}` | Document details + analysis results | Required |
+| DELETE | `/{document_id}` | Delete document and analysis (audit logged) | Required |
+| GET | `/{document_id}/memo` | Get research memo | Required |
+
+**Dependencies**: Celery + Redis broker, PDFParser, DocumentAnalyzerService, PrecedentMapperService, GeminiLLM, GeminiEmbedder, PineconeStore, CohereReranker, GCS/local storage
+
+---
+
+### 9. Audio Digest Pipeline (`api/routes/audio.py`, `tasks/audio_tasks.py`)
+
+**Purpose**: Generate spoken-word audio digests of case summaries using text-to-speech, supporting English and Hindi via Sarvam AI with MockTTS fallback for development.
+
+**Responsibilities**:
+- Queue async audio generation via Celery
+- Generate case summary text and convert to speech
+- Store and stream audio files (MP3) via storage provider
+- Track generation status per case per language
+
+**API Endpoints** (prefix: `/api/v1/cases`):
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| POST | `/{case_id}/audio/generate` | Queue audio digest generation (en/hi) | Required |
+| GET | `/{case_id}/audio/status` | Check availability (available/generating) | Public |
+| GET | `/{case_id}/audio` | Stream MP3 audio file (rate: 10/min) | Public |
+
+The generate endpoint is idempotent: if an audio digest already exists for the requested case+language, it returns `"already_exists"` without re-generating. If generation is in progress, it returns `"generating"`.
+
+Audio files are stored via the storage provider (GCS in production, local filesystem in dev) and streamed to clients as chunked `audio/mpeg` responses.
+
+**Dependencies**: Sarvam AI TTS (production) / MockTTS (dev), Celery + Redis broker, GCS/local storage, PostgreSQL (audio_digests table)
+
+---
+
+### 10. DPDP Compliance Module (`api/routes/dpdp.py`)
+
+**Purpose**: Implement data subject rights under the Digital Personal Data Protection Act, 2023 (India's DPDP Act), providing endpoints for data inventory, erasure, and consent management.
+
+**API Endpoints** (prefix: `/api/v1/dpdp`):
+
+| Method | Path | Description | Auth | Rate Limit |
+|--------|------|-------------|------|------------|
+| GET | `/data-summary` | User's data inventory across all tables (DPDP Section 11) | Required | 20/min |
+| POST | `/erasure` | Right to erasure — atomic deletion of all personal data (DPDP Section 12) | Required | 5/hour |
+| POST | `/consent-withdraw` | Withdraw data processing consent (DPDP Section 6) | Required | 10/hour |
+| GET | `/consent-status` | Current consent status (type, version, grant/revoke dates) | Required | — |
+
+**Erasure Flow**: All deletions are performed within a single nested transaction for atomicity:
+1. Delete agent executions
+2. Delete chat messages and sessions
+3. Delete documents (CASCADE handles document_analyses)
+4. Delete consents
+5. Log erasure to `dpdp_audit_log` (retained for compliance)
+6. Deactivate user account (`is_active = false`)
+
+**Dependencies**: PostgreSQL (6 tables queried: chat_sessions, chat_messages, documents, agent_executions, audit_logs, consents)
+
+---
+
+### 11. Admin Module (`api/routes/admin_corrections.py`, `admin_review.py`, `data_quality.py`)
+
+**Purpose**: Provide admin-only tools for metadata corrections, editorial review of ingested cases, and data quality monitoring.
+
+**All endpoints require `admin` role** (enforced via `require_role("admin")` dependency).
+
+#### Admin Corrections (`/api/v1/admin/corrections`)
+
+Allows administrators to fix metadata errors on individual cases while maintaining a full audit trail of what changed, who changed it, and why.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/{case_id}/correct` | Correct a single metadata field with audit trail |
+| GET | `/{case_id}/history` | Get correction history from audit logs |
+
+Correctable fields: 22 scalar fields (title, citation, court, year, decision_date, case_type, jurisdiction, bench_type, petitioner, respondent, author_judge, disposal_nature, ratio_decidendi, case_number, headnotes, outcome_summary, coram_size, lower_court, lower_court_case_number, appeal_from, opinion_type, split_ratio, petitioner_type, respondent_type, is_pil) plus 7 array fields (judge, acts_cited, cases_cited, keywords, dissenting_judges, concurring_judges, companion_cases).
+
+Each correction: records old value, new value, reason, and corrected_by in `audit_logs`; updates `metadata_provenance` to mark the field as `"admin_corrected"`.
+
+#### Admin Review Queue (`/api/v1/admin/review`)
+
+HITL review queue for cases flagged during ingestion (low confidence, missing critical fields, or explicit `needs_review`/`failed` status).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `` | List cases needing review (filterable, sortable, paginated) |
+| GET | `/{case_id}` | Full case detail with provenance for review |
+| POST | `/{case_id}/approve` | Mark case as reviewed (sets `ingestion_status='complete'`) |
+| POST | `/{case_id}/reject` | Reject case for re-ingestion (sets `ingestion_status='rejected'`) |
+
+#### Data Quality Dashboard (`/api/v1/admin/data-quality`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `` | Comprehensive data quality metrics |
+
+Returns: total case count, ingestion status breakdown, per-field population rates (25 scalar + 7 array fields), average non-null metadata fields per case, and citation resolution statistics.
+
+**Dependencies**: PostgreSQL, audit_logs table, require_role("admin")
+
+---
+
+### 12. Scripts (`scripts/`)
+
+**Purpose**: Standalone CLI scripts for data ingestion, graph population, verification, and benchmarking. Designed for both manual execution and automated scheduling (cron, Cloud Scheduler).
+
+#### `ingest_s3.py` — S3 Bulk Ingestion
+
+Downloads Indian Supreme Court judgments from the AWS Open Data bucket (`s3://indian-supreme-court-judgments/`) and runs the full ingestion pipeline for each judgment.
+
+- **Queue-based workers**: Parallel processing with configurable worker count
+- **Circuit breaker**: Halts after 10 consecutive failures to prevent cascading errors
+- **Graceful shutdown**: Handles SIGINT/SIGTERM for clean worker termination
+- **SQLite tracking**: Local `data/ingest_tracker.db` tracks processed files for resume capability
+- **Retry**: Tenacity exponential backoff (2-60s, 5 attempts) on downloads and API calls
+- **Multi-key support**: Rotates across multiple Gemini API keys (`GEMINI_API_KEYS` env var) for throughput
+- **ETA logging**: Estimates remaining time based on processing rate
+
+```bash
+python scripts/ingest_s3.py --year 2024              # Single year
+python scripts/ingest_s3.py --year-from 2020 --year-to 2024  # Year range
+python scripts/ingest_s3.py --resume                  # Resume from last checkpoint
+python scripts/ingest_s3.py --year 2024 --limit 100   # Limit count
+```
+
+#### `populate_neo4j.py` — Citation Graph Population
+
+Reads all cases from PostgreSQL and builds the full Neo4j citation graph:
+- **Case nodes**: id, title, citation, court, year, case_type, bench_type, etc.
+- **CITES edges**: Between cases based on `cases_cited` arrays
+- **Act nodes + INTERPRETS edges**: From `acts_cited` arrays
+- **Judge nodes + DECIDED_BY/AUTHORED_BY edges**: From judge and author_judge fields
+
+```bash
+python scripts/populate_neo4j.py               # Full run
+python scripts/populate_neo4j.py --batch 500   # Custom batch size
+python scripts/populate_neo4j.py --dry-run     # Preview without writing
+python scripts/populate_neo4j.py --stats       # Show current Neo4j stats
+```
+
+#### `daily_ingest.py` — Scheduled Daily Ingestion
+
+Wrapper for cron/Cloud Scheduler that runs incremental ingestion for the current year, then populates Neo4j. Designed for `cron` or Cloud Run Jobs.
+
+```bash
+python scripts/daily_ingest.py                # Current year, resume mode
+python scripts/daily_ingest.py --year 2024    # Specific year
+python scripts/daily_ingest.py --full         # All years (initial load)
+```
+
+#### `verify_ingestion.py` — Post-Ingestion Verification
+
+Cross-store consistency checker that samples cases from PostgreSQL and verifies their presence in Pinecone (vector store) and Neo4j (graph). Reports mismatches, missing vectors, graph gaps, and FTS index issues.
+
+```bash
+python scripts/verify_ingestion.py             # Default 100 sample
+python scripts/verify_ingestion.py --sample 50 # Custom sample size
+```
+
+#### `benchmark_extraction.py` — Metadata Extraction Benchmarking
+
+Evaluates the metadata extraction pipeline against a gold-standard dataset of manually verified cases. Computes per-field precision and recall for 18 scalar fields and 4 list fields.
+
+```bash
+python scripts/benchmark_extraction.py --gold-dir data/gold_standard/
+python scripts/benchmark_extraction.py --gold-dir data/gold_standard/ --fields title,citation,year
+```
+
+**Dependencies**: PostgreSQL, Pinecone, Neo4j, Gemini API, PyArrow (Parquet), Tenacity, asyncpg
+
+---
+
+### 13. API Module (`api/routes/`)
+
+**Purpose**: HTTP interface layer. 15 route modules exposing 61+ endpoints. Thin route handlers that delegate to core service classes.
 
 **Responsibilities**:
 - Request validation (Pydantic models)
 - Authentication and authorization (via dependencies)
+- Rate limiting (per-endpoint configurable)
 - Route to appropriate service
 - Format and return responses
 - Handle errors consistently
 
-**Routers**:
+**Complete Route Inventory (15 files)**:
 
-#### `SearchRouter` (`api/routes/search.py`)
+#### 1. `AuthRouter` (`api/routes/auth.py`) — Prefix: `/api/v1/auth`
+
+| Method | Path | Description | Auth | Rate Limit |
+|--------|------|-------------|------|------------|
+| POST | `/register` | Create account (DPDP consent required) | Public | 5/min |
+| POST | `/login` | Login, return access + refresh tokens | Public | — |
+| POST | `/refresh` | Refresh access token | Public (refresh token) | — |
+| POST | `/logout` | Revoke tokens | Required | — |
+| GET | `/me` | Get current user profile | Required | — |
+| DELETE | `/me` | Delete account (DPDP right to erasure) | Required | — |
+
+Password validation enforces: 8+ chars, uppercase, lowercase, digit. Registration requires explicit `consent_given=true` for DPDP compliance.
+
+#### 2. `SearchRouter` (`api/routes/search.py`) — Prefix: `/api/v1/search`
+
+| Method | Path | Description | Auth | Rate Limit |
+|--------|------|-------------|------|------------|
+| GET | `` | Hybrid search (vector + FTS + RRF + rerank) | Optional | 30/min |
+| GET | `/suggest` | Autocomplete suggestions | Optional | 60/min |
+| GET | `/facets` | Available filter facets | Optional | 30/min |
+
+Search supports 9 filter parameters: `court`, `year_from`, `year_to`, `case_type`, `bench_type`, `judge`, `act`, `section`, and `language` (en/hi). Prompt injection detection is applied before query processing. Results are cached in Redis (1-hour TTL).
+
+#### 3. `CaseRouter` (`api/routes/cases.py`) — Prefix: `/api/v1/cases`
+
+| Method | Path | Description | Auth | Rate Limit |
+|--------|------|-------------|------|------------|
+| GET | `/{case_id}` | Full case metadata and text | Public | 60/min |
+| GET | `/{case_id}/summary` | AI-generated case summary | Public | 30/min |
+| GET | `/{case_id}/pdf` | Signed PDF download URL | Required | 30/min |
+| GET | `/{case_id}/citations` | Cases cited by this case | Public | 60/min |
+| GET | `/{case_id}/cited-by` | Cases citing this case | Public | 60/min |
+| GET | `/{case_id}/similar` | Semantically similar cases | Required | 20/min |
+
+#### 4. `ChatRouter` (`api/routes/chat.py`) — Prefix: `/api/v1/chat`
+
+| Method | Path | Description | Auth | Rate Limit |
+|--------|------|-------------|------|------------|
+| POST | `` | New chat session + first message (SSE stream) | Required | 20/min |
+| POST | `/{session_id}/message` | Continue chat session (SSE stream) | Required | 20/min |
+| GET | `/sessions` | List user's chat sessions | Required | — |
+| GET | `/{session_id}/history` | Get session message history | Required | — |
+| DELETE | `/{session_id}` | Delete chat session | Required | — |
+
+Chat messages are encrypted at rest (AES-256-GCM). Prompt injection detection is applied before RAG processing.
+
+#### 5. `AgentRouter` (`api/routes/agents.py`) — Prefix: `/api/v1/agents`
+
+| Method | Path | Description | Auth | Rate Limit |
+|--------|------|-------------|------|------------|
+| POST | `/{agent_type}/run` | Start agent execution (SSE stream) | Required | 10/min |
+| GET | `/executions` | List past agent executions | Required | — |
+| GET | `/executions/{execution_id}` | Get execution details | Required | — |
+| POST | `/executions/{execution_id}/resume` | Resume from HITL checkpoint | Required | 10/min |
+| DELETE | `/executions/{execution_id}` | Delete execution record | Required | — |
+| GET | `/drafting/templates` | List available document templates | Required | — |
+| POST | `/drafting/export/{execution_id}` | Export draft to DOCX/PDF | Required | 20/min |
+
+Agent types: `research`, `case_prep`, `strategy`, `drafting`. Active checkpointers are stored in a TTLCache (1-hour TTL, max 1024 entries) to prevent memory leaks from abandoned SSE connections.
+
+#### 6. `GraphRouter` (`api/routes/graph.py`) — Prefix: `/api/v1/graph`
+
+| Method | Path | Description | Auth | Rate Limit |
+|--------|------|-------------|------|------------|
+| GET | `/{case_id}/neighborhood` | Citation network (depth 1-3) | Optional | 30/min |
+| GET | `/{case_id}/chain` | Forward citation chain (depth 1-5) | Optional | 30/min |
+| GET | `/{case_id}/authorities` | Top authorities citing this case | Optional | 30/min |
+| GET | `/stats` | Graph-wide statistics | Optional | 30/min |
+
+#### 7. `DocumentRouter` (`api/routes/documents.py`) — Prefix: `/api/v1/documents`
+
+| Method | Path | Description | Auth | Rate Limit |
+|--------|------|-------------|------|------------|
+| POST | `/upload` | Upload PDF for analysis | Required | 10/min |
+| GET | `` | List user's documents (paginated) | Required | — |
+| GET | `/{document_id}` | Document details + analysis | Required | — |
+| DELETE | `/{document_id}` | Delete document (audit logged) | Required | — |
+| GET | `/{document_id}/memo` | Get research memo | Required | — |
+
+#### 8. `AudioRouter` (`api/routes/audio.py`) — Prefix: `/api/v1/cases`
+
+| Method | Path | Description | Auth | Rate Limit |
+|--------|------|-------------|------|------------|
+| POST | `/{case_id}/audio/generate` | Queue audio digest (en/hi) | Required | — |
+| GET | `/{case_id}/audio/status` | Check audio availability | Public | — |
+| GET | `/{case_id}/audio` | Stream MP3 audio file | Public | 10/min |
+
+#### 9. `IngestRouter` (`api/routes/ingest.py`) — Prefix: `/api/v1/ingest`
 
 | Method | Path | Description | Auth |
 |--------|------|-------------|------|
-| POST | `/api/v1/search` | Hybrid search | Required |
-| GET | `/api/v1/search/suggestions` | Autocomplete suggestions | Optional |
-| GET | `/api/v1/search/history` | User's search history | Required |
+| POST | `/upload` | Upload single PDF for ingestion | Admin |
+| GET | `/status/{document_id}` | Check ingestion status | Admin |
+| GET | `/dashboard/completeness` | Ingestion completeness dashboard | Admin |
+| GET | `/review-queue` | List cases needing review | Admin |
+| PATCH | `/cases/{case_id}/metadata` | Update case metadata | Admin |
+| POST | `/cases/{case_id}/approve` | Approve case for publication | Admin |
+| POST | `/cases/{case_id}/retry` | Retry failed ingestion | Admin |
 
-#### `IngestRouter` (`api/routes/ingest.py`)
+#### 10. `JudgesRouter` (`api/routes/judges.py`) — Prefix: `/api/v1`
 
-| Method | Path | Description | Auth |
-|--------|------|-------------|------|
-| POST | `/api/v1/ingest` | Ingest single document | Admin |
-| POST | `/api/v1/ingest/batch` | Batch ingest (up to 50) | Admin |
-| GET | `/api/v1/ingest/{job_id}/status` | Check ingestion status | Admin |
+| Method | Path | Description | Auth | Rate Limit |
+|--------|------|-------------|------|------------|
+| GET | `/judges` | List judges with case counts | Public | 30/min |
+| GET | `/judges/compare` | Compare judges side-by-side | Public | 30/min |
+| GET | `/judges/{judge_name}` | Judge profile and analytics | Public | 30/min |
+| GET | `/judges/{judge_name}/cases` | Cases by judge (paginated) | Public | 30/min |
+| GET | `/courts/{court_name}/stats` | Court-level statistics | Public | 30/min |
 
-#### `ChatRouter` (`api/routes/chat.py`)
+Results are cached in Redis (1-hour TTL).
 
-| Method | Path | Description | Auth |
-|--------|------|-------------|------|
-| POST | `/api/v1/chat` | Send message (SSE stream) | Required |
-| GET | `/api/v1/chat/sessions` | List chat sessions | Required |
-| GET | `/api/v1/chat/sessions/{id}` | Get session messages | Required |
-| DELETE | `/api/v1/chat/sessions/{id}` | Delete session | Required |
+#### 11. `DPDPRouter` (`api/routes/dpdp.py`) — Prefix: `/api/v1/dpdp`
 
-#### `CaseRouter` (`api/routes/cases.py`)
+See [DPDP Compliance Module](#10-dpdp-compliance-module-apiroutesdpdppy) above.
 
-| Method | Path | Description | Auth |
-|--------|------|-------------|------|
-| GET | `/api/v1/cases/{id}` | Get case details | Required |
-| GET | `/api/v1/cases/{id}/pdf` | Get signed PDF URL | Pro+ |
-| GET | `/api/v1/cases/{id}/sections` | Get parsed sections | Required |
-| GET | `/api/v1/cases/{id}/metadata` | Get case metadata | Required |
+#### 12. `HealthRouter` (`api/routes/health.py`) — No prefix
 
-#### `GraphRouter` (`api/routes/graph.py`)
+| Method | Path | Description | Auth | Rate Limit |
+|--------|------|-------------|------|------------|
+| GET | `/health` | Dependency health checks | Optional | 60/min |
 
-| Method | Path | Description | Auth |
-|--------|------|-------------|------|
-| GET | `/api/v1/graph/{case_id}/cited-by` | Cases citing this case | Required |
-| GET | `/api/v1/graph/{case_id}/cites` | Cases cited by this case | Required |
-| GET | `/api/v1/graph/{case_id}/chain` | Full citation chain | Required |
-| GET | `/api/v1/graph/{case_id}/visualization` | D3-compatible graph data | Required |
+Checks PostgreSQL, Redis, Pinecone, Neo4j, and Gemini in parallel (5-second per-check timeout). Returns minimal `{"status": "healthy"}` for unauthenticated callers; full dependency details for authenticated users. Returns 503 when critical dependencies (PostgreSQL) are down. Overall status: `healthy` (all up), `degraded` (non-critical down), `unhealthy` (critical down).
 
-#### `AuthRouter` (`api/routes/auth.py`)
+#### 13. `DataQualityRouter` (`api/routes/data_quality.py`) — Prefix: `/api/v1/admin/data-quality`
 
-| Method | Path | Description | Auth |
-|--------|------|-------------|------|
-| POST | `/api/v1/auth/register` | Create account | Public |
-| POST | `/api/v1/auth/login` | Login | Public |
-| POST | `/api/v1/auth/refresh` | Refresh access token | Public (refresh token) |
-| POST | `/api/v1/auth/logout` | Revoke refresh token | Required |
-| GET | `/api/v1/auth/me` | Get current user | Required |
-| DELETE | `/api/v1/auth/me` | Delete account (DPDP) | Required |
+See [Admin Module](#11-admin-module-apiroutesadmin_correctionspy-admin_reviewpy-data_qualitypy) above.
+
+#### 14. `AdminCorrectionsRouter` (`api/routes/admin_corrections.py`) — Prefix: `/api/v1/admin/corrections`
+
+See [Admin Module](#11-admin-module-apiroutesadmin_correctionspy-admin_reviewpy-data_qualitypy) above.
+
+#### 15. `AdminReviewRouter` (`api/routes/admin_review.py`) — Prefix: `/api/v1/admin/review`
+
+See [Admin Module](#11-admin-module-apiroutesadmin_correctionspy-admin_reviewpy-data_qualitypy) above.
 
 ---
 
@@ -1252,9 +1535,9 @@ class ConsentManager:
 │  │                  API Layer (Routes)                  │    │
 │  ├─────────────────────────────────────────────────────┤    │
 │  │               Core Service Layer                     │    │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐ │    │
-│  │  │  Search  │ │ Ingest   │ │  Chat    │ │  Graph │ │    │
-│  │  └──────────┘ └──────────┘ └──────────┘ └────────┘ │    │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐ ┌────────┐ │ │
+│  │  │  Search  │ │ Ingest   │ │  Chat    │ │  Graph │ │ Agents │ │ │
+│  │  └──────────┘ └──────────┘ └──────────┘ └────────┘ └────────┘ │ │
 │  ├─────────────────────────────────────────────────────┤    │
 │  │              Domain Layer (Legal)                    │    │
 │  ├─────────────────────────────────────────────────────┤    │
@@ -1319,9 +1602,9 @@ POST   /api/v1/ingest             → create (ingest) document
 DELETE /api/v1/chat/sessions/{id} → delete chat session
 ```
 
-### SSE for Chat Streaming
+### SSE for Chat and Agent Streaming
 
-Chat responses use Server-Sent Events (SSE), not WebSockets. SSE is simpler, works through proxies and load balancers, and is sufficient for server-to-client streaming.
+Chat responses and agent executions use Server-Sent Events (SSE), not WebSockets. SSE is simpler, works through proxies and load balancers, and is sufficient for server-to-client streaming. Chat SSE includes citation verification events that confirm referenced cases exist and are accurately cited. Agent SSE uses the same `data: JSON\n\n` format with event types: `status`, `progress`, `checkpoint` (HITL), `memo`, `done`, and `error`.
 
 ```python
 @router.post("/chat")

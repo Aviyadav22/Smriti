@@ -55,7 +55,7 @@ async def get_neighborhood(
     edges_set: set[tuple[str, str, str]] = set()
     edges_list: list[dict] = []
 
-    # Add center node
+    # Add center node — return early if it doesn't exist in the graph
     try:
         center_node = await graph_store.get_node(case_id)
         if center_node:
@@ -67,6 +67,8 @@ async def get_neighborhood(
                 "year": center_node.get("year"),
                 "cited_by_count": center_node.get("cited_by_count", 0),
             }
+        else:
+            return {"nodes": [], "edges": [], "error": "Case not found in citation graph"}
     except Exception:
         nodes_map[case_id] = {"id": case_id}
 

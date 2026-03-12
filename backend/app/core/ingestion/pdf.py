@@ -423,7 +423,9 @@ def _extract_pdf_text_sync(file_path: str) -> tuple[str, int]:
         if PDFPasswordIncorrect is not None and isinstance(exc, PDFPasswordIncorrect):
             logger.warning("Skipping password-protected PDF: %s", file_path)
             return "", 0
-        raise
+        # Catch any other PDF corruption / parsing errors gracefully
+        logger.error("Corrupt or unreadable PDF %s: %s", file_path, exc)
+        return "", 0
 
     # Remove repeated headers/footers on per-page list (before joining)
     page_texts = _remove_repeated_headers_footers_pages(page_texts)

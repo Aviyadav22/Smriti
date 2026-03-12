@@ -33,6 +33,7 @@ load_dotenv()
 
 import asyncpg
 from neo4j import AsyncGraphDatabase
+from sqlalchemy import text
 
 logging.basicConfig(
     level=logging.INFO,
@@ -507,14 +508,21 @@ async def sync_cited_by_counts_to_pg(
     batch_size = 500
     for i in range(0, len(records), batch_size):
         batch = records[i : i + batch_size]
-        # Build VALUES list for batch update
-        values = ", ".join(
-            f"('{r['id']}', {r['count']})" for r in batch
+        # Build parameterized VALUES clause
+        value_placeholders = ", ".join(
+            f"(:id_{j}::text, :count_{j}::integer)" for j in range(len(batch))
         )
+        params = {}
+        for j, r in enumerate(batch):
+            params[f"id_{j}"] = r["id"]
+            params[f"count_{j}"] = r["count"]
         await conn.execute(
-            f"UPDATE cases SET cited_by_count = v.count "
-            f"FROM (VALUES {values}) AS v(id, count) "
-            f"WHERE cases.id::text = v.id"
+            text(
+                f"UPDATE cases SET cited_by_count = v.count "
+                f"FROM (VALUES {value_placeholders}) AS v(id, count) "
+                f"WHERE cases.id::text = v.id"
+            ),
+            params,
         )
         updated += len(batch)
 
@@ -645,8 +653,12 @@ async def populate(
         total_judge_edges = 0
         start_time = time.time()
 
+        batch_number = 0
+        checkpoint_interval = 10  # Log cumulative progress every N batches
+
         for offset in range(0, total_cases, batch_size):
             batch_start = time.time()
+            batch_number += 1
             cases = await fetch_cases(conn, offset, batch_size)
 
             if not cases:
@@ -692,6 +704,24 @@ async def populate(
                 created, edges_created, unresolved,
                 act_count, judge_count, elapsed,
             )
+
+            # Periodic cumulative progress checkpoint with ETA
+            if batch_number % checkpoint_interval == 0:
+                wall_elapsed = time.time() - start_time
+                cases_done = min(offset + batch_size, total_cases)
+                cases_remaining = total_cases - cases_done
+                rate = cases_done / wall_elapsed if wall_elapsed > 0 else 0
+                eta_secs = cases_remaining / rate if rate > 0 else 0
+                eta_mins = eta_secs / 60
+                logger.info(
+                    "CHECKPOINT [batch %d]: %d/%d cases (%.1f%%) | "
+                    "cumulative: %d nodes, %d edges, %d acts, %d judges | "
+                    "rate: %.1f cases/s | ETA: %.1f min",
+                    batch_number, cases_done, total_cases,
+                    100.0 * cases_done / total_cases,
+                    total_nodes, total_edges, total_acts, total_judges,
+                    rate, eta_mins,
+                )
 
         # Update cited_by_count on Neo4j nodes, then sync back to PostgreSQL
         if not dry_run and total_edges > 0:

@@ -12,7 +12,7 @@
 | Docker Compose | 2.20+ | Multi-container orchestration | Included with Docker Desktop |
 | Git | 2.40+ | Version control | [git-scm.com](https://git-scm.com/) |
 | AWS CLI | 2.x | Download S3 dataset (optional — HTTPS also works) | [aws.amazon.com/cli](https://aws.amazon.com/cli/) |
-| pnpm | 9+ | Frontend package manager | `npm install -g pnpm` |
+| npm | 10+ | Frontend package manager (included with Node.js) | Included with Node.js |
 
 ### Optional (for OCR)
 | Tool | Version | Purpose |
@@ -52,34 +52,28 @@ ENCRYPTION_KEY=                        # openssl rand -hex 32 (AES-256 key for P
 
 # ---------- PostgreSQL ----------
 DATABASE_URL=postgresql+asyncpg://smriti:smriti_dev@localhost:5432/smriti
-DATABASE_SSL_MODE=disable              # disable for local, require for production
 DATABASE_POOL_SIZE=10
 DATABASE_MAX_OVERFLOW=20
 
 # ---------- Redis ----------
 REDIS_URL=redis://localhost:6379/0
-# For Upstash (production):
-# REDIS_URL=rediss://default:YOUR_PASSWORD@YOUR_ENDPOINT.upstash.io:6379
+CELERY_BROKER_URL=redis://localhost:6379/1
+CELERY_RESULT_BACKEND=redis://localhost:6379/2
 
 # ---------- Gemini (LLM + Embeddings) ----------
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=                        # From https://aistudio.google.com/apikey
-GEMINI_MODEL=gemini-2.5-pro           # Model for chat, analysis, extraction
+GEMINI_MODEL=gemini-2.5-pro           # Model for chat, analysis, reasoning
+GEMINI_FLASH_MODEL=gemini-2.5-flash   # Fast/cheap model for ingestion, classification
 GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 GEMINI_EMBEDDING_DIMENSION=1536
-GEMINI_MAX_TOKENS=8192                 # Max output tokens
-GEMINI_TEMPERATURE=0.1                 # Low temp for factual extraction
-GEMINI_RATE_LIMIT_RPM=60              # Requests per minute
 
 # ---------- Pinecone (Vector DB) ----------
 VECTOR_PROVIDER=pinecone
 PINECONE_API_KEY=                      # From https://app.pinecone.io/
 PINECONE_INDEX_NAME=smriti-legal
-PINECONE_ENVIRONMENT=us-east-1        # Free tier region
-PINECONE_DIMENSION=1536                # Must match embedding dimension
-PINECONE_METRIC=cosine
-PINECONE_CLOUD=aws                     # aws | gcp | azure
-PINECONE_TOP_K=20                      # Default number of results
+PINECONE_HOST=                         # Index-specific host URL from Pinecone console
+                                       # (e.g. https://smriti-legal-abc123.svc.us-east-1.pinecone.io)
 
 # ---------- Neo4j (Graph DB) ----------
 GRAPH_PROVIDER=neo4j
@@ -95,29 +89,26 @@ COHERE_API_KEY=                        # From https://dashboard.cohere.com/api-k
 COHERE_RERANK_MODEL=rerank-v4.0-pro
 COHERE_RERANK_TOP_N=10                # Return top N after reranking
 
+# ---------- TTS ----------
+TTS_PROVIDER=sarvam                    # sarvam | mock
+SARVAM_API_KEY=                        # From https://dashboard.sarvam.ai/
+
 # ---------- Storage ----------
 STORAGE_PROVIDER=local                 # local | gcs
 LOCAL_STORAGE_PATH=./data/pdfs         # Local PDF storage directory
-# GCS (production):
-# GCS_BUCKET_NAME=smriti-pdfs
-# GCS_PROJECT_ID=your-gcp-project-id
-# GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+GCS_BUCKET_NAME=smriti-documents       # Only needed if STORAGE_PROVIDER=gcs
 
 # ---------- Ingestion ----------
-INGESTION_BATCH_SIZE=10                # PDFs to process in parallel
-INGESTION_CONCURRENCY=5                # Parallel workers
 INGESTION_TRACKER_DB=./data/ingestion_tracker.db  # SQLite for progress tracking
 
-# ---------- Rate Limiting ----------
-RATE_LIMIT_DEFAULT=100/minute          # Per-user default
-RATE_LIMIT_SEARCH=60/minute            # Search endpoint
-RATE_LIMIT_CHAT=10/minute              # Chat/LLM endpoints
-RATE_LIMIT_INGEST=5/minute             # Ingestion endpoint
-
-# ---------- Logging ----------
+# ---------- Monitoring ----------
 LOG_LEVEL=INFO                         # DEBUG | INFO | WARNING | ERROR
-LOG_FORMAT=json                        # json | text
-LOG_PII_REDACTION=true                 # Redact emails, IPs in logs
+SENTRY_DSN=                            # Optional: Sentry DSN for error tracking
+SENTRY_ENVIRONMENT=                    # Optional: defaults to APP_ENV
+SENTRY_TRACES_SAMPLE_RATE=0.1         # 10% of transactions sampled
+
+# ---------- DPDP Compliance ----------
+DATA_RETENTION_DAYS=365                # Days before inactive data is pruned
 ```
 
 ### `.env.local` (frontend)
@@ -174,7 +165,7 @@ source .venv/bin/activate     # Linux/Mac
 # Install dependencies
 pip install -e ".[dev]"
 
-# Run database migrations
+# Run database migrations (001 through 014)
 alembic upgrade head
 
 # Seed court master data
@@ -193,10 +184,10 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 cd frontend
 
 # Install dependencies
-pnpm install
+npm install
 
 # Start dev server
-pnpm dev
+npm run dev
 
 # Verify: http://localhost:3000
 ```
@@ -294,6 +285,7 @@ volumes:
    - Cloud: `AWS`
    - Region: `us-east-1`
 4. Go to API Keys → copy key → set `PINECONE_API_KEY`
+5. Copy the index host URL → set `PINECONE_HOST` (e.g. `https://smriti-legal-abc123.svc.us-east-1.pinecone.io`)
 
 ### Neo4j AuraDB (Optional — Docker works for dev)
 1. Go to [Neo4j AuraDB](https://neo4j.com/cloud/aura-free/)
@@ -305,6 +297,13 @@ volumes:
 1. Go to [Cohere Dashboard](https://dashboard.cohere.com/)
 2. Sign up (free tier: 1,000 API calls/month)
 3. Go to API Keys → copy key → set `COHERE_API_KEY`
+
+### Sarvam AI API Key (Optional — for TTS audio digests)
+1. Go to [Sarvam AI Dashboard](https://dashboard.sarvam.ai/)
+2. Sign up and create an API key
+3. Copy key → set `SARVAM_API_KEY`
+4. Supports 22 Indian languages for text-to-speech
+5. If not configured, set `TTS_PROVIDER=mock` for development
 
 ### Redis / Upstash (Optional — Docker works for dev)
 1. For production: [Upstash Console](https://console.upstash.com/)
@@ -324,7 +323,7 @@ volumes:
 dev:
 	docker compose up -d
 	cd backend && uvicorn app.main:app --reload --port 8000 &
-	cd frontend && pnpm dev &
+	cd frontend && npm run dev &
 
 # Run backend tests
 test:

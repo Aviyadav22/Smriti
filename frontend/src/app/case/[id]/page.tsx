@@ -18,6 +18,8 @@ import { CaseDetailSkeleton } from "@/components/skeleton";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default function CaseDetailPage() {
     const params = useParams();
     const router = useRouter();
@@ -32,6 +34,11 @@ export default function CaseDetailPage() {
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        if (!UUID_RE.test(caseId)) {
+            setError("Invalid case ID");
+            setLoading(false);
+            return;
+        }
         async function load() {
             setLoading(true);
             try {
@@ -92,7 +99,7 @@ export default function CaseDetailPage() {
                             <ArrowLeft className="h-3 w-3" /> Back to results
                         </button>
 
-                        <h1 className="text-xl sm:text-2xl font-semibold leading-snug tracking-tight mb-3">
+                        <h1 className="text-xl sm:text-2xl font-semibold leading-snug tracking-tight mb-3 font-[family-name:var(--font-lora)] italic">
                             {caseData.title}
                         </h1>
 
@@ -208,10 +215,10 @@ export default function CaseDetailPage() {
                                                     {citations.map((c, i) => (
                                                         <div
                                                             key={i}
-                                                            className="text-sm hover:bg-muted/50 p-2 rounded cursor-pointer border"
+                                                            className={`text-sm p-2 rounded border ${c.case_id ? "hover:bg-muted/50 cursor-pointer" : "opacity-60"}`}
                                                             onClick={() => c.case_id && router.push(`/case/${c.case_id}`)}
                                                         >
-                                                            <span className="font-medium font-[family-name:var(--font-lora)]">{c.title || "Unknown"}</span>
+                                                            <span className={`font-medium font-[family-name:var(--font-lora)] italic ${c.case_id ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}`}>{c.title || "Unknown"}</span>
                                                             {c.citation && <span className="text-muted-foreground ml-2 text-xs">{c.citation}</span>}
                                                             <div className="text-xs text-muted-foreground mt-0.5">
                                                                 {[c.court, c.year].filter(Boolean).join(" · ")}
@@ -234,10 +241,10 @@ export default function CaseDetailPage() {
                                                     {citedBy.map((c, i) => (
                                                         <div
                                                             key={i}
-                                                            className="text-sm hover:bg-muted/50 p-2 rounded cursor-pointer border"
+                                                            className={`text-sm p-2 rounded border ${c.case_id ? "hover:bg-muted/50 cursor-pointer" : "opacity-60"}`}
                                                             onClick={() => c.case_id && router.push(`/case/${c.case_id}`)}
                                                         >
-                                                            <span className="font-medium font-[family-name:var(--font-lora)]">{c.title || "Unknown"}</span>
+                                                            <span className={`font-medium font-[family-name:var(--font-lora)] italic ${c.case_id ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}`}>{c.title || "Unknown"}</span>
                                                             {c.citation && <span className="text-muted-foreground ml-2 text-xs">{c.citation}</span>}
                                                             <div className="text-xs text-muted-foreground mt-0.5">
                                                                 {[c.court, c.year].filter(Boolean).join(" · ")}

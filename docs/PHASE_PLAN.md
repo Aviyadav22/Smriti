@@ -4,7 +4,7 @@
 
 ## Overview
 
-Eight phases delivering a full production legal intelligence platform. Phases 1-7.5 complete. Phase 8 (production hardening + GCP launch) is next. Two comprehensive codebase audits completed (Phase 6.5 and Phase 7.5).
+Eight phases delivering a full production legal intelligence platform. Phases 1-8 complete. Phase 9 (Scalability & Scale) is next. Two comprehensive codebase audits completed (Phase 6.5 and Phase 7.5).
 
 **Guiding Principles:**
 - Each phase ends with a deployable artifact
@@ -591,7 +591,7 @@ Second comprehensive audit to harden legal accuracy, prompt quality, and Hindi f
 
 ---
 
-## Phase 8: Production Hardening + Launch
+## Phase 8: Production Hardening + Launch — COMPLETE
 
 ### Goal
 Production-grade deployment on GCP. Everything needed for real lawyers.
@@ -668,8 +668,9 @@ Production-grade deployment on GCP. Everything needed for real lawyers.
 
 ## Post-Launch Roadmap
 
-### Phase 9: High Court Expansion
-- Indian Kanoon / eCourts data integration
+### Phase 9: Scalability & Scale — NEXT
+- See [PHASE_9_SCALABILITY_AUDIT.md](PHASE_9_SCALABILITY_AUDIT.md) for detailed plan
+- High Court expansion: Indian Kanoon / eCourts data integration
 - 100K+ HC judgments (top 5 HCs by volume)
 - Regional court support
 - State-specific statutes
@@ -746,14 +747,19 @@ Phase 1 (DONE) ───► Phase 2 (DONE) ───► Phase 3 (DONE)
                                   │ Drafting agent
                                   │ Hindi support
                                   │
-                                  └──► Phase 8
+                                  └──► Phase 8 (DONE)
                                        │ GCP deploy
                                        │ DPDP
                                        │ Monitoring
                                        │ Launch!
+                                       │
+                                       └──► Phase 9
+                                            │ Scalability
+                                            │ HC expansion
+                                            │ 100K+ cases
 ```
 
-**Critical path**: Data (P4) → Agents (P6) → Production (P8)
+**Critical path**: Data (P4) → Agents (P6) → Production (P8) → Scale (P9)
 
 Phases 5 and 7 can partially overlap with 4 and 6 respectively on non-dependent items.
 

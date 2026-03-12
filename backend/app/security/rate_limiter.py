@@ -137,6 +137,8 @@ def _in_memory_check(key: str, limit: int, window_seconds: int) -> bool:
     """Simple in-memory sliding window fallback when Redis is down."""
     now = _time.time()
     with _mem_lock:
+        if len(_mem_buckets) > 10000:
+            _mem_buckets.clear()
         entries = _mem_buckets.get(key, [])
         # Prune expired entries
         entries = [t for t in entries if t > now - window_seconds]

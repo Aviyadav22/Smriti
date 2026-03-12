@@ -17,8 +17,8 @@ vi.mock("next/navigation", async () => {
       refresh: vi.fn(),
     }),
     useSearchParams: () => new URLSearchParams(),
-    useParams: () => ({ id: "case-001" }),
-    usePathname: () => "/case/case-001",
+    useParams: () => ({ id: "00000000-0000-0000-0000-000000000001" }),
+    usePathname: () => "/case/00000000-0000-0000-0000-000000000001",
   };
 });
 
@@ -43,10 +43,10 @@ vi.mock("@/lib/api", async () => {
 
 function makeCaseDetail(overrides: Partial<CaseDetail> = {}): CaseDetail {
   return {
-    id: "case-001",
+    id: "00000000-0000-0000-0000-000000000001",
     title: "K.S. Puttaswamy v. Union of India",
     citation: "(2017) 10 SCC 1",
-    case_id: "case-001",
+    case_id: "00000000-0000-0000-0000-000000000001",
     cnr: null,
     court: "Supreme Court of India",
     year: 2017,
@@ -64,7 +64,7 @@ function makeCaseDetail(overrides: Partial<CaseDetail> = {}): CaseDetail {
     acts_cited: ["Constitution of India", "Aadhaar Act, 2016"],
     cases_cited: null,
     ratio_decidendi: "Right to privacy is a constitutionally protected right under Part III of the Constitution.",
-    pdf_storage_path: "/pdfs/case-001.pdf",
+    pdf_storage_path: "/pdfs/00000000-0000-0000-0000-000000000001.pdf",
     source: "SCI",
     language: "en",
     chunk_count: 42,
@@ -88,9 +88,9 @@ describe("CaseDetailPage", () => {
     mockGetCaseCitedBy.mockClear();
     mockGetCaseSimilar.mockClear();
 
-    mockGetCaseCitations.mockResolvedValue({ case_id: "case-001", citations: [], total: 0 });
-    mockGetCaseCitedBy.mockResolvedValue({ case_id: "case-001", cited_by: [], total: 0 });
-    mockGetCaseSimilar.mockResolvedValue({ case_id: "case-001", similar: [], total: 0 });
+    mockGetCaseCitations.mockResolvedValue({ case_id: "00000000-0000-0000-0000-000000000001", citations: [], total: 0 });
+    mockGetCaseCitedBy.mockResolvedValue({ case_id: "00000000-0000-0000-0000-000000000001", cited_by: [], total: 0 });
+    mockGetCaseSimilar.mockResolvedValue({ case_id: "00000000-0000-0000-0000-000000000001", similar: [], total: 0 });
   });
 
   it("renders case title after loading", async () => {

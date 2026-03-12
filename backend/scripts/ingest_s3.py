@@ -107,7 +107,7 @@ class IngestTracker:
 
     def __init__(self, db_path: Path = TRACKER_DB) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(db_path))
+        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         # WAL mode for better concurrent access
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._migrate_schema()
@@ -374,6 +374,7 @@ def _s3_download(s3_path: str, local_path: Path) -> bool:
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=120,
             )
             return True
         except subprocess.CalledProcessError as exc:
@@ -704,9 +705,21 @@ async def ingest_year(
             if shutdown_event.is_set() or breaker.is_tripped:
                 # When breaker is tripped, check if cooldown elapsed (half-open)
                 if breaker.is_tripped and not await breaker.check():
+                    pdf_path, _llm, _embedder, _api_key = item
+                    skip_key = f"year={year}/{pdf_path.name}"
+                    await asyncio.to_thread(
+                        tracker.mark_failed, skip_key, "circuit_breaker_skip",
+                    )
+                    stats["failed"] += 1
                     queue.task_done()
                     continue
                 if shutdown_event.is_set():
+                    pdf_path, _llm, _embedder, _api_key = item
+                    skip_key = f"year={year}/{pdf_path.name}"
+                    await asyncio.to_thread(
+                        tracker.mark_failed, skip_key, "shutdown_skip",
+                    )
+                    stats["failed"] += 1
                     queue.task_done()
                     continue
             try:

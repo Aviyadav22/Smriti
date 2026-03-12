@@ -81,7 +81,9 @@ function SearchContent() {
     }, [initialQuery, executeSearch]);
 
     useEffect(() => {
-        searchFacets().then(setFacets).catch(() => { });
+        searchFacets().then(setFacets).catch((err) => {
+            console.error("Failed to load search facets:", err);
+        });
     }, []);
 
     // Auto-apply filters with 300ms debounce (Gap 3)
@@ -369,7 +371,7 @@ function SearchContent() {
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2">
-                                                        <h3 className="text-sm font-semibold leading-snug line-clamp-2 font-[family-name:var(--font-lora)]" title={r.title || "Untitled Case"}>
+                                                        <h3 className="text-sm font-semibold leading-snug line-clamp-2 font-[family-name:var(--font-lora)] italic" title={r.title || "Untitled Case"}>
                                                             {r.title || "Untitled Case"}
                                                         </h3>
                                                         {r.precedent_strength && (
@@ -411,6 +413,12 @@ function SearchContent() {
                                                                 </span>
                                                             )}
                                                             {r.snippet}
+                                                        </p>
+                                                    )}
+                                                    {r.treatment_warning && (
+                                                        <p className="text-xs text-red-600 dark:text-red-400 mt-1.5 flex items-center gap-1">
+                                                            <AlertTriangle className="h-3 w-3 shrink-0" />
+                                                            {r.treatment_warning}
                                                         </p>
                                                     )}
                                                 </div>

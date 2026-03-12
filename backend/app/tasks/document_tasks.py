@@ -153,7 +153,7 @@ async def _analyze_document_async(document_id: str) -> dict:
 
             return {"status": "completed", "document_id": document_id, "analysis_id": analysis_id}
 
-        except Exception as exc:
+        except (ConnectionError, TimeoutError, OSError) as exc:
             logger.warning("Transient error during document analysis: %s", exc)
             await _update_doc_status(db, document_id, "failed", None, error=str(exc))
             await db.commit()
