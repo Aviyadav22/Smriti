@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -66,18 +67,22 @@ async def create_chat(
         # before this generator finishes yielding events.
         async with async_session_factory() as stream_db:
             try:
-                async for event in rag_respond(
-                    question=body.message,
-                    session_id=None,
-                    user_id=user.sub,
-                    llm=llm,
-                    embedder=embedder,
-                    vector_store=vector_store,
-                    reranker=reranker,
-                    db=stream_db,
-                    redis_client=redis_client,
-                ):
-                    yield f"data: {json.dumps(event.data | {'type': event.type})}\n\n"
+                async with asyncio.timeout(300):  # 5-minute max SSE duration
+                    async for event in rag_respond(
+                        question=body.message,
+                        session_id=None,
+                        user_id=user.sub,
+                        llm=llm,
+                        embedder=embedder,
+                        vector_store=vector_store,
+                        reranker=reranker,
+                        db=stream_db,
+                        redis_client=redis_client,
+                    ):
+                        yield f"data: {json.dumps(event.data | {'type': event.type})}\n\n"
+            except TimeoutError:
+                logger.warning("Chat SSE stream timed out after 5 minutes")
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Stream timed out after 5 minutes'})}\n\n"
             except Exception:
                 logger.exception("SSE stream error in create_chat for user %s", user.sub)
                 yield f"data: {json.dumps({'type': 'error', 'message': 'An internal error occurred'})}\n\n"
@@ -135,18 +140,22 @@ async def send_message(
         # before this generator finishes yielding events.
         async with async_session_factory() as stream_db:
             try:
-                async for event in rag_respond(
-                    question=body.message,
-                    session_id=session_id,
-                    user_id=user.sub,
-                    llm=llm,
-                    embedder=embedder,
-                    vector_store=vector_store,
-                    reranker=reranker,
-                    db=stream_db,
-                    redis_client=redis_client,
-                ):
-                    yield f"data: {json.dumps(event.data | {'type': event.type})}\n\n"
+                async with asyncio.timeout(300):  # 5-minute max SSE duration
+                    async for event in rag_respond(
+                        question=body.message,
+                        session_id=session_id,
+                        user_id=user.sub,
+                        llm=llm,
+                        embedder=embedder,
+                        vector_store=vector_store,
+                        reranker=reranker,
+                        db=stream_db,
+                        redis_client=redis_client,
+                    ):
+                        yield f"data: {json.dumps(event.data | {'type': event.type})}\n\n"
+            except TimeoutError:
+                logger.warning("Chat SSE stream timed out after 5 minutes")
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Stream timed out after 5 minutes'})}\n\n"
             except Exception:
                 logger.exception("SSE stream error in send_message for session %s, user %s", session_id, user.sub)
                 yield f"data: {json.dumps({'type': 'error', 'message': 'An internal error occurred'})}\n\n"
