@@ -61,11 +61,13 @@ async def search(
 
     # Hindi support: translate query to English for search, preserve original
     original_query = q
+    detected_language = "en"
     if language == "hi":
         translator = get_translator()
         detected_lang = await translator.detect_language(q)
         if detected_lang == "hi":
             q = await translator.translate(q, source="hi", target="en")
+            detected_language = "hi"
 
     # Split comma-separated court string into list, stripping whitespace
     court_list = (
@@ -110,6 +112,7 @@ async def search(
                 reranker=reranker,
                 db=db,
                 redis_client=redis_client,
+                language=detected_language,
             ),
             timeout=15.0,
         )

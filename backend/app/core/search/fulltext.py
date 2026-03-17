@@ -41,13 +41,21 @@ async def search_fulltext(
     filters: SearchFilters | None = None,
     limit: int = 20,
     db: AsyncSession,
+    language: str = "en",
 ) -> list[FTSResult]:
     """Run a PostgreSQL FTS query against the ``cases`` table.
 
     Uses the ``searchable_text`` tsvector column and ``ts_rank_cd`` for ranking.
     Dynamically constructs filter clauses from *filters*.
+
+    When *language* is ``"hi"``, returns an empty list immediately — Hindi/
+    Devanagari text cannot be tokenized by PostgreSQL's English tsvector.
+    The caller should rely on vector search for Hindi queries.
     """
     if not query.strip():
+        return []
+
+    if language == "hi":
         return []
 
     if filters and filters.judgment_section:

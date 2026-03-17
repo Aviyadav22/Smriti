@@ -132,6 +132,7 @@ async def hybrid_search(
     reranker: Reranker,
     db: AsyncSession,
     redis_client=None,
+    language: str = "en",
 ) -> SearchResponse:
     """Execute a hybrid search: LLM parse → parallel vector+FTS → RRF → rerank → enrich."""
 
@@ -192,6 +193,7 @@ async def hybrid_search(
             filters=merged_filters,
             limit=settings.search_fts_top_k,
             db=db,
+            language=language,
         )
         fts_ranked = [(r.case_id, r.rank) for r in fts_results]
         merged = rrf_merge([fts_ranked], k=settings.search_rrf_k_keyword_heavy)
@@ -204,30 +206,37 @@ async def hybrid_search(
             vector_store=vector_store,
             filters=merged_filters,
         )
-        fts_task = search_fulltext(
-            fts_query,
-            filters=merged_filters,
-            limit=settings.search_fts_top_k,
-            db=db,
-        )
 
-        gather_results = await asyncio.gather(
-            vector_task, fts_task, return_exceptions=True
-        )
-        vector_results = (
-            gather_results[0]
-            if not isinstance(gather_results[0], Exception)
-            else []
-        )
-        fts_results = (
-            gather_results[1]
-            if not isinstance(gather_results[1], Exception)
-            else []
-        )
-        if isinstance(gather_results[0], Exception):
-            logger.warning("Vector search failed, using FTS only: %s", gather_results[0])
-        if isinstance(gather_results[1], Exception):
-            logger.warning("FTS failed, using vector only: %s", gather_results[1])
+        if language == "hi":
+            # Hindi: skip FTS entirely, vector-only search
+            vector_results = await vector_task
+            fts_results: list[FTSResult] = []
+        else:
+            fts_task = search_fulltext(
+                fts_query,
+                filters=merged_filters,
+                limit=settings.search_fts_top_k,
+                db=db,
+                language=language,
+            )
+
+            gather_results = await asyncio.gather(
+                vector_task, fts_task, return_exceptions=True
+            )
+            vector_results = (
+                gather_results[0]
+                if not isinstance(gather_results[0], Exception)
+                else []
+            )
+            fts_results = (
+                gather_results[1]
+                if not isinstance(gather_results[1], Exception)
+                else []
+            )
+            if isinstance(gather_results[0], Exception):
+                logger.warning("Vector search failed, using FTS only: %s", gather_results[0])
+            if isinstance(gather_results[1], Exception):
+                logger.warning("FTS failed, using vector only: %s", gather_results[1])
 
         # 4. RRF merge with strategy-specific weights
         vector_ranked = [(r[0], r[1]) for r in vector_results]
@@ -238,7 +247,11 @@ async def hybrid_search(
             "vector_heavy": {"weights": [2.0, 1.0], "k": settings.search_rrf_k_vector_heavy},
             "balanced": {"weights": [1.0, 1.0], "k": settings.search_rrf_k},
         }
-        config = strategy_config.get(strategy, strategy_config["balanced"])
+        # Hindi: force vector-heavy since FTS is skipped
+        if language == "hi":
+            config = {"weights": [2.0, 0.0], "k": settings.search_rrf_k_vector_heavy}
+        else:
+            config = strategy_config.get(strategy, strategy_config["balanced"])
 
         merged = rrf_merge(
             [vector_ranked, fts_ranked],
