@@ -89,6 +89,12 @@ def mock_db() -> AsyncMock:
     result.fetchone.return_value = None
     result.scalar_one_or_none.return_value = None
     db.execute.return_value = result
+    # Support async with db.begin(): (used for status update transaction)
+    # db.begin() is a sync call returning an async context manager
+    mock_begin = MagicMock()
+    mock_begin.__aenter__ = AsyncMock(return_value=mock_begin)
+    mock_begin.__aexit__ = AsyncMock(return_value=False)
+    db.begin = MagicMock(return_value=mock_begin)
     return db
 
 
