@@ -128,11 +128,13 @@ JT_PATTERN: re.Pattern[str] = re.compile(
 
 # --- High Court reporters ---
 
-# ILR, MLJ, KLT, BLR, GLR, ALJ, DLT, ALD, CLT, PLR, DRJ, KHC, RLW
+# ILR, MLJ, KLT, BLR, GLR, ALJ, DLT, ALD, CLT, PLR, DRJ, KHC, RLW,
+# LNIND, CDJ, BomLR, CalWN, WLC, JLJ, AIJEL, CriLJ, FLR, GujLR, MPLJ, OLR, WLR
 # Matches: "2020 ILR 145" or "(2020) 3 ILR 145" or "(2020) ILR 145"
 HC_REPORTER_PATTERN: re.Pattern[str] = re.compile(
     r"(?:(\d{4})\s+|\((\d{4})\)\s+(?:\d+\s+)?)"
-    r"(ILR|MLJ|KLT|BLR|GLR|ALJ|DLT|ALD|CLT|PLR|DRJ|KHC|RLW)"
+    r"(ILR|MLJ|KLT|BLR|GLR|ALJ|DLT|ALD|CLT|PLR|DRJ|KHC|RLW"
+    r"|LNIND|CDJ|BomLR|CalWN|WLC|JLJ|AIJEL|CriLJ|FLR|GujLR|MPLJ|OLR|WLR)"
     r"\s+(\d+)",
     re.IGNORECASE,
 )
@@ -189,6 +191,27 @@ COMP_CAS_PATTERN: re.Pattern[str] = re.compile(
 LLJ_PATTERN: re.Pattern[str] = re.compile(
     r"(\d{4})\s+LLJ\s+(\d+)"
 )
+
+# --- Generic catch-all for unknown reporter formats ---
+
+# Matches: "2020 XYZ 145" or "(2020) 3 XYZ 145" where XYZ is 2-6 letter abbreviation.
+# Runs LAST in extract_citations() to avoid duplicating known patterns.
+# Capped at 10 matches per document.
+GENERIC_REPORTER_PATTERN: re.Pattern[str] = re.compile(
+    r"(?:(\d{4})\s+|\((\d{4})\)\s+(?:\d+\s+)?)"
+    r"([A-Z][A-Za-z]{1,5})"
+    r"\s+(\d+)"
+)
+
+# Common English words to exclude from catch-all matches
+_CATCH_ALL_STOPWORDS: frozenset[str] = frozenset({
+    "THE", "AND", "FOR", "NOT", "BUT", "WAS", "HAS", "HAD",
+    "ARE", "HIS", "HER", "ITS", "ANY", "ALL", "MAY", "CAN",
+    "ACT", "THAT", "THIS", "WITH", "FROM", "BEEN", "HAVE",
+    "ALSO", "SUCH", "UPON", "INTO", "OVER", "SAID", "CASE",
+    "COURT", "ORDER", "UNDER", "SHALL", "STATE", "INDIA",
+    "WHICH", "WHERE", "WOULD", "COULD", "SHOULD",
+})
 
 # ---------------------------------------------------------------------------
 # Backward-compat aliases for state reporter patterns
@@ -370,12 +393,15 @@ def extract_citations(text: str) -> list[Citation]:
     """
     citations: list[Citation] = []
     seen_raw: set[str] = set()
+    seen_spans: set[tuple[int, int]] = set()
 
-    def _add(citation: Citation) -> None:
+    def _add(citation: Citation, match: re.Match | None = None) -> None:
         normalized = normalize_citation(citation.raw_text)
         if normalized not in seen_raw:
             seen_raw.add(normalized)
             citations.append(citation)
+        if match is not None:
+            seen_spans.add((match.start(), match.end()))
 
     # --- SCC sub-reporters --- MUST come before main SCC pattern ---
     # (2020) 3 SCC (Cri) 145
@@ -389,7 +415,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=None,
             raw_text=match.group(0),
             confidence=0.9,
-        ))
+        ), match)
 
     # SCC -- (2020) 3 SCC 145 or [2020] 3 SCC 145
     for match in SCC_PATTERN.finditer(text):
@@ -401,7 +427,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=None,
             raw_text=match.group(0),
             confidence=0.9,
-        ))
+        ), match)
 
     # SCC OnLine -- 2020 SCC OnLine SC 1234 (case-insensitive)
     for match in SCC_ONLINE_PATTERN.finditer(text):
@@ -414,7 +440,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=AIR_COURT_CODES.get(court_code, court_code),
             raw_text=match.group(0),
             confidence=0.9,
-        ))
+        ), match)
 
     # AIR -- AIR 2020 SC 145 or A.I.R. 2020 SC 145
     for match in AIR_PATTERN.finditer(text):
@@ -427,7 +453,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=AIR_COURT_CODES.get(court_code, court_code),
             raw_text=match.group(0),
             confidence=0.9,
-        ))
+        ), match)
 
     # Neutral SC -- 2023:INSC:1234
     # Process SC first and record spans so HC matching can skip overlaps
@@ -442,7 +468,7 @@ def extract_citations(text: str) -> list[Citation]:
             court="Supreme Court of India",
             raw_text=match.group(0),
             confidence=0.95,
-        ))
+        ), match)
 
     # Neutral HC -- 2023:DELHC:1234, 2023:BOMHC:1234
     # Skip any match whose position overlaps a previously matched SC span
@@ -458,7 +484,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=court_code,
             raw_text=match.group(0),
             confidence=0.95,
-        ))
+        ), match)
 
     # INSC (space-delimited, legacy) -- 2020 INSC 145
     for match in INSC_PATTERN.finditer(text):
@@ -470,7 +496,7 @@ def extract_citations(text: str) -> list[Citation]:
             court="Supreme Court of India",
             raw_text=match.group(0),
             confidence=0.95,
-        ))
+        ), match)
 
     # SCR -- [2020] 3 SCR 145
     for match in SCR_PATTERN.finditer(text):
@@ -482,7 +508,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=None,
             raw_text=match.group(0),
             confidence=0.9,
-        ))
+        ), match)
 
     # CrLJ -- 2020 CrLJ 145
     for match in CRLJ_PATTERN.finditer(text):
@@ -494,7 +520,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=None,
             raw_text=match.group(0),
             confidence=0.8,
-        ))
+        ), match)
 
     # SCALE -- (2020) 3 SCALE 145
     for match in SCALE_PATTERN.finditer(text):
@@ -506,7 +532,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=None,
             raw_text=match.group(0),
             confidence=0.8,
-        ))
+        ), match)
 
     # MANU -- MANU/SC/1234/2020
     for match in MANU_PATTERN.finditer(text):
@@ -518,7 +544,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=match.group(1),
             raw_text=match.group(0),
             confidence=0.8,
-        ))
+        ), match)
 
     # JT -- JT 2020 (3) SC 145  OR  (2020) 3 JT (SC) 145
     for match in JT_PATTERN.finditer(text):
@@ -558,7 +584,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=None,
             raw_text=match.group(0),
             confidence=0.8,
-        ))
+        ), match)
 
     # LiveLaw -- 2024 LiveLaw (SC) 123
     for match in LIVELAW_PATTERN.finditer(text):
@@ -570,7 +596,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=match.group(2),
             raw_text=match.group(0),
             confidence=0.8,
-        ))
+        ), match)
 
     # ITR -- [2020] 123 ITR 456
     for match in ITR_PATTERN.finditer(text):
@@ -582,7 +608,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=None,
             raw_text=match.group(0),
             confidence=0.8,
-        ))
+        ), match)
 
     # Taxmann -- [2020] 123 taxmann.com 456
     for match in TAXMANN_PATTERN.finditer(text):
@@ -594,7 +620,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=None,
             raw_text=match.group(0),
             confidence=0.8,
-        ))
+        ), match)
 
     # Company Cases -- (2020) 123 CompCas 456
     for match in COMP_CAS_PATTERN.finditer(text):
@@ -606,7 +632,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=None,
             raw_text=match.group(0),
             confidence=0.8,
-        ))
+        ), match)
 
     # LLJ -- 2020 LLJ 123
     for match in LLJ_PATTERN.finditer(text):
@@ -618,7 +644,7 @@ def extract_citations(text: str) -> list[Citation]:
             court=None,
             raw_text=match.group(0),
             confidence=0.8,
-        ))
+        ), match)
 
     # Name-based citations -- "in Kesavananda Bharati v. State of Kerala"
     for match in NAME_CITATION_PATTERN.finditer(text):
@@ -633,7 +659,34 @@ def extract_citations(text: str) -> list[Citation]:
             court=None,
             raw_text=case_name,
             confidence=0.3,
-        ))
+        ), match)
+
+    # --- Catch-all for unknown reporters --- runs LAST, skips known spans ---
+    catch_all_count = 0
+    for match in GENERIC_REPORTER_PATTERN.finditer(text):
+        if catch_all_count >= 10:
+            break
+        # Skip if this span overlaps any already-matched span
+        m_start, m_end = match.start(), match.end()
+        if any(
+            not (m_end <= s_start or m_start >= s_end)
+            for s_start, s_end in seen_spans
+        ):
+            continue
+        year = match.group(1) or match.group(2)
+        reporter_name = match.group(3)
+        if reporter_name.upper() in _CATCH_ALL_STOPWORDS:
+            continue
+        _add(Citation(
+            reporter="Unknown",
+            year=int(year),
+            volume=None,
+            page=match.group(4),
+            court=None,
+            raw_text=match.group(0),
+            confidence=0.2,
+        ), match)
+        catch_all_count += 1
 
     return citations
 

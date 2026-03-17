@@ -338,3 +338,66 @@ class TestNewCitationReporters:
         itr = [c for c in citations if c.reporter == "ITR"]
         assert len(itr) == 1
         assert itr[0].year == 2021
+
+
+class TestExpandedHCReporters:
+    """Test newly added HC reporter patterns."""
+
+    def test_lnind_citation(self):
+        text = "2020 LNIND 145"
+        citations = extract_citations(text)
+        assert any(c.reporter == "LNIND" and c.year == 2020 for c in citations)
+
+    def test_cdj_citation(self):
+        text = "(2021) CDJ 300"
+        citations = extract_citations(text)
+        assert any(c.reporter == "CDJ" and c.year == 2021 for c in citations)
+
+    def test_bomlr_citation(self):
+        text = "2019 BomLR 450"
+        citations = extract_citations(text)
+        assert any(c.reporter.upper() == "BOMLR" and c.year == 2019 for c in citations)
+
+    def test_calwn_citation(self):
+        text = "(2022) CalWN 120"
+        citations = extract_citations(text)
+        assert any(c.reporter.upper() == "CALWN" and c.year == 2022 for c in citations)
+
+    def test_wlr_citation(self):
+        text = "2023 WLR 88"
+        citations = extract_citations(text)
+        assert any(c.reporter == "WLR" and c.year == 2023 for c in citations)
+
+    def test_mplj_citation(self):
+        text = "(2020) 2 MPLJ 300"
+        citations = extract_citations(text)
+        assert any(c.reporter == "MPLJ" and c.year == 2020 for c in citations)
+
+
+class TestGenericReporterCatchAll:
+    """Test catch-all pattern for unknown reporter formats."""
+
+    def test_unknown_reporter_caught(self):
+        text = "2023 XYZLR 456"
+        citations = extract_citations(text)
+        assert any(c.reporter == "Unknown" and c.year == 2023 for c in citations)
+
+    def test_catch_all_does_not_duplicate_known(self):
+        """Known reporters should NOT produce an extra Unknown citation."""
+        text = "(2020) 3 SCC 145"
+        citations = extract_citations(text)
+        assert not any(c.reporter == "Unknown" for c in citations)
+
+    def test_catch_all_capped_at_10(self):
+        """At most 10 catch-all matches per document."""
+        lines = [f"2020 XREP{chr(65+i)} {100 + i}" for i in range(20)]
+        text = "\n".join(lines)
+        citations = extract_citations(text)
+        unknown_count = sum(1 for c in citations if c.reporter == "Unknown")
+        assert unknown_count <= 10
+
+    def test_catch_all_skips_common_words(self):
+        """Common English words should not be caught."""
+        text = "2020 Court 145 and 2020 State 200"
+        citations = extract_citations(text)
+        assert not any(c.reporter == "Unknown" for c in citations)
