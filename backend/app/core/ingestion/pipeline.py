@@ -225,11 +225,13 @@ async def ingest_judgment(
     # ------------------------------------------------------------------
     # 6–9: Remaining pipeline steps wrapped for failure handling
     # ------------------------------------------------------------------
-    # Mark ingestion as in-progress
-    await db.execute(
-        text("UPDATE cases SET ingestion_status = 'processing' WHERE id = :id"),
-        {"id": case_id},
-    )
+    # Mark ingestion as in-progress (explicit transaction so this commits
+    # independently from the bulk pipeline commit at line ~314).
+    async with db.begin():
+        await db.execute(
+            text("UPDATE cases SET ingestion_status = 'processing' WHERE id = :id"),
+            {"id": case_id},
+        )
 
     db_committed = False
     try:
