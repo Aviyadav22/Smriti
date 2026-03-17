@@ -42,7 +42,9 @@ from app.core.interfaces.graph_store import GraphStore
 from app.core.interfaces.llm import LLMProvider
 from app.core.interfaces.storage import FileStorage
 from app.core.interfaces.vector_store import VectorStore
+from app.core.ingestion.anonymizer import anonymize_text, detect_sensitive_case
 from app.core.legal.extractor import extract_acts_cited, extract_citations
+from app.core.legal.statute_enrichment import enrich_statute_cross_references
 from app.core.legal.treatment import detect_treatment_in_text
 
 logger = logging.getLogger(__name__)
@@ -129,6 +131,11 @@ async def ingest_judgment(
         )
 
     # ------------------------------------------------------------------
+    # 1a. PII ANONYMIZATION (masks Aadhaar/PAN/phone before any storage)
+    # ------------------------------------------------------------------
+    full_text, pii_masked = anonymize_text(full_text)
+
+    # ------------------------------------------------------------------
     # 1b. TEXT-HASH DEDUP CHECK (before costly LLM call)
     # ------------------------------------------------------------------
     text_hash = _compute_text_hash(full_text)
@@ -195,6 +202,21 @@ async def ingest_judgment(
             llm_acts.add(act_str)
         metadata.acts_cited = sorted(llm_acts)
         provenance["acts_cited"] = "llm+regex"
+
+    # Enrich acts_cited with old<->new statute cross-references (U3)
+    if metadata.acts_cited:
+        metadata.acts_cited = enrich_statute_cross_references(metadata.acts_cited)
+        provenance["acts_cited"] = provenance.get("acts_cited", "llm") + "+enriched"
+
+    # Detect sensitive cases and set anonymization flags (U4)
+    anonymization_flags: list[str] = []
+    if pii_masked:
+        anonymization_flags.append("pii_masked")
+    if detect_sensitive_case(full_text, metadata):
+        metadata.is_anonymized = True
+        anonymization_flags.append("sensitive_case_detected")
+    if anonymization_flags:
+        metadata.anonymization_flags = anonymization_flags
 
     # Supplement LLM cases_cited with regex extraction
     regex_citations = extract_citations(full_text)

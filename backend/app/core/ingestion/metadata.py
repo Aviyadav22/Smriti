@@ -112,6 +112,9 @@ class CaseMetadata:
     respondent_type: str | None = None
     is_pil: bool | None = None
     companion_cases: list[str] | None = None
+    # U4: Anonymization tracking
+    is_anonymized: bool = False
+    anonymization_flags: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------
