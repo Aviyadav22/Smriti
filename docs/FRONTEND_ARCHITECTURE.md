@@ -300,7 +300,7 @@ Key behavior:
 | Purpose | Legal strategy advisor — takes case facts and desired relief |
 
 Key behavior:
-- Two input fields: case facts (textarea) and desired relief (text input).
+- Four input fields: case facts (textarea), desired relief (text input), target judge (optional text input), and target bench (optional select dropdown).
 - Same SSE streaming + checkpoint + memo pattern.
 
 ### 2.19 Drafting Agent Page
@@ -310,7 +310,7 @@ Key behavior:
 | Route | `/agents/drafting` |
 | File | `frontend/src/app/agents/drafting/page.tsx` |
 | Auth required | Yes |
-| API calls | `POST /api/v1/agents/drafting/run` (SSE), `POST /api/v1/agents/executions/:id/resume` (SSE), `GET /api/v1/agents/drafting/templates`, `POST /api/v1/agents/drafting/export` |
+| API calls | `POST /api/v1/agents/drafting/run` (SSE), `POST /api/v1/agents/executions/:id/resume` (SSE), `GET /api/v1/agents/drafting/templates`, `POST /api/v1/agents/drafting/export/:execution_id?format=<docx\|pdf>` |
 | Purpose | Legal document drafting — generates drafts with DOCX/PDF export |
 
 Key behavior:
@@ -336,17 +336,47 @@ Key behavior:
 - "View Results" button on completed executions opens a modal with `AgentMemoViewer`.
 - Pagination with Previous/Next buttons.
 
+### 2.21 About Page
+
+| Property | Value |
+|---|---|
+| Route | `/about` |
+| File | `frontend/src/app/about/page.tsx` |
+| Auth required | No |
+| API calls | None |
+| Purpose | Static informational page about the Smriti platform |
+
+### 2.22 Privacy Policy Page
+
+| Property | Value |
+|---|---|
+| Route | `/privacy` |
+| File | `frontend/src/app/privacy/page.tsx` |
+| Auth required | No |
+| API calls | None |
+| Purpose | Static privacy policy page (DPDP compliance) |
+
+### 2.23 Terms of Service Page
+
+| Property | Value |
+|---|---|
+| Route | `/terms` |
+| File | `frontend/src/app/terms/page.tsx` |
+| Auth required | No |
+| API calls | None |
+| Purpose | Static terms of service page |
+
 ---
 
 ## 3. API Surface Map
 
-All endpoints are prefixed with `/api/v1`. The base URL is configured via `NEXT_PUBLIC_API_URL` env var (default: `http://localhost:8000/api/v1`).
+All endpoints are prefixed with `/api/v1`. The base URL is configured via `NEXT_PUBLIC_API_URL` env var (default: `/api/v1` -- a relative path, which relies on the Next.js proxy or same-origin deployment).
 
 ### 3.1 Auth Endpoints
 
 | Method | Endpoint | Auth | Request Body | Response | Used By |
 |---|---|---|---|---|---|
-| `POST` | `/auth/register` | No | `{ email, password, name }` | `{ access_token, refresh_token, expires_in }` | Register page |
+| `POST` | `/auth/register` | No | `{ email, password, name, consent_given }` | `{ access_token, refresh_token, expires_in }` | Register page |
 | `POST` | `/auth/login` | No | `{ email, password }` | `{ access_token, refresh_token, expires_in }` | Login page |
 | `POST` | `/auth/refresh` | No | `{ refresh_token }` | `{ access_token, refresh_token, expires_in }` | Auto (apiFetch 401 handler) |
 
@@ -421,12 +451,12 @@ All endpoints are prefixed with `/api/v1`. The base URL is configured via `NEXT_
 |---|---|---|---|---|---|
 | `POST` | `/agents/research/run` | Yes | `{ query }` | SSE stream (`AgentStreamEvent`) | Research agent page |
 | `POST` | `/agents/case_prep/run` | Yes | `{ document_id }` | SSE stream (`AgentStreamEvent`) | Case prep agent page |
-| `POST` | `/agents/strategy/run` | Yes | `{ case_facts, desired_relief }` | SSE stream (`AgentStreamEvent`) | Strategy agent page |
-| `POST` | `/agents/drafting/run` | Yes | `{ doc_type, case_facts }` | SSE stream (`AgentStreamEvent`) | Drafting agent page |
+| `POST` | `/agents/strategy/run` | Yes | `{ case_facts, desired_relief, target_judge?, target_bench? }` | SSE stream (`AgentStreamEvent`) | Strategy agent page |
+| `POST` | `/agents/drafting/run` | Yes | `{ doc_type, case_facts, target_court?, relevant_precedents?, additional_context? }` | SSE stream (`AgentStreamEvent`) | Drafting agent page |
 | `POST` | `/agents/executions/:id/resume` | Yes | `{ input }` | SSE stream (`AgentStreamEvent`) | All agent pages (checkpoint resume) |
 | `GET` | `/agents/executions` | Yes | `page?`, `page_size?` | `AgentExecutionList` | Agent history page |
 | `GET` | `/agents/drafting/templates` | Yes | | `{ templates: DraftTemplate[] }` | Drafting agent page |
-| `POST` | `/agents/drafting/export` | Yes | `{ execution_id, format }` | Binary (DOCX/PDF) | Drafting agent page |
+| `POST` | `/agents/drafting/export/:execution_id?format=<docx\|pdf>` | Yes | (none -- execution_id is path param, format is query param) | Binary (DOCX/PDF) | Drafting agent page |
 
 ### 3.10 Other Endpoints
 
@@ -466,11 +496,12 @@ The `AuthProvider` wraps the entire app (via `frontend/src/app/providers.tsx` ->
 
 On mount:
 1. Calls `loadTokens()` to restore tokens from `localStorage`.
-2. Sets `isAuthenticated = !!getAccessToken()`.
-3. Sets `isLoading = false`.
+2. Gets the access token and checks expiry via `isTokenExpired()` (decodes the JWT payload with `atob`, reads the `exp` claim, and compares against `Date.now()`).
+3. Sets `isAuthenticated = !!token && !isTokenExpired(token)`.
+4. Sets `isLoading = false`.
 
 Exposed state:
-- `isAuthenticated: boolean` -- whether a token exists (no JWT decode/validation on client).
+- `isAuthenticated: boolean` -- whether a valid, non-expired token exists (JWT `exp` claim is decoded and checked on the client).
 - `isLoading: boolean` -- true during initial token load.
 - `login(req)` -- calls API, stores tokens, sets `isAuthenticated = true`.
 - `register(req)` -- calls API, stores tokens, sets `isAuthenticated = true`.
@@ -491,8 +522,11 @@ Token lifetimes (set by backend):
 
 There is no middleware-level auth guard. Individual pages check auth:
 - **Chat page**: `useEffect` checks `isAuthenticated` and redirects to `/login` if false.
+- **Agent pages**: same `useEffect` guard as chat -- redirect to `/login` if unauthenticated.
 - **Document pages**: implicitly guarded (API returns 401 without token).
 - **All other pages**: public (search, case detail, graph, judges, courts).
+
+Note: `isAuthenticated` already reflects JWT expiry (the `isTokenExpired()` helper decodes the `exp` claim on mount), so an expired token is treated as unauthenticated without a server round-trip.
 
 ### 4.5 Rebuilding Auth for Another Client
 
@@ -614,6 +648,14 @@ fetch(url, { method: "POST", headers: { Authorization: ... }, body: formData });
 | `AgentMemoViewer` | `frontend/src/components/agent-memo-viewer.tsx` | All agent pages, History page |
 | `LegalDisclaimer` | `frontend/src/components/legal-disclaimer.tsx` | Agent pages |
 | `ErrorBoundary` | `frontend/src/components/error-boundary.tsx` | Layout wrapper |
+| `SectionFilter` | `frontend/src/components/section-filter.tsx` | Search page (section type filter) |
+| `BenchStrength` | `frontend/src/components/bench-strength.tsx` | Search results, case detail |
+| `PrecedentBadge` | `frontend/src/components/precedent-badge.tsx` | Search results, case detail |
+| `ConfidenceMeter` | `frontend/src/components/confidence-meter.tsx` | Agent memo viewer |
+| `EquivalentCitations` | `frontend/src/components/equivalent-citations.tsx` | Search results, case detail |
+| `DraftSectionViewer` | `frontend/src/components/draft-section-viewer.tsx` | Drafting agent page |
+| `Skeleton` | `frontend/src/components/skeleton.tsx` | Loading states across pages |
+| `CookieConsent` | `frontend/src/components/cookie-consent.tsx` | Layout (global) |
 | `Textarea` | `frontend/src/components/ui/textarea.tsx` | Chat, agents, search |
 
 **AgentHubCard**: Card component with icon, title, description, and optional badge. Links to individual agent pages.
@@ -646,17 +688,19 @@ All in `frontend/src/components/ui/`:
 | `Input` | `input.tsx` | Standard text input |
 | `Select` | `select.tsx` | Select, SelectContent, SelectItem, SelectTrigger, SelectValue |
 | `Separator` | `separator.tsx` | Horizontal/vertical divider |
-| `Sheet` | `sheet.tsx` | Slide-out panel (available but not currently used in pages) |
 | `Tabs` | `tabs.tsx` | Tabs, TabsContent, TabsList, TabsTrigger |
 
 ### 6.4 Providers
 
 | Component | File | Purpose |
 |---|---|---|
+| `NextIntlClientProvider` | (from `next-intl`) | i18n translations for client components |
 | `Providers` | `frontend/src/app/providers.tsx` | Wraps children in `AuthProvider` |
 | `AuthProvider` | `frontend/src/lib/auth-context.tsx` | Provides auth state to all components |
+| `ErrorBoundary` | `frontend/src/components/error-boundary.tsx` | Catches React errors with fallback UI |
+| `CookieConsent` | `frontend/src/components/cookie-consent.tsx` | DPDP cookie consent banner (sibling, not wrapper) |
 
-The provider chain: `RootLayout` -> `Providers` -> `AuthProvider` -> page content.
+The provider chain: `RootLayout` -> `NextIntlClientProvider` -> `Providers` -> `AuthProvider` -> `ErrorBoundary` -> page content. `CookieConsent` is rendered as a sibling after `ErrorBoundary`.
 
 ---
 
@@ -761,7 +805,7 @@ function _streamChat(path, message, onEvent, onError): AbortController {
 
 ```typescript
 interface StreamEvent {
-    type: "session" | "chunk" | "source" | "done";
+    type: "session" | "chunk" | "source" | "done" | "disclaimer";
     session_id?: string;    // Only in "session" event
     title?: string;         // Session title (in "session"), source title (in "source")
     content?: string;       // Text chunk (in "chunk")
@@ -772,6 +816,7 @@ interface StreamEvent {
     year?: number;
     score?: number;
     source_count?: number;  // Total sources (in "done")
+    message?: string;       // Disclaimer text (in "disclaimer")
 }
 ```
 
@@ -834,9 +879,9 @@ All types are defined in `frontend/src/lib/types.ts`. They mirror the backend AP
 ```typescript
 SearchFilters { court?, year_from?, year_to?, case_type?, bench_type?, judge?, act? }
 QueryUnderstanding { intent, original_query, expanded_query, search_strategy, filters, entities }
-SearchResultItem { case_id, score, title, citation, court, year, date, case_type, judge, snippet }
+SearchResultItem { case_id, score, title, citation, court, year, date, case_type, judge, snippet,
+                   bench_type, equivalent_citations, treatment_warning?, precedent_strength?, section_type? }
 SearchResponse { results: SearchResultItem[], total_count, page, page_size, query_understanding, facets }
-SearchSuggestion { case_id, title, citation }
 FacetsResponse { courts: string[], case_types: string[], bench_types: string[], years: { min, max } }
 ```
 
@@ -856,8 +901,7 @@ SimilarCase { case_id, similarity_score, title, citation, court, year, date, rat
 ```typescript
 TokenResponse { access_token, refresh_token, expires_in }
 LoginRequest { email, password }
-RegisterRequest { email, password, name }
-User { id, email, name, role }
+RegisterRequest { email, password, name, consent_given }
 ```
 
 ### 9.4 Chat Types
@@ -866,8 +910,8 @@ User { id, email, name, role }
 ChatSession { id, title, created_at, updated_at, message_count }
 ChatSource { case_id, title, citation, court, year, score }
 ChatMessage { id, role: "user"|"assistant", content, sources: ChatSource[], created_at }
-StreamEvent { type: "session"|"chunk"|"source"|"done", session_id?, title?, content?,
-              index?, case_id?, citation?, court?, year?, score?, source_count? }
+StreamEvent { type: "session"|"chunk"|"source"|"done"|"disclaimer", session_id?, title?, content?,
+              index?, case_id?, citation?, court?, year?, score?, source_count?, message? }
 ```
 
 ### 9.5 Graph Types
@@ -887,7 +931,7 @@ JudgeListResponse { judges: JudgeListItem[], total, page, page_size, total_pages
 JudgeProfile { name, total_cases, cases_authored, cases_by_year, disposal_patterns,
                bench_combinations, top_cited_judgments, acts_frequency, case_types }
 JudgeCaseItem { id, title, citation, year, case_type, court, decision_date, is_author }
-JudgeCasesResponse { items: JudgeCaseItem[], total, page, page_size, total_pages }
+JudgeCasesResponse { cases: JudgeCaseItem[], total, page, page_size, total_pages }
 JudgeCompareResponse { judges: (JudgeProfile | null)[] }
 CourtStats { court, total_cases, cases_by_year, case_types, disposal_patterns, top_judges }
 ```
@@ -911,7 +955,9 @@ AgentType = "research" | "case_prep" | "strategy" | "drafting"
 AgentStatus = "running" | "waiting_input" | "completed" | "failed" | "cancelled"
 
 AgentExecution { id, agent_type: AgentType, status: AgentStatus, input_data: Record<string, unknown>,
-                 result_data: Record<string, unknown> | null, created_at, updated_at }
+                 result_data: Record<string, unknown> | null, current_step: string | null,
+                 steps_completed: number, total_steps: number | null, created_at, updated_at,
+                 completed_at: string | null, error_message: string | null }
 
 AgentStreamEvent { type: "status"|"checkpoint"|"memo"|"done"|"error", step?, message?,
                    question?, context?, content?, data?, execution_id? }
@@ -964,6 +1010,9 @@ frontend/
       agents/strategy/page.tsx # Strategy agent workspace
       agents/drafting/page.tsx # Drafting agent workspace
       agents/history/page.tsx  # Agent execution history
+      about/page.tsx           # About page
+      privacy/page.tsx         # Privacy policy page
+      terms/page.tsx           # Terms of service page
     components/
       header.tsx               # Global header with nav
       footer.tsx               # Global footer
@@ -976,9 +1025,17 @@ frontend/
       agent-step-timeline.tsx  # Agent progress timeline
       agent-checkpoint-prompt.tsx # HITL checkpoint interaction
       agent-memo-viewer.tsx    # Agent memo/result renderer
+      section-filter.tsx       # Section type filter for search
+      bench-strength.tsx       # Bench strength indicator
+      precedent-badge.tsx      # Precedent strength badge
+      confidence-meter.tsx     # Agent confidence score meter
+      equivalent-citations.tsx # Equivalent citation display
+      draft-section-viewer.tsx # Drafting agent section viewer
+      skeleton.tsx             # Loading skeleton component
+      cookie-consent.tsx       # DPDP cookie consent banner
       ui/                      # shadcn/ui primitives
         badge.tsx, button.tsx, card.tsx, input.tsx, textarea.tsx,
-        select.tsx, separator.tsx, sheet.tsx, tabs.tsx
+        select.tsx, separator.tsx, tabs.tsx
     lib/
       api.ts                   # All API client functions + token management + SSE streaming
       types.ts                 # All TypeScript type definitions

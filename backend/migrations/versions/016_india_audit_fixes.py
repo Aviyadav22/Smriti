@@ -1,7 +1,7 @@
 """Add Hindi FTS infrastructure and anonymization tracking columns.
 
-Revision ID: 015
-Revises: 014
+Revision ID: 016
+Revises: 015
 Create Date: 2026-03-17
 
 Changes:
@@ -13,8 +13,8 @@ Changes:
 
 from alembic import op
 
-revision = "015"
-down_revision = "014"
+revision = "016"
+down_revision = "015"
 branch_labels = None
 depends_on = None
 

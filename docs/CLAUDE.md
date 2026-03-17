@@ -16,7 +16,7 @@ Smriti is a purpose-built Indian legal research platform — think Harvey AI but
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| Frontend | Next.js 15 (App Router) + TypeScript + Tailwind CSS + shadcn/ui | SSR, type-safe, fast DX |
+| Frontend | Next.js 16 (App Router) + TypeScript + Tailwind CSS + shadcn/ui | SSR, type-safe, fast DX |
 | Backend | FastAPI (Python 3.12) | AI/ML ecosystem, async, Pydantic validation |
 | Primary DB | PostgreSQL 16 | Metadata, FTS (tsvector + ts_rank_cd), users, audit |
 | Vector DB | Pinecone | Managed, metadata filtering, hybrid search |
@@ -38,13 +38,13 @@ Smriti is a purpose-built Indian legal research platform — think Harvey AI but
 ```
 smriti/
 ├── docs/                          # Project documentation
-├── frontend/                      # Next.js 15 App Router
+├── frontend/                      # Next.js 16 App Router
 │   ├── app/                       # Pages: search, case/[id], chat, graph, agents/*, register, login, documents
 │   ├── components/                # UI: header, footer, audio-player, file-upload, error-boundary, agent-checkpoint-prompt, ui/
 │   └── lib/                       # API client, types, utils
 ├── backend/                       # FastAPI Python
 │   ├── app/
-│   │   ├── api/routes/            # 12 route modules, 61 endpoints
+│   │   ├── api/routes/            # 15 route modules, 62 endpoints
 │   │   │   ├── auth.py            # Register, login, refresh, logout, delete account
 │   │   │   ├── search.py          # Hybrid search, suggest, facets
 │   │   │   ├── cases.py           # Case detail, summary, PDF, citations, cited-by, similar
@@ -71,8 +71,7 @@ smriti/
 │   │   │   ├── analytics/         # Judge analytics (profile, disposition, bench composition)
 │   │   │   ├── chat/              # RAG pipeline (search → rerank → context → generate → verify)
 │   │   │   ├── agents/            # 4 agent types: research, case_prep, strategy, drafting
-│   │   │   │   ├── graphs/        # LangGraph StateGraph definitions
-│   │   │   │   └── nodes/         # Agent node functions (25+ nodes total)
+│   │   │   │   └── nodes/         # Agent node functions (40 nodes total across 4 graphs)
 │   │   │   ├── drafting/          # Document templates, DOCX/PDF export
 │   │   │   └── middleware.py      # RequestID middleware, request logging
 │   │   ├── tasks/                 # Celery: document analysis (6-step), audio generation
@@ -81,7 +80,7 @@ smriti/
 │   │   └── db/                    # Database connections (PostgreSQL, Redis)
 │   ├── scripts/                   # ingest_s3, populate_neo4j, daily_ingest, verify_ingestion, benchmark
 │   ├── migrations/                # 14 Alembic migrations (001-014)
-│   └── tests/                     # 1,443 unit + 31 integration + 15 quality tests
+│   └── tests/                     # 1,398 unit + 46 integration + 13 quality tests
 ├── docker-compose.yml             # Local dev services
 └── .env.example                   # Environment template
 ```
@@ -107,7 +106,7 @@ smriti/
 - **Style**: ESLint + Prettier, strict TypeScript (`strict: true`)
 - **Components**: Functional components only. Server Components by default, `"use client"` only when needed.
 - **Naming**: `PascalCase` for components, `camelCase` for functions/variables, `kebab-case` for files
-- **State**: TanStack Query for server state, `useState`/`useReducer` for local state. No global state lib unless needed.
+- **State**: `useState`/`useReducer` for local state. No global state lib unless needed. (Note: TanStack Query is not currently used; frontend uses plain fetch via `lib/api.ts`.)
 - **API calls**: Centralized in `lib/api.ts`. Never call `fetch` directly from components.
 - **Types**: Define in `lib/types.ts`. Share types between components. No `any`.
 
@@ -207,7 +206,7 @@ celery -A app.worker:celery_app worker --loglevel=info
 
 **Phases 1-8 COMPLETE. Phase 9: Scalability & Scale (starting)**
 
-All core features built and tested: hybrid search (FTS + vector + RRF + Cohere reranking), citation graph (Neo4j), RAG chat with SSE streaming and citation verification, 4 LangGraph agents (Research, Case Prep, Strategy, Drafting) with HITL checkpoints, judge analytics, audio digests (Sarvam AI), document upload + analysis, DPDP Act compliance, admin tools (data quality dashboard, review queue, corrections). 1,443 backend unit tests, 31 integration tests, 298 frontend tests. 796 cases loaded, preparing for 50K ingestion. Hindi support partial (next-intl setup, language toggle, 100+ term glossary). Database at migration 014 with 52 columns, 32 indexes, FTS triggers.
+All core features built and tested: hybrid search (FTS + vector + RRF + Cohere reranking), citation graph (Neo4j), RAG chat with SSE streaming and citation verification, 4 LangGraph agents (Research, Case Prep, Strategy, Drafting) with HITL checkpoints, judge analytics, audio digests (Sarvam AI), document upload + analysis, DPDP Act compliance, admin tools (data quality dashboard, review queue, corrections). 1,398 backend unit tests, 46 integration tests, 298 frontend tests. 796 cases loaded, preparing for 50K ingestion. Hindi support partial (next-intl setup, language toggle, 100+ term glossary). Database at migration 014 with 52 columns, 32 indexes, FTS triggers.
 
 **Production readiness audit completed** (March 2026): 20-agent comprehensive audit identified and fixed critical issues across security headers, fail-closed auth, ILIKE escaping, SSE session isolation, ingestion pipeline hardening, error sanitization, PII redaction, and CSP. See `PHASE_9_SCALABILITY_AUDIT.md` for remaining scale items.
 

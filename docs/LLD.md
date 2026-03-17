@@ -25,7 +25,7 @@ CREATE TABLE cases (
     year            INTEGER,
     case_type       VARCHAR(50),                     -- Criminal Appeal, Writ Petition, PIL, SLP, etc.
     jurisdiction    VARCHAR(50),                     -- Criminal, Civil, Constitutional
-    bench_type      VARCHAR(30),                     -- Constitution Bench, Division Bench, Single Judge
+    bench_type      VARCHAR(30),                     -- single, division, full, constitutional
 
     -- People (4 columns)
     judge           TEXT[],                          -- Array of judge names
@@ -94,6 +94,16 @@ CREATE TABLE cases (
 
     -- CHECK constraints
     CONSTRAINT ck_cases_year_range CHECK (year >= 1800 AND year <= 2200),
+    CONSTRAINT ck_cases_bench_type CHECK (
+        bench_type IN ('single', 'division', 'full', 'constitutional') OR bench_type IS NULL
+    ),
+    CONSTRAINT ck_cases_jurisdiction CHECK (
+        jurisdiction IN (
+            'civil', 'criminal', 'constitutional', 'tax', 'labor', 'company',
+            'family', 'environmental', 'arbitration', 'consumer', 'election',
+            'service', 'IP/commercial', 'other'
+        ) OR jurisdiction IS NULL
+    ),
     CONSTRAINT ck_cases_ingestion_status CHECK (
         ingestion_status IN ('pending', 'processing', 'complete', 'failed', 'vectors_failed', 'needs_review')
     ),
@@ -411,7 +421,9 @@ CREATE TABLE consents (
     granted_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     revoked_at      TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uq_consents_user_type UNIQUE (user_id, consent_type)
 );
 
 CREATE INDEX ix_consents_user_id ON consents(user_id);
@@ -558,26 +570,30 @@ Filterable fields: court, year, case_type, section_type, language
 
 ### 2.1 Search API
 
-#### `POST /api/v1/search`
+#### `GET /api/v1/search`
 
-Hybrid search across all case law.
+Hybrid search across all case law. Uses query parameters (not JSON body).
 
-**Request:**
-```json
-{
-    "query": "right to privacy Supreme Court",
-    "filters": {
-        "court": ["Supreme Court of India"],
-        "year_from": 2017,
-        "year_to": 2024,
-        "case_type": "Writ Petition",
-        "bench_type": null,
-        "judge": null,
-        "jurisdiction": null
-    },
-    "page_size": 20,
-    "cursor": null
-}
+**Query Parameters:**
+
+| Param | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `q` | string | Yes | — | Search query (1-2000 chars) |
+| `court` | string | No | — | Court name filter (comma-separated for multiple) |
+| `year_from` | int | No | — | Filter from year (1900-2100) |
+| `year_to` | int | No | — | Filter to year (1900-2100) |
+| `case_type` | string | No | — | Filter by case type |
+| `bench_type` | string | No | — | Filter by bench type |
+| `judge` | string | No | — | Filter by judge name |
+| `act` | string | No | — | Filter by act cited |
+| `section` | string | No | — | Filter by judgment section (FACTS, ISSUES, ARGUMENTS, HOLDINGS, REASONING, ORDER) |
+| `page` | int | No | 1 | Page number (>= 1) |
+| `page_size` | int | No | 10 | Results per page (1-50) |
+| `language` | string | No | `"en"` | Response language (`en` or `hi`) |
+
+**Example request:**
+```
+GET /api/v1/search?q=right+to+privacy&court=Supreme+Court+of+India&year_from=2017&year_to=2024&case_type=Writ+Petition&page=1&page_size=20
 ```
 
 **Response (200):**
@@ -585,32 +601,50 @@ Hybrid search across all case law.
 {
     "results": [
         {
-            "id": "uuid",
+            "case_id": "uuid",
+            "score": 0.9412,
             "title": "Justice K.S. Puttaswamy (Retd.) v. Union of India",
             "citation": "(2017) 10 SCC 1",
             "court": "Supreme Court of India",
             "year": 2017,
+            "date": "2017-08-24",
             "case_type": "Writ Petition",
-            "bench_type": "Constitution Bench",
-            "judges": ["Justice D.Y. Chandrachud", "Justice S.K. Kaul"],
+            "judge": ["Justice D.Y. Chandrachud", "Justice S.K. Kaul"],
             "snippet": "...the right to privacy is protected as an intrinsic part of the right to life and personal liberty under Article 21...",
-            "section_type": "ratio_decidendi",
-            "relevance_score": 0.94,
-            "cited_by_count": 1247
+            "bench_type": "constitutional",
+            "equivalent_citations": ["AIR 2017 SC 4161"],
+            "treatment_warning": null
         }
     ],
-    "total": 156,
-    "next_cursor": "eyJvZmZzZXQiOjIwfQ==",
-    "facets": {
-        "courts": [{"name": "Supreme Court of India", "count": 89}],
-        "years": [{"year": 2023, "count": 12}],
-        "case_types": [{"name": "Writ Petition", "count": 45}]
-    },
+    "total_count": 156,
+    "page": 1,
+    "page_size": 20,
     "query_understanding": {
         "intent": "topic_search",
-        "entities": {"topic": "right to privacy", "court": "Supreme Court"},
-        "reformulated": "constitutional right to privacy fundamental rights Article 21"
-    }
+        "original_query": "right to privacy",
+        "expanded_query": "constitutional right to privacy fundamental rights Article 21",
+        "search_strategy": "hybrid",
+        "filters": {
+            "court": ["Supreme Court of India"],
+            "year_from": 2017,
+            "year_to": 2024,
+            "case_type": "Writ Petition",
+            "bench_type": null,
+            "judge": null,
+            "act": null,
+            "section": null,
+            "judgment_section": null,
+            "disposal_nature": null
+        },
+        "entities": {
+            "case_names": [],
+            "statutes": [],
+            "legal_concepts": ["right to privacy"],
+            "judges": [],
+            "courts": ["Supreme Court"]
+        }
+    },
+    "facets": {}
 }
 ```
 
@@ -626,9 +660,8 @@ Get available filter values for the search sidebar.
 {
     "courts": ["Supreme Court of India", "High Court of Delhi", ...],
     "case_types": ["Criminal Appeal", "Civil Appeal", "Writ Petition", ...],
-    "bench_types": ["Constitution Bench", "Division Bench", "Single Judge"],
-    "year_range": {"min": 1950, "max": 2025},
-    "jurisdictions": ["Criminal", "Civil", "Constitutional"]
+    "bench_types": ["single", "division", "full", "constitutional"],
+    "years": {"min": 1950, "max": 2025}
 }
 ```
 

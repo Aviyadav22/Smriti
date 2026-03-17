@@ -1,5 +1,8 @@
 # Credentials (never commit)
 docs/GCP_DEPLOYMENT_CREDENTIALS.md
+*CREDENTIALS*
+*SECRETS*.md
+*.secret
 
 # Python
 __pycache__/

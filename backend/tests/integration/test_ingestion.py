@@ -61,6 +61,16 @@ def _make_db_mock(*, existing_citation_id: str | None = None) -> AsyncMock:
 
     db.execute = AsyncMock(side_effect=_execute_side_effect)
     db.commit = AsyncMock()
+    db.rollback = AsyncMock()
+
+    # db.begin() must return an async context manager (savepoint)
+    class _FakeBegin:
+        async def __aenter__(self):
+            return db
+        async def __aexit__(self, *exc):
+            pass
+
+    db.begin = MagicMock(return_value=_FakeBegin())
     return db
 
 

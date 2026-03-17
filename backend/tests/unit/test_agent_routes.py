@@ -10,10 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.routes.agents import (
-    _active_checkpointers,
-    router,
-)
+from app.api.routes.agents import router
 from app.db.postgres import get_db
 from app.models.agent_execution import AgentExecution, AgentStatus, AgentType
 from app.security.auth import TokenPayload
@@ -370,29 +367,14 @@ class TestResumeExecution:
 
         authed_client.app.dependency_overrides.pop(get_db, None)
 
-    def test_resume_recreates_checkpointer_when_not_cached(self) -> None:
-        """When checkpointer is not in cache, a new one is created and stored.
-
-        In production with AsyncPostgresSaver, state is persisted to the DB
-        so a new checkpointer instance can resume from the same thread_id.
-        """
+    def test_get_checkpointer_returns_singleton(self) -> None:
+        """get_checkpointer() returns the same instance on repeated calls."""
         from app.core.dependencies import get_checkpointer
 
-        fake_exec_id = str(uuid.uuid4())
-        # Ensure no checkpointer in cache
-        _active_checkpointers.pop(fake_exec_id, None)
-
-        # Simulate what the resume code does: recreate if not found
-        checkpointer = _active_checkpointers.get(fake_exec_id)
-        if checkpointer is None:
-            checkpointer = get_checkpointer()
-            _active_checkpointers[fake_exec_id] = checkpointer
-
-        assert checkpointer is not None
-        assert fake_exec_id in _active_checkpointers
-
-        # Cleanup
-        _active_checkpointers.pop(fake_exec_id, None)
+        cp1 = get_checkpointer()
+        cp2 = get_checkpointer()
+        assert cp1 is not None
+        assert cp1 is cp2
 
     def test_resume_returns_404_for_nonexistent(
         self, authed_client: TestClient

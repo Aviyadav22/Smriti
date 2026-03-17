@@ -8,8 +8,6 @@ import re
 import uuid
 from typing import AsyncIterator
 
-from cachetools import TTLCache
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.security.rate_limiter import rate_limit_dependency
 from fastapi.responses import StreamingResponse
@@ -43,19 +41,6 @@ from app.security.sanitizer import sanitize_search_query, detect_prompt_injectio
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# ---------------------------------------------------------------------------
-# Module-level store for active graph checkpointers (MVP: single-server)
-# Uses TTLCache to automatically evict entries after 1 hour, preventing
-# memory leaks from abandoned SSE connections. In production, use
-# AsyncPostgresSaver checkpointing (no in-memory map needed).
-# ---------------------------------------------------------------------------
-
-_CHECKPOINTER_TTL_SECONDS = 3600  # 1 hour
-
-_active_checkpointers: TTLCache[str, object] = TTLCache(
-    maxsize=1024, ttl=_CHECKPOINTER_TTL_SECONDS
-)
 
 # ---------------------------------------------------------------------------
 # Request / Response schemas
@@ -254,7 +239,6 @@ async def _stream_agent_events(
             except Exception:
                 logger.exception("Failed to update execution %s status to failed", exec_id)
             await queue.put(f"data: {json.dumps({'type': 'error', 'message': 'Agent execution failed. Please try again.', 'recoverable': False})}\n\n")
-            _active_checkpointers.pop(str(exec_id), None)
         finally:
             await queue.put(_SENTINEL)
 
@@ -281,7 +265,6 @@ async def _stream_agent_events(
             await queue.put(
                 f"data: {json.dumps({'type': 'error', 'message': 'Agent execution timed out after 10 minutes', 'recoverable': False})}\n\n"
             )
-            _active_checkpointers.pop(str(exec_id), None)
             await queue.put(_SENTINEL)
 
     # Launch the graph producer as a background task (with timeout guard)
@@ -300,9 +283,6 @@ async def _stream_agent_events(
                 break
             yield item  # type: ignore[misc]
     finally:
-        # Clean up checkpointer if graph completed (not paused at checkpoint)
-        if not is_checkpoint:
-            _active_checkpointers.pop(str(exec_id), None)
         if not task.done():
             task.cancel()
 
@@ -400,9 +380,6 @@ async def run_agent(
     db.add(execution)
     await db.commit()
     await db.refresh(execution)
-
-    # Store checkpointer for potential resume (TTLCache auto-evicts after 1 hour)
-    _active_checkpointers[str(execution.id)] = checkpointer
 
     # Build graph and initial state
     llm = get_llm()
@@ -635,11 +612,7 @@ async def resume_execution(
             detail=f"Execution is not awaiting input (status: {execution.status}).",
         )
 
-    checkpointer = _active_checkpointers.get(execution_id)
-    if checkpointer is None:
-        # In production (AsyncPostgresSaver), state is persisted to DB — recreate checkpointer
-        checkpointer = get_checkpointer()
-        _active_checkpointers[execution_id] = checkpointer
+    checkpointer = get_checkpointer()
 
     # Atomically transition status to prevent concurrent resume race condition
     result = await db.execute(
@@ -773,9 +746,6 @@ async def cancel_execution(
 
     execution.status = AgentStatus.cancelled.value
     await db.commit()
-
-    # Clean up checkpointer
-    _active_checkpointers.pop(execution_id, None)
 
     # Audit log: agent cancellation
     await create_audit_log(

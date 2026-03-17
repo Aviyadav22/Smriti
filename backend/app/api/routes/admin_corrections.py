@@ -12,10 +12,12 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import text
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 from app.db.postgres import get_db
+from app.models.case import Case
 from app.security.auth import TokenPayload
 from app.security.rbac import require_role
 
@@ -23,25 +25,51 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Fields that can be corrected via this API.
-_CORRECTABLE_FIELDS = {
-    "title", "citation", "court", "year", "decision_date",
-    "case_type", "jurisdiction", "bench_type", "petitioner",
-    "respondent", "author_judge", "disposal_nature",
-    "ratio_decidendi", "case_number", "headnotes",
-    "outcome_summary", "coram_size", "lower_court",
-    "lower_court_case_number", "appeal_from",
-    "opinion_type", "split_ratio",
-    "petitioner_type", "respondent_type", "is_pil",
+# Explicit mapping from field name -> ORM column attribute.
+# This serves as both the whitelist AND ensures column names are never
+# interpolated from user input (defence-in-depth against SQL injection).
+_FIELD_COLUMNS: dict[str, InstrumentedAttribute] = {
+    # Scalar fields
+    "title": Case.title,
+    "citation": Case.citation,
+    "court": Case.court,
+    "year": Case.year,
+    "decision_date": Case.decision_date,
+    "case_type": Case.case_type,
+    "jurisdiction": Case.jurisdiction,
+    "bench_type": Case.bench_type,
+    "petitioner": Case.petitioner,
+    "respondent": Case.respondent,
+    "author_judge": Case.author_judge,
+    "disposal_nature": Case.disposal_nature,
+    "ratio_decidendi": Case.ratio_decidendi,
+    "case_number": Case.case_number,
+    "headnotes": Case.headnotes,
+    "outcome_summary": Case.outcome_summary,
+    "coram_size": Case.coram_size,
+    "lower_court": Case.lower_court,
+    "lower_court_case_number": Case.lower_court_case_number,
+    "appeal_from": Case.appeal_from,
+    "opinion_type": Case.opinion_type,
+    "split_ratio": Case.split_ratio,
+    "petitioner_type": Case.petitioner_type,
+    "respondent_type": Case.respondent_type,
+    "is_pil": Case.is_pil,
+    # Array fields
+    "judge": Case.judge,
+    "acts_cited": Case.acts_cited,
+    "cases_cited": Case.cases_cited,
+    "keywords": Case.keywords,
+    "dissenting_judges": Case.dissenting_judges,
+    "concurring_judges": Case.concurring_judges,
+    "companion_cases": Case.companion_cases,
 }
 
-# Fields stored as PostgreSQL arrays
+# Fields stored as PostgreSQL arrays (for type validation only)
 _ARRAY_FIELDS = {
     "judge", "acts_cited", "cases_cited", "keywords",
     "dissenting_judges", "concurring_judges", "companion_cases",
 }
-
-_ALL_FIELDS = _CORRECTABLE_FIELDS | _ARRAY_FIELDS
 
 
 class CorrectionRequest(BaseModel):
@@ -71,11 +99,12 @@ async def correct_metadata(
     Records the old value, new value, user, and reason in the audit_logs table.
     Also updates metadata_provenance to mark the field as 'admin_corrected'.
     """
-    if body.field not in _ALL_FIELDS:
+    col = _FIELD_COLUMNS.get(body.field)
+    if col is None:
         raise HTTPException(
             status_code=400,
             detail=f"Field '{body.field}' is not correctable. "
-            f"Allowed: {sorted(_ALL_FIELDS)}",
+            f"Allowed: {sorted(_FIELD_COLUMNS)}",
         )
 
     # Validate array fields get list values
@@ -86,10 +115,9 @@ async def correct_metadata(
                 detail=f"Field '{body.field}' requires a list value",
             )
 
-    # Fetch existing value for audit
+    # Fetch existing value for audit (ORM select — no f-string interpolation)
     existing = await db.execute(
-        text(f"SELECT {body.field}, metadata_provenance FROM cases WHERE id = :id"),
-        {"id": case_id},
+        select(col, Case.metadata_provenance).where(Case.id == case_id)
     )
     row = existing.mappings().first()
     if not row:
@@ -97,10 +125,9 @@ async def correct_metadata(
 
     old_value = row[body.field]
 
-    # Update the field
+    # Update the field (ORM update — no f-string interpolation)
     await db.execute(
-        text(f"UPDATE cases SET {body.field} = :val WHERE id = :id"),
-        {"val": body.new_value, "id": case_id},
+        update(Case).where(Case.id == case_id).values({col.key: body.new_value})
     )
 
     # Update provenance to mark field as admin-corrected

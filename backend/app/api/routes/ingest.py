@@ -7,10 +7,12 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
-from sqlalchemy import text
+from sqlalchemy import text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 from app.db.postgres import get_db
+from app.models.case import Case
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user, require_role
 
@@ -224,17 +226,24 @@ async def update_case_metadata(
     Accepts a dict of field names and values to update. Only allows
     updating safe metadata fields (not full_text, id, etc.).
     """
-    # Allowlist of updatable fields
-    allowed_fields = {
-        "title", "citation", "court", "year", "case_type", "bench_type",
-        "jurisdiction", "judge", "author_judge", "petitioner", "respondent",
-        "decision_date", "disposal_nature", "ratio_decidendi", "acts_cited",
-        "cases_cited", "keywords", "case_number", "is_reportable",
-        "headnotes", "outcome_summary", "coram_size", "lower_court",
-        "opinion_type", "petitioner_type", "respondent_type", "is_pil",
+    # Explicit column mapping — prevents SQL injection via field names
+    _allowed_columns: dict[str, InstrumentedAttribute] = {
+        "title": Case.title, "citation": Case.citation, "court": Case.court,
+        "year": Case.year, "case_type": Case.case_type, "bench_type": Case.bench_type,
+        "jurisdiction": Case.jurisdiction, "judge": Case.judge,
+        "author_judge": Case.author_judge, "petitioner": Case.petitioner,
+        "respondent": Case.respondent, "decision_date": Case.decision_date,
+        "disposal_nature": Case.disposal_nature, "ratio_decidendi": Case.ratio_decidendi,
+        "acts_cited": Case.acts_cited, "cases_cited": Case.cases_cited,
+        "keywords": Case.keywords, "case_number": Case.case_number,
+        "is_reportable": Case.is_reportable, "headnotes": Case.headnotes,
+        "outcome_summary": Case.outcome_summary, "coram_size": Case.coram_size,
+        "lower_court": Case.lower_court, "opinion_type": Case.opinion_type,
+        "petitioner_type": Case.petitioner_type, "respondent_type": Case.respondent_type,
+        "is_pil": Case.is_pil,
     }
 
-    invalid_fields = set(updates.keys()) - allowed_fields
+    invalid_fields = set(updates.keys()) - _allowed_columns.keys()
     if invalid_fields:
         raise HTTPException(
             status_code=400,
@@ -251,17 +260,13 @@ async def update_case_metadata(
     if exists.fetchone() is None:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    # Build dynamic UPDATE
-    set_clauses = []
-    params: dict = {"id": case_id}
+    # Build ORM update — no f-string interpolation of field names
+    values_dict = {}
     for field, value in updates.items():
-        set_clauses.append(f"{field} = :{field}")
-        params[field] = value
+        col = _allowed_columns[field]  # KeyError impossible — validated above
+        values_dict[col.key] = value
 
-    sql = text(
-        f"UPDATE cases SET {', '.join(set_clauses)} WHERE id = :id"
-    )
-    await db.execute(sql, params)
+    await db.execute(update(Case).where(Case.id == case_id).values(**values_dict))
 
     # Log the correction in audit_logs
     import json as _json

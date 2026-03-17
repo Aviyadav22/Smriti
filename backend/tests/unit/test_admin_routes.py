@@ -254,6 +254,29 @@ class TestAdminCorrectionRoutes:
         assert resp.status_code == 400
         assert "list" in resp.json()["detail"]
 
+    @pytest.mark.parametrize("malicious_field", [
+        "title; DROP TABLE cases--",
+        "title, password FROM users--",
+        "1=1; UPDATE cases SET title='hacked' WHERE 1=1--",
+        "title FROM cases UNION SELECT secret FROM credentials--",
+    ])
+    def test_sql_injection_in_field_name_rejected(self, malicious_field):
+        """Fields containing SQL metacharacters must be rejected."""
+        db = AsyncMock()
+        client = self._make_client(db)
+        resp = client.post(
+            f"/corrections/{_CASE_ID}/correct",
+            json={
+                "field": malicious_field,
+                "new_value": "anything",
+                "reason": "Testing SQL injection defence",
+            },
+        )
+        assert resp.status_code == 400
+        assert "not correctable" in resp.json()["detail"]
+        # Verify no SQL was executed
+        db.execute.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Data quality dashboard tests

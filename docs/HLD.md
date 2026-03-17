@@ -295,7 +295,7 @@ class PDFExtractor:
     Extract text from legal PDFs.
 
     Strategy:
-    1. Try PyMuPDF (fitz) for native text extraction.
+    1. Try pdfplumber for native text extraction.
     2. If extracted text is too short (< 100 chars per page), assume scanned PDF.
     3. Fall back to Tesseract OCR on rendered page images.
     """
@@ -303,19 +303,18 @@ class PDFExtractor:
     MIN_CHARS_PER_PAGE = 100
 
     async def extract(self, pdf_bytes: bytes) -> str:
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        text_pages = []
+        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+            text_pages = []
 
-        for page in doc:
-            text = page.get_text()
-            if len(text.strip()) >= self.MIN_CHARS_PER_PAGE:
-                text_pages.append(text)
-            else:
-                # OCR fallback
-                pix = page.get_pixmap(dpi=300)
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                ocr_text = pytesseract.image_to_string(img, lang="eng")
-                text_pages.append(ocr_text)
+            for page in pdf.pages:
+                text = page.extract_text() or ""
+                if len(text.strip()) >= self.MIN_CHARS_PER_PAGE:
+                    text_pages.append(text)
+                else:
+                    # OCR fallback
+                    img = page.to_image(resolution=300).original
+                    ocr_text = pytesseract.image_to_string(img, lang="eng")
+                    text_pages.append(ocr_text)
 
         return "\n\n".join(text_pages)
 ```
@@ -1182,7 +1181,7 @@ Both functions parse the content into `(heading, body_lines)` pairs using headin
 **Analysis Pipeline Steps**:
 
 ```
-Step 1: Extract text      — PDFParser (PyMuPDF + OCR fallback)
+Step 1: Extract text      — PDFParser (pdfplumber + OCR fallback)
 Step 2: Identify issues    — DocumentAnalyzerService (Gemini LLM)
 Step 3: Find precedents    — PrecedentMapperService (embed + vector search + rerank)
 Step 4: Counter-arguments  — DocumentAnalyzerService (Gemini LLM)
@@ -1275,7 +1274,7 @@ Allows administrators to fix metadata errors on individual cases while maintaini
 | POST | `/{case_id}/correct` | Correct a single metadata field with audit trail |
 | GET | `/{case_id}/history` | Get correction history from audit logs |
 
-Correctable fields: 22 scalar fields (title, citation, court, year, decision_date, case_type, jurisdiction, bench_type, petitioner, respondent, author_judge, disposal_nature, ratio_decidendi, case_number, headnotes, outcome_summary, coram_size, lower_court, lower_court_case_number, appeal_from, opinion_type, split_ratio, petitioner_type, respondent_type, is_pil) plus 7 array fields (judge, acts_cited, cases_cited, keywords, dissenting_judges, concurring_judges, companion_cases).
+Correctable fields: 25 scalar fields (title, citation, court, year, decision_date, case_type, jurisdiction, bench_type, petitioner, respondent, author_judge, disposal_nature, ratio_decidendi, case_number, headnotes, outcome_summary, coram_size, lower_court, lower_court_case_number, appeal_from, opinion_type, split_ratio, petitioner_type, respondent_type, is_pil) plus 7 array fields (judge, acts_cited, cases_cited, keywords, dissenting_judges, concurring_judges, companion_cases).
 
 Each correction: records old value, new value, reason, and corrected_by in `audit_logs`; updates `metadata_provenance` to mark the field as `"admin_corrected"`.
 
@@ -1391,10 +1390,9 @@ python scripts/benchmark_extraction.py --gold-dir data/gold_standard/ --fields t
 | Method | Path | Description | Auth | Rate Limit |
 |--------|------|-------------|------|------------|
 | POST | `/register` | Create account (DPDP consent required) | Public | 5/min |
-| POST | `/login` | Login, return access + refresh tokens | Public | — |
-| POST | `/refresh` | Refresh access token | Public (refresh token) | — |
-| POST | `/logout` | Revoke tokens | Required | — |
-| GET | `/me` | Get current user profile | Required | — |
+| POST | `/login` | Login, return access + refresh tokens | Public | 5/min |
+| POST | `/refresh` | Refresh access token | Public (refresh token) | 10/min |
+| POST | `/logout` | Revoke tokens | Required | 20/min |
 | DELETE | `/me` | Delete account (DPDP right to erasure) | Required | — |
 
 Password validation enforces: 8+ chars, uppercase, lowercase, digit. Registration requires explicit `consent_given=true` for DPDP compliance.
@@ -1414,11 +1412,11 @@ Search supports 9 filter parameters: `court`, `year_from`, `year_to`, `case_type
 | Method | Path | Description | Auth | Rate Limit |
 |--------|------|-------------|------|------------|
 | GET | `/{case_id}` | Full case metadata and text | Public | 60/min |
-| GET | `/{case_id}/summary` | AI-generated case summary | Public | 30/min |
-| GET | `/{case_id}/pdf` | Signed PDF download URL | Required | 30/min |
+| GET | `/{case_id}/summary` | AI-generated case summary | Required | 30/min |
+| GET | `/{case_id}/pdf` | Serve PDF document | Public | 30/min |
 | GET | `/{case_id}/citations` | Cases cited by this case | Public | 60/min |
 | GET | `/{case_id}/cited-by` | Cases citing this case | Public | 60/min |
-| GET | `/{case_id}/similar` | Semantically similar cases | Required | 20/min |
+| GET | `/{case_id}/similar` | Semantically similar cases | Optional | 20/min |
 
 #### 4. `ChatRouter` (`api/routes/chat.py`) — Prefix: `/api/v1/chat`
 
@@ -1440,7 +1438,7 @@ Chat messages are encrypted at rest (AES-256-GCM). Prompt injection detection is
 | GET | `/executions` | List past agent executions | Required | — |
 | GET | `/executions/{execution_id}` | Get execution details | Required | — |
 | POST | `/executions/{execution_id}/resume` | Resume from HITL checkpoint | Required | 10/min |
-| DELETE | `/executions/{execution_id}` | Delete execution record | Required | — |
+| DELETE | `/executions/{execution_id}` | Cancel execution (sets status to cancelled) | Required | — |
 | GET | `/drafting/templates` | List available document templates | Required | — |
 | POST | `/drafting/export/{execution_id}` | Export draft to DOCX/PDF | Required | 20/min |
 

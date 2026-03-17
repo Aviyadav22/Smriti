@@ -273,7 +273,7 @@ An interactive network visualization showing how cases cite, overrule, affirm, a
 **Technical Notes:**
 - Graph stored in Neo4j AuraDB with MERGE-based idempotent node creation
 - Frontend graph rendering via interactive visualization
-- Citation relationship extraction via LLM + regex pipeline with 42 short act names
+- Citation relationship extraction via LLM + regex pipeline with 59 short act name mappings (55 unique acts)
 - Treatment-strength fusion for precedent classification
 
 ---
@@ -349,7 +349,7 @@ The pipeline is implemented as a Celery task (`analyze_document`) with real-time
 
 | Step | Status | Description |
 |------|--------|-------------|
-| 1 | `extracting` | Extract text from PDF via PyMuPDF with NFKC normalization; falls back to OCR if extracted text is under 50 characters |
+| 1 | `extracting` | Extract text from PDF via pdfplumber with NFKC normalization; falls back to OCR if extracted text is under 50 characters |
 | 2 | `analyzing` | Identify legal issues using `DocumentAnalyzerService` -- extracts issues (title + description), parties, key facts, relief sought, and referenced acts via Gemini LLM |
 | 3 | `searching` | Find relevant precedents per issue using `PrecedentMapperService` -- embeds issue descriptions, searches Pinecone, reranks with Cohere, matches statutes |
 | 4 | `generating` | Generate counter-arguments for each issue using LLM, anticipating opposing counsel's positions and preparing responses |
@@ -367,7 +367,7 @@ The pipeline is implemented as a Celery task (`analyze_document`) with real-time
 **Technical Notes:**
 - Task implementation: `tasks/document_tasks.py`
 - Services: `core/analysis/document_analyzer.py` (issue extraction, counter-args, memo), `core/analysis/precedent_mapper.py` (precedent search)
-- PDF text extraction: PyMuPDF with NFKC normalization and OCR fallback
+- PDF text extraction: pdfplumber with NFKC normalization and OCR fallback
 - Storage: GCS (prod) / local (dev), extracted text and metadata in PostgreSQL
 
 ---
@@ -777,21 +777,21 @@ The following features are explicitly excluded from the MVP (v1) release to main
 
 | Metric | Current Value | Notes |
 |--------|--------------|-------|
-| Backend unit tests | ~1,151 passing | pytest, comprehensive coverage |
-| Frontend tests | ~218 passing | Jest + React Testing Library |
+| Backend unit tests | ~1,398 passing | pytest, comprehensive coverage |
+| Frontend tests | ~298 passing | Vitest + React Testing Library |
 | Corpus size | 35K+ SC judgments | AWS S3 Open Data, CC-BY-4.0 |
 | Ingestion pipeline capacity | 50K+ cases | Production-ready with circuit breaker |
 | Agent types | 4 | Research, Case Prep, Strategy, Drafting |
 | Document types (Drafting) | 7 | Bail, Writ (Art.226), Writ (Art.32), Written Statement, Notice, Appeal, Interim Application |
 | Export formats | 2 | DOCX (python-docx) and PDF (ReportLab) |
-| Admin correctable fields | 33 | 25 scalar + 7 array + is_pil |
+| Admin correctable fields | 32 | 25 scalar (incl. is_pil) + 7 array |
 | Data quality tracked fields | 32 | 25 scalar + 7 array population rates |
 | Document analysis steps | 7 | Extract, issues, precedents, counter-args, memo, index, store |
 | Operational scripts | 5 | ingest_s3, populate_neo4j, daily_ingest, verify_ingestion, benchmark |
 | DPDP endpoints | 4 | data-summary, erasure, consent-withdraw, consent-status |
 | Hindi glossary terms | 100+ | Legal terminology |
 | Metadata extraction rules | 21 | Gemini prompt with few-shot examples |
-| Act short name mappings | 42 | For citation extraction |
+| Act short name mappings | 59 | 59 short codes mapping to 55 unique acts |
 | Phases completed | 8 of 9 | Phase 9 ready to begin |
 
 ### 9.5 Business Metrics

@@ -34,7 +34,7 @@
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                              CLIENTS                                        │
-│         Browser (Next.js 15 SPA)  /  Mobile (future)  /  API consumers      │
+│         Browser (Next.js 16 SPA)  /  Mobile (future)  /  API consumers      │
 └──────────────────────────┬───────────────────────────────────────────────────┘
                            │ HTTPS (TLS 1.3)
                            ▼
@@ -42,7 +42,7 @@
 │                      GOOGLE CLOUD LOAD BALANCER                             │
 │                   (SSL termination, path-based routing)                      │
 │                                                                              │
-│        /*  ──────────► Cloud Run (Next.js 15 Frontend)                      │
+│        /*  ──────────► Cloud Run (Next.js 16 Frontend)                      │
 │        /api/v1/*  ───► Cloud Run (FastAPI Backend)                          │
 └──────────────────────────┬───────────────────────────────────────────────────┘
                            │
@@ -102,7 +102,7 @@
 ```
 ┌─────────┐    ┌──────────┐    ┌───────────────┐    ┌────────────────────┐
 │  Source  │───►│ Download │───►│ PDF Extractor │───►│  Section Parser    │
-│  (S3 /  │    │  to GCS  │    │ (PyMuPDF +    │    │  (Facts, Ratio,    │
+│  (S3 /  │    │  to GCS  │    │ (pdfplumber + │    │  (Facts, Ratio,    │
 │  Upload)│    │          │    │  OCR fallback)│    │   Order, etc.)     │
 └─────────┘    └──────────┘    └───────────────┘    └────────┬───────────┘
                                                              │
@@ -140,8 +140,8 @@
              ┌──────────────┐ ┌───────────┐ ┌──────────────┐
              │   Embedding  │ │ PostgreSQL│ │    Neo4j     │
              │   (Gemini    │ │  INSERT   │ │  Citation    │
-             │  text-embed- │ │ metadata  │ │  Graph       │
-             │  ding-004)   │ │ + FTS     │ │  Edges       │
+             │  embedding-  │ │ metadata  │ │  Graph       │
+             │    001)      │ │ + FTS     │ │  Edges       │
              │      │       │ │ tsvector  │ │              │
              │      ▼       │ │           │ │ (CITES)      │
              │  Pinecone    │ │           │ │ (CITED_BY)   │
@@ -154,7 +154,7 @@
 | Step | Component | Action | Output |
 |------|-----------|--------|--------|
 | 1 | Downloader | Fetch PDF from source (S3, upload, URL) | Raw PDF in GCS |
-| 2 | PDFExtractor | Extract text via PyMuPDF; OCR fallback via Tesseract | Raw text string |
+| 2 | PDFExtractor | Extract text via pdfplumber; OCR fallback via Tesseract | Raw text string |
 | 3 | SectionDetector | Identify judgment sections using heading patterns | List of `(section_type, text)` |
 | 4 | MetadataExtractor | Gemini structured output + regex validation | `CaseMetadata` object |
 | 5 | LegalChunker | Section-aware chunking (2000 chars, 200 overlap) | List of `Chunk` objects |
@@ -191,7 +191,7 @@
      │   Vector     │ │   FTS     │ │  Metadata     │
      │   Search     │ │  Search   │ │  Filter       │
      │              │ │           │ │               │
-     │ embed(query) │ │ ts_rank_  │ │ WHERE court=  │
+     │embed_text(q) │ │ ts_rank_  │ │ WHERE court=  │
      │ → top 20     │ │ cd(query) │ │  AND year>=   │
      │ by cosine    │ │ → top 20  │ │  AND type=    │
      └──────┬───────┘ └─────┬─────┘ └──────┬───────┘
@@ -208,7 +208,7 @@
                              │
                              ▼
                  ┌───────────────────────┐
-                 │  Cohere Rerank v3     │
+                 │  Cohere rerank-v4.0   │
                  │                       │
                  │  Rerank top 20 →      │
                  │  Return top 5         │
@@ -224,9 +224,34 @@
                  │  bench, date, etc.    │
                  └───────────┬───────────┘
                              │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+     ┌──────────────┐ ┌───────────┐ ┌──────────────┐
+     │  Build       │ │ Outcome   │ │  Paginate    │
+     │  Facets      │ │ Bias      │ │  Results     │
+     │  (courts,    │ │ Detection │ │  (page,      │
+     │  years,      │ │ (bail/    │ │  page_size)  │
+     │  types)      │ │ sentence) │ │              │
+     └──────┬───────┘ └─────┬─────┘ └──────┬───────┘
+            │               │              │
+            └───────────────┼──────────────┘
+                            ▼
+                 ┌───────────────────────┐
+                 │  Cache in Redis       │
+                 │  (query + filters     │
+                 │   as cache key)       │
+                 └───────────┬───────────┘
+                             │
                              ▼
                      SearchResponse
 ```
+
+**Additional search pipeline steps** (beyond the core retrieval flow):
+- **Caching**: Redis-backed result caching with composite key (query + filters + page)
+- **Strategy-based routing**: Query understanding determines search strategy (`exact_match`, `keyword_heavy`, `vector_heavy`, `balanced`) which adjusts RRF weights
+- **Pagination**: Full result set paginated with page/page_size parameters
+- **Facet building**: Dynamic facets (courts, years, case types) built from the full reranked result set
+- **Outcome bias detection**: For bail/sentencing queries, checks if results skew toward a single outcome and emits a warning
 
 ---
 
@@ -237,14 +262,40 @@ User Message
      │
      ▼
 ┌─────────────────────────┐
+│  Session Management      │
+│  Create or validate      │
+│  session ownership       │
+│  (yield: session event)  │
+└────────────┬────────────┘
+             │
+             ▼
+┌─────────────────────────┐
+│  Load Chat History       │
+│  + Query Reformulation   │
+│                          │
+│  If follow-up: LLM       │
+│  rewrites query as       │
+│  self-contained search   │
+│  preserving legal terms  │
+└────────────┬────────────┘
+             │
+             ▼
+┌─────────────────────────┐
 │  Context Retrieval       │
 │  (Hybrid Search)         │
 │                          │
 │  Same pipeline as        │
-│  Search Flow above,      │
-│  but with conversation   │
-│  history for query       │
-│  reformulation           │
+│  Search Flow above       │
+└────────────┬────────────┘
+             │
+             ▼
+┌─────────────────────────┐
+│  Context Truncation      │
+│                          │
+│  If prompt > 100K chars  │
+│  reduce to 3 sources +   │
+│  4 history messages       │
+│  (yield: context_notice) │
 └────────────┬────────────┘
              │
              ▼
@@ -272,7 +323,7 @@ User Message
               │  Gemini 2.5 Pro          │
               │  (Streaming Generation)  │
               │                          │
-              │  temperature: 0.1        │
+              │  temperature: 0.2        │
               │  max_tokens: 4096        │
               │  stream: true            │
               └────────────┬─────────────┘
@@ -281,17 +332,38 @@ User Message
               ┌──────────────────────────┐
               │  SSE Response            │
               │                          │
-              │  event: token            │
-              │  data: {"text": "..."}   │
+              │  event: session          │
+              │  data: {session_id,title}│
               │                          │
-              │  event: citation         │
-              │  data: {"ref": "...",    │
-              │         "case_id": "..."}│
+              │  event: chunk            │
+              │  data: {"content":"..."}│
+              │                          │
+              │  event: context_notice   │
+              │  data: {sources_used,    │
+              │   sources_available,msg} │
+              │                          │
+              │  event: source           │
+              │  data: {case_id,title,   │
+              │   citation,court,year,   │
+              │   score}                 │
+              │                          │
+              │  event: disclaimer       │
+              │  data: {"message":"..."}│
               │                          │
               │  event: done             │
-              │  data: {"usage": {...}}  │
+              │  data: {source_count}    │
+              │                          │
+              │  event: error            │
+              │  data: {"message":"..."}│
               └──────────────────────────┘
 ```
+
+**Additional chat pipeline steps** (beyond diagram):
+- **Query reformulation**: Follow-up questions are rewritten as self-contained legal queries using conversation context, preserving section numbers, act names, and Indian legal terminology
+- **Context truncation**: If the assembled prompt exceeds 100K chars, sources are reduced to 3 and history to 4 messages; a `context_notice` event informs the client
+- **Message persistence**: Both user question and assistant response (with source metadata) are saved to the `chat_messages` table with field-level encryption
+- **Disclaimer event**: A `disclaimer` event is emitted after every response reminding users this is AI-generated analysis, not legal advice
+- **Treatment warnings**: Source events include `treatment_warning` if overruling language is detected in the cited case text
 
 ---
 
@@ -392,7 +464,7 @@ All three channels execute concurrently via `asyncio.gather()`:
 #### Channel A: Vector Search (Semantic)
 ```python
 # Embed the reformulated query
-query_embedding = await embedding_provider.embed(reformulated_query)
+query_embedding = await embedding_provider.embed_text(reformulated_query)
 
 # Search Pinecone with metadata filters
 vector_results = await pinecone.query(
@@ -412,10 +484,10 @@ vector_results = await pinecone.query(
 
 #### Channel B: Full-Text Search (Lexical)
 ```sql
-SELECT doc_id, chunk_text,
-       ts_rank_cd(search_vector, plainto_tsquery('english', :query)) AS rank
-FROM document_chunks
-WHERE search_vector @@ plainto_tsquery('english', :query)
+SELECT id, title, citation,
+       ts_rank_cd(searchable_text, websearch_to_tsquery('english', :query)) AS rank
+FROM cases
+WHERE searchable_text @@ websearch_to_tsquery('english', :query)
 ORDER BY rank DESC
 LIMIT 20;
 ```
@@ -507,9 +579,9 @@ CONTEXT:
 
 ```python
 response = await gemini.generate_stream(
-    model="gemini-3.1-pro",
+    model="gemini-2.5-pro",
     messages=[system_prompt, context_block, conversation_history, user_message],
-    temperature=0.1,      # Low for factual accuracy
+    temperature=0.2,      # Low for factual accuracy
     max_tokens=4096,
     response_format="text"
 )
@@ -663,17 +735,14 @@ All user-supplied strings are sanitized. SQL queries use parameterized statement
 
 ### Rate Limiting
 
-Implemented as FastAPI middleware backed by Redis:
+Implemented as per-endpoint FastAPI dependencies backed by Redis, using a sliding-window counter (sorted sets). Each endpoint declares its own limit via `rate_limit_dependency("N/unit")`:
 
-| Tier | Limit | Window | Scope |
-|------|-------|--------|-------|
-| Anonymous | 10 requests | 1 minute | Per IP |
-| Authenticated (free) | 60 requests | 1 minute | Per user |
-| Authenticated (pro) | 300 requests | 1 minute | Per user |
-| Ingestion endpoints | 10 requests | 10 minutes | Per user |
-| Auth endpoints | 5 requests | 1 minute | Per IP |
+```python
+@router.get("/search", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+async def search(...): ...
+```
 
-Rate limit state is stored in Redis using a sliding window counter pattern. Response headers include `X-RateLimit-Remaining` and `X-RateLimit-Reset`.
+Rate limit keys are scoped per IP + endpoint path (e.g., `rate:192.168.1.1:/api/v1/search`). When Redis is unavailable, an in-memory fallback prevents abuse. Limits are set per-endpoint (see the API Endpoint Inventory for specific limits per route). Examples: auth endpoints at 5/min, search at 30/min, chat at 20/min, agents at 10/min.
 
 ### Audit Logging
 
@@ -761,12 +830,12 @@ class VectorStore(Protocol):
 ```
 
 ```python
-# core/interfaces/embedding.py
+# core/interfaces/embedder.py
 class EmbeddingProvider(Protocol):
-    async def embed(self, text: str) -> list[float]: ...
+    async def embed_text(self, text: str) -> list[float]: ...
     async def embed_batch(self, texts: list[str]) -> list[list[float]]: ...
     @property
-    def dimensions(self) -> int: ...
+    def dimension(self) -> int: ...
 ```
 
 ```python
@@ -788,12 +857,13 @@ class GraphStore(Protocol):
 ```
 
 ```python
-# core/interfaces/file_storage.py
+# core/interfaces/storage.py
 class FileStorage(Protocol):
-    async def upload(self, path: str, data: bytes, content_type: str) -> str: ...
-    async def download(self, path: str) -> bytes: ...
-    async def get_signed_url(self, path: str, expiry_seconds: int = 3600) -> str: ...
-    async def delete(self, path: str) -> None: ...
+    async def store(self, file_path: str, destination: str) -> str: ...
+    async def retrieve(self, storage_path: str) -> bytes: ...
+    def retrieve_chunked(self, storage_path: str, chunk_size: int = 8192) -> AsyncIterator[bytes]: ...
+    async def exists(self, storage_path: str) -> bool: ...
+    async def delete(self, storage_path: str) -> None: ...
 ```
 
 ### Dependency Injection
@@ -801,35 +871,26 @@ class FileStorage(Protocol):
 Provider selection happens at application startup via a factory pattern:
 
 ```python
-# core/providers/factory.py
-from core.config import Settings
+# core/dependencies.py
+from functools import lru_cache
+from app.core.config import settings
+from app.core.interfaces import LLMProvider, VectorStore
 
-def create_llm_provider(settings: Settings) -> LLMProvider:
-    match settings.llm_provider:
-        case "gemini":
-            from core.providers.gemini import GeminiLLM
-            return GeminiLLM(
-                api_key=settings.gemini_api_key,
-                model=settings.gemini_model,   # "gemini-3.1-pro"
-            )
-        case "openai":
-            from core.providers.openai import OpenAILLM
-            return OpenAILLM(api_key=settings.openai_api_key)
-        case _:
-            raise ValueError(f"Unknown LLM provider: {settings.llm_provider}")
+@lru_cache
+def get_llm() -> LLMProvider:
+    if settings.llm_provider == "gemini":
+        from app.core.providers.llm.gemini import GeminiLLM
+        return GeminiLLM()  # reads config from settings internally
+    raise ValueError(f"Unknown LLM provider: {settings.llm_provider}")
 
-def create_vector_store(settings: Settings) -> VectorStore:
-    match settings.vector_store:
-        case "pinecone":
-            from core.providers.pinecone import PineconeStore
-            return PineconeStore(
-                api_key=settings.pinecone_api_key,
-                index_name=settings.pinecone_index,  # "smriti-legal"
-            )
-        case _:
-            raise ValueError(f"Unknown vector store: {settings.vector_store}")
+@lru_cache
+def get_vector_store() -> VectorStore:
+    if settings.vector_provider == "pinecone":
+        from app.core.providers.vector.pinecone_store import PineconeStore
+        return PineconeStore()
+    raise ValueError(f"Unknown vector store: {settings.vector_provider}")
 
-# ... similar for EmbeddingProvider, Reranker, GraphStore, FileStorage
+# ... similar for EmbeddingProvider, Reranker, GraphStore, FileStorage, TTSProvider
 ```
 
 These factories are called once in the FastAPI `lifespan` and injected via `Depends()`:
@@ -907,21 +968,22 @@ class Settings(BaseSettings):
     qdrant_collection: str = "smriti-legal"
 ```
 
-**Step 4**: Add to factory.
+**Step 4**: Add to dependency factory.
 ```python
-# core/providers/factory.py
-def create_vector_store(settings: Settings) -> VectorStore:
-    match settings.vector_store:
-        case "pinecone":
-            from core.providers.pinecone import PineconeStore
-            return PineconeStore(...)
-        case "qdrant":
-            from core.providers.qdrant import QdrantStore
-            return QdrantStore(
-                url=settings.qdrant_url,
-                api_key=settings.qdrant_api_key,
-                collection_name=settings.qdrant_collection,
-            )
+# core/dependencies.py
+@lru_cache
+def get_vector_store() -> VectorStore:
+    if settings.vector_provider == "pinecone":
+        from app.core.providers.vector.pinecone_store import PineconeStore
+        return PineconeStore()
+    elif settings.vector_provider == "qdrant":
+        from app.core.providers.vector.qdrant_store import QdrantStore
+        return QdrantStore(
+            url=settings.qdrant_url,
+            api_key=settings.qdrant_api_key,
+            collection_name=settings.qdrant_collection,
+        )
+    raise ValueError(f"Unknown vector store: {settings.vector_provider}")
 ```
 
 **Step 5**: Set environment variable.
@@ -949,7 +1011,7 @@ Internet ──► HTTPS ────►│  │  Cloud Load Balancer          �
                         │  │  (Global, SSL termination)    │   │
                         │  │                                │   │
                         │  │  /*       ──► Cloud Run        │   │
-                        │  │               (Next.js 15)     │   │
+                        │  │               (Next.js 16)     │   │
                         │  │               Frontend         │   │
                         │  │               - SSR / SSG      │   │
                         │  │               - 0→10 instances │   │
@@ -1076,7 +1138,8 @@ Celery Worker (analyze_document task):
   3. Precedent mapping (parallel hybrid search per issue)
   4. Counter-argument generation (Gemini)
   5. Research memo generation (Gemini)
-  6. Store results in DocumentAnalysis table
+  6. Chunk, embed, and index for search (Pinecone)
+  7. Store results in DocumentAnalysis table
 
 Status tracked: pending → extracting → analyzing → searching → generating → completed/failed
 Frontend polls GET /documents/{id} for status updates
@@ -1117,10 +1180,10 @@ Cache: audio_digests has UNIQUE(case_id, language) — never regenerates existin
                           ┌─────────────────────┼─────────────────┐
                           ▼                     ▼                 ▼
                     analyze_document      generate_audio     (future tasks)
-                    (6-step pipeline)     (summary + TTS)
+                    (7-step pipeline)     (summary + TTS)
 ```
 
-FastAPI enqueues background tasks via Celery, using Redis (DB 1) as the message broker. Each task type runs as a self-contained pipeline within the Celery worker process. Task status is persisted to PostgreSQL so the frontend can poll for progress. Failed tasks are retried up to 3 times with exponential backoff.
+FastAPI enqueues background tasks via Celery, using Redis (DB 1) as the message broker. Each task type runs as a self-contained pipeline within the Celery worker process. Task status is persisted to PostgreSQL so the frontend can poll for progress. Transient failures (ConnectionError, TimeoutError, OSError) are retried with `max_retries=2` (3 total attempts) and a 60-second flat delay between attempts.
 
 ---
 
@@ -1130,18 +1193,20 @@ Smriti includes 4 AI agents built with LangGraph for complex legal research work
 
 ### Agent Types
 
-| Agent | Purpose | Key Workflow |
-|-------|---------|-------------|
-| **Research** | Precedent research | query_expand -> search_precedents -> analyze_results -> (checkpoint) -> synthesize |
-| **Case Prep** | Issue analysis + deep search | extract_issues -> score_issues -> (checkpoint) -> deep_search per issue -> compile |
-| **Strategy** | Legal strategy + risk analysis | analyze_position -> identify_risks -> (checkpoint) -> develop_arguments -> verify_citations |
-| **Drafting** | Document generation + citation verification | select_template -> generate_draft -> (checkpoint) -> verify_citations -> finalize |
+| Agent | Purpose | Nodes | Checkpoints | Key Workflow |
+|-------|---------|-------|-------------|-------------|
+| **Research** | Precedent research | 10 | 3 | classify -> decompose -> **checkpoint_plan** -> search -> gather -> contradictions -> **checkpoint_findings** -> synthesize -> verify -> **checkpoint_memo** |
+| **Case Prep** | Issue analysis + deep search | 9 | 3 | load_analysis -> prioritize -> **checkpoint_issues** -> deep_search -> argument_order -> **checkpoint_strategy** -> strategy_memo -> verify -> **checkpoint_memo** |
+| **Strategy** | Legal strategy + risk analysis | 11 | 3 | analyze_facts -> fetch_judge -> **checkpoint_analysis** -> search_precedents -> assess_strength -> generate_arguments -> **checkpoint_arguments** -> counter_and_judge -> synthesize_strategy -> verify -> **checkpoint_memo** |
+| **Drafting** | Document generation + citation verification | 10 | 3 | resolve_template -> gather_provisions -> verify_precedents -> **checkpoint_sources** -> draft_sections -> assemble -> **checkpoint_draft** -> [revise loop] -> verify_final -> **checkpoint_final** |
+
+**Total: 40 nodes across 4 agents, 12 HITL checkpoints.**
 
 ### Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│                      FRONTEND (Next.js 15)                          │
+│                      FRONTEND (Next.js 16)                          │
 │                                                                      │
 │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────┐  │
 │  │  /agents/    │ │  /agents/    │ │  /agents/    │ │ /agents/   │  │
@@ -1390,7 +1455,7 @@ A 7-step pipeline executed within a Celery worker process. Each step updates the
 
 | Step | Status | Description | Services Used |
 |------|--------|-------------|---------------|
-| 1 | `extracting` | Extract text from PDF using PyMuPDF; falls back to OCR if text < 50 chars | PDFParser |
+| 1 | `extracting` | Extract text from PDF using pdfplumber; falls back to OCR if text < 50 chars | PDFParser |
 | 2 | `analyzing` | Extract legal issues, parties, key facts, and relief sought | Gemini 2.5 Pro (structured output) |
 | 3 | `searching` | Find supporting precedents via hybrid search for each identified issue | Gemini Embedder + Pinecone + Cohere Reranker |
 | 4 | `generating` | Generate counter-arguments for each issue based on precedents | Gemini 2.5 Pro |
