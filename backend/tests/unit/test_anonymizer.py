@@ -23,10 +23,10 @@ class TestAnonymizeText:
         assert modified is True
 
     def test_masks_pan_number(self):
-        text = "PAN of the accused: ABCDE1234F"
+        text = "PAN of the accused: ABCPA1234F"
         result, modified = anonymize_text(text)
         assert "[PAN REDACTED]" in result
-        assert "ABCDE1234F" not in result
+        assert "ABCPA1234F" not in result
         assert modified is True
 
     def test_masks_mobile_number_with_prefix(self):
@@ -49,7 +49,7 @@ class TestAnonymizeText:
         assert modified is False
 
     def test_masks_multiple_pii_types(self):
-        text = "Aadhaar 1234 5678 9012, PAN ABCDE1234F, Phone +919876543210"
+        text = "Aadhaar 1234 5678 9012, PAN ABCPA1234F, Phone +919876543210"
         result, modified = anonymize_text(text)
         assert "[AADHAAR REDACTED]" in result
         assert "[PAN REDACTED]" in result
@@ -68,6 +68,29 @@ class TestAnonymizeText:
         text = "The judgment was delivered on 15.01.2024"
         result, modified = anonymize_text(text)
         assert "2024" in result
+
+    def test_phone_with_91_prefix_not_masked_as_aadhaar(self):
+        """Phone +91XXXXXXXXXX should be masked as PHONE, not AADHAAR."""
+        text = "Contact: +91 9876543210"
+        result, modified = anonymize_text(text)
+        assert "[PHONE REDACTED]" in result
+        assert "[AADHAAR REDACTED]" not in result
+        assert modified is True
+
+    def test_pan_false_positive_legal_strings(self):
+        """Legal strings like POCSO2020A should NOT be masked as PAN."""
+        text = "Under POCSO2020A and CRIME1234B provisions"
+        result, modified = anonymize_text(text)
+        assert "POCSO2020A" in result
+        assert "CRIME1234B" in result
+        assert modified is False
+
+    def test_bare_phone_in_continuous_digits_no_match(self):
+        """10-digit phone embedded in a longer digit sequence should not match."""
+        text = "Case number 123456789012345 filed"
+        result, _ = anonymize_text(text)
+        # 15-digit number should not be partially matched as a 10-digit phone
+        assert "[PHONE REDACTED]" not in result or "[AADHAAR REDACTED]" in result
 
 
 class TestDetectSensitiveCase:

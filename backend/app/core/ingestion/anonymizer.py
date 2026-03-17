@@ -20,12 +20,16 @@ from app.core.ingestion.metadata import CaseMetadata
 _AADHAAR_RE = re.compile(r"\b(\d{4})\s(\d{4})\s(\d{4})\b")
 _AADHAAR_NOSPACE_RE = re.compile(r"\b\d{12}\b")
 
-# PAN: AAAAA9999A (exactly 5 upper + 4 digits + 1 upper)
-_PAN_RE = re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b")
+# PAN: AAAPA9999A — 4th char must be a valid entity-type code to avoid
+# matching legal strings like POCSO2020A or CRIME1234B.
+_PAN_RE = re.compile(r"\b[A-Z]{3}[ABCFGHJLPT][A-Z]\d{4}[A-Z]\b")
 
-# Indian mobile: 10 digits starting 6-9, optional +91/91/0 prefix
+# Indian mobile: 10 digits starting 6-9, optional +91/91/0 prefix.
+# Split into prefixed (anchored by prefix) and bare (anchored by \b) variants
+# to avoid matching 10-digit substrings inside longer strings.
 _PHONE_RE = re.compile(
-    r"(?:\+91[\s-]?|91[\s-]?|0)?[6-9]\d{9}\b"
+    r"(?:\+91[\s-]?|91[\s-]?|0)[6-9]\d{9}\b"
+    r"|\b[6-9]\d{9}\b"
 )
 
 # ---------------------------------------------------------------------------
@@ -66,8 +70,10 @@ def anonymize_text(full_text: str) -> tuple[str, bool]:
     """
     original = full_text
 
-    # Order matters: phone must be masked before bare-12-digit Aadhaar,
-    # otherwise +919876543210 gets eaten by the 12-digit Aadhaar pattern.
+    # Order matters:
+    # 1. Spaced Aadhaar first (e.g. "1234 5678 9012") — cannot overlap with phone
+    # 2. Phone next — before bare 12-digit Aadhaar, so +919876543210 is not eaten
+    # 3. Bare 12-digit Aadhaar last
     result = _AADHAAR_RE.sub("[AADHAAR REDACTED]", full_text)
     result = _PHONE_RE.sub("[PHONE REDACTED]", result)
     result = _AADHAAR_NOSPACE_RE.sub("[AADHAAR REDACTED]", result)

@@ -142,7 +142,7 @@ async def hybrid_search(
     )
 
     # 1. Check Redis cache
-    cache_key = _make_cache_key(query, filters, page, effective_page_size)
+    cache_key = _make_cache_key(query, filters, page, effective_page_size, language)
     if redis_client is not None:
         cached = await _get_cached(redis_client, cache_key)
         if cached is not None:
@@ -723,6 +723,7 @@ def _make_cache_key(
     filters: SearchFilters | None,
     page: int,
     page_size: int,
+    language: str = "en",
 ) -> str:
     """Build a deterministic cache key from search parameters."""
     raw = json.dumps(
@@ -731,6 +732,7 @@ def _make_cache_key(
             "f": asdict(filters) if filters else None,
             "p": page,
             "ps": page_size,
+            "lang": language,
         },
         sort_keys=True,
     )

@@ -514,6 +514,8 @@ async def _insert_case(
         "metadata_provenance": json.dumps(provenance) if provenance else None,
         "text_hash": text_hash,
         "extraction_confidence": extraction_confidence,
+        "is_anonymized": metadata.is_anonymized,
+        "anonymization_flags": metadata.anonymization_flags,
     }
 
     # Check for content-based duplicate via text_hash
@@ -567,7 +569,8 @@ async def _insert_case(
                 coram_size, lower_court, lower_court_case_number, appeal_from,
                 opinion_type, dissenting_judges, concurring_judges, split_ratio,
                 petitioner_type, respondent_type, is_pil, companion_cases,
-                metadata_provenance, text_hash, extraction_confidence
+                metadata_provenance, text_hash, extraction_confidence,
+                is_anonymized, anonymization_flags
             ) VALUES (
                 :id, :title, :citation, :case_id, :cnr, :court, :year, :case_type,
                 :jurisdiction, :bench_type, :judge, :author_judge, :petitioner,
@@ -581,7 +584,8 @@ async def _insert_case(
                 :coram_size, :lower_court, :lower_court_case_number, :appeal_from,
                 :opinion_type, :dissenting_judges, :concurring_judges, :split_ratio,
                 :petitioner_type, :respondent_type, :is_pil, :companion_cases,
-                :metadata_provenance, :text_hash, :extraction_confidence
+                :metadata_provenance, :text_hash, :extraction_confidence,
+                :is_anonymized, :anonymization_flags
             )
             ON CONFLICT (citation) WHERE citation IS NOT NULL DO UPDATE SET
                 full_text = EXCLUDED.full_text,
@@ -611,7 +615,9 @@ async def _insert_case(
                 companion_cases = COALESCE(EXCLUDED.companion_cases, cases.companion_cases),
                 metadata_provenance = COALESCE(EXCLUDED.metadata_provenance, cases.metadata_provenance),
                 text_hash = COALESCE(EXCLUDED.text_hash, cases.text_hash),
-                extraction_confidence = COALESCE(EXCLUDED.extraction_confidence, cases.extraction_confidence)
+                extraction_confidence = COALESCE(EXCLUDED.extraction_confidence, cases.extraction_confidence),
+                is_anonymized = EXCLUDED.is_anonymized,
+                anonymization_flags = COALESCE(EXCLUDED.anonymization_flags, cases.anonymization_flags)
             RETURNING id
             """
         ),
@@ -977,7 +983,7 @@ async def bulk_upsert_cases(
             source, language, available_languages, chunk_count,
             case_number, is_reportable, headnotes, outcome_summary,
             metadata_provenance, extraction_confidence, text_hash,
-            ingestion_status
+            ingestion_status, is_anonymized, anonymization_flags
         ) VALUES (
             :id, :title, :citation, :case_id, :cnr, :court, :year, :case_type,
             :jurisdiction, :bench_type, :judge, :author_judge, :petitioner,
@@ -989,7 +995,7 @@ async def bulk_upsert_cases(
             :language, :available_languages, :chunk_count,
             :case_number, :is_reportable, :headnotes, :outcome_summary,
             :metadata_provenance, :extraction_confidence, :text_hash,
-            :ingestion_status
+            :ingestion_status, :is_anonymized, :anonymization_flags
         )
         ON CONFLICT (citation) WHERE citation IS NOT NULL DO UPDATE SET
             full_text = EXCLUDED.full_text,
@@ -1008,7 +1014,9 @@ async def bulk_upsert_cases(
             metadata_provenance = COALESCE(EXCLUDED.metadata_provenance, cases.metadata_provenance),
             extraction_confidence = COALESCE(EXCLUDED.extraction_confidence, cases.extraction_confidence),
             text_hash = COALESCE(EXCLUDED.text_hash, cases.text_hash),
-            ingestion_status = COALESCE(EXCLUDED.ingestion_status, cases.ingestion_status)
+            ingestion_status = COALESCE(EXCLUDED.ingestion_status, cases.ingestion_status),
+            is_anonymized = EXCLUDED.is_anonymized,
+            anonymization_flags = COALESCE(EXCLUDED.anonymization_flags, cases.anonymization_flags)
         RETURNING id
         """
     )
@@ -1059,6 +1067,8 @@ async def bulk_upsert_cases(
                 "metadata_provenance": row.get("metadata_provenance"),
                 "extraction_confidence": row.get("extraction_confidence"),
                 "text_hash": row.get("text_hash"),
+                "is_anonymized": row.get("is_anonymized", False),
+                "anonymization_flags": row.get("anonymization_flags"),
             })
 
         # Batch execution: single round-trip for all rows in this batch.
