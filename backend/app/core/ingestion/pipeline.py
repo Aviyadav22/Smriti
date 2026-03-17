@@ -118,7 +118,7 @@ async def ingest_judgment(
     # ------------------------------------------------------------------
     text_hash = _compute_text_hash(full_text)
     existing_hash = await db.execute(
-        text("SELECT id, chunk_count FROM cases WHERE text_hash = :hash"),
+        text("SELECT id, chunk_count FROM cases WHERE text_hash = :hash FOR UPDATE SKIP LOCKED"),
         {"hash": text_hash},
     )
     hash_row = existing_hash.fetchone()
@@ -473,7 +473,7 @@ async def _insert_case(
     # Check for content-based duplicate via text_hash
     if text_hash:
         existing_hash = await db.execute(
-            text("SELECT id, chunk_count FROM cases WHERE text_hash = :hash"),
+            text("SELECT id, chunk_count FROM cases WHERE text_hash = :hash FOR UPDATE SKIP LOCKED"),
             {"hash": text_hash},
         )
         hash_row = existing_hash.fetchone()
