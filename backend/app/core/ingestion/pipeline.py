@@ -50,6 +50,20 @@ logger = logging.getLogger(__name__)
 _EMBED_BATCH_SIZE: int = 20
 
 
+async def get_cited_by_count(case_id: str, graph_store: GraphStore) -> int:
+    """Compute cited_by_count on demand from the graph (avoids non-atomic increment)."""
+    try:
+        results = await graph_store.query(
+            "MATCH (cited:Case {id: $id})<-[:CITES]-(c) "
+            "RETURN count(c) AS cited_by_count",
+            params={"id": case_id},
+        )
+        return results[0]["cited_by_count"] if results else 0
+    except Exception:
+        logger.warning("Failed to compute cited_by_count for %s", case_id, exc_info=True)
+        return 0
+
+
 async def ingest_judgment(
     pdf_path: str,
     parquet_metadata: dict,
@@ -767,13 +781,6 @@ async def _build_citation_graph(
             "MERGE (a)-[r:CITES]->(b) "
             "SET r.reporter = e.reporter, r.treatment = e.treatment",
             params={"from_id": case_id, "edges": edge_data},
-        )
-        # Increment cited_by_count on each cited node
-        await graph_store.query(
-            "UNWIND $edges AS e "
-            "MATCH (b:Case {citation: e.citation}) "
-            "SET b.cited_by_count = COALESCE(b.cited_by_count, 0) + 1",
-            params={"edges": edge_data},
         )
     except (OSError, ConnectionError, RuntimeError) as exc:
         logger.warning("Failed to batch-create citation edges for %s: %s", case_id, exc)
