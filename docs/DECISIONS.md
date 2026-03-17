@@ -497,3 +497,24 @@ Uploaded legal documents need comprehensive analysis: issue extraction, preceden
 - (+) Status visible to frontend via polling endpoint
 - (-) Single task failure requires restarting entire pipeline (mitigated by Celery retry)
 - (-) No parallelism between steps (acceptable since steps are dependent)
+
+---
+
+## ADR-019: FTS Ranking Uses ts_rank_cd (Cover Density), Not BM25
+
+**Status:** Accepted
+**Date:** 2026-03-17
+
+### Context
+PostgreSQL offers `ts_rank` (frequency-based) and `ts_rank_cd` (cover density). BM25 would require the `pg_bm25` or `paradedb` extension, unavailable on Cloud SQL.
+
+### Decision
+Use `ts_rank_cd` because:
+1. Cover density rewards proximity of query terms — critical for legal phrases ("breach of contract", "Article 21 of the Constitution")
+2. Legal queries tend to be multi-word and phrase-heavy; proximity matters more than raw frequency
+3. Native PostgreSQL, no extension dependencies
+4. Our hybrid pipeline (FTS + vector + Cohere reranker) compensates for any BM25 advantages via semantic reranking
+
+### Consequences
+- (+) Rewards term proximity, ideal for legal phrase queries
+- (-) FTS alone may slightly under-rank documents where terms appear frequently but spread apart. The Cohere reranker mitigates this in the final ranking stage.

@@ -66,6 +66,8 @@ async def search_fulltext(
 
     where_sql = " AND ".join(where_clauses)
 
+    # ts_rank_cd = cover density ranking: rewards proximity of query terms.
+    # Chosen over ts_rank/BM25 for legal text (see ADR-019 in DECISIONS.md).
     sql = text(
         f"SELECT id, title, citation, "
         f"ts_rank_cd(searchable_text, ({tsquery_expr})) AS rank, "
