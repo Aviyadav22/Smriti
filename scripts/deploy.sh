@@ -47,6 +47,7 @@ gcloud run deploy smriti-backend \
   --min-instances=1 \
   --max-instances=5 \
   --timeout=300 \
+  --concurrency=80 \
   --cpu-boost \
   --execution-environment=gen2 \
   --port=8000 \
@@ -90,6 +91,7 @@ gcloud run deploy smriti-frontend \
   --cpu=1 \
   --min-instances=0 \
   --max-instances=3 \
+  --concurrency=80 \
   --port=3000
 
 echo "=== Step 10: Update backend CORS with frontend URL ==="
