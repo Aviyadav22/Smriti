@@ -104,6 +104,15 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # F7: SHA-256 hash of normalized full_text for dedup
     text_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # --- Migration 015 columns (India audit fixes) ---
+    hindi_searchable_text: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
+    is_anonymized: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    anonymization_flags: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String), nullable=True
+    )
+
     __table_args__ = (
         CheckConstraint("year >= 1800 AND year <= 2200", name="ck_cases_year_range"),
         # Single-column indexes
