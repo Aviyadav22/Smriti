@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 from app.core.ingestion.chunker import Chunk, chunk_judgment, detect_judgment_sections
+from app.core.ingestion.graph_retry import record_graph_failure
 from app.core.ingestion.metadata import (
     CaseMetadata,
     compute_extraction_confidence,
@@ -354,6 +355,13 @@ async def ingest_judgment(
                 "Citation graph build failed for case_id=%s: %s",
                 case_id, graph_exc,
             )
+            try:
+                await record_graph_failure(db, case_id, str(graph_exc))
+            except Exception as queue_exc:
+                logger.error(
+                    "Failed to queue graph retry for case_id=%s: %s",
+                    case_id, queue_exc,
+                )
 
     except Exception as pipeline_exc:
         logger.error(
