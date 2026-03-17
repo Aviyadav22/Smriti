@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
+from app.core.interfaces.graph_store import GraphStore
 from app.core.legal.prompts import CHAT_SYSTEM_PROMPT, CHAT_USER_WITH_CONTEXT, LEGAL_DISCLAIMER
 from app.core.legal.treatment import has_overruling_language
 from app.core.search.hybrid import hybrid_search
@@ -75,6 +76,31 @@ class RAGEvent:
 # ---------------------------------------------------------------------------
 
 
+async def check_treatment_from_graph(
+    case_ids: list[str],
+    graph_store: GraphStore,
+) -> dict[str, str]:
+    """Query Neo4j for cases that have been overruled.
+
+    Returns:
+        Mapping of case_id -> overruling citation for cases found to be overruled.
+        Returns empty dict on error (graph unavailability should not break RAG).
+    """
+    if not case_ids:
+        return {}
+    try:
+        results = await graph_store.query(
+            "MATCH (c:Case)-[r:CITES]->(cited:Case) "
+            "WHERE cited.id IN $case_ids AND r.treatment = 'overruled' "
+            "RETURN cited.id AS case_id, c.citation AS overruled_by",
+            params={"case_ids": case_ids},
+        )
+        return {r["case_id"]: r["overruled_by"] for r in results}
+    except Exception:
+        logger.warning("Failed to check treatment from graph, falling back to heuristic", exc_info=True)
+        return {}
+
+
 async def rag_respond(
     question: str,
     *,
@@ -86,6 +112,7 @@ async def rag_respond(
     reranker: Reranker,
     db: AsyncSession,
     redis_client=None,
+    graph_store: GraphStore | None = None,
 ) -> AsyncIterator[RAGEvent]:
     """Execute the RAG pipeline and yield streaming events.
 
@@ -194,6 +221,11 @@ async def rag_respond(
         # 7. Yield source events (with treatment warnings where applicable)
         # NOTE: Only sources actually included in the LLM context are yielded
         # (the `sources` list may have been truncated in step 5.5).
+        graph_overruled: dict[str, str] = {}
+        if graph_store and sources:
+            graph_overruled = await check_treatment_from_graph(
+                [s.case_id for s in sources], graph_store
+            )
         for i, source in enumerate(sources):
             source_data: dict = {
                 "index": i + 1,
@@ -204,20 +236,20 @@ async def rag_respond(
                 "year": source.year,
                 "score": round(source.score, 4),
             }
-            # Check for overruling language in ratio/chunk and flag for the UI.
-            # LIMITATION: This heuristic only examines text within the chunk and
-            # ratio_decidendi fields.  The database does not currently store a
-            # dedicated treatment status (e.g. "overruled", "affirmed") per case,
-            # and the Neo4j citation graph is not queried here for treatment edges.
-            # A future improvement should query the graph DB for authoritative
-            # treatment status (e.g. OVERRULED_BY / DISTINGUISHED_BY edges) to
-            # provide more reliable warnings.
-            check_text = (source.ratio or "") + " " + (source.chunk_text or "")
-            if check_text.strip() and has_overruling_language(check_text):
+            # Check treatment status: first from graph (authoritative), then
+            # fall back to text heuristic on ratio/chunk content.
+            if source.case_id in graph_overruled:
                 source_data["treatment_warning"] = (
-                    "This case may have been overruled or distinguished. "
+                    f"This case has been overruled by {graph_overruled[source.case_id]}. "
                     "Verify its current status before relying on it."
                 )
+            else:
+                check_text = (source.ratio or "") + " " + (source.chunk_text or "")
+                if check_text.strip() and has_overruling_language(check_text):
+                    source_data["treatment_warning"] = (
+                        "This case may have been overruled or distinguished. "
+                        "Verify its current status before relying on it."
+                    )
             yield RAGEvent(type="source", data=source_data)
 
         # 8. Save messages to DB

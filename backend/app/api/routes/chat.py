@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.chat.rag import rag_respond
-from app.core.dependencies import get_embedder, get_llm, get_reranker, get_vector_store
+from app.core.dependencies import get_embedder, get_graph_store, get_llm, get_reranker, get_vector_store
 from app.db.postgres import async_session_factory, get_db
 from app.db.redis_client import get_redis
 from app.security.auth import TokenPayload
@@ -58,6 +58,7 @@ async def create_chat(
     vector_store = get_vector_store()
     reranker = get_reranker()
     redis_client = await get_redis()
+    graph_store = get_graph_store()
 
     logger.info("Creating new chat session for user %s", user.sub)
 
@@ -78,6 +79,7 @@ async def create_chat(
                         reranker=reranker,
                         db=stream_db,
                         redis_client=redis_client,
+                        graph_store=graph_store,
                     ):
                         yield f"data: {json.dumps(event.data | {'type': event.type})}\n\n"
             except TimeoutError:
@@ -131,6 +133,7 @@ async def send_message(
     vector_store = get_vector_store()
     reranker = get_reranker()
     redis_client = await get_redis()
+    graph_store = get_graph_store()
 
     logger.info("Continuing chat session %s for user %s", session_id, user.sub)
 
@@ -151,6 +154,7 @@ async def send_message(
                         reranker=reranker,
                         db=stream_db,
                         redis_client=redis_client,
+                        graph_store=graph_store,
                     ):
                         yield f"data: {json.dumps(event.data | {'type': event.type})}\n\n"
             except TimeoutError:
