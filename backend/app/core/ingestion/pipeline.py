@@ -661,6 +661,11 @@ async def _upsert_vectors(
     vectors: list[dict] = []
     for chunk, embedding in zip(chunks, embeddings):
         vector_id = f"{case_id}_{chunk.chunk_index}"
+        if len(chunk.text) > 2000:
+            logger.warning(
+                "Chunk %s_%d text truncated from %d to 2000 chars for Pinecone metadata",
+                case_id, chunk.chunk_index, len(chunk.text),
+            )
         vectors.append({
             "id": vector_id,
             "values": embedding,
@@ -682,7 +687,7 @@ async def _upsert_vectors(
                 "opinion_author": chunk.opinion_author or "",
                 "para_start": chunk.para_start or 0,
                 "para_end": chunk.para_end or 0,
-                "text": chunk.text[:2000],  # Pinecone metadata size limit
+                "text": chunk.text[:2000],  # Pinecone 40KB metadata cap; full text lives in PostgreSQL
             },
         })
 
