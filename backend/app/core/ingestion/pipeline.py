@@ -225,8 +225,10 @@ async def ingest_judgment(
     # ------------------------------------------------------------------
     # 6–9: Remaining pipeline steps wrapped for failure handling
     # ------------------------------------------------------------------
-    # Mark ingestion as in-progress (explicit transaction so this commits
-    # independently from the bulk pipeline commit at line ~314).
+    # Mark ingestion as in-progress. Uses db.begin() to create a savepoint
+    # so this write is flushed before the bulk pipeline work begins. Note:
+    # full isolation (surviving a session-level abort) would need a separate
+    # session — this covers code-logic failures between here and line ~314.
     async with db.begin():
         await db.execute(
             text("UPDATE cases SET ingestion_status = 'processing' WHERE id = :id"),
