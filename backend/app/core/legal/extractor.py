@@ -24,6 +24,7 @@ class Citation:
     page: str
     court: str | None  # for AIR, SCC OnLine, neutral, MANU citations
     raw_text: str
+    confidence: float = 1.0  # 0.0-1.0; higher = more reliable format
 
 
 @dataclass(frozen=True, slots=True)
@@ -387,6 +388,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(4),
             court=None,
             raw_text=match.group(0),
+            confidence=0.9,
         ))
 
     # SCC -- (2020) 3 SCC 145 or [2020] 3 SCC 145
@@ -398,6 +400,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(3),
             court=None,
             raw_text=match.group(0),
+            confidence=0.9,
         ))
 
     # SCC OnLine -- 2020 SCC OnLine SC 1234 (case-insensitive)
@@ -410,6 +413,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(3),
             court=AIR_COURT_CODES.get(court_code, court_code),
             raw_text=match.group(0),
+            confidence=0.9,
         ))
 
     # AIR -- AIR 2020 SC 145 or A.I.R. 2020 SC 145
@@ -422,6 +426,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(3),
             court=AIR_COURT_CODES.get(court_code, court_code),
             raw_text=match.group(0),
+            confidence=0.9,
         ))
 
     # Neutral SC -- 2023:INSC:1234
@@ -436,6 +441,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(2),
             court="Supreme Court of India",
             raw_text=match.group(0),
+            confidence=0.95,
         ))
 
     # Neutral HC -- 2023:DELHC:1234, 2023:BOMHC:1234
@@ -451,6 +457,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(3),
             court=court_code,
             raw_text=match.group(0),
+            confidence=0.95,
         ))
 
     # INSC (space-delimited, legacy) -- 2020 INSC 145
@@ -462,6 +469,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(2),
             court="Supreme Court of India",
             raw_text=match.group(0),
+            confidence=0.95,
         ))
 
     # SCR -- [2020] 3 SCR 145
@@ -473,6 +481,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(3),
             court=None,
             raw_text=match.group(0),
+            confidence=0.9,
         ))
 
     # CrLJ -- 2020 CrLJ 145
@@ -484,6 +493,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(2),
             court=None,
             raw_text=match.group(0),
+            confidence=0.8,
         ))
 
     # SCALE -- (2020) 3 SCALE 145
@@ -495,6 +505,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(3),
             court=None,
             raw_text=match.group(0),
+            confidence=0.8,
         ))
 
     # MANU -- MANU/SC/1234/2020
@@ -506,6 +517,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(2),
             court=match.group(1),
             raw_text=match.group(0),
+            confidence=0.8,
         ))
 
     # JT -- JT 2020 (3) SC 145  OR  (2020) 3 JT (SC) 145
@@ -519,6 +531,7 @@ def extract_citations(text: str) -> list[Citation]:
                 page=match.group(4),
                 court=match.group(3),
                 raw_text=match.group(0),
+                confidence=0.8,
             ))
         else:
             # Second alternative: (2020) 3 JT (SC) 145
@@ -529,6 +542,7 @@ def extract_citations(text: str) -> list[Citation]:
                 page=match.group(8),
                 court=match.group(7),
                 raw_text=match.group(0),
+                confidence=0.8,
             ))
 
     # HC reporters -- ILR, MLJ, KLT, BLR, GLR, ALJ, DLT, ALD, CLT, PLR,
@@ -543,6 +557,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(4),
             court=None,
             raw_text=match.group(0),
+            confidence=0.8,
         ))
 
     # LiveLaw -- 2024 LiveLaw (SC) 123
@@ -554,6 +569,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(3),
             court=match.group(2),
             raw_text=match.group(0),
+            confidence=0.8,
         ))
 
     # ITR -- [2020] 123 ITR 456
@@ -565,6 +581,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(3),
             court=None,
             raw_text=match.group(0),
+            confidence=0.8,
         ))
 
     # Taxmann -- [2020] 123 taxmann.com 456
@@ -576,6 +593,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(3),
             court=None,
             raw_text=match.group(0),
+            confidence=0.8,
         ))
 
     # Company Cases -- (2020) 123 CompCas 456
@@ -587,6 +605,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(3),
             court=None,
             raw_text=match.group(0),
+            confidence=0.8,
         ))
 
     # LLJ -- 2020 LLJ 123
@@ -598,6 +617,7 @@ def extract_citations(text: str) -> list[Citation]:
             page=match.group(2),
             court=None,
             raw_text=match.group(0),
+            confidence=0.8,
         ))
 
     # Name-based citations -- "in Kesavananda Bharati v. State of Kerala"
@@ -612,6 +632,7 @@ def extract_citations(text: str) -> list[Citation]:
             page="0",
             court=None,
             raw_text=case_name,
+            confidence=0.3,
         ))
 
     return citations
