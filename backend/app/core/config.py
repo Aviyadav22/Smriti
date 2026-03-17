@@ -85,7 +85,9 @@ class Settings(BaseSettings):
     # Search
     search_cache_ttl: int = 300
     search_facet_cache_ttl: int = 900
-    search_rrf_k: int = 60
+    search_rrf_k: int = 60  # default / balanced
+    search_rrf_k_keyword_heavy: int = 30
+    search_rrf_k_vector_heavy: int = 60
     search_vector_top_k: int = 20
     search_fts_top_k: int = 20
     search_rerank_top_n: int = 10

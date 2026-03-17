@@ -194,7 +194,7 @@ async def hybrid_search(
             db=db,
         )
         fts_ranked = [(r.case_id, r.rank) for r in fts_results]
-        merged = rrf_merge([fts_ranked], k=settings.search_rrf_k)
+        merged = rrf_merge([fts_ranked], k=settings.search_rrf_k_keyword_heavy)
         vector_results: list[tuple[str, float, str]] = []
     else:
         # Parallel retrieval — vector + FTS
@@ -233,17 +233,17 @@ async def hybrid_search(
         vector_ranked = [(r[0], r[1]) for r in vector_results]
         fts_ranked = [(r.case_id, r.rank) for r in fts_results]
 
-        strategy_weights: dict[str, list[float]] = {
-            "keyword_heavy": [1.0, 2.0],
-            "vector_heavy": [2.0, 1.0],
-            "balanced": [1.0, 1.0],
+        strategy_config: dict[str, dict] = {
+            "keyword_heavy": {"weights": [1.0, 2.0], "k": settings.search_rrf_k_keyword_heavy},
+            "vector_heavy": {"weights": [2.0, 1.0], "k": settings.search_rrf_k_vector_heavy},
+            "balanced": {"weights": [1.0, 1.0], "k": settings.search_rrf_k},
         }
-        weights = strategy_weights.get(strategy)
+        config = strategy_config.get(strategy, strategy_config["balanced"])
 
         merged = rrf_merge(
             [vector_ranked, fts_ranked],
-            k=settings.search_rrf_k,
-            weights=weights,
+            k=config["k"],
+            weights=config["weights"],
         )
 
     if not merged:

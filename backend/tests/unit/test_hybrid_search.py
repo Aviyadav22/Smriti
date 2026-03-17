@@ -550,6 +550,88 @@ async def test_filters_applied_to_fts(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# 12. test_rrf_merge_lower_k_steeper_separation
+# ---------------------------------------------------------------------------
+
+
+def test_rrf_merge_lower_k_steeper_separation():
+    """Lower k produces steeper rank separation between top and bottom results."""
+    ranked = [("case_1", 0.9), ("case_2", 0.8), ("case_3", 0.7)]
+
+    merged_low_k = dict(rrf_merge([ranked], k=30))
+    merged_high_k = dict(rrf_merge([ranked], k=60))
+
+    # With lower k, the gap between rank-1 and rank-3 scores is proportionally larger
+    gap_low = merged_low_k["case_1"] - merged_low_k["case_3"]
+    gap_high = merged_high_k["case_1"] - merged_high_k["case_3"]
+
+    assert gap_low > gap_high, (
+        f"Lower k should produce steeper rank separation: "
+        f"gap_low={gap_low:.6f} vs gap_high={gap_high:.6f}"
+    )
+
+    # Verify absolute scores: 1/(k+1) for rank 1, 1/(k+3) for rank 3
+    assert abs(merged_low_k["case_1"] - 1.0 / 31) < 1e-10
+    assert abs(merged_high_k["case_1"] - 1.0 / 61) < 1e-10
+
+
+# ---------------------------------------------------------------------------
+# 13. test_strategy_config_maps_correctly
+# ---------------------------------------------------------------------------
+
+
+def test_strategy_config_maps_correctly():
+    """Strategy config dict maps strategies to correct weights and k values."""
+    from app.core.config import settings
+
+    strategy_config: dict[str, dict] = {
+        "keyword_heavy": {"weights": [1.0, 2.0], "k": settings.search_rrf_k_keyword_heavy},
+        "vector_heavy": {"weights": [2.0, 1.0], "k": settings.search_rrf_k_vector_heavy},
+        "balanced": {"weights": [1.0, 1.0], "k": settings.search_rrf_k},
+    }
+
+    # keyword_heavy uses lower k for steeper rank drop-off
+    assert strategy_config["keyword_heavy"]["k"] == 30
+    assert strategy_config["keyword_heavy"]["weights"] == [1.0, 2.0]
+
+    # vector_heavy uses default k
+    assert strategy_config["vector_heavy"]["k"] == 60
+    assert strategy_config["vector_heavy"]["weights"] == [2.0, 1.0]
+
+    # balanced uses default k
+    assert strategy_config["balanced"]["k"] == 60
+    assert strategy_config["balanced"]["weights"] == [1.0, 1.0]
+
+    # Unknown strategy falls back to balanced
+    config = strategy_config.get("unknown_strategy", strategy_config["balanced"])
+    assert config["k"] == 60
+    assert config["weights"] == [1.0, 1.0]
+
+
+# ---------------------------------------------------------------------------
+# 14. test_per_strategy_k_settings_exist
+# ---------------------------------------------------------------------------
+
+
+def test_per_strategy_k_settings_exist():
+    """Config settings for per-strategy RRF k values exist with correct defaults."""
+    from app.core.config import settings
+
+    assert hasattr(settings, "search_rrf_k")
+    assert hasattr(settings, "search_rrf_k_keyword_heavy")
+    assert hasattr(settings, "search_rrf_k_vector_heavy")
+
+    assert settings.search_rrf_k == 60
+    assert settings.search_rrf_k_keyword_heavy == 30
+    assert settings.search_rrf_k_vector_heavy == 60
+
+
+# ---------------------------------------------------------------------------
+# 15. test_treatment_warning_in_search_results
+# ---------------------------------------------------------------------------
+
+
 class TestTreatmentWarningInSearchResults:
     """Tests for treatment warning detection in _enrich_results."""
 
