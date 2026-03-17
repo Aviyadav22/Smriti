@@ -1019,11 +1019,11 @@ async def bulk_upsert_cases(
                 "text_hash": row.get("text_hash"),
             })
 
-        # True batch: execute all rows in one round-trip via executemany
-        for params in param_list:
-            result = await db.execute(stmt, params)
-            returned = result.fetchone()
-            all_ids.append(str(returned[0]) if returned else params["id"])
+        # Batch execution: single round-trip for all rows in this batch.
+        # IDs are pre-generated (line 975), so we don't need RETURNING.
+        stmt_batch = text(stmt.text.replace("RETURNING id", ""))
+        await db.execute(stmt_batch, param_list)
+        all_ids.extend(p["id"] for p in param_list)
 
     await db.flush()
     logger.info("bulk_upsert_cases: processed %d rows", len(all_ids))
