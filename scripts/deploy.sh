@@ -69,6 +69,43 @@ COHERE_API_KEY=COHERE_API_KEY:latest,\
 SENTRY_DSN=SENTRY_DSN:latest,\
 CORS_ORIGINS=CORS_ORIGINS:latest"
 
+echo "=== Step 6b: Build & push worker image ==="
+cd backend
+docker build -f Dockerfile.worker \
+  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/worker:latest .
+docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/worker:latest
+cd ..
+
+echo "=== Step 6c: Deploy Celery worker to Cloud Run ==="
+gcloud run deploy smriti-worker \
+  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/worker:latest \
+  --region=$REGION \
+  --platform=managed \
+  --no-allow-unauthenticated \
+  --memory=2Gi \
+  --cpu=1 \
+  --min-instances=0 \
+  --max-instances=3 \
+  --timeout=3600 \
+  --execution-environment=gen2 \
+  --no-cpu-throttling \
+  --set-env-vars="APP_ENV=production,APP_DEBUG=false,LOG_LEVEL=INFO,STORAGE_PROVIDER=gcs,GCS_BUCKET_NAME=smriti-documents" \
+  --set-secrets="\
+DATABASE_URL=DATABASE_URL:latest,\
+REDIS_URL=REDIS_URL:latest,\
+JWT_SECRET_KEY=JWT_SECRET_KEY:latest,\
+JWT_REFRESH_SECRET_KEY=JWT_REFRESH_SECRET_KEY:latest,\
+ENCRYPTION_KEY=ENCRYPTION_KEY:latest,\
+GEMINI_API_KEY=GEMINI_API_KEY:latest,\
+PINECONE_API_KEY=PINECONE_API_KEY:latest,\
+PINECONE_HOST=PINECONE_HOST:latest,\
+NEO4J_URI=NEO4J_URI:latest,\
+NEO4J_USER=NEO4J_USER:latest,\
+NEO4J_PASSWORD=NEO4J_PASSWORD:latest,\
+COHERE_API_KEY=COHERE_API_KEY:latest,\
+SENTRY_DSN=SENTRY_DSN:latest,\
+CORS_ORIGINS=CORS_ORIGINS:latest"
+
 echo "=== Step 7: Get backend URL ==="
 BACKEND_URL=$(gcloud run services describe smriti-backend --region=$REGION --format='value(status.url)')
 echo "Backend URL: $BACKEND_URL"
