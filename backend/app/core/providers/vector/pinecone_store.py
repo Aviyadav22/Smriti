@@ -78,7 +78,11 @@ class PineconeStore:
         *,
         top_k: int = 20,
         filters: dict | None = None,
+        user_scope: str | None = None,
     ) -> list[SearchResult]:
+        if user_scope:
+            filters = dict(filters) if filters else {}
+            filters["user_id"] = user_scope
         try:
             results = await asyncio.wait_for(
                 asyncio.to_thread(

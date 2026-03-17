@@ -29,6 +29,7 @@ class VectorStore(Protocol):
         *,
         top_k: int = 20,
         filters: dict | None = None,
+        user_scope: str | None = None,
     ) -> list[SearchResult]: ...
 
     async def delete_by_metadata(
