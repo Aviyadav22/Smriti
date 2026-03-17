@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     local_storage_path: str = "./data/pdfs"
     gcs_bucket_name: str = "smriti-documents"
 
-    # Ingestion
+    # Ingestion — local-only SQLite for CLI job tracking (not used in Cloud Run)
     ingestion_tracker_db: str = "./data/ingestion_tracker.db"
 
     # Search
