@@ -171,7 +171,7 @@ class TestResearchAgentSchemas:
     def test_classify_schema_complexity_enum(self) -> None:
         complexity = RESEARCH_CLASSIFY_SCHEMA["properties"]["complexity"]
         assert "enum" in complexity
-        assert set(complexity["enum"]) == {"simple", "moderate", "complex"}
+        assert set(complexity["enum"]) == {"simple", "complex", "multi_issue"}
 
     def test_classify_schema_jurisdiction_nullable(self) -> None:
         jurisdiction = RESEARCH_CLASSIFY_SCHEMA["properties"]["jurisdiction"]

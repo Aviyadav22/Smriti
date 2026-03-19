@@ -51,16 +51,23 @@ def _build_graph():
 # ---------------------------------------------------------------------------
 
 EXPECTED_NODES = {
+    "rewrite_query",
     "classify",
-    "decompose",
+    "plan_research",
     "checkpoint_plan",
-    "search",
-    "gather",
-    "contradictions",
+    "dispatch_workers",
+    "case_law_worker",
+    "named_case_worker",
+    "gather_results",
+    "batch_cot_with_reflection",
+    "evaluate_and_extract",
+    "gap_analysis",
     "checkpoint_findings",
     "synthesize",
     "verify",
     "checkpoint_memo",
+    "fast_path_search",
+    "fast_path_synthesis",
 }
 
 
@@ -95,13 +102,13 @@ class TestBuildResearchGraph:
 class TestRouteAfterPlan:
     def test_continues_without_feedback(self) -> None:
         state = _base_state()
-        assert route_after_plan(state) == "search"
+        assert route_after_plan(state) == "dispatch_workers"
 
     def test_continues_with_empty_feedback(self) -> None:
         state = _base_state(
             messages=[{"type": "user_feedback", "step": "plan", "content": ""}],
         )
-        assert route_after_plan(state) == "search"
+        assert route_after_plan(state) == "dispatch_workers"
 
     def test_loops_with_feedback(self) -> None:
         state = _base_state(
@@ -110,7 +117,7 @@ class TestRouteAfterPlan:
             ],
             iteration=0,
         )
-        assert route_after_plan(state) == "decompose"
+        assert route_after_plan(state) == "plan_research"
 
     def test_loops_with_feedback_iteration_2(self) -> None:
         state = _base_state(
@@ -119,7 +126,7 @@ class TestRouteAfterPlan:
             ],
             iteration=2,
         )
-        assert route_after_plan(state) == "decompose"
+        assert route_after_plan(state) == "plan_research"
 
     def test_stops_at_max_iterations(self) -> None:
         state = _base_state(
@@ -130,7 +137,7 @@ class TestRouteAfterPlan:
             ],
             iteration=3,
         )
-        assert route_after_plan(state) == "search"
+        assert route_after_plan(state) == "dispatch_workers"
 
     def test_ignores_feedback_for_other_steps(self) -> None:
         state = _base_state(
@@ -139,7 +146,7 @@ class TestRouteAfterPlan:
             ],
             iteration=0,
         )
-        assert route_after_plan(state) == "search"
+        assert route_after_plan(state) == "dispatch_workers"
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +178,7 @@ class TestRouteAfterFindings:
             ],
             iteration=0,
         )
-        assert route_after_findings(state) == "search"
+        assert route_after_findings(state) == "dispatch_workers"
 
     def test_stops_at_max_iterations(self) -> None:
         state = _base_state(

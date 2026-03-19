@@ -396,6 +396,7 @@ async def run_agent(
             embedder=embedder,
             vector_store=vector_store,
             reranker=reranker,
+            graph_store=get_graph_store(),
             checkpointer=checkpointer,
         )
         initial_input = {"query": request_body.query, "language": request_language}
@@ -644,6 +645,7 @@ async def resume_execution(
             embedder=embedder,
             vector_store=vector_store,
             reranker=reranker,
+            graph_store=get_graph_store(),
             checkpointer=checkpointer,
         )
     elif execution.agent_type == AgentType.case_prep.value:

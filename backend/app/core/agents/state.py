@@ -5,8 +5,121 @@ import operator
 from typing import Annotated, TypedDict
 
 
+# ---------------------------------------------------------------------------
+# Research Agent V2 — TypedDicts for typed sub-structures
+# ---------------------------------------------------------------------------
+
+
+class ResearchTask(TypedDict):
+    """A single typed research task produced by plan_research_node."""
+    task_id: str          # UUID
+    task_type: str        # "case_law"|"named_case"|"statute"|"constitution"|"ik_search"|"web"|"graph"|"llm_direct"
+    nl_query: str         # Natural language query (for vector/semantic search)
+    boolean_query: str    # Structured boolean query (for FTS/keyword search)
+    named_cases: list[dict]  # [{name, citation, relevance}] — LLM-known landmark cases
+    rationale: str        # Why this task exists (shown in HITL review)
+    filters: dict         # year, court, act, etc.
+    priority: int         # 1=high, 3=low
+
+
+class WorkerResult(TypedDict):
+    """Result from a single worker execution."""
+    task_id: str
+    task_type: str
+    query: str
+    results: list[dict]   # Standard search result dicts
+    source_urls: list[str]  # Indian Kanoon URLs, web URLs for linking
+    metadata: dict        # source-specific: ik_doc_id, web_domain, etc.
+    error: str | None
+    reasoning: str        # [MA-RAG] Worker-level CoT (populated by batch_worker_cot_node)
+
+
+class EvidenceGap(TypedDict):
+    """A gap identified by gap_analysis_node."""
+    description: str
+    suggested_query: str
+    suggested_source: str  # Which worker should handle it
+    priority: int
+    conditioned_on: list[str]  # [MC-RAG] Case IDs/citations from prior round
+    conditioning_context: str  # [MC-RAG] Why this gap exists
+
+
+class ExtractedPassage(TypedDict):
+    """A verbatim passage extracted from a source document."""
+    case_id: str
+    citation: str
+    passage: str          # Verbatim text from source
+    source_field: str     # "chunk_text" | "ratio" | "ik_fragment" | "full_text"
+    relevance: str        # Why this passage matters
+    is_verbatim: bool     # True if exact copy, False if paraphrased
+
+
+class RelevanceScore(TypedDict):
+    """[CRAG] Per-document relevance evaluation from the retrieval evaluator."""
+    case_id: str
+    score: float          # 0.0-1.0 relevance to research question
+    verdict: str          # "correct" | "ambiguous" | "incorrect"
+    reason: str           # Why this document is/isn't relevant
+    action: str           # "keep" | "filter" | "needs_web_fallback"
+
+
+class CommunitySummary(TypedDict):
+    """[GraphRAG] Pre-computed summary of a citation community cluster."""
+    community_id: str
+    title: str            # "Section 498A IPC misuse cluster"
+    summary: str          # 2-3 paragraph summary
+    key_cases: list[str]  # Top 5 case_ids in this community
+    legal_principles: list[str]
+    size: int             # Number of cases in community
+
+
+class SynthesisDraft(TypedDict):
+    """[Speculative RAG] One of N parallel synthesis drafts."""
+    draft_id: str
+    strategy: str         # "relevance" | "authority" | "recency"
+    memo_text: str
+    confidence: float
+    sources_used: list[str]
+
+
+class Footnote(TypedDict):
+    """A structured footnote linking to a source document."""
+    number: int
+    citation: str         # Full case citation or statute reference
+    source_type: str      # "case_law"|"statute"|"constitution"|"web"|"llm_knowledge"
+    source_url: str       # Link to case viewer, IK page, or web URL
+    case_id: str | None   # Our internal case_id if available
+    excerpt: str          # Relevant passage
+    is_used: bool         # True if cited in memo, False if searched but not cited
+    verification_status: str  # [T4] "verified_pg"|"verified_ik"|"verified_neo4j"|"unverified"|"removed"
+    verified_against: str     # [T4] Which source confirmed
+
+
+class LegalQualityResult(TypedDict):
+    """[Q4 LeMAJ] Legal reasoning quality assessment of final memo."""
+    overall_score: float
+    data_points: list[dict]  # [{claim, supported, evidence_id, issue}]
+    omissions: list[dict]    # [{missed_authority, relevance}]
+    logical_issues: list[str]
+    pass_threshold: bool     # True if score >= 0.7
+
+
+class StrategyAdjustment(TypedDict):
+    """[Q5 Deep Research Reflection] Mid-research strategy pivot."""
+    should_pivot: bool
+    pivot_reason: str
+    new_tasks: list[dict]     # Additional ResearchTask-shaped dicts
+    reframe_query: str | None
+
+
+# ---------------------------------------------------------------------------
+# Research Agent State (V2 — backward-compatible with V1 fields)
+# ---------------------------------------------------------------------------
+
+
 class ResearchState(TypedDict):
     """State for the Research Agent graph."""
+    # --- V1 fields (kept for backward compatibility) ---
     query: str
     target_court: str
     target_bench: str
@@ -20,6 +133,26 @@ class ResearchState(TypedDict):
     messages: Annotated[list[dict], operator.add]
     iteration: int
     error: str
+    # --- V2 fields ---
+    rewritten_query: str
+    complexity: str  # [S9] "simple"|"complex"|"multi_issue" from classify
+    research_plan: list[ResearchTask]
+    worker_results: Annotated[list[WorkerResult], operator.add]  # REDUCER for Send()
+    worker_reasonings: list[str]  # [S4] Batched CoT reasoning
+    relevance_scores: list[RelevanceScore]  # [CRAG] Per-document evaluations
+    community_summaries: list[CommunitySummary]  # [GraphRAG]
+    extracted_passages: list[ExtractedPassage]
+    evidence_gaps: list[EvidenceGap]
+    refinement_round: int  # 0, 1, or 2 max
+    synthesis_drafts: list[SynthesisDraft]  # [Speculative RAG]
+    footnotes: list[Footnote]
+    source_attribution: dict  # {citation: {source_type, worker, url, case_id}}
+    research_audit: dict  # {total_sources_searched, sources_cited, sources_unused, ...}
+    precomputed_embeddings: dict  # [S6] {query_str: vector} pre-warmed during HITL
+    strategy_adjustment: StrategyAdjustment | None  # [Q5] Reflection output
+    legal_quality_result: LegalQualityResult | None  # [Q4] LeMAJ check
+    citation_verification_results: list[dict]  # [T4] Per-citation verification
+    process_events: list[dict]  # [T1] Accumulated SSE events
 
 
 class CasePrepState(TypedDict):

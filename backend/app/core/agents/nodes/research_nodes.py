@@ -7,26 +7,42 @@ are passed via closures when the graph is built.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.confidence import calculate_confidence
 from app.core.legal.precedent_strength import classify_precedent_strength
 from app.core.agents.nodes.common import (
     MAX_RESULTS_FOR_LLM,
+    deduplicate_with_diversity,
     enrich_results_with_ratio,
+    format_extracted_passages,
     format_search_results_for_llm,
+    format_search_results_for_llm_extended,
     parallel_hybrid_search,
     safe_json_parse_list,
     collect_grounding_citations,
     verify_memo_citations,
     detect_overruled_cases,
 )
-from app.core.agents.state import ResearchState
+from app.core.agents.state import (
+    EvidenceGap,
+    ExtractedPassage,
+    RelevanceScore,
+    ResearchState,
+    ResearchTask,
+    StrategyAdjustment,
+    WorkerResult,
+)
 from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
 from app.core.legal.prompts import (
+    BATCH_COT_WITH_REFLECTION_SCHEMA,
+    EVALUATE_AND_EXTRACT_SCHEMA,
     LEGAL_DISCLAIMER,
     RESEARCH_CLASSIFY_SCHEMA,
     RESEARCH_CLASSIFY_SYSTEM,
@@ -34,8 +50,16 @@ from app.core.legal.prompts import (
     RESEARCH_DECOMPOSE_SCHEMA,
     RESEARCH_DECOMPOSE_SYSTEM,
     RESEARCH_DECOMPOSE_USER,
+    RESEARCH_EVALUATE_AND_EXTRACT_SYSTEM,
+    RESEARCH_FAST_PATH_SYNTHESIS_SYSTEM,
+    RESEARCH_GAP_ANALYSIS_SCHEMA,
+    RESEARCH_GAP_ANALYSIS_SYSTEM,
+    RESEARCH_PLAN_SCHEMA,
+    RESEARCH_PLAN_SYSTEM,
+    RESEARCH_REWRITE_SYSTEM,
     RESEARCH_SYNTHESIZE_SYSTEM,
     RESEARCH_SYNTHESIZE_USER,
+    RESEARCH_WORKER_COT_SYSTEM,
 )
 from app.security.sanitizer import sanitize_search_query
 
@@ -396,5 +420,715 @@ async def verify_citations_node(
     grounding_citations = collect_grounding_citations(state.get("search_results", []))
     memo = await verify_memo_citations(memo, db, grounding_citations)
     return {"draft_memo": memo}
+
+
+# ===========================================================================
+# V2 NODE FUNCTIONS — Research Agent V2 orchestrated pipeline
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# V2 Node: rewrite_query_node [S2] — parallel with classify
+# ---------------------------------------------------------------------------
+
+
+async def rewrite_query_node(
+    state: ResearchState,
+    llm: LLMProvider,
+) -> dict:
+    """Rewrite the user's query into a detailed, legally precise formulation.
+
+    [S2] Runs in PARALLEL with classify — both read state["query"],
+    neither depends on the other.
+    """
+    query = state["query"]
+    try:
+        rewritten = await llm.generate(
+            prompt=f"Rewrite this legal research query:\n\n{query}",
+            system=RESEARCH_REWRITE_SYSTEM,
+            temperature=0.3,
+        )
+    except Exception as exc:
+        logger.warning("Query rewrite failed: %s", exc)
+        return {"rewritten_query": query}  # Fallback to original
+
+    return {"rewritten_query": rewritten.strip()}
+
+
+# ---------------------------------------------------------------------------
+# V2 Node: classify_complexity_node [S9] — enhanced classify with complexity
+# ---------------------------------------------------------------------------
+
+# The existing classify_query_node already handles this since we updated
+# RESEARCH_CLASSIFY_SCHEMA to include the complexity field. We just need
+# to extract the complexity value from the classification result.
+# The updated classify_query_node now returns complexity via the schema.
+
+
+# ---------------------------------------------------------------------------
+# V2 Node: plan_research_node — orchestrator with dual queries + named cases
+# ---------------------------------------------------------------------------
+
+
+async def plan_research_node(
+    state: ResearchState,
+    llm: LLMProvider,
+) -> dict:
+    """Generate a structured research plan with typed tasks.
+
+    Produces dual queries (NL + boolean) and named landmark cases
+    for each research task.
+    """
+    query = state.get("rewritten_query") or state["query"]
+
+    # Retrieve classification from messages
+    classification: dict = {}
+    for msg in state.get("messages", []):
+        if isinstance(msg, dict) and msg.get("type") == "classification":
+            classification = msg.get("data", {})
+
+    # Retrieve user feedback if this is a re-plan after HITL
+    user_feedback = ""
+    for msg in state.get("messages", []):
+        if isinstance(msg, dict) and msg.get("type") == "user_feedback" and msg.get("step") == "plan":
+            user_feedback = msg.get("content", "")
+
+    classification_str = json.dumps(classification) if classification else "N/A"
+
+    prompt = (
+        f"Create a research plan for the following legal question.\n\n"
+        f"Research Question: {query}\n\n"
+        f"Classification: {classification_str}\n\n"
+        f"Generate 3-8 typed research tasks with dual queries and named cases."
+    )
+
+    if user_feedback:
+        sanitized = sanitize_search_query(user_feedback)
+        prompt += (
+            f"\n\nUser feedback on previous plan:\n"
+            f"<user_feedback>{sanitized}</user_feedback>"
+        )
+
+    try:
+        result = await llm.generate_structured(
+            prompt=prompt,
+            system=RESEARCH_PLAN_SYSTEM,
+            output_schema=RESEARCH_PLAN_SCHEMA,
+        )
+    except Exception as exc:
+        logger.warning("Research planning failed: %s", exc)
+        return {"error": f"Failed to create research plan: {exc}"}
+
+    tasks: list[ResearchTask] = []
+    for raw_task in result.get("research_tasks", []):
+        tasks.append(ResearchTask(
+            task_id=str(uuid.uuid4()),
+            task_type=raw_task.get("task_type", "case_law"),
+            nl_query=raw_task.get("nl_query", ""),
+            boolean_query=raw_task.get("boolean_query", ""),
+            named_cases=raw_task.get("named_cases", []),
+            rationale=raw_task.get("rationale", ""),
+            filters=raw_task.get("filters", {}),
+            priority=raw_task.get("priority", 2),
+        ))
+
+    # Populate sub_queries for backward compat with HITL checkpoint display
+    sub_queries = [t["nl_query"] for t in tasks if t.get("nl_query")]
+
+    return {
+        "research_plan": tasks,
+        "sub_queries": sub_queries,
+    }
+
+
+# ---------------------------------------------------------------------------
+# V2 Node: gather_worker_results_node — collect all Send() worker results
+# ---------------------------------------------------------------------------
+
+
+async def gather_worker_results_node(state: ResearchState) -> dict:
+    """Collect all worker results, deduplicate with diversity control.
+
+    Worker results arrive via the operator.add reducer on worker_results.
+    This node deduplicates and identifies cross-references across workers.
+    """
+    worker_results = state.get("worker_results", [])
+    if not worker_results:
+        return {"search_results": [], "cross_references": []}
+
+    # Flatten all results from all workers
+    all_results: list[dict] = []
+    for wr in worker_results:
+        all_results.extend(wr.get("results", []))
+
+    # Deduplicate with diversity control (max 4 chunks per case)
+    deduped = deduplicate_with_diversity(all_results, max_chunks_per_case=4)
+
+    # Identify cross-references (cases found by 2+ workers)
+    case_workers: dict[str, set[str]] = {}
+    for wr in worker_results:
+        for r in wr.get("results", []):
+            cid = r.get("case_id", "")
+            if cid:
+                case_workers.setdefault(cid, set()).add(wr.get("task_type", ""))
+
+    cross_refs: list[dict] = []
+    for cid, workers in case_workers.items():
+        if len(workers) >= 2:
+            # Find best result for this case
+            best = max(
+                (r for r in deduped if r.get("case_id") == cid),
+                key=lambda x: x.get("score", 0),
+                default=None,
+            )
+            if best:
+                cross_refs.append({
+                    "case_id": cid,
+                    "title": best.get("title"),
+                    "citation": best.get("citation"),
+                    "matched_workers": list(workers),
+                    "match_count": len(workers),
+                })
+
+    cross_refs.sort(key=lambda x: x["match_count"], reverse=True)
+
+    return {
+        "search_results": deduped,
+        "cross_references": cross_refs,
+    }
+
+
+# ---------------------------------------------------------------------------
+# V2 Node: batch_worker_cot_with_reflection_node [S4 + Q5]
+# ---------------------------------------------------------------------------
+
+
+async def batch_worker_cot_with_reflection_node(
+    state: ResearchState,
+    llm: LLMProvider,
+) -> dict:
+    """Single batched CoT + Deep Research reflection for all worker results.
+
+    [S4] Generates MA-RAG chain-of-thought for ALL workers in one Flash call.
+    [Q5] Also performs reflection — asks whether findings change understanding
+    and whether to pivot strategy. Both in the SAME prompt.
+    """
+    worker_results = state.get("worker_results", [])
+    if not worker_results:
+        return {"worker_reasonings": [], "strategy_adjustment": None}
+
+    worker_summaries = []
+    for wr in worker_results:
+        n_results = len(wr.get("results", []))
+        top_titles = [r.get("title", "?")[:80] for r in wr.get("results", [])[:3]]
+        top_citations = [r.get("citation", "?")[:60] for r in wr.get("results", [])[:3]]
+        worker_summaries.append(
+            f"[{wr['task_type']}] Query: {wr['query'][:100]} | "
+            f"{n_results} results. Top: {', '.join(top_titles)} "
+            f"({', '.join(top_citations)})"
+        )
+
+    query = state.get("rewritten_query") or state["query"]
+    prompt = (
+        f"Research question: {query}\n\n"
+        f"Worker results summary:\n" + "\n".join(worker_summaries) + "\n\n"
+        "Provide PART 1 (per-worker analysis + cross-worker tensions) "
+        "and PART 2 (reflection on whether to pivot strategy)."
+    )
+
+    try:
+        response = await llm.generate_structured(
+            prompt=prompt,
+            system=RESEARCH_WORKER_COT_SYSTEM,
+            output_schema=BATCH_COT_WITH_REFLECTION_SCHEMA,
+        )
+    except Exception as exc:
+        logger.warning("Batch CoT failed: %s", exc)
+        return {"worker_reasonings": [], "strategy_adjustment": None}
+
+    strategy_adj = None
+    if response.get("should_pivot"):
+        strategy_adj = StrategyAdjustment(
+            should_pivot=True,
+            pivot_reason=response.get("pivot_reason", ""),
+            new_tasks=response.get("new_tasks", []),
+            reframe_query=response.get("reframe_query"),
+        )
+
+    return {
+        "worker_reasonings": [response.get("reasoning", "")],
+        "strategy_adjustment": strategy_adj,
+    }
+
+
+# ---------------------------------------------------------------------------
+# V2 Node: evaluate_and_extract_node [S3 + Q2 + S12]
+# ---------------------------------------------------------------------------
+
+
+def _chunked(iterable: list, n: int) -> list[list]:
+    """Split a list into chunks of size n."""
+    return [iterable[i:i + n] for i in range(0, len(iterable), n)]
+
+
+async def evaluate_and_extract_node(
+    state: ResearchState,
+    llm: LLMProvider,
+    db: AsyncSession,
+) -> dict:
+    """Merged CRAG relevance scoring + passage extraction + deep read.
+
+    [S3] Combines CRAG and extract into ONE Flash call per batch.
+    [Q2] For "ambiguous" results, fetches full HOLDINGS/RATIO sections
+    from case_sections table before final verdict.
+    [S12] All batches processed in PARALLEL via asyncio.gather().
+    """
+    worker_results = state.get("worker_results", [])
+    if not worker_results:
+        return {
+            "relevance_scores": [],
+            "extracted_passages": [],
+        }
+
+    # Flatten all results
+    all_results: list[dict] = []
+    for wr in worker_results:
+        all_results.extend(wr.get("results", []))
+
+    if not all_results:
+        return {
+            "relevance_scores": [],
+            "extracted_passages": [],
+        }
+
+    query = state.get("rewritten_query") or state["query"]
+
+    # [Q2] Deep read helper
+    async def deep_read_sections(case_id: str) -> str:
+        """Fetch HOLDINGS + RATIO from case_sections for deeper evaluation."""
+        if case_id.startswith("ik:"):
+            return ""
+        try:
+            from app.models.case_section import CaseSection
+            result = await db.execute(
+                select(CaseSection.content).where(
+                    CaseSection.case_id == case_id,
+                    CaseSection.section_type.in_(
+                        ["HOLDINGS", "RATIO_DECIDENDI", "ANALYSIS"],
+                    ),
+                )
+            )
+            sections = [row[0] for row in result.fetchall()]
+            return "\n\n".join(sections)[:5000]
+        except Exception:
+            return ""
+
+    # [S12] Process batches in PARALLEL
+    batches = _chunked(all_results, 15)
+
+    async def process_batch(batch: list[dict]) -> dict:
+        formatted = format_search_results_for_llm_extended(batch)
+        return await llm.generate_structured(
+            prompt=f"Research question: {query}\n\nDocuments:\n{formatted}",
+            system=RESEARCH_EVALUATE_AND_EXTRACT_SYSTEM,
+            output_schema=EVALUATE_AND_EXTRACT_SCHEMA,
+        )
+
+    try:
+        evaluations = await asyncio.gather(
+            *[process_batch(b) for b in batches],
+            return_exceptions=True,
+        )
+    except Exception as exc:
+        logger.warning("Evaluate and extract failed: %s", exc)
+        return {
+            "relevance_scores": [],
+            "extracted_passages": [],
+        }
+
+    relevance_scores: list[RelevanceScore] = []
+    extracted_passages: list[ExtractedPassage] = []
+    ambiguous_ids: list[tuple[str, list[dict]]] = []
+
+    for evaluation, batch in zip(evaluations, batches):
+        if isinstance(evaluation, Exception):
+            logger.warning("Batch evaluation failed: %s", evaluation)
+            continue
+
+        for ev in evaluation.get("evaluations", []):
+            relevance_scores.append(RelevanceScore(
+                case_id=ev["case_id"],
+                score=ev["score"],
+                verdict=ev["verdict"],
+                reason=ev["reason"],
+                action=ev["action"],
+            ))
+            if ev["verdict"] == "ambiguous":
+                ambiguous_ids.append((ev["case_id"], batch))
+            if ev.get("passage") and ev["verdict"] != "incorrect":
+                citation = next(
+                    (r.get("citation", "") for r in batch
+                     if r.get("case_id") == ev["case_id"]),
+                    "",
+                )
+                extracted_passages.append(ExtractedPassage(
+                    case_id=ev["case_id"],
+                    citation=citation,
+                    passage=ev["passage"],
+                    source_field=ev.get("passage_source_field", "chunk_text"),
+                    relevance=ev["reason"],
+                    is_verbatim=ev.get("is_verbatim", True),
+                ))
+
+    # [Q2] Deep read pass for ambiguous results (up to 10)
+    if ambiguous_ids:
+        deep_tasks = [deep_read_sections(cid) for cid, _ in ambiguous_ids[:10]]
+        section_texts = await asyncio.gather(*deep_tasks, return_exceptions=True)
+
+        for (case_id, _), section_text in zip(ambiguous_ids[:10], section_texts):
+            if isinstance(section_text, Exception) or not section_text:
+                continue
+            try:
+                re_eval = await llm.generate_structured(
+                    prompt=(
+                        f"Research question: {query}\n\n"
+                        f"Full HOLDINGS/RATIO for re-evaluation:\n{section_text}"
+                    ),
+                    system=RESEARCH_EVALUATE_AND_EXTRACT_SYSTEM,
+                    output_schema=EVALUATE_AND_EXTRACT_SCHEMA,
+                )
+                for ev in re_eval.get("evaluations", []):
+                    if ev["case_id"] == case_id:
+                        # Update score if deep read changed verdict
+                        for i, s in enumerate(relevance_scores):
+                            if s["case_id"] == case_id:
+                                relevance_scores[i] = RelevanceScore(
+                                    case_id=case_id,
+                                    score=ev["score"],
+                                    verdict=ev["verdict"],
+                                    reason=f"[deep_read] {ev['reason']}",
+                                    action=ev["action"],
+                                )
+                        if ev.get("passage") and ev["verdict"] == "correct":
+                            extracted_passages.append(ExtractedPassage(
+                                case_id=case_id,
+                                citation="",
+                                passage=ev["passage"],
+                                source_field="case_sections",
+                                relevance=ev["reason"],
+                                is_verbatim=ev.get("is_verbatim", True),
+                            ))
+            except Exception:
+                logger.warning("Deep read re-eval failed for %s", case_id)
+
+    # Filter incorrect results
+    incorrect_ids = {
+        s["case_id"] for s in relevance_scores if s["verdict"] == "incorrect"
+    }
+    filtered_worker_results: list[WorkerResult] = []
+    for wr in worker_results:
+        filtered = [
+            r for r in wr["results"]
+            if r.get("case_id") not in incorrect_ids
+        ]
+        filtered_worker_results.append(WorkerResult(
+            task_id=wr["task_id"],
+            task_type=wr["task_type"],
+            query=wr["query"],
+            results=filtered,
+            source_urls=wr.get("source_urls", []),
+            metadata=wr.get("metadata", {}),
+            error=wr.get("error"),
+            reasoning=wr.get("reasoning", ""),
+        ))
+
+    return {
+        "relevance_scores": relevance_scores,
+        "extracted_passages": extracted_passages,
+        "worker_results": filtered_worker_results,
+    }
+
+
+# ---------------------------------------------------------------------------
+# V2 Node: gap_analysis_node [Q1 MC-RAG + Q5 reflection integration]
+# ---------------------------------------------------------------------------
+
+
+async def gap_analysis_node(
+    state: ResearchState,
+    llm: LLMProvider,
+) -> dict:
+    """FAIR-RAG evidence assessment with MC-RAG conditioned retrieval.
+
+    [Q1] Round 2+ queries are CONDITIONED on round 1 findings.
+    [Q5] Integrates strategy_adjustment from reflection.
+    """
+    query = state.get("rewritten_query") or state["query"]
+    research_plan = state.get("research_plan", [])
+    worker_results = state.get("worker_results", [])
+    relevance_scores = state.get("relevance_scores", [])
+    worker_reasonings = state.get("worker_reasonings", [])
+    strategy_adj = state.get("strategy_adjustment")
+    refinement_round = state.get("refinement_round", 0)
+
+    if not worker_results:
+        return {"evidence_gaps": [], "refinement_round": refinement_round}
+
+    # Build summary of what was found
+    results_summary = []
+    for wr in worker_results:
+        n = len(wr.get("results", []))
+        top = [
+            f"{r.get('title', '?')[:60]} ({r.get('citation', '?')[:40]})"
+            for r in wr.get("results", [])[:5]
+        ]
+        results_summary.append(
+            f"[{wr['task_type']}] {n} results: {', '.join(top)}"
+        )
+
+    # CRAG quality summary
+    crag_summary = ""
+    if relevance_scores:
+        correct = sum(1 for s in relevance_scores if s["verdict"] == "correct")
+        ambiguous = sum(1 for s in relevance_scores if s["verdict"] == "ambiguous")
+        incorrect = sum(1 for s in relevance_scores if s["verdict"] == "incorrect")
+        crag_summary = (
+            f"\nCRAG quality: {correct} correct, {ambiguous} ambiguous, "
+            f"{incorrect} incorrect (filtered)"
+        )
+        web_needed = any(s["action"] == "needs_web_fallback" for s in relevance_scores)
+        if web_needed:
+            crag_summary += " — Web fallback recommended for some results."
+
+    # [Q5] Strategy adjustment
+    strategy_text = ""
+    if strategy_adj and strategy_adj.get("should_pivot"):
+        strategy_text = (
+            f"\n\nSTRATEGY ADJUSTMENT (from reflection): "
+            f"{strategy_adj.get('pivot_reason', '')}"
+        )
+        if strategy_adj.get("reframe_query"):
+            strategy_text += f"\nReframed query: {strategy_adj['reframe_query']}"
+
+    # Worker CoT reasoning
+    cot_text = ""
+    if worker_reasonings:
+        cot_text = f"\n\nWorker reasoning:\n{chr(10).join(worker_reasonings)}"
+
+    # [Q1] MC-RAG: provide top results from prior rounds as conditioning context
+    top_results_summary = ""
+    if refinement_round > 0:
+        top_results = []
+        for wr in worker_results:
+            for r in wr.get("results", [])[:3]:
+                top_results.append(
+                    f"- {r.get('citation', '?')}: {r.get('title', '?')[:80]}"
+                )
+        if top_results:
+            top_results_summary = (
+                "\n\nTOP RESULTS FROM PRIOR ROUNDS (condition follow-up queries on these):\n"
+                + "\n".join(top_results[:15])
+            )
+
+    prompt = (
+        f"Research question: {query}\n\n"
+        f"Research plan: {json.dumps([dict(t) for t in research_plan], default=str)[:2000]}\n\n"
+        f"Results found:\n{chr(10).join(results_summary)}"
+        f"{crag_summary}{cot_text}{strategy_text}{top_results_summary}\n\n"
+        f"Refinement round: {refinement_round} (max 2)\n\n"
+        "Identify evidence gaps and generate targeted follow-up queries."
+    )
+
+    try:
+        result = await llm.generate_structured(
+            prompt=prompt,
+            system=RESEARCH_GAP_ANALYSIS_SYSTEM,
+            output_schema=RESEARCH_GAP_ANALYSIS_SCHEMA,
+        )
+    except Exception as exc:
+        logger.warning("Gap analysis failed: %s", exc)
+        return {"evidence_gaps": [], "refinement_round": refinement_round}
+
+    gaps: list[EvidenceGap] = []
+    for raw_gap in result.get("gaps", []):
+        gaps.append(EvidenceGap(
+            description=raw_gap.get("description", ""),
+            suggested_query=raw_gap.get("suggested_query", ""),
+            suggested_source=raw_gap.get("suggested_source", "case_law"),
+            priority=raw_gap.get("priority", 2),
+            conditioned_on=raw_gap.get("conditioned_on", []),
+            conditioning_context=raw_gap.get("conditioning_context", ""),
+        ))
+
+    # [Q5] If strategy adjustment recommended new tasks, add them as gaps
+    if strategy_adj and strategy_adj.get("should_pivot"):
+        for new_task in strategy_adj.get("new_tasks", []):
+            gaps.append(EvidenceGap(
+                description=f"[Strategy pivot] {new_task.get('rationale', '')}",
+                suggested_query=new_task.get("nl_query", ""),
+                suggested_source=new_task.get("task_type", "case_law"),
+                priority=1,  # Strategy pivots are high priority
+                conditioned_on=[],
+                conditioning_context=strategy_adj.get("pivot_reason", ""),
+            ))
+
+    # Convert gaps to new research tasks for dispatch
+    if gaps and refinement_round < 2:
+        new_tasks: list[ResearchTask] = []
+        for gap in gaps:
+            new_tasks.append(ResearchTask(
+                task_id=str(uuid.uuid4()),
+                task_type=gap["suggested_source"],
+                nl_query=gap["suggested_query"],
+                boolean_query="",
+                named_cases=[],
+                rationale=gap["description"],
+                filters={},
+                priority=gap["priority"],
+            ))
+        return {
+            "evidence_gaps": gaps,
+            "research_plan": new_tasks,
+            "sub_queries": [t["nl_query"] for t in new_tasks],
+            "refinement_round": refinement_round + 1,
+        }
+
+    return {"evidence_gaps": gaps, "refinement_round": refinement_round}
+
+
+# ---------------------------------------------------------------------------
+# V2 Node: fast_path_search_node [S9]
+# ---------------------------------------------------------------------------
+
+
+async def fast_path_search_node(
+    state: ResearchState,
+    llm: LLMProvider,
+    flash_llm: LLMProvider,
+    embedder: EmbeddingProvider,
+    vector_store: VectorStore,
+    reranker: Reranker,
+    db: AsyncSession,
+) -> dict:
+    """Single-worker search for simple queries.
+
+    [S9] Routes to exactly ONE worker based on classify intent.
+    Falls back to full pipeline if insufficient results.
+    """
+    # Determine intent from classification
+    intent = "topic_search"
+    for msg in state.get("messages", []):
+        if isinstance(msg, dict) and msg.get("type") == "classification":
+            data = msg.get("data", {})
+            # Map topic to intent heuristic
+            if data.get("topic") == "constitutional":
+                intent = "statute_search"
+            break
+
+    query = state.get("rewritten_query") or state["query"]
+
+    try:
+        results = await parallel_hybrid_search(
+            [query], llm, embedder, vector_store, reranker, db,
+        )
+        results = await enrich_results_with_ratio(results, db, max_ratio_len=3000)
+    except Exception as exc:
+        logger.warning("Fast path search failed: %s", exc)
+        return {"complexity": "complex"}  # Fall back to full pipeline
+
+    # Quality gate: fall back to full pipeline if too few results
+    if len(results) < 3:
+        return {"complexity": "complex"}
+
+    return {
+        "search_results": results,
+        "worker_results": [WorkerResult(
+            task_id="fast_path",
+            task_type=intent,
+            query=query,
+            results=results,
+            source_urls=[],
+            metadata={},
+            error=None,
+            reasoning="",
+        )],
+    }
+
+
+# ---------------------------------------------------------------------------
+# V2 Node: fast_path_synthesis_node [S9]
+# ---------------------------------------------------------------------------
+
+
+async def fast_path_synthesis_node(
+    state: ResearchState,
+    llm: LLMProvider,
+) -> dict:
+    """Lightweight Flash synthesis for simple queries.
+
+    [S9] Single Flash call, no speculative drafts, shorter output.
+    """
+    query = state.get("rewritten_query") or state["query"]
+    results = state.get("search_results", [])
+
+    if not results:
+        return {"draft_memo": "No results found for this query.", "confidence": 0.0}
+
+    findings = format_search_results_for_llm_extended(
+        sorted(results, key=lambda r: r.get("score", 0), reverse=True)[:15],
+    )
+
+    try:
+        memo = await llm.generate(
+            prompt=(
+                f"Research Question: {query}\n\n"
+                f"Search Results:\n{findings}\n\n"
+                "Write a concise research response with footnotes."
+            ),
+            system=RESEARCH_FAST_PATH_SYNTHESIS_SYSTEM,
+            temperature=0.2,
+            max_tokens=4096,
+        )
+    except Exception as exc:
+        logger.warning("Fast path synthesis failed: %s", exc)
+        return {"error": f"Fast path synthesis failed: {exc}"}
+
+    memo += LEGAL_DISCLAIMER
+
+    # Simple confidence based on result count and scores
+    scores = [r.get("score", 0) for r in results if r.get("score")]
+    confidence = min(0.9, sum(scores[:5]) / max(len(scores[:5]), 1))
+
+    return {"draft_memo": memo, "confidence": confidence}
+
+
+# ---------------------------------------------------------------------------
+# V2 Node: pre_warm_embeddings_node [S6]
+# ---------------------------------------------------------------------------
+
+
+async def pre_warm_embeddings_node(
+    state: ResearchState,
+    embedder: EmbeddingProvider,
+) -> dict:
+    """Pre-compute embeddings during HITL wait. Non-blocking, best-effort.
+
+    [S6] Workers check precomputed_embeddings before calling embed_text().
+    """
+    queries: list[str] = []
+    for task in state.get("research_plan", []):
+        if task.get("nl_query"):
+            queries.append(task["nl_query"])
+        if task.get("boolean_query"):
+            queries.append(task["boolean_query"])
+
+    if not queries:
+        return {"precomputed_embeddings": {}}
+
+    try:
+        vectors = await embedder.embed_batch(queries)
+        return {"precomputed_embeddings": dict(zip(queries, vectors))}
+    except Exception:
+        return {"precomputed_embeddings": {}}
 
 

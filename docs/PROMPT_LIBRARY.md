@@ -1249,6 +1249,125 @@ LEGAL_DISCLAIMER:
 
 ---
 
+## 31. Research Agent V2 — Query Rewrite Prompt
+
+**Constant**: `RESEARCH_REWRITE_SYSTEM`
+**Used in**: `rewrite_query_node` (Research Agent V2)
+**When**: First step in V2 pipeline — rewrites user query into a detailed, legally precise formulation
+**LLM**: Gemini Flash
+
+```
+You are a legal query expansion specialist for Indian law...
+Rewrite the user's query into a detailed, legally precise formulation that:
+1. Expands abbreviations (IPC → Indian Penal Code, CrPC → Code of Criminal Procedure)
+2. Adds relevant legal terminology and synonyms
+3. Specifies jurisdiction (Indian Supreme Court, High Courts) if implied
+4. Identifies the core legal question
+Return ONLY the rewritten query — no explanation.
+```
+
+---
+
+## 32. Research Agent V2 — Research Plan Prompt
+
+**Constants**: `RESEARCH_PLAN_SYSTEM` / `RESEARCH_PLAN_SCHEMA`
+**Used in**: `plan_research_node` (Research Agent V2)
+**When**: After classification — generates structured research tasks with dual queries and named cases
+**LLM**: Gemini Flash
+
+```
+You are a legal research planning specialist for Indian law.
+Generate a structured research plan with 3-8 typed tasks.
+Each task must have:
+- task_type: "case_law"|"named_case"|"statute"|"constitution"|...
+- nl_query: Natural language query for vector/semantic search
+- boolean_query: Structured boolean query for FTS/keyword search
+- named_cases: [{name, citation, relevance}] — landmark cases the LLM knows about
+- rationale: Why this task exists (shown to user in HITL review)
+- filters: {year, court, act, etc.}
+- priority: 1 (high) to 3 (low)
+```
+
+**Schema**: `RESEARCH_PLAN_SCHEMA` — JSON Schema for structured output with `research_tasks` array.
+
+---
+
+## 33. Research Agent V2 — Evaluate & Extract Prompt (CRAG + Deep Read)
+
+**Constants**: `RESEARCH_EVALUATE_AND_EXTRACT_SYSTEM` / `EVALUATE_AND_EXTRACT_SCHEMA`
+**Used in**: `evaluate_and_extract_node` (Research Agent V2)
+**When**: After gather — evaluates each document's relevance (CRAG) and extracts key passages
+**LLM**: Gemini Flash (parallel batches of 15)
+
+```
+You are a legal document evaluator. For each document:
+1. CRAG Scoring: Rate relevance 0.0-1.0, classify as correct/ambiguous/incorrect
+2. Action: keep | filter | needs_web_fallback
+3. Passage Extraction: Extract the most relevant verbatim passage (for correct/ambiguous only)
+4. Deep Read: For ambiguous results, full HOLDINGS/RATIO sections may be provided for re-evaluation
+```
+
+**Schema**: `EVALUATE_AND_EXTRACT_SCHEMA` — Returns `evaluations` array with per-document scores, verdicts, and passages.
+
+---
+
+## 34. Research Agent V2 — Gap Analysis Prompt (MC-RAG)
+
+**Constants**: `RESEARCH_GAP_ANALYSIS_SYSTEM` / `RESEARCH_GAP_ANALYSIS_SCHEMA`
+**Used in**: `gap_analysis_node` (Research Agent V2)
+**When**: After evaluate — identifies evidence gaps and generates conditioned follow-up queries
+**LLM**: Gemini Flash
+
+```
+You are a legal research gap analyst. Given the research findings so far:
+1. Identify evidence gaps — what's missing from the research?
+2. Generate targeted follow-up queries CONDITIONED on prior findings (MC-RAG)
+3. Round 2+ queries should reference specific cases/holdings from round 1
+4. Integrate strategy adjustment recommendations from reflection
+```
+
+**Schema**: `RESEARCH_GAP_ANALYSIS_SCHEMA` — Returns `gaps` array with description, suggested_query, suggested_source, priority, conditioned_on, conditioning_context.
+
+---
+
+## 35. Research Agent V2 — Batched CoT with Reflection Prompt
+
+**Constants**: `RESEARCH_WORKER_COT_SYSTEM` / `BATCH_COT_WITH_REFLECTION_SCHEMA`
+**Used in**: `batch_worker_cot_with_reflection_node` (Research Agent V2)
+**When**: After gather — generates chain-of-thought reasoning for all workers in one call + reflection
+**LLM**: Gemini Flash
+
+```
+You are a legal research analyst performing MA-RAG chain-of-thought reasoning.
+PART 1: Per-worker analysis + cross-worker tensions
+PART 2: Deep Research reflection — should we pivot strategy?
+  - should_pivot: true/false
+  - pivot_reason: Why pivot?
+  - new_tasks: Additional research tasks if pivoting
+  - reframe_query: Reframed query if understanding changed
+```
+
+**Schema**: `BATCH_COT_WITH_REFLECTION_SCHEMA` — Returns reasoning, should_pivot, pivot_reason, new_tasks, reframe_query.
+
+---
+
+## 36. Research Agent V2 — Fast Path Synthesis Prompt
+
+**Constant**: `RESEARCH_FAST_PATH_SYNTHESIS_SYSTEM`
+**Used in**: `fast_path_synthesis_node` (Research Agent V2)
+**When**: Simple queries — lightweight Flash synthesis without speculative drafts
+**LLM**: Gemini Flash
+
+```
+You are a legal research assistant. Write a concise research response with:
+1. Direct answer to the question
+2. Key authorities cited with proper Indian legal citations
+3. Footnotes linking to source documents
+Keep the response focused and under 2000 words. No speculative drafts.
+```
+
+---
+
 ## Prompt Versioning
 
 | Prompt | Current Version | Last Updated | Notes |
@@ -1289,6 +1408,12 @@ LEGAL_DISCLAIMER:
 | Drafting — Assembly | v1.0 | Phase 6 | Drafting Agent |
 | IRAC Structure Instruction | v1.0 | Phase 7 | Shared across agents |
 | Legal Disclaimer | v1.0 | Phase 7 | Shared across agents |
+| Research V2 — Query Rewrite | v1.0 | Research V2 Phase 1 | Query expansion node |
+| Research V2 — Research Plan | v1.0 | Research V2 Phase 1 | Dual-query plan generation |
+| Research V2 — Evaluate & Extract (CRAG) | v1.0 | Research V2 Phase 1 | CRAG scoring + passage extraction |
+| Research V2 — Gap Analysis (MC-RAG) | v1.0 | Research V2 Phase 1 | Conditioned follow-up queries |
+| Research V2 — Batched CoT + Reflection | v1.0 | Research V2 Phase 1 | MA-RAG CoT + strategy pivot |
+| Research V2 — Fast Path Synthesis | v1.0 | Research V2 Phase 1 | Lightweight Flash synthesis |
 
 **Versioning policy**: Increment version when prompt changes affect output format or quality. Keep previous versions for A/B testing.
 

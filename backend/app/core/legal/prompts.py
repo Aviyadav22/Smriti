@@ -841,7 +841,8 @@ RESEARCH_CLASSIFY_SCHEMA: Final[dict] = {
         },
         "complexity": {
             "type": "string",
-            "enum": ["simple", "moderate", "complex"],
+            "enum": ["simple", "complex", "multi_issue"],
+            "description": "simple = definitional/single statute/single citation lookup. complex = multi-faceted legal question. multi_issue = requires analysis of multiple intersecting legal issues.",
         },
         "jurisdiction": {"type": ["string", "null"]},
         "target_court": {"type": ["string", "null"]},
@@ -958,6 +959,10 @@ Executive Summary before proceeding with the analysis.
 - For each key legal finding, structure your analysis using IRAC: identify the ISSUE, \
 state the RULE (statute or binding precedent), APPLY it to the facts, and state your \
 CONCLUSION. This ensures legally rigorous output.
+- When citing a statute section, ALWAYS include both old and new code references where \
+applicable. Format: "Section 302 IPC (now Section 103 BNS)". This is critical for \
+Indian practitioners transitioning between the old codes (IPC/CrPC/IEA) and the new \
+codes (BNS/BNSS/BSA) effective from 1 July 2024.
 """
 
 RESEARCH_SYNTHESIZE_USER: Final[str] = """\
@@ -983,6 +988,270 @@ Structure the memo with the following sections:
 Cite all cases using numbered markers [1], [2], etc. and include a Sources section \
 at the end listing all cited cases with their full citations.
 """
+
+# ---------------------------------------------------------------------------
+# Research Agent V2 — new prompts for orchestrated multi-agent pipeline
+# ---------------------------------------------------------------------------
+
+RESEARCH_REWRITE_SYSTEM: Final[str] = """\
+You are an expert Indian legal researcher. Rewrite the user's query to be \
+comprehensive, specific, and legally precise.
+
+Your rewritten query should:
+1. Identify the exact legal issues at stake
+2. Name relevant statutes and constitutional provisions (with section numbers)
+3. Name affected parties or party types
+4. Specify the jurisdiction and court hierarchy relevance
+5. Include both old and new statute references where applicable \
+(IPC↔BNS, CrPC↔BNSS, IEA↔BSA)
+
+Output 2-3 paragraphs of detailed, legally precise query expansion. \
+Do NOT answer the question — only reformulate it for optimal search retrieval."""
+
+RESEARCH_PLAN_SYSTEM: Final[str] = """\
+You are an expert Indian legal research strategist. Given a detailed legal \
+research question and its classification, create a structured research plan \
+with typed research tasks.
+
+For each task, provide BOTH:
+- A natural language query (for semantic/vector search)
+- A structured boolean query (for full-text/keyword search)
+
+Name 2-3 specific landmark Indian cases you know are relevant for each task, \
+with citations if possible. These named cases will be looked up directly in \
+our database.
+
+Task types:
+- "case_law": Search our judgment database (Pinecone + PostgreSQL FTS)
+- "named_case": Direct lookup of specific landmark cases by citation/name
+- "statute": Search statutes and constitutional provisions
+- "constitution": Search constitutional articles and amendments
+- "ik_search": Search Indian Kanoon for cases not in our database
+- "web": Web search for very recent judgments or commentary
+- "graph": Neo4j citation graph traversal for overruled/followed chains
+- "llm_direct": Use LLM knowledge for definitional or procedural questions
+
+Rules:
+- Generate 3-8 tasks depending on complexity.
+- Always include at least one "case_law" task.
+- Include a "named_case" task if you know specific landmark cases.
+- Include a "statute" task if statutes are central to the question.
+- Include a "graph" task if citation chains or overruling history matter.
+- Each task must have a clear rationale explaining why it's necessary.
+- Prioritize tasks: 1=essential, 2=important, 3=supplementary.
+- Use precise Indian legal terminology."""
+
+RESEARCH_PLAN_SCHEMA: Final[dict] = {
+    "type": "object",
+    "properties": {
+        "research_tasks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "task_type": {
+                        "type": "string",
+                        "enum": [
+                            "case_law", "named_case", "statute", "constitution",
+                            "ik_search", "web", "graph", "llm_direct",
+                        ],
+                    },
+                    "nl_query": {"type": "string"},
+                    "boolean_query": {"type": "string"},
+                    "named_cases": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "citation": {"type": "string", "nullable": True},
+                                "relevance": {"type": "string"},
+                            },
+                        },
+                    },
+                    "rationale": {"type": "string"},
+                    "filters": {"type": "object"},
+                    "priority": {"type": "integer"},
+                },
+                "required": [
+                    "task_type", "nl_query", "boolean_query", "rationale", "priority",
+                ],
+            },
+        },
+    },
+    "required": ["research_tasks"],
+}
+
+RESEARCH_EVALUATE_AND_EXTRACT_SYSTEM: Final[str] = """\
+You are a legal research quality evaluator AND passage extractor.
+
+For each retrieved document, do TWO things:
+
+1. EVALUATE RELEVANCE: Score 0.0-1.0 and classify:
+   - "correct" (>= 0.7): Directly relevant, applicable legal principles/holdings
+   - "ambiguous" (0.3-0.7): Tangentially relevant, not directly on point
+   - "incorrect" (< 0.3): Irrelevant, wrong jurisdiction, mismatched issue
+
+2. EXTRACT PASSAGE (only for "correct" and "ambiguous" documents):
+   - Copy the single most relevant verbatim passage from the source text
+   - EXACT text only — do not paraphrase or fabricate
+   - If paraphrasing is unavoidable, prefix with [paraphrased]
+
+Be strict — a document about a different section of the same act is \
+"ambiguous", not "correct"."""
+
+EVALUATE_AND_EXTRACT_SCHEMA: Final[dict] = {
+    "type": "object",
+    "properties": {
+        "evaluations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "case_id": {"type": "string"},
+                    "score": {"type": "number"},
+                    "verdict": {
+                        "type": "string",
+                        "enum": ["correct", "ambiguous", "incorrect"],
+                    },
+                    "reason": {"type": "string"},
+                    "action": {
+                        "type": "string",
+                        "enum": ["keep", "filter", "needs_web_fallback"],
+                    },
+                    "passage": {"type": "string", "nullable": True},
+                    "passage_source_field": {"type": "string", "nullable": True},
+                    "is_verbatim": {"type": "boolean", "nullable": True},
+                },
+                "required": ["case_id", "score", "verdict", "reason", "action"],
+            },
+        },
+        "overall_quality": {"type": "number"},
+        "web_fallback_needed": {"type": "boolean"},
+    },
+    "required": ["evaluations", "overall_quality", "web_fallback_needed"],
+}
+
+RESEARCH_GAP_ANALYSIS_SYSTEM: Final[str] = """\
+You are a legal research evidence assessor. Compare the research plan (what \
+was sought) against the actual results (what was found) to identify evidence gaps.
+
+You receive:
+- The original research question
+- The research plan (list of tasks with expected outcomes)
+- Worker results summary (what was actually found)
+- CRAG relevance scores (per-document quality assessments)
+- Worker chain-of-thought reasoning (cross-worker tensions and observations)
+- Strategy adjustment recommendations (from reflection, if any)
+
+Your job:
+1. For each planned task, assess whether the evidence gathered is sufficient
+2. Identify specific gaps: missing cases, unexplored statutes, unresolved contradictions
+3. Generate TARGETED follow-up queries that BUILD ON what was found in prior rounds:
+   - If a landmark case was found, search for cases that DISTINGUISHED or OVERRULED it
+   - If a statute section was found but no interpretation cases, search for interpretations
+   - If conflicting holdings were found, search for the reconciling authority
+   - Do NOT repeat the same generic queries from prior rounds
+4. If a strategy adjustment was recommended, incorporate those new tasks with priority
+
+Each gap must specify:
+- Which worker type should handle the follow-up
+- What specific cases/citations from prior rounds inform this gap (conditioned_on)
+- Why this gap exists given what was already found (conditioning_context)
+
+If no significant gaps exist, return an empty gaps array."""
+
+RESEARCH_GAP_ANALYSIS_SCHEMA: Final[dict] = {
+    "type": "object",
+    "properties": {
+        "gaps": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "description": {"type": "string"},
+                    "suggested_query": {"type": "string"},
+                    "suggested_source": {
+                        "type": "string",
+                        "enum": [
+                            "case_law", "named_case", "statute", "constitution",
+                            "ik_search", "web", "graph", "llm_direct",
+                        ],
+                    },
+                    "priority": {"type": "integer"},
+                    "conditioned_on": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "conditioning_context": {"type": "string"},
+                },
+                "required": [
+                    "description", "suggested_query", "suggested_source",
+                    "priority", "conditioned_on", "conditioning_context",
+                ],
+            },
+        },
+        "overall_sufficiency": {"type": "number"},
+        "summary": {"type": "string"},
+    },
+    "required": ["gaps", "overall_sufficiency", "summary"],
+}
+
+RESEARCH_WORKER_COT_SYSTEM: Final[str] = """\
+You are a legal research analyst reviewing search results for a research question.
+
+Given the worker results summary, provide:
+
+PART 1 — ANALYSIS (for each worker, 2-3 sentences):
+- Key findings, tensions, what's missing
+- CROSS-WORKER conflicts (e.g., case law vs statute contradictions)
+
+PART 2 — REFLECTION (Deep Research-style strategy check):
+1. What did we learn that changes our understanding of the research question?
+2. Should we pivot our research strategy? (e.g., wrong statute version, \
+question is moot, need different jurisdiction, missed a key legal concept)
+3. Are there any surprising results that suggest the question should be reframed?
+4. If pivoting: what specific new search tasks should we add?
+
+If no pivot needed, say "No strategy change needed" for Part 2.
+Be concise (3-5 sentences per part). This reasoning guides synthesis."""
+
+BATCH_COT_WITH_REFLECTION_SCHEMA: Final[dict] = {
+    "type": "object",
+    "properties": {
+        "reasoning": {"type": "string"},
+        "should_pivot": {"type": "boolean"},
+        "pivot_reason": {"type": "string", "nullable": True},
+        "reframe_query": {"type": "string", "nullable": True},
+        "new_tasks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "task_type": {"type": "string"},
+                    "nl_query": {"type": "string"},
+                    "boolean_query": {"type": "string"},
+                    "rationale": {"type": "string"},
+                },
+            },
+        },
+    },
+    "required": ["reasoning", "should_pivot"],
+}
+
+RESEARCH_FAST_PATH_SYNTHESIS_SYSTEM: Final[str] = """\
+You are a legal research assistant providing a concise answer to a \
+straightforward legal question.
+
+Given the search results, write a focused response with:
+1. Direct answer (2-3 sentences)
+2. Key authority (the most relevant case or statute, with citation)
+3. Brief legal context (1 paragraph)
+4. Footnotes linking to sources
+
+Keep it concise — this is a simple query that doesn't need full IRAC analysis. \
+NEVER fabricate or hallucinate case names, citations, or legal propositions. \
+Only cite cases that appear in the provided search results."""
 
 # ---------------------------------------------------------------------------
 # Case Prep Agent — issue prioritization, argument ordering, strategy

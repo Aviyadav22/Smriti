@@ -42,7 +42,7 @@ class TestResearchRouters:
             "messages": [],
             "iteration": 0,
         }
-        assert route_after_plan(state) == "search"
+        assert route_after_plan(state) == "dispatch_workers"
 
     def test_route_after_plan_with_feedback_loops_back(self) -> None:
         state: ResearchState = {
@@ -60,9 +60,9 @@ class TestResearchRouters:
             ],
             "iteration": 1,
         }
-        assert route_after_plan(state) == "decompose"
+        assert route_after_plan(state) == "plan_research"
 
-    def test_route_after_plan_max_iterations_goes_to_search(self) -> None:
+    def test_route_after_plan_max_iterations_goes_to_dispatch(self) -> None:
         state: ResearchState = {
             "query": "test",
             "target_court": "",
@@ -80,7 +80,7 @@ class TestResearchRouters:
             ],
             "iteration": 3,
         }
-        assert route_after_plan(state) == "search"
+        assert route_after_plan(state) == "dispatch_workers"
 
     def test_route_after_findings_no_feedback_goes_to_synthesize(self) -> None:
         state: ResearchState = {

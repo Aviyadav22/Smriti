@@ -78,6 +78,116 @@ def format_search_results_for_llm(
     return "\n\n".join(parts)
 
 
+def format_search_results_for_llm_extended(
+    results: list[dict],
+    max_snippet_len: int = 1500,
+    max_ratio_len: int = 3000,
+) -> str:
+    """Format search results with higher context limits for Research Agent V2.
+
+    Uses larger snippet/ratio windows since Gemini Pro has 1M context — we're
+    only using <1% of it with the default limits.
+    """
+    return format_search_results_for_llm(results, max_snippet_len, max_ratio_len)
+
+
+def deduplicate_with_diversity(
+    results: list[dict],
+    max_chunks_per_case: int = 4,
+) -> list[dict]:
+    """Keep top N chunks per case_id, sorted by score.
+
+    Prevents one case from dominating results while still allowing
+    multiple relevant chunks from the same judgment.
+    """
+    case_chunks: dict[str, list[dict]] = {}
+    for r in results:
+        cid = r.get("case_id", "")
+        if not cid:
+            continue
+        case_chunks.setdefault(cid, []).append(r)
+
+    deduped: list[dict] = []
+    for cid, chunks in case_chunks.items():
+        chunks.sort(key=lambda x: x.get("score", 0), reverse=True)
+        deduped.extend(chunks[:max_chunks_per_case])
+
+    deduped.sort(key=lambda x: x.get("score", 0), reverse=True)
+    return deduped
+
+
+async def _search_by_title(title: str, db: AsyncSession) -> list[dict]:
+    """ILIKE search on cases.title for named case retrieval.
+
+    Returns results in the same dict format as other search functions
+    so they can be merged with hybrid search results.
+    """
+    if not title or not title.strip():
+        return []
+
+    # Sanitize and prepare search pattern
+    sanitized = title.strip()[:200]
+    query = text(
+        "SELECT id::text AS case_id, title, citation, court, "
+        "EXTRACT(YEAR FROM decision_date)::int AS year, "
+        "bench_type, LEFT(ratio_decidendi, 3000) AS ratio "
+        "FROM cases WHERE title ILIKE :pattern "
+        "ORDER BY decision_date DESC NULLS LAST LIMIT 5"
+    )
+    try:
+        result = await db.execute(query, {"pattern": f"%{sanitized}%"})
+        rows = result.fetchall()
+    except Exception:
+        logger.warning("Title search failed for: %s", sanitized, exc_info=True)
+        return []
+
+    return [
+        {
+            "case_id": row[0],
+            "title": row[1] or "",
+            "citation": row[2] or "",
+            "court": row[3] or "",
+            "year": row[4],
+            "bench_type": row[5] or "",
+            "ratio": row[6] or "",
+            "score": 0.9,  # High score for direct title match
+            "source": "title_search",
+        }
+        for row in rows
+    ]
+
+
+def format_extracted_passages(passages: list[dict]) -> str:
+    """Format extracted passages for LLM context in synthesis."""
+    if not passages:
+        return "No verbatim passages extracted."
+    parts: list[str] = []
+    for i, p in enumerate(passages, 1):
+        verbatim_tag = "[verbatim]" if p.get("is_verbatim", True) else "[paraphrased]"
+        parts.append(
+            f"[P{i}] {p.get('citation', 'Unknown')} {verbatim_tag}\n"
+            f"    Source: {p.get('source_field', 'unknown')}\n"
+            f"    Relevance: {p.get('relevance', '')}\n"
+            f"    Text: {p.get('passage', '')[:2000]}"
+        )
+    return "\n\n".join(parts)
+
+
+def format_community_summaries(summaries: list[dict]) -> str:
+    """Format GraphRAG community summaries for LLM context."""
+    if not summaries:
+        return ""
+    parts: list[str] = []
+    for cs in summaries:
+        parts.append(
+            f"[Community: {cs.get('title', 'Unknown')}] "
+            f"({cs.get('size', 0)} cases)\n"
+            f"    {cs.get('summary', '')[:1000]}\n"
+            f"    Key principles: {', '.join(cs.get('legal_principles', [])[:5])}"
+        )
+    return "\n\n".join(parts)
+
+
 async def enrich_results_with_ratio(
     results: list[dict],
     db: AsyncSession,
