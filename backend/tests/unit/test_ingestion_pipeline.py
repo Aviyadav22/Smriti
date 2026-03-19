@@ -252,8 +252,8 @@ class TestIngestJudgment:
         call_args = mock_record_failure.call_args[0]
         assert call_args[2] == "/tmp/corrupt.pdf"
         assert call_args[3] == "No text extracted"
-        # Still returns a case_id (not None)
-        assert case_id is not None and len(case_id) > 0
+        # Returns None on extraction failure
+        assert case_id is None
 
     @patch("app.core.ingestion.pipeline._build_citation_graph", new_callable=AsyncMock)
     @patch("app.core.ingestion.pipeline._upsert_vectors", new_callable=AsyncMock)
@@ -353,7 +353,7 @@ class TestIngestJudgment:
         # Should NOT proceed to metadata extraction or chunking
         mock_embedder.embed_batch.assert_not_called()
         mock_record_failure.assert_called_once()
-        assert case_id is not None
+        assert case_id is None
 
     @patch("app.core.ingestion.pipeline._build_citation_graph", new_callable=AsyncMock)
     @patch("app.core.ingestion.pipeline._upsert_vectors", new_callable=AsyncMock)

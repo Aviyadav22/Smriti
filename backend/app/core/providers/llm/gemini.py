@@ -112,23 +112,13 @@ class GeminiLLM:
             temperature=temperature,
             max_output_tokens=max_tokens,
         )
-        try:
-            response = await asyncio.wait_for(
-                self._client.aio.models.generate_content(
-                    model=self._model, contents=prompt, config=config
-                ),
-                timeout=_LLM_TIMEOUT,
-            )
-            return response.text or ""
-        except asyncio.TimeoutError:
-            logger.error("Gemini generate() timed out after %ds", _LLM_TIMEOUT)
-            raise RuntimeError(f"Gemini generate timed out after {_LLM_TIMEOUT}s")
-        except GoogleAPIError as exc:
-            logger.error("Gemini API error in generate(): %s", exc)
-            raise RuntimeError(f"Gemini generate failed: {exc}") from exc
-        except Exception as exc:
-            logger.error("Unexpected error in generate(): %s", exc)
-            raise RuntimeError(f"Gemini generate failed unexpectedly: {exc}") from exc
+        response = await asyncio.wait_for(
+            self._client.aio.models.generate_content(
+                model=self._model, contents=prompt, config=config
+            ),
+            timeout=_LLM_TIMEOUT,
+        )
+        return response.text or ""
 
     @_gemini_retry
     async def generate_structured(
@@ -146,22 +136,12 @@ class GeminiLLM:
             response_mime_type="application/json",
             response_schema=normalized_schema,
         )
-        try:
-            response = await asyncio.wait_for(
-                self._client.aio.models.generate_content(
-                    model=self._model, contents=prompt, config=config
-                ),
-                timeout=_LLM_TIMEOUT,
-            )
-        except asyncio.TimeoutError:
-            logger.error("Gemini generate_structured() timed out after %ds", _LLM_TIMEOUT)
-            raise RuntimeError(f"Gemini generate_structured timed out after {_LLM_TIMEOUT}s")
-        except GoogleAPIError as exc:
-            logger.error("Gemini API error in generate_structured(): %s", exc)
-            raise RuntimeError(f"Gemini generate_structured failed: {exc}") from exc
-        except Exception as exc:
-            logger.error("Unexpected error in generate_structured(): %s", exc)
-            raise RuntimeError(f"Gemini generate_structured failed unexpectedly: {exc}") from exc
+        response = await asyncio.wait_for(
+            self._client.aio.models.generate_content(
+                model=self._model, contents=prompt, config=config
+            ),
+            timeout=_LLM_TIMEOUT,
+        )
 
         raw_text = response.text or "{}"
         try:
@@ -181,22 +161,12 @@ class GeminiLLM:
         config: types.GenerateContentConfig,
     ):
         """Start a streaming response (retryable helper)."""
-        try:
-            return await asyncio.wait_for(
-                self._client.aio.models.generate_content_stream(
-                    model=self._model, contents=prompt, config=config
-                ),
-                timeout=_LLM_TIMEOUT,
-            )
-        except asyncio.TimeoutError:
-            logger.error("Gemini stream() timed out waiting for initial response after %ds", _LLM_TIMEOUT)
-            raise RuntimeError(f"Gemini stream timed out after {_LLM_TIMEOUT}s")
-        except GoogleAPIError as exc:
-            logger.error("Gemini API error in stream(): %s", exc)
-            raise RuntimeError(f"Gemini stream failed: {exc}") from exc
-        except Exception as exc:
-            logger.error("Unexpected error in stream(): %s", exc)
-            raise RuntimeError(f"Gemini stream failed unexpectedly: {exc}") from exc
+        return await asyncio.wait_for(
+            self._client.aio.models.generate_content_stream(
+                model=self._model, contents=prompt, config=config
+            ),
+            timeout=_LLM_TIMEOUT,
+        )
 
     async def stream(
         self,

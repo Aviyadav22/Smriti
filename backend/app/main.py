@@ -21,26 +21,31 @@ from app.security.exceptions import (
 logger = logging.getLogger(__name__)
 
 
-def _run_migrations() -> None:
+async def _run_migrations() -> None:
     """Run Alembic migrations on startup in production."""
-    import subprocess
     import os
 
     if settings.app_env == "production":
         try:
             # In Docker, the app is at /app; locally it's at the backend dir
             app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            subprocess.run(
-                ["alembic", "upgrade", "head"],
+            proc = await asyncio.create_subprocess_exec(
+                "alembic", "upgrade", "head",
                 cwd=app_dir,
-                check=True,
-                capture_output=True,
-                text=True,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    f"Alembic migration failed (exit {proc.returncode}): {stderr.decode()}"
+                )
+            logger.info("Alembic migrations applied successfully")
+        except RuntimeError:
+            raise
         except Exception as e:
             logger.error("Auto-migration failed: %s", e, exc_info=True)
-            if settings.app_env == "production":
-                raise
+            raise
 
 
 async def _cleanup_expired_uploads() -> None:
@@ -229,7 +234,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Sentry initialized for %s", settings.sentry_environment or settings.app_env)
 
     # Startup — run DB migrations
-    _run_migrations()
+    await _run_migrations()
 
     # Run startup health validation (non-blocking, logs warnings only)
     await _validate_startup()
@@ -257,17 +262,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except (asyncio.TimeoutError, Exception) as exc:
         logger.warning("Redis shutdown timeout or error: %s", exc)
 
-    # Close graph store driver if it was initialised during this process
-    from app.core.dependencies import get_graph_store
+    # Close cached provider connections (graph store, reranker, etc.)
+    from app.core.dependencies import cleanup_providers
 
     try:
-        info = get_graph_store.cache_info()
-        if info.currsize > 0:
-            graph_store = get_graph_store()
-            if hasattr(graph_store, "close"):
-                await asyncio.wait_for(graph_store.close(), timeout=10)
+        await asyncio.wait_for(cleanup_providers(), timeout=10)
     except (asyncio.TimeoutError, Exception) as exc:
-        logger.warning("Graph store shutdown timeout or error: %s", exc)
+        logger.warning("Provider cleanup timeout or error: %s", exc)
 
 
 app = FastAPI(

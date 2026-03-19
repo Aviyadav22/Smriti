@@ -18,37 +18,8 @@ const nextConfig: NextConfig = {
 
   /* Security headers */
   async headers() {
-    const isDev = process.env.NODE_ENV === "development";
-    const backendUrl = process.env.BACKEND_URL || "";
-
-    // CSP Policy:
-    // - script-src: NO 'unsafe-inline' — prevents inline script injection (XSS).
-    //   Next.js uses nonce-based inline scripts automatically in production.
-    //   'unsafe-eval' is only added in dev mode for hot-reload.
-    // - style-src: 'unsafe-inline' is required because Next.js (styled-jsx)
-    //   and Tailwind inject <style> tags at runtime. Nonce-based styles are
-    //   not yet fully supported by Next.js (see next.js#26891).
-    // - connect-src: In production, only 'self' + explicit BACKEND_URL.
-    //   In dev, also allow localhost websocket for HMR.
-    const connectSrc = isDev
-      ? `connect-src 'self' ${backendUrl || "http://127.0.0.1:8000"} ws://localhost:*`
-      : `connect-src 'self'${backendUrl ? ` ${backendUrl}` : ""}`;
-
-    const csp = [
-      "default-src 'self'",
-      `script-src 'self'${isDev ? " 'unsafe-eval'" : ""}`,
-      // NOTE: 'unsafe-inline' in style-src is required by Next.js styled-jsx / Tailwind runtime styles.
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://storage.googleapis.com",
-      "font-src 'self'",
-      connectSrc,
-      "frame-ancestors 'none'",
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-      "worker-src 'self' blob:",
-    ].join("; ");
-
+    // CSP is now handled by middleware (src/middleware.ts) for per-request nonce support.
+    // Only non-CSP security headers are set here.
     return [
       {
         source: "/:path*",
@@ -58,7 +29,6 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
-          { key: "Content-Security-Policy", value: csp },
         ],
       },
     ];

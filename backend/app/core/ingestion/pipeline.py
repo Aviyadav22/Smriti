@@ -80,7 +80,7 @@ async def ingest_judgment(
     rate_limiter: AsyncRateLimiter | None = None,
     llm_rate_limiter: AsyncRateLimiter | None = None,
     embed_rate_limiter: AsyncRateLimiter | None = None,
-) -> str:
+) -> str | None:
     """Full ingestion pipeline for a single Indian court judgment.
 
     Steps:
@@ -108,7 +108,7 @@ async def ingest_judgment(
         embed_rate_limiter: Separate rate limiter for embedding API calls.
 
     Returns:
-        The case UUID as a string.
+        The case UUID as a string, or None if text extraction failed.
     """
     case_id = str(uuid.uuid4())
     logger.info("Starting ingestion for case_id=%s, pdf=%s", case_id, pdf_path)
@@ -122,7 +122,7 @@ async def ingest_judgment(
     if not full_text or quality.char_count < 50:
         logger.error("No text extracted from PDF: %s", pdf_path)
         await _record_ingestion_failure(db, case_id, pdf_path, "No text extracted")
-        return case_id
+        return None
 
     if quality.tier == "low":
         logger.warning(
@@ -287,8 +287,16 @@ async def ingest_judgment(
         # --------------------------------------------------------------
         # 6b. PERSIST SECTIONS + CITATION EQUIVALENTS
         # --------------------------------------------------------------
+        await db.execute(
+            text("DELETE FROM case_sections WHERE case_id = :case_id"),
+            {"case_id": str(case_id)},
+        )
         await _persist_sections(str(case_id), sections, db)
         citation_equivalents = _extract_citation_equivalents(full_text, str(case_id))
+        await db.execute(
+            text("DELETE FROM citation_equivalents WHERE case_id = :case_id"),
+            {"case_id": str(case_id)},
+        )
         if citation_equivalents:
             await _persist_citation_equivalents(citation_equivalents, db)
 

@@ -656,6 +656,12 @@ async def ingest_year(
                     storage=storage,
                     rate_limiter=limiter,
                 )
+            if case_id is None:
+                await asyncio.to_thread(tracker.mark_failed, doc_key, "Text extraction failed")
+                stats["failed"] += 1
+                total_attempted += 1
+                await breaker.record_failure()
+                return
             await asyncio.to_thread(tracker.mark_success, doc_key, case_id)
             # Mark all stages complete (since ingest_judgment does them all)
             for stage in ("extracted", "metadata", "embedded", "stored", "graphed"):

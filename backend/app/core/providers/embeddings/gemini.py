@@ -73,36 +73,22 @@ class GeminiEmbedder:
 
     @_embedding_retry
     async def embed_text(self, text: str) -> list[float]:
-        try:
-            response = await self._client.aio.models.embed_content(
-                model=self._model,
-                contents=text,
-                config=types.EmbedContentConfig(
-                    output_dimensionality=self._dimension,
-                ),
-            )
-            return response.embeddings[0].values
-        except GoogleAPIError as exc:
-            logger.error("Gemini embedding API error for embed_text: %s", exc)
-            raise RuntimeError(f"Gemini embedding failed: {exc}") from exc
-        except Exception as exc:
-            logger.error("Unexpected error in embed_text: %s", exc)
-            raise RuntimeError(f"Gemini embedding failed unexpectedly: {exc}") from exc
+        response = await self._client.aio.models.embed_content(
+            model=self._model,
+            contents=text,
+            config=types.EmbedContentConfig(
+                output_dimensionality=self._dimension,
+            ),
+        )
+        return response.embeddings[0].values
 
     @_embedding_retry
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        try:
-            response = await self._client.aio.models.embed_content(
-                model=self._model,
-                contents=texts,
-                config=types.EmbedContentConfig(
-                    output_dimensionality=self._dimension,
-                ),
-            )
-            return [e.values for e in response.embeddings]
-        except GoogleAPIError as exc:
-            logger.error("Gemini embedding API error for embed_batch (%d texts): %s", len(texts), exc)
-            raise RuntimeError(f"Gemini batch embedding failed: {exc}") from exc
-        except Exception as exc:
-            logger.error("Unexpected error in embed_batch (%d texts): %s", len(texts), exc)
-            raise RuntimeError(f"Gemini batch embedding failed unexpectedly: {exc}") from exc
+        response = await self._client.aio.models.embed_content(
+            model=self._model,
+            contents=texts,
+            config=types.EmbedContentConfig(
+                output_dimensionality=self._dimension,
+            ),
+        )
+        return [e.values for e in response.embeddings]
