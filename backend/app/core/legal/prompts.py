@@ -1029,6 +1029,7 @@ Task types:
 - "ik_search": Search Indian Kanoon for cases not in our database
 - "web": Web search for very recent judgments or commentary
 - "graph": Neo4j citation graph traversal for overruled/followed chains
+- "graph_community": Retrieve citation community summaries for macro-level legal landscape
 - "llm_direct": Use LLM knowledge for definitional or procedural questions
 
 Rules:
@@ -1037,6 +1038,7 @@ Rules:
 - Include a "named_case" task if you know specific landmark cases.
 - Include a "statute" task if statutes are central to the question.
 - Include a "graph" task if citation chains or overruling history matter.
+- Include a "graph_community" task for well-established areas of law, evolution/trends queries, or conflicting court positions.
 - Each task must have a clear rationale explaining why it's necessary.
 - Prioritize tasks: 1=essential, 2=important, 3=supplementary.
 - Use precise Indian legal terminology."""
@@ -1053,7 +1055,8 @@ RESEARCH_PLAN_SCHEMA: Final[dict] = {
                         "type": "string",
                         "enum": [
                             "case_law", "named_case", "statute", "constitution",
-                            "ik_search", "web", "graph", "llm_direct",
+                            "ik_search", "web", "graph", "graph_community",
+                            "llm_direct",
                         ],
                     },
                     "nl_query": {"type": "string"},
@@ -2056,6 +2059,32 @@ Each major legal point MUST follow this structure. Minor supporting points may b
 presented more concisely, but every substantive argument must have an identifiable \
 ISSUE, RULE, APPLICATION, and CONCLUSION.
 """
+
+COMMUNITY_SUMMARY_SYSTEM: Final[str] = """\
+You are an expert Indian legal analyst. Given a cluster of related court cases \
+that frequently cite each other, identify:
+
+1. **Title**: A concise name for this legal cluster (e.g., "Anticipatory bail \
+under Section 438 CrPC")
+2. **Summary**: A 2-3 paragraph analysis of what legal position this cluster \
+establishes. Include the key evolution of the law through these cases.
+3. **Legal Principles**: 3-5 bullet points of the established legal principles \
+from this cluster.
+
+Focus on what a lawyer would need to know when researching this area of law."""
+
+COMMUNITY_SUMMARY_SCHEMA: Final[dict] = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "summary": {"type": "string"},
+        "legal_principles": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+    },
+    "required": ["title", "summary", "legal_principles"],
+}
 
 LEGAL_DISCLAIMER: Final[str] = (
     "\n\n---\n"

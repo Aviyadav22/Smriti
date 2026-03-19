@@ -1432,3 +1432,39 @@ Each prompt should be tested with:
    - Query understanding: intent classification accuracy
    - RAG chat: citation groundedness score (% claims backed by retrieved context)
    - Section detection: section boundary accuracy (within 200 chars)
+
+---
+
+## 15. COMMUNITY_SUMMARY_SYSTEM (GraphRAG)
+
+**Location**: `backend/app/core/legal/prompts.py`
+**Used by**: `scripts/build_citation_communities.py` (community summarization)
+**Model**: Gemini Flash
+**Added**: Phase 3 (Research Agent V2)
+
+```
+You are an expert Indian legal analyst. Given a cluster of related court cases
+that frequently cite each other, identify:
+
+1. **Title**: A concise name for this legal cluster (e.g., "Anticipatory bail
+under Section 438 CrPC")
+2. **Summary**: A 2-3 paragraph analysis of what legal position this cluster
+establishes. Include the key evolution of the law through these cases.
+3. **Legal Principles**: 3-5 bullet points of the established legal principles
+from this cluster.
+
+Focus on what a lawyer would need to know when researching this area of law.
+```
+
+**Schema** (`COMMUNITY_SUMMARY_SCHEMA`):
+```json
+{
+  "type": "object",
+  "properties": {
+    "title": {"type": "string"},
+    "summary": {"type": "string"},
+    "legal_principles": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["title", "summary", "legal_principles"]
+}
+```

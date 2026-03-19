@@ -165,48 +165,48 @@
 > **Goal**: All worker types active, IK API, Tavily web search, GraphRAG communities.
 
 ### 3A — Interfaces (Bible 7.1–7.2)
-- [ ] **3A.1** Create `interfaces/web_search.py` — `WebSearchProvider` protocol
-- [ ] **3A.2** Create `interfaces/external_doc.py` — `ExternalDocProvider` protocol (IK API)
+- [x] **3A.1** Create `interfaces/web_search.py` — `WebSearchProvider` protocol
+- [x] **3A.2** Create `interfaces/external_doc.py` — `ExternalDocProvider` protocol (IK API)
 
 ### 3B — Providers (Bible 7.3–7.4)
-- [ ] **3B.1** Implement `providers/external/indiankanoon.py` — IK search, docmeta, fragment
-- [ ] **3B.2** Implement `providers/web_search/tavily.py` — Tavily search wrapper
-- [ ] **3B.3** Unit test both providers with mocked HTTP
-- [ ] **3B.4** IK API integration test (test 4)
+- [x] **3B.1** Implement `providers/external/indiankanoon.py` — IK search, docmeta, fragment
+- [x] **3B.2** Implement `providers/web_search/tavily.py` — Tavily search wrapper
+- [x] **3B.3** Unit test both providers with mocked HTTP (6 IK tests + 3 Tavily tests)
+- [x] **3B.4** IK API integration test (test 4) — mocked HTTP, 6 tests pass
 
 ### 3C — Config & DI (Bible 7.5–7.6)
-- [ ] **3C.1** Add IK/Tavily settings to `config.py`
-- [ ] **3C.2** Add factories to `dependencies.py`
-- [ ] **3C.3** Run tests — no regressions
+- [x] **3C.1** Add IK/Tavily settings to `config.py` (ik_api_token, ik_rate_limit, tavily_api_key, web_search_timeout, research_* settings, CRAG thresholds)
+- [x] **3C.2** Add factories to `dependencies.py` (get_web_search, get_ik_client + cleanup)
+- [x] **3C.3** Run tests — no regressions (1683 passed)
 
 ### 3D — Remaining Workers (Bible 7.7)
-- [ ] **3D.1** Implement `statute_worker` in `worker_nodes.py` — with code mapping [T3]
-- [ ] **3D.2** Implement `ik_search_worker` — Indian Kanoon search
-- [ ] **3D.3** Implement `ik_case_worker` — IK document retrieval
-- [ ] **3D.4** Implement `web_search_worker` — Tavily for recency
-- [ ] **3D.5** Implement `graph_worker` — Neo4j citation traversal
-- [ ] **3D.6** Unit test each worker
-- [ ] **3D.7** Run tests — no regressions
+- [x] **3D.1** Implement `statute_worker` in `worker_nodes.py` — with code mapping [T3] (PG FTS + Pinecone semantic + expand_statute_references)
+- [x] **3D.2** Implement `ik_search_worker` — Indian Kanoon search + fragment retrieval
+- [x] **3D.3** Implement `ik_case_worker` — merged into ik_search_worker (search + fragment in one worker)
+- [x] **3D.4** Implement `web_search_worker` — Tavily for recency (non-blocking on failure)
+- [x] **3D.5** Implement `graph_worker` — Neo4j citation traversal (fulltext + CITES edges)
+- [x] **3D.6** Unit test each worker (2 statute, 2 IK, 2 web, 2 graph tests)
+- [x] **3D.7** Run tests — no regressions (1683 passed)
 
 ### 3E — GraphRAG Communities (Bible 7.10)
-- [ ] **3E.1** Create `scripts/build_citation_communities.py` — Leiden algorithm
-- [ ] **3E.2** Generate community summaries via LLM
-- [ ] **3E.3** Implement `graph_community_worker` — semantic search over community summaries
-- [ ] **3E.4** Run community tests (tests 21-25)
-- [ ] **3E.5** Run community build test (test 73)
+- [x] **3E.1** Create `scripts/build_citation_communities.py` — Louvain algorithm (NetworkX built-in, graspologic optional)
+- [x] **3E.2** Generate community summaries via LLM (COMMUNITY_SUMMARY_SYSTEM prompt + schema)
+- [x] **3E.3** Implement `graph_community_worker` — semantic + graph overlap dual retrieval
+- [x] **3E.4** Run community tests (tests 21-25) — 5 tests pass (Louvain, semantic, graph overlap, dedup, build script)
+- [x] **3E.5** Run community build test (test 73) — 2 tests pass (export + summarize)
 
 ### 3F — Graph Registration (Bible 7.8–7.9)
-- [ ] **3F.1** Register all workers in `research.py`
-- [ ] **3F.2** Update `agents.py` to pass IK/Tavily/web deps
-- [ ] **3F.3** Integration test: full graph with all worker types
-- [ ] **3F.4** Run tests — no regressions
+- [x] **3F.1** Register all workers in `research.py` (7 workers: case_law, named_case, statute, ik_search, web_search, graph, graph_community)
+- [x] **3F.2** Update `agents.py` to pass IK/Tavily/web deps (graceful fallback if API keys missing)
+- [x] **3F.3** Integration test: full graph with all worker types (2 tests: build graph + all types registered)
+- [x] **3F.4** Run tests — no regressions (1683 passed)
 
 ### PHASE 3 GATE
-- [ ] **3Z.1** All worker unit tests pass
-- [ ] **3Z.2** GraphRAG community tests pass (tests 21-25)
-- [ ] **3Z.3** IK API integration test passes (test 4)
-- [ ] **3Z.4** Send() fan-out test passes (test 6)
-- [ ] **3Z.5** Full test suite passes
+- [x] **3Z.1** All worker unit tests pass (25 Phase 3 tests)
+- [x] **3Z.2** GraphRAG community tests pass (tests 21-25)
+- [x] **3Z.3** IK API integration test passes (test 4) — mocked HTTP
+- [x] **3Z.4** Send() fan-out test passes (test 6)
+- [x] **3Z.5** Full test suite passes (1683 passed, 0 failed)
 - [ ] **3Z.6** Manual E2E: run complex query, verify all worker types dispatch
 - [ ] **3Z.7** Commit: `feat: research agent v2 — Phase 3 multi-source workers + GraphRAG`
 

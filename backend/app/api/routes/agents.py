@@ -25,9 +25,11 @@ from app.core.dependencies import (
     get_embedder,
     get_flash_llm,
     get_graph_store,
+    get_ik_client,
     get_llm,
     get_reranker,
     get_vector_store,
+    get_web_search,
 )
 from app.core.drafting.export import export_to_docx, export_to_pdf
 from app.core.drafting.templates import TEMPLATES, get_template
@@ -390,6 +392,16 @@ async def run_agent(
     config = {"configurable": {"thread_id": thread_id}}
 
     if agent_type == "research":
+        # Inject IK/Tavily providers — gracefully handle missing API keys
+        try:
+            _ik_client = get_ik_client()
+        except (ValueError, Exception):
+            _ik_client = None
+        try:
+            _web_search = get_web_search()
+        except (ValueError, Exception):
+            _web_search = None
+
         graph = build_research_graph(
             llm=llm,
             flash_llm=get_flash_llm(),
@@ -397,6 +409,8 @@ async def run_agent(
             vector_store=vector_store,
             reranker=reranker,
             graph_store=get_graph_store(),
+            web_search=_web_search,
+            ik_client=_ik_client,
             checkpointer=checkpointer,
         )
         initial_input = {"query": request_body.query, "language": request_language}
@@ -639,6 +653,15 @@ async def resume_execution(
     config = {"configurable": {"thread_id": str(execution.thread_id)}}
 
     if execution.agent_type == AgentType.research.value:
+        try:
+            _ik_client = get_ik_client()
+        except (ValueError, Exception):
+            _ik_client = None
+        try:
+            _web_search = get_web_search()
+        except (ValueError, Exception):
+            _web_search = None
+
         graph = build_research_graph(
             llm=llm,
             flash_llm=get_flash_llm(),
@@ -646,6 +669,8 @@ async def resume_execution(
             vector_store=vector_store,
             reranker=reranker,
             graph_store=get_graph_store(),
+            web_search=_web_search,
+            ik_client=_ik_client,
             checkpointer=checkpointer,
         )
     elif execution.agent_type == AgentType.case_prep.value:

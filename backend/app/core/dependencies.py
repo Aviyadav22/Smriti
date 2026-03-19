@@ -7,6 +7,7 @@ from functools import lru_cache
 from app.core.config import settings
 from app.core.interfaces import (
     EmbeddingProvider,
+    ExternalDocProvider,
     FileStorage,
     GraphStore,
     LLMProvider,
@@ -14,6 +15,7 @@ from app.core.interfaces import (
     TTSProvider,
     TranslationProvider,
     VectorStore,
+    WebSearchProvider,
 )
 
 
@@ -138,6 +140,22 @@ def get_checkpointer():
     return MemorySaver()
 
 
+@lru_cache
+def get_web_search() -> WebSearchProvider:
+    """Return the configured web search provider instance."""
+    from app.core.providers.web_search.tavily import TavilySearchClient
+
+    return TavilySearchClient()
+
+
+@lru_cache
+def get_ik_client() -> ExternalDocProvider:
+    """Return the configured Indian Kanoon API client instance."""
+    from app.core.providers.external.indiankanoon import IndianKanoonClient
+
+    return IndianKanoonClient()
+
+
 async def cleanup_providers() -> None:
     """Close cached provider connections on shutdown."""
     try:
@@ -152,5 +170,19 @@ async def cleanup_providers() -> None:
             reranker = get_reranker()
             if hasattr(reranker, "close"):
                 await reranker.close()
+    except Exception:
+        pass
+    try:
+        if get_ik_client.cache_info().currsize > 0:
+            ik = get_ik_client()
+            if hasattr(ik, "close"):
+                await ik.close()
+    except Exception:
+        pass
+    try:
+        if get_web_search.cache_info().currsize > 0:
+            ws = get_web_search()
+            if hasattr(ws, "close"):
+                await ws.close()
     except Exception:
         pass

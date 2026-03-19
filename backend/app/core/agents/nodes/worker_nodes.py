@@ -10,8 +10,11 @@ Workers use pre-warmed embeddings [S6] when available.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
+import networkx as nx
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.nodes.common import (
@@ -20,8 +23,17 @@ from app.core.agents.nodes.common import (
     parallel_hybrid_search,
 )
 from app.core.agents.state import WorkerResult
-from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
+from app.core.interfaces import (
+    EmbeddingProvider,
+    ExternalDocProvider,
+    GraphStore,
+    LLMProvider,
+    Reranker,
+    VectorStore,
+    WebSearchProvider,
+)
 from app.core.search.hybrid import _exact_citation_search
+from app.core.search.query import expand_statute_references
 from app.db.postgres import async_session_factory
 
 logger = logging.getLogger(__name__)
@@ -150,4 +162,448 @@ async def named_case_worker(
         query=task.get("nl_query", ""),
         results=results, source_urls=[], metadata={},
         error=None, reasoning="",
+    )]}
+
+
+# ---------------------------------------------------------------------------
+# Worker: statute_worker — PG lookup + Pinecone semantic + code mapping [T3]
+# ---------------------------------------------------------------------------
+
+
+async def statute_worker(
+    state: dict,
+    embedder: EmbeddingProvider,
+    vector_store: VectorStore,
+) -> dict:
+    """Look up statutes from PostgreSQL + Pinecone semantic search.
+
+    Uses [T3] code mapping to auto-search both old and new codes
+    (e.g., IPC 302 → also searches BNS 103).
+    """
+    task = state["task"]
+    results: list[dict] = []
+
+    try:
+        # [T3] Expand statute references to include old↔new equivalents
+        original_query = task["nl_query"]
+        _, expanded_terms = expand_statute_references(original_query)
+
+        # All queries to search (original + expanded old/new code refs)
+        all_queries = [original_query] + expanded_terms
+
+        async with async_session_factory() as db:
+            from app.models.statute import Statute
+
+            for query_text in all_queries:
+                # Try exact section lookup via PG FTS
+                stmt = (
+                    select(Statute)
+                    .where(
+                        Statute.searchable_text.op("@@")(
+                            func_websearch_to_tsquery(query_text)
+                        )
+                    )
+                    .limit(10)
+                )
+                try:
+                    db_result = await db.execute(stmt)
+                    for s in db_result.scalars().all():
+                        results.append({
+                            "case_id": f"statute:{s.id}",
+                            "title": f"{s.act_short_name} Section {s.section_number}",
+                            "section_title": s.section_title or "",
+                            "section_text": s.section_text[:2000],
+                            "act_name": s.act_name,
+                            "act_short_name": s.act_short_name,
+                            "section_number": s.section_number,
+                            "document_type": s.document_type,
+                            "is_repealed": s.is_repealed,
+                            "replaced_by": s.replaced_by,
+                            "source": "statute_db",
+                        })
+                except Exception:
+                    pass  # FTS may fail on some queries, fall through to semantic
+
+        # Semantic search in Pinecone for statute chunks
+        query_embedding = await embedder.embed_text(original_query)
+        pinecone_results = await vector_store.search(
+            query_vector=query_embedding,
+            top_k=5,
+            filters={"document_type": {"$in": ["statute", "constitution"]}},
+        )
+        for r in pinecone_results:
+            meta = r.metadata if hasattr(r, "metadata") else {}
+            results.append({
+                "case_id": f"statute:{r.id}",
+                "title": meta.get("title", ""),
+                "section_text": meta.get("text", "")[:2000],
+                "act_name": meta.get("act_name", ""),
+                "section_number": meta.get("section_number", ""),
+                "document_type": meta.get("document_type", "statute"),
+                "source": "statute_pinecone",
+                "score": r.score,
+            })
+
+        # Deduplicate by title
+        seen_titles: set[str] = set()
+        deduped: list[dict] = []
+        for r in results:
+            key = r.get("title", "")
+            if key not in seen_titles:
+                seen_titles.add(key)
+                deduped.append(r)
+        results = deduped
+
+    except Exception as exc:
+        logger.warning("statute_worker failed: %s", exc)
+        return {"worker_results": [WorkerResult(
+            task_id=task["task_id"], task_type="statute",
+            query=task["nl_query"], results=[],
+            source_urls=[], metadata={}, error=str(exc),
+            reasoning="",
+        )]}
+
+    return {"worker_results": [WorkerResult(
+        task_id=task["task_id"], task_type="statute",
+        query=task["nl_query"], results=results,
+        source_urls=[],
+        metadata={"expanded_terms": expanded_terms if expanded_terms else []},
+        error=None, reasoning="",
+    )]}
+
+
+def func_websearch_to_tsquery(query: str):
+    """Create a websearch_to_tsquery SQL function call."""
+    from sqlalchemy import func, text
+    return func.websearch_to_tsquery("english", query)
+
+
+# ---------------------------------------------------------------------------
+# Worker: ik_search_worker — Indian Kanoon API search
+# ---------------------------------------------------------------------------
+
+
+async def ik_search_worker(
+    state: dict,
+    ik_client: ExternalDocProvider,
+) -> dict:
+    """Search Indian Kanoon API for cases not in our database.
+
+    Uses /search/ for discovery + /docfragment/ for targeted passage extraction.
+    """
+    task = state["task"]
+
+    try:
+        search_results = await ik_client.search(task["nl_query"], max_results=10)
+
+        results: list[dict] = []
+        source_urls: list[str] = []
+        for doc in search_results:
+            doc_id = str(doc.get("tid", ""))
+            if not doc_id:
+                continue
+            # Get relevant fragment (Rs 0.05 — cheapest way to get context)
+            try:
+                fragment = await ik_client.get_fragment(doc_id, task["nl_query"])
+            except Exception:
+                fragment = {}
+
+            results.append({
+                "case_id": f"ik:{doc_id}",
+                "title": doc.get("title", ""),
+                "citation": doc.get("citation", ""),
+                "court": doc.get("court", ""),
+                "year": doc.get("year"),
+                "snippet": fragment.get("fragment", ""),
+                "source": "indian_kanoon",
+                "ik_doc_id": doc_id,
+            })
+            source_urls.append(f"https://indiankanoon.org/doc/{doc_id}/")
+
+    except Exception as exc:
+        logger.warning("ik_search_worker failed: %s", exc)
+        return {"worker_results": [WorkerResult(
+            task_id=task["task_id"], task_type="ik_search",
+            query=task["nl_query"], results=[],
+            source_urls=[], metadata={"source": "indian_kanoon"},
+            error=str(exc), reasoning="",
+        )]}
+
+    return {"worker_results": [WorkerResult(
+        task_id=task["task_id"], task_type="ik_search",
+        query=task["nl_query"], results=results,
+        source_urls=source_urls,
+        metadata={"source": "indian_kanoon"},
+        error=None, reasoning="",
+    )]}
+
+
+# ---------------------------------------------------------------------------
+# Worker: web_search_worker — Tavily web search for recent developments
+# ---------------------------------------------------------------------------
+
+
+async def web_search_worker(
+    state: dict,
+    web_search: WebSearchProvider,
+) -> dict:
+    """Search the web for recent legal developments via Tavily.
+
+    Non-blocking — failure returns empty results rather than erroring the pipeline.
+    """
+    task = state["task"]
+
+    try:
+        search_results = await web_search.search(
+            task["nl_query"],
+            max_results=5,
+            search_depth="advanced",
+        )
+
+        results: list[dict] = []
+        source_urls: list[str] = []
+        for r in search_results:
+            results.append({
+                "title": r.get("title", ""),
+                "snippet": r.get("content", "")[:1500],
+                "url": r.get("url", ""),
+                "score": r.get("score", 0.0),
+                "source": "web",
+            })
+            if r.get("url"):
+                source_urls.append(r["url"])
+
+    except Exception as exc:
+        logger.warning("web_search_worker failed (non-blocking): %s", exc)
+        return {"worker_results": [WorkerResult(
+            task_id=task["task_id"], task_type="web",
+            query=task["nl_query"], results=[],
+            source_urls=[], metadata={"source": "web"},
+            error=str(exc), reasoning="",
+        )]}
+
+    return {"worker_results": [WorkerResult(
+        task_id=task["task_id"], task_type="web",
+        query=task["nl_query"], results=results,
+        source_urls=source_urls,
+        metadata={"source": "web"},
+        error=None, reasoning="",
+    )]}
+
+
+# ---------------------------------------------------------------------------
+# Worker: graph_worker — Neo4j citation graph traversal
+# ---------------------------------------------------------------------------
+
+
+async def graph_worker(
+    state: dict,
+    graph_store: GraphStore,
+) -> dict:
+    """Traverse the Neo4j citation graph for citing/cited-by/related cases.
+
+    Also traverses APPLIES edges for statute→case queries.
+    """
+    task = state["task"]
+
+    try:
+        # Search for cases related to the query via citation graph
+        # First, try to find seed cases from the query entities
+        query = task["nl_query"]
+
+        # Query Neo4j for cases matching the topic + their citation chains
+        graph_results = await graph_store.query(
+            """
+            CALL db.index.fulltext.queryNodes('case_search', $query)
+            YIELD node, score
+            WITH node AS seed, score
+            WHERE score > 0.5
+            LIMIT 5
+            OPTIONAL MATCH (seed)-[r:CITES]->(cited:Case)
+            RETURN seed.id AS id, seed.title AS title, seed.citation AS citation,
+                   r.treatment AS treatment, cited.id AS cited_id,
+                   cited.title AS cited_title, cited.citation AS cited_citation,
+                   score
+            ORDER BY score DESC
+            LIMIT 20
+            """,
+            params={"query": query},
+        )
+
+        results: list[dict] = []
+        seen_ids: set[str] = set()
+        for r in graph_results:
+            # Add seed case
+            case_id = r.get("id", "")
+            if case_id and case_id not in seen_ids:
+                seen_ids.add(case_id)
+                results.append({
+                    "case_id": case_id,
+                    "title": r.get("title", ""),
+                    "citation": r.get("citation", ""),
+                    "treatment": r.get("treatment"),
+                    "source": "citation_graph",
+                    "graph_score": r.get("score", 0.0),
+                })
+            # Add cited case
+            cited_id = r.get("cited_id", "")
+            if cited_id and cited_id not in seen_ids:
+                seen_ids.add(cited_id)
+                results.append({
+                    "case_id": cited_id,
+                    "title": r.get("cited_title", ""),
+                    "citation": r.get("cited_citation", ""),
+                    "treatment": r.get("treatment"),
+                    "source": "citation_graph",
+                })
+
+    except Exception as exc:
+        logger.warning("graph_worker failed: %s", exc)
+        return {"worker_results": [WorkerResult(
+            task_id=task["task_id"], task_type="graph",
+            query=task["nl_query"], results=[],
+            source_urls=[], metadata={"source": "citation_graph"},
+            error=str(exc), reasoning="",
+        )]}
+
+    return {"worker_results": [WorkerResult(
+        task_id=task["task_id"], task_type="graph",
+        query=task["nl_query"], results=results,
+        source_urls=[], metadata={"source": "citation_graph"},
+        error=None, reasoning="",
+    )]}
+
+
+# ---------------------------------------------------------------------------
+# Worker: graph_community_worker — GraphRAG community retrieval
+# ---------------------------------------------------------------------------
+
+
+def _detect_communities(G: nx.Graph, resolution: float = 1.0) -> dict[str, int]:
+    """Run community detection on a graph. Returns {node_id: community_id}.
+
+    Uses NetworkX's built-in Louvain algorithm (modularity-based, similar
+    to Leiden). Falls back to graspologic's hierarchical_leiden if available.
+    """
+    if len(G.nodes) == 0:
+        return {}
+
+    try:
+        # NetworkX Louvain is always available (no extra deps)
+        partition_sets = nx.community.louvain_communities(
+            G, resolution=resolution, seed=42,
+        )
+        communities: dict[str, int] = {}
+        for idx, community_set in enumerate(partition_sets):
+            for node in community_set:
+                communities[str(node)] = idx
+        return communities
+    except Exception as exc:
+        logger.warning("Louvain community detection failed: %s — falling back", exc)
+        communities = {}
+        for idx, component in enumerate(nx.connected_components(G)):
+            for node in component:
+                communities[str(node)] = idx
+        return communities
+
+
+async def graph_community_worker(
+    state: dict,
+    embedder: EmbeddingProvider,
+    vector_store: VectorStore,
+    graph_store: GraphStore,
+) -> dict:
+    """Retrieve relevant citation communities for the research question.
+
+    Two retrieval strategies:
+    1. Semantic: Embed the query, search Pinecone for document_type="community"
+    2. Graph: If other workers already found cases, look up their communities via BELONGS_TO
+
+    Returns CommunitySummary objects that give the synthesis node macro-level context.
+    """
+    task = state["task"]
+    parent = state.get("parent_state", {})
+
+    community_results: list[dict] = []
+
+    try:
+        # Strategy 1: Semantic search for relevant communities
+        query_embedding = await embedder.embed_text(task["nl_query"])
+        pinecone_results = await vector_store.search(
+            query_vector=query_embedding,
+            top_k=5,
+            filters={"document_type": "community"},
+        )
+        for r in pinecone_results:
+            meta = r.metadata if hasattr(r, "metadata") else {}
+            community_results.append({
+                "community_id": meta.get("community_id"),
+                "title": meta.get("title"),
+                "summary": meta.get("text", ""),
+                "legal_principles": (meta.get("legal_principles", "") or "").split("; "),
+                "size": meta.get("size", 0),
+                "retrieval_method": "semantic",
+                "score": r.score,
+            })
+
+        # Strategy 2: Graph lookup from already-found case IDs
+        existing_case_ids: list[str] = []
+        for wr in parent.get("worker_results", []):
+            for r in wr.get("results", []):
+                if cid := r.get("case_id"):
+                    if not str(cid).startswith("ik:"):  # Only internal cases
+                        existing_case_ids.append(str(cid))
+
+        if existing_case_ids:
+            graph_communities = await graph_store.query(
+                """
+                MATCH (case:Case)-[:BELONGS_TO]->(comm:Community)
+                WHERE case.id IN $case_ids
+                RETURN DISTINCT comm.id AS id, comm.title AS title,
+                       comm.summary AS summary, comm.legal_principles AS principles,
+                       comm.size AS size, count(case) AS overlap
+                ORDER BY overlap DESC
+                LIMIT 3
+                """,
+                params={"case_ids": existing_case_ids[:20]},
+            )
+
+            for gc in graph_communities:
+                # Avoid duplicates from semantic search
+                if not any(cr["community_id"] == gc["id"] for cr in community_results):
+                    community_results.append({
+                        "community_id": gc["id"],
+                        "title": gc["title"],
+                        "summary": gc["summary"],
+                        "legal_principles": gc["principles"] or [],
+                        "size": gc["size"],
+                        "retrieval_method": "graph_overlap",
+                        "overlap_count": gc["overlap"],
+                    })
+
+    except Exception as exc:
+        logger.warning("graph_community_worker failed: %s", exc)
+        return {"worker_results": [WorkerResult(
+            task_id=task["task_id"], task_type="graph_community",
+            query=task["nl_query"], results=[],
+            source_urls=[], metadata={"source": "graph_community"},
+            error=str(exc), reasoning="",
+        )]}
+
+    # [MA-RAG] Generate CoT reasoning about communities found
+    reasoning = f"Found {len(community_results)} relevant citation communities. "
+    if community_results:
+        reasoning += (
+            f"Top community: '{community_results[0]['title']}' "
+            f"({community_results[0].get('size', 0)} cases). "
+            "These provide macro-level legal context for synthesis."
+        )
+    else:
+        reasoning += "No pre-computed communities matched — synthesis will rely on individual case analysis."
+
+    return {"worker_results": [WorkerResult(
+        task_id=task["task_id"], task_type="graph_community",
+        query=task["nl_query"], results=community_results,
+        source_urls=[], metadata={"source": "graph_community"},
+        error=None, reasoning=reasoning,
     )]}

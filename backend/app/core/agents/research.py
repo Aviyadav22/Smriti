@@ -41,7 +41,12 @@ from app.core.agents.nodes.research_nodes import (
 )
 from app.core.agents.nodes.worker_nodes import (
     case_law_worker,
+    graph_community_worker,
+    graph_worker,
+    ik_search_worker,
     named_case_worker,
+    statute_worker,
+    web_search_worker,
 )
 from app.core.agents.routing_utils import (
     compile_graph,
@@ -78,6 +83,8 @@ def build_research_graph(
     vector_store: Any,
     reranker: Any,
     graph_store: Any = None,
+    web_search: Any = None,
+    ik_client: Any = None,
     checkpointer: Any | None = None,
 ) -> Any:
     """Build and compile the Research Agent V2 LangGraph graph.
@@ -96,6 +103,10 @@ def build_research_graph(
         Reranker (Cohere) for result re-ranking.
     graph_store:
         Graph store (Neo4j) for citation graph traversal.
+    web_search:
+        Web search provider (Tavily) for recent developments.
+    ik_client:
+        External doc provider (Indian Kanoon) for case retrieval.
     checkpointer:
         LangGraph checkpointer for persistence.
     """
@@ -140,6 +151,18 @@ def build_research_graph(
         return await fast_path_synthesis_node(state, flash_llm)
 
     # Worker dispatch via Send()
+    # Map task_type → worker node name
+    _WORKER_MAP = {
+        "case_law": "case_law_worker",
+        "named_case": "named_case_worker",
+        "statute": "statute_worker",
+        "constitution": "statute_worker",  # constitution uses same worker
+        "ik_search": "ik_search_worker",
+        "web": "web_search_worker",
+        "graph": "graph_worker",
+        "graph_community": "graph_community_worker",
+    }
+
     def dispatch_workers(state: ResearchState) -> list[Send]:
         """Fan out to appropriate worker for each research task."""
         sends: list[Send] = []
@@ -148,24 +171,28 @@ def build_research_graph(
 
         for task in plan:
             task_type = task.get("task_type", "case_law")
-            # Only dispatch to workers we have in Phase 1
-            if task_type in ("case_law", "named_case"):
-                worker_name = f"{task_type}_worker"
-                sends.append(Send(worker_name, {
-                    "task": task,
-                    "precomputed_embeddings": precomputed,
-                }))
-            elif task_type == "named_case":
-                sends.append(Send("named_case_worker", {
-                    "task": task,
-                    "precomputed_embeddings": precomputed,
-                }))
-            else:
-                # Phase 1: route unsupported types to case_law_worker
-                sends.append(Send("case_law_worker", {
-                    "task": task,
-                    "precomputed_embeddings": precomputed,
-                }))
+            worker_name = _WORKER_MAP.get(task_type, "case_law_worker")
+
+            # Check if required provider is available
+            if worker_name == "ik_search_worker" and ik_client is None:
+                worker_name = "case_law_worker"  # Fallback
+            elif worker_name == "web_search_worker" and web_search is None:
+                continue  # Skip web search if no provider
+            elif worker_name in ("graph_worker", "graph_community_worker") and graph_store is None:
+                continue  # Skip graph workers if no graph store
+
+            payload = {
+                "task": task,
+                "precomputed_embeddings": precomputed,
+            }
+
+            # graph_community_worker needs parent state for case ID lookup
+            if worker_name == "graph_community_worker":
+                payload["parent_state"] = {
+                    "worker_results": state.get("worker_results", []),
+                }
+
+            sends.append(Send(worker_name, payload))
 
         if not sends:
             # Fallback: at least one search with the original query
@@ -212,6 +239,21 @@ def build_research_graph(
 
     async def _named_case_worker(state: dict) -> dict:
         return await named_case_worker(state, llm, embedder, vector_store, reranker)
+
+    async def _statute_worker(state: dict) -> dict:
+        return await statute_worker(state, embedder, vector_store)
+
+    async def _ik_search_worker(state: dict) -> dict:
+        return await ik_search_worker(state, ik_client)
+
+    async def _web_search_worker(state: dict) -> dict:
+        return await web_search_worker(state, web_search)
+
+    async def _graph_worker(state: dict) -> dict:
+        return await graph_worker(state, graph_store)
+
+    async def _graph_community_worker(state: dict) -> dict:
+        return await graph_community_worker(state, embedder, vector_store, graph_store)
 
     # -- Checkpoint nodes (HITL via interrupt) ------------------------------
 
@@ -323,6 +365,11 @@ def build_research_graph(
     graph.add_node("dispatch_workers", dispatch_workers)
     graph.add_node("case_law_worker", _case_law_worker)
     graph.add_node("named_case_worker", _named_case_worker)
+    graph.add_node("statute_worker", _statute_worker)
+    graph.add_node("ik_search_worker", _ik_search_worker)
+    graph.add_node("web_search_worker", _web_search_worker)
+    graph.add_node("graph_worker", _graph_worker)
+    graph.add_node("graph_community_worker", _graph_community_worker)
     graph.add_node("gather_results", gather)
     graph.add_node("batch_cot_with_reflection", batch_cot)
     graph.add_node("evaluate_and_extract", evaluate_extract)
@@ -377,6 +424,11 @@ def build_research_graph(
     # Workers fan out via Send(), results merge at gather_results
     graph.add_edge("case_law_worker", "gather_results")
     graph.add_edge("named_case_worker", "gather_results")
+    graph.add_edge("statute_worker", "gather_results")
+    graph.add_edge("ik_search_worker", "gather_results")
+    graph.add_edge("web_search_worker", "gather_results")
+    graph.add_edge("graph_worker", "gather_results")
+    graph.add_edge("graph_community_worker", "gather_results")
 
     # Post-gather pipeline
     graph.add_edge("gather_results", "batch_cot_with_reflection")

@@ -94,6 +94,25 @@ class Settings(BaseSettings):
     search_default_page_size: int = 10
     search_max_page_size: int = 50
 
+    # Indian Kanoon API
+    ik_api_token: str = ""
+    ik_rate_limit: float = 2.0  # requests per second
+
+    # Tavily Web Search
+    tavily_api_key: str = ""
+    web_search_timeout: int = 10
+
+    # Research Agent
+    research_max_refinement_rounds: int = 2
+    research_max_chunks_per_case: int = 4
+    research_max_snippet_len: int = 1500
+    research_max_ratio_len: int = 3000
+
+    # CRAG thresholds
+    research_crag_threshold_correct: float = 0.7
+    research_crag_threshold_ambiguous: float = 0.3
+    research_crag_fallback_ratio: float = 0.5
+
     # Chat / RAG
     chat_max_history: int = 10
     chat_max_context_results: int = 5
