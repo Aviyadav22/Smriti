@@ -40,14 +40,15 @@ class TokenPayload:
 # ---------------------------------------------------------------------------
 
 _REVOKED_PREFIX = "revoked:jti:"
-_redis_client: aioredis.Redis | None = None
 
 
 async def _get_revocation_redis() -> aioredis.Redis:
-    global _redis_client
-    if _redis_client is None:
-        _redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
-    return _redis_client
+    """Get shared Redis client for token revocation."""
+    from app.db.redis_client import get_redis
+    client = await get_redis()
+    if client is None:
+        raise RuntimeError("Redis is not available for token revocation")
+    return client
 
 
 async def revoke_token(jti: str, exp_timestamp: int | None = None) -> None:

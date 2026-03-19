@@ -8,6 +8,7 @@ set -e
 PROJECT_ID="smriti-489416"
 REGION="asia-south1"  # Mumbai — closest to Indian users
 REPO_NAME="smriti"
+GIT_SHA=$(git rev-parse --short HEAD)
 
 echo "=== Step 1: Set project ==="
 gcloud config set project $PROJECT_ID
@@ -24,21 +25,25 @@ gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
 
 echo "=== Step 4: Build & push backend image ==="
 cd backend
-docker build -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/backend:latest .
+docker build -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/backend:latest \
+  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/backend:${GIT_SHA} .
 docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/backend:latest
+docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/backend:${GIT_SHA}
 cd ..
 
 echo "=== Step 5: Build & push frontend image (placeholder URL, rebuilt in step 8) ==="
 cd frontend
 docker build \
   --build-arg NEXT_PUBLIC_API_URL=https://placeholder.run.app/api/v1 \
-  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/frontend:latest .
+  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/frontend:latest \
+  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/frontend:${GIT_SHA} .
 docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/frontend:latest
+docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/frontend:${GIT_SHA}
 cd ..
 
 echo "=== Step 6: Deploy backend to Cloud Run ==="
 gcloud run deploy smriti-backend \
-  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/backend:latest \
+  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/backend:${GIT_SHA} \
   --region=$REGION \
   --platform=managed \
   --allow-unauthenticated \
@@ -72,13 +77,15 @@ CORS_ORIGINS=CORS_ORIGINS:latest"
 echo "=== Step 6b: Build & push worker image ==="
 cd backend
 docker build -f Dockerfile.worker \
-  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/worker:latest .
+  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/worker:latest \
+  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/worker:${GIT_SHA} .
 docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/worker:latest
+docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/worker:${GIT_SHA}
 cd ..
 
 echo "=== Step 6c: Deploy Celery worker to Cloud Run ==="
 gcloud run deploy smriti-worker \
-  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/worker:latest \
+  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/worker:${GIT_SHA} \
   --region=$REGION \
   --platform=managed \
   --no-allow-unauthenticated \
@@ -114,13 +121,15 @@ echo "=== Step 8: Rebuild frontend with correct backend URL ==="
 cd frontend
 docker build \
   --build-arg NEXT_PUBLIC_API_URL=${BACKEND_URL}/api/v1 \
-  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/frontend:latest .
+  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/frontend:latest \
+  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/frontend:${GIT_SHA} .
 docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/frontend:latest
+docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/frontend:${GIT_SHA}
 cd ..
 
 echo "=== Step 9: Deploy frontend to Cloud Run ==="
 gcloud run deploy smriti-frontend \
-  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/frontend:latest \
+  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/frontend:${GIT_SHA} \
   --region=$REGION \
   --platform=managed \
   --allow-unauthenticated \

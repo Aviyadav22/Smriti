@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid as _uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -99,6 +100,11 @@ async def correct_metadata(
     Records the old value, new value, user, and reason in the audit_logs table.
     Also updates metadata_provenance to mark the field as 'admin_corrected'.
     """
+    try:
+        _uuid.UUID(case_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid case_id format")
+
     col = _FIELD_COLUMNS.get(body.field)
     if col is None:
         raise HTTPException(
@@ -187,6 +193,11 @@ async def correction_history(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Get the correction history for a case from audit logs."""
+    try:
+        _uuid.UUID(case_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid case_id format")
+
     result = await db.execute(
         text(
             "SELECT metadata, created_at FROM audit_logs "

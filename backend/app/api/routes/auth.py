@@ -314,7 +314,23 @@ async def delete_account(
         {"uid": uid},
     )
 
-    # Delete documents (note: storage files should also be cleaned up)
+    # Delete documents — clean up storage files first (DPDP compliance)
+    try:
+        doc_rows = await db.execute(
+            text("SELECT storage_path FROM documents WHERE user_id = :uid"),
+            {"uid": uid},
+        )
+        from app.core.dependencies import get_storage as _get_storage
+        _storage = _get_storage()
+        for row in doc_rows.mappings().all():
+            if row.get("storage_path"):
+                try:
+                    await _storage.delete(row["storage_path"])
+                except OSError as e:
+                    logger.error("Failed to delete storage file %s: %s", row["storage_path"], e)
+    except Exception as e:
+        logger.warning("Storage file cleanup during account deletion failed: %s", e)
+
     await db.execute(
         text("DELETE FROM documents WHERE user_id = :uid"),
         {"uid": uid},

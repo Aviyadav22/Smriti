@@ -15,6 +15,15 @@ from app.security.rbac import get_current_user
 router = APIRouter()
 
 
+def _validate_uuid(value: str, name: str = "ID") -> None:
+    """Validate that a string is a valid UUID format."""
+    import uuid
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid {name} format")
+
+
 @router.post("/{case_id}/audio/generate", status_code=202)
 async def generate_audio_digest(
     case_id: str,
@@ -23,6 +32,8 @@ async def generate_audio_digest(
     current_user: TokenPayload = Depends(get_current_user),
 ) -> dict:
     """Trigger async audio digest generation for a case."""
+    _validate_uuid(case_id, "case_id")
+
     case_result = await db.execute(
         text("SELECT id FROM cases WHERE id = :id"),
         {"id": case_id},
@@ -61,6 +72,8 @@ async def get_audio_status(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Check audio digest availability for a case."""
+    _validate_uuid(case_id, "case_id")
+
     result = await db.execute(
         text(
             "SELECT language, status, duration_seconds "
@@ -88,6 +101,8 @@ async def stream_audio(
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Stream the audio digest MP3 file."""
+    _validate_uuid(case_id, "case_id")
+
     result = await db.execute(
         text(
             "SELECT audio_storage_path, status FROM audio_digests "

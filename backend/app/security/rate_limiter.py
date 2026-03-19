@@ -104,20 +104,19 @@ class RateLimiter:
 # Singleton Redis client and rate limiter
 # ---------------------------------------------------------------------------
 
-_redis_client: aioredis.Redis | None = None
 _rate_limiter: RateLimiter | None = None
 
 
 async def _get_rate_limiter() -> RateLimiter:
-    """Get or create the singleton rate limiter instance."""
-    global _redis_client, _rate_limiter
+    """Get or create the singleton rate limiter instance using shared Redis."""
+    global _rate_limiter
 
     if _rate_limiter is None:
-        _redis_client = aioredis.from_url(
-            settings.redis_url,
-            decode_responses=True,
-        )
-        _rate_limiter = RateLimiter(_redis_client)
+        from app.db.redis_client import get_redis
+        redis_client = await get_redis()
+        if redis_client is None:
+            raise RuntimeError("Redis is not available for rate limiting")
+        _rate_limiter = RateLimiter(redis_client)
 
     return _rate_limiter
 
@@ -214,7 +213,12 @@ def rate_limit_dependency(
 
     async def _check_rate(request: Request) -> None:
         # Build key before try block so it's available in the except fallback
-        client_ip = request.client.host if request.client else "unknown"
+        # Read X-Forwarded-For for real client IP behind Cloud Run / nginx proxy
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            client_ip = forwarded.split(",")[0].strip()
+        else:
+            client_ip = request.client.host if request.client else "unknown"
         endpoint = request.url.path
         key = f"rate:{client_ip}:{endpoint}"
 
