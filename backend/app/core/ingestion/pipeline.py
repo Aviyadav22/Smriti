@@ -80,6 +80,7 @@ async def ingest_judgment(
     rate_limiter: AsyncRateLimiter | None = None,
     llm_rate_limiter: AsyncRateLimiter | None = None,
     embed_rate_limiter: AsyncRateLimiter | None = None,
+    fast_llm: LLMProvider | None = None,
 ) -> str | None:
     """Full ingestion pipeline for a single Indian court judgment.
 
@@ -106,6 +107,7 @@ async def ingest_judgment(
         rate_limiter: Shared rate limiter for all API calls (backward compat).
         llm_rate_limiter: Separate rate limiter for LLM metadata extraction.
         embed_rate_limiter: Separate rate limiter for embedding API calls.
+        fast_llm: Optional fast/cheap LLM (e.g. Flash) for contextual embedding prefix generation.
 
     Returns:
         The case UUID as a string, or None if text extraction failed.
@@ -302,11 +304,32 @@ async def ingest_judgment(
             await _persist_citation_equivalents(citation_equivalents, db)
 
         # --------------------------------------------------------------
+        # 6c. CONTEXTUAL EMBEDDINGS (optional, requires fast_llm)
+        # --------------------------------------------------------------
+        if fast_llm is not None:
+            from app.core.ingestion.contextual_embeddings import batch_contextualize_chunks
+            chunk_dicts = [{"text": c.text, "section_type": c.section_type} for c in chunks]
+            doc_meta = {
+                "title": metadata.title or "",
+                "citation": metadata.citation or "",
+                "court": metadata.court or "",
+                "year": metadata.year or 0,
+            }
+            contextualized = await batch_contextualize_chunks(
+                chunk_dicts, doc_meta, fast_llm, document_type="case_law"
+            )
+            # Update chunk texts for embedding (original text preserved in chunk.text for display)
+            _contextualized_texts = [c["contextualized_text"] for c in contextualized]
+        else:
+            _contextualized_texts = None
+
+        # --------------------------------------------------------------
         # 7. GENERATE EMBEDDINGS
         # --------------------------------------------------------------
         _embed_limiter = embed_rate_limiter or rate_limiter
         embeddings = await asyncio.wait_for(
-            _embed_chunks(chunks, embedder, rate_limiter=_embed_limiter),
+            _embed_chunks(chunks, embedder, rate_limiter=_embed_limiter,
+                          texts_override=_contextualized_texts),
             timeout=300.0,  # 5 min for large documents with many chunks
         )
         if len(embeddings) != len(chunks):
@@ -350,6 +373,48 @@ async def ingest_judgment(
                 "are safe)",
                 case_id,
             )
+
+        # --------------------------------------------------------------
+        # 8b. RAPTOR SECTION SUMMARIES (optional, requires fast_llm)
+        # --------------------------------------------------------------
+        if fast_llm is not None:
+            try:
+                from app.core.ingestion.section_summarizer import (
+                    generate_section_summaries,
+                    build_pinecone_summary_vectors,
+                )
+                section_dicts = [
+                    {"section_type": s.type, "content": s.text}
+                    for s in sections
+                ]
+                summaries = await generate_section_summaries(
+                    str(case_id), section_dicts, fast_llm
+                )
+                if summaries:
+                    summary_texts = [s["summary_text"] for s in summaries]
+                    _embed_limiter2 = embed_rate_limiter or rate_limiter
+                    if _embed_limiter2:
+                        await _embed_limiter2.acquire()
+                    summary_embeddings = await embedder.embed_batch(summary_texts)
+                    base_meta = {
+                        "title": (metadata.title or "")[:200],
+                        "citation": metadata.citation or "",
+                        "court": metadata.court or "",
+                        "year": metadata.year or 0,
+                    }
+                    summary_vectors = build_pinecone_summary_vectors(
+                        str(case_id), summaries, summary_embeddings, base_meta
+                    )
+                    await vector_store.upsert(summary_vectors)
+                    logger.info(
+                        "case_id=%s: %d RAPTOR section summaries stored",
+                        case_id, len(summaries),
+                    )
+            except Exception as raptor_exc:
+                logger.warning(
+                    "RAPTOR summary generation failed for case_id=%s: %s",
+                    case_id, raptor_exc,
+                )
 
         # Update chunk_count and mark ingestion status
         # Low confidence extractions are flagged for human review
@@ -700,10 +765,11 @@ async def _embed_chunks(
     max_retries: int = 3,
     *,
     rate_limiter: AsyncRateLimiter | None = None,
+    texts_override: list[str] | None = None,
 ) -> list[list[float]]:
     """Generate embeddings for chunks in batches with retry logic."""
     all_embeddings: list[list[float]] = []
-    texts = [c.text for c in chunks]
+    texts = texts_override if texts_override is not None else [c.text for c in chunks]
 
     for i in range(0, len(texts), _EMBED_BATCH_SIZE):
         batch = texts[i : i + _EMBED_BATCH_SIZE]
@@ -765,6 +831,7 @@ async def _upsert_vectors(
                 "para_start": chunk.para_start or 0,
                 "para_end": chunk.para_end or 0,
                 "text": chunk.text[:2000],  # Pinecone 40KB metadata cap; full text lives in PostgreSQL
+                "document_type": "case_law",
             },
         })
 

@@ -11,6 +11,7 @@ from app.models.chat import ChatMessage, ChatSession
 from app.models.consent import Consent
 from app.models.document import Document
 from app.models.document_analysis import DocumentAnalysis
+from app.models.statute import Statute
 from app.models.user import User
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "Consent",
     "Document",
     "DocumentAnalysis",
+    "Statute",
     "TimestampMixin",
     "User",
     "UUIDPrimaryKeyMixin",
