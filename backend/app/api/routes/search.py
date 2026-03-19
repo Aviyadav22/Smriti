@@ -186,10 +186,10 @@ async def suggest(
             cached = await redis_client.get(cache_key)
             if cached is not None:
                 return json.loads(cached)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Redis cache miss/error: %s", exc)
 
-    escaped_q = q.replace("%", "\\%").replace("_", "\\_")
+    escaped_q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     sql = text(
         "SELECT id, title, citation "
         "FROM cases "
@@ -219,8 +219,8 @@ async def suggest(
                 settings.search_facet_cache_ttl,
                 json.dumps(response),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Redis cache miss/error: %s", exc)
 
     return response
 
@@ -244,8 +244,8 @@ async def facets(
             cached = await redis_client.get(cache_key)
             if cached is not None:
                 return json.loads(cached)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Redis cache miss/error: %s", exc)
 
     # Single combined query instead of 4 separate DISTINCT queries
     combined_result = await db.execute(
@@ -282,8 +282,8 @@ async def facets(
                 3600,
                 json.dumps(response),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Redis cache miss/error: %s", exc)
 
     return response
 

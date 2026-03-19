@@ -64,10 +64,10 @@ class TestRequireRole:
             await dep(current_user=viewer)
 
     @pytest.mark.asyncio
-    async def test_error_message_includes_required_roles(self) -> None:
+    async def test_error_message_is_generic(self) -> None:
         viewer = _make_payload("viewer")
         dep = require_role("admin", "editor")
-        with pytest.raises(AuthorizationError, match="admin"):
+        with pytest.raises(AuthorizationError, match="Insufficient permissions"):
             await dep(current_user=viewer)
 
     @pytest.mark.asyncio

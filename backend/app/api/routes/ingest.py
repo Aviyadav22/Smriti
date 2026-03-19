@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
@@ -14,14 +14,29 @@ from sqlalchemy.orm import InstrumentedAttribute
 from app.db.postgres import get_db
 from app.models.case import Case
 from app.security.auth import TokenPayload
+from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user, require_role
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+_MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
-@router.post("/upload", status_code=202)
+
+def _sanitize_filename(filename: str | None) -> str:
+    """Sanitize uploaded filename to prevent path traversal and injection."""
+    import re as _re
+    if not filename:
+        return "upload.pdf"
+    safe = Path(filename).name
+    safe = _re.sub(r"[^\w\-. ]", "_", safe)
+    if not safe.lower().endswith(".pdf"):
+        safe += ".pdf"
+    return safe[:200]
+
+
+@router.post("/upload", status_code=202, dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def upload_document(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
@@ -35,12 +50,21 @@ async def upload_document(
         raise HTTPException(status_code=400, detail="File size exceeds 50MB limit")
 
     doc_id = str(uuid.uuid4())
+    safe_filename = _sanitize_filename(file.filename)
 
     # Save uploaded file temporarily
     tmp_path: str | None = None
     try:
         with NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             content = await file.read()
+            # Validate PDF magic bytes
+            if not content.startswith(b"%PDF"):
+                raise HTTPException(status_code=400, detail="File is not a valid PDF")
+            if len(content) > _MAX_FILE_SIZE:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File exceeds {_MAX_FILE_SIZE // (1024 * 1024)}MB limit",
+                )
             tmp.write(content)
             tmp_path = tmp.name
 
@@ -53,7 +77,7 @@ async def upload_document(
             {
                 "id": doc_id,
                 "user_id": current_user.sub,
-                "filename": file.filename or "unknown.pdf",
+                "filename": safe_filename,
                 "storage_path": tmp_path,
                 "file_size": len(content),
                 "status": "pending",
@@ -67,7 +91,7 @@ async def upload_document(
 
         return {
             "document_id": doc_id,
-            "filename": file.filename,
+            "filename": safe_filename,
             "status": "pending",
             "message": "Document queued for processing",
         }
@@ -81,13 +105,18 @@ async def upload_document(
         raise
 
 
-@router.get("/status/{document_id}")
+@router.get("/status/{document_id}", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def get_ingest_status(
     document_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: TokenPayload = Depends(get_current_user),
 ) -> dict:
     """Check ingestion status of a document."""
+    try:
+        uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid document_id format")
+
     result = await db.execute(
         text(
             "SELECT id, filename, status, error_message, case_id, created_at, updated_at "
@@ -103,7 +132,7 @@ async def get_ingest_status(
     return dict(doc)
 
 
-@router.get("/dashboard/completeness")
+@router.get("/dashboard/completeness", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def data_completeness_dashboard(
     db: AsyncSession = Depends(get_db),
     current_user: TokenPayload = Depends(require_role("admin")),
@@ -183,10 +212,11 @@ async def data_completeness_dashboard(
     }
 
 
-@router.get("/review-queue")
+# DEPRECATED: Use admin_review.py endpoints instead. Kept for backward compatibility.
+@router.get("/review-queue", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def list_review_queue(
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     current_user: TokenPayload = Depends(require_role("admin")),
 ) -> dict:
@@ -214,7 +244,7 @@ async def list_review_queue(
     }
 
 
-@router.patch("/cases/{case_id}/metadata")
+@router.patch("/cases/{case_id}/metadata", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def update_case_metadata(
     case_id: str,
     updates: dict = Body(...),
@@ -226,6 +256,11 @@ async def update_case_metadata(
     Accepts a dict of field names and values to update. Only allows
     updating safe metadata fields (not full_text, id, etc.).
     """
+    try:
+        uuid.UUID(case_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid case_id format")
+
     # Explicit column mapping — prevents SQL injection via field names
     _allowed_columns: dict[str, InstrumentedAttribute] = {
         "title": Case.title, "citation": Case.citation, "court": Case.court,
@@ -289,13 +324,19 @@ async def update_case_metadata(
     return {"case_id": case_id, "updated_fields": list(updates.keys())}
 
 
-@router.post("/cases/{case_id}/approve")
+# DEPRECATED: Use admin_review.py POST /{case_id}/approve instead.
+@router.post("/cases/{case_id}/approve", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def approve_case(
     case_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: TokenPayload = Depends(require_role("admin")),
 ) -> dict:
     """Mark a needs_review case as approved (complete)."""
+    try:
+        uuid.UUID(case_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid case_id format")
+
     result = await db.execute(
         text(
             "UPDATE cases SET ingestion_status = 'complete' "
@@ -314,13 +355,19 @@ async def approve_case(
     return {"case_id": case_id, "status": "complete"}
 
 
-@router.post("/cases/{case_id}/retry")
+# DEPRECATED: Use admin_review.py POST /{case_id}/reject instead.
+@router.post("/cases/{case_id}/retry", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def retry_failed_case(
     case_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: TokenPayload = Depends(require_role("admin")),
 ) -> dict:
     """Reset a failed case to pending for re-ingestion."""
+    try:
+        uuid.UUID(case_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid case_id format")
+
     result = await db.execute(
         text(
             "UPDATE cases SET ingestion_status = 'pending', chunk_count = 0 "

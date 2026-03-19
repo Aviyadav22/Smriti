@@ -1,6 +1,6 @@
 # Smriti Frontend
 
-The frontend for **Smriti**, an AI-powered Indian legal research platform. Built with Next.js 15 (App Router), TypeScript, Tailwind CSS, and shadcn/ui.
+The frontend for **Smriti**, an AI-powered Indian legal research platform. Built with Next.js 16 (App Router), TypeScript, Tailwind CSS, and shadcn/ui.
 
 Provides hybrid semantic + keyword search across Indian Supreme Court judgments, interactive citation graph visualization, RAG-powered legal chat, and AI agent workflows for research, case preparation, strategy analysis, and legal drafting.
 

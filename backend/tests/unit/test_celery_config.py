@@ -13,7 +13,8 @@ class TestCeleryConfig:
         assert celery_app.conf.result_serializer == "json"
 
     def test_celery_broker_configured(self) -> None:
-        assert "redis://" in str(celery_app.conf.broker_url)
+        url = str(celery_app.conf.broker_url)
+        assert "redis://" in url or "rediss://" in url
 
     def test_celery_task_acks_late(self) -> None:
         assert celery_app.conf.task_acks_late is True

@@ -48,9 +48,16 @@ function SearchContent() {
     const [sectionFilter, setSectionFilter] = useState<JudgmentSection | null>(null);
 
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const executeSearch = useCallback(async (q: string, p: number) => {
         if (!q.trim()) return;
+
+        // Cancel any in-flight search request
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         setLoading(true);
         setError(null);
         try {
@@ -63,9 +70,11 @@ function SearchContent() {
                 year_to: yearTo ? parseInt(yearTo) : undefined,
                 case_type: caseType || undefined,
                 section: sectionFilter || undefined,
+                signal: controller.signal,
             });
             setResults(res);
         } catch (err) {
+            if (err instanceof DOMException && err.name === "AbortError") return;
             setError(err instanceof Error ? err.message : "Search failed");
         } finally {
             setLoading(false);

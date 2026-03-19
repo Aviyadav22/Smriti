@@ -88,10 +88,7 @@ def require_role(
         current_user: TokenPayload = Depends(get_current_user),
     ) -> TokenPayload:
         if current_user.role not in roles:
-            raise AuthorizationError(
-                f"Role '{current_user.role}' is not authorized. "
-                f"Required: {', '.join(roles)}"
-            )
+            raise AuthorizationError("Insufficient permissions")
         return current_user
 
     return _role_checker

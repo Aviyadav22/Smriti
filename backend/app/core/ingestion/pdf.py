@@ -27,9 +27,6 @@ logger = logging.getLogger(__name__)
 # Safety limit: refuse to process PDFs with more pages than this
 MAX_PAGES = 5000
 
-# OCR batch size to avoid memory exhaustion on large scanned PDFs
-_OCR_BATCH_SIZE = 10
-
 # Characters to strip: zero-width space, BOM, soft hyphen
 # Note: ZWNJ (U+200C) and ZWJ (U+200D) are preserved -- they are structurally
 # meaningful in Devanagari script (conjunct formation control).
@@ -458,8 +455,8 @@ async def extract_with_ocr(file_path: str) -> str:
     """Fallback OCR extraction for scanned PDFs.
 
     Uses pdf2image to convert pages to images and pytesseract
-    for optical character recognition. Processes pages in batches
-    to avoid memory exhaustion on large PDFs. Uses Tesseract with
+    for optical character recognition. Processes pages one at a time.
+    Uses Tesseract with
     English + Hindi language support.
 
     Args:

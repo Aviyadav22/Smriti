@@ -8,7 +8,7 @@ Smriti combines hybrid semantic + keyword search, citation graph analysis, RAG-p
 ![Tests: 298 frontend](https://img.shields.io/badge/frontend_tests-298-brightgreen)
 ![Phase: 8 complete](https://img.shields.io/badge/phase-8%20complete-blue)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
-![Next.js 15](https://img.shields.io/badge/next.js-15-black)
+![Next.js 16](https://img.shields.io/badge/next.js-16-black)
 
 ---
 
@@ -69,7 +69,7 @@ Four autonomous agents with human-in-the-loop checkpoints:
 
 | Layer | Technology |
 |-------|-----------|
-| **Frontend** | Next.js 15 (App Router), TypeScript, Tailwind CSS, shadcn/ui |
+| **Frontend** | Next.js 16 (App Router), TypeScript, Tailwind CSS, shadcn/ui |
 | **Backend** | FastAPI, Python 3.12, fully async |
 | **Primary DB** | PostgreSQL 16 on Supabase (metadata, FTS via tsvector) |
 | **Vector DB** | Pinecone (1536-dim, Gemini embeddings) |
@@ -90,7 +90,7 @@ Four autonomous agents with human-in-the-loop checkpoints:
 ## Architecture
 
 ```
-Client (Next.js 15)
+Client (Next.js 16)
     |
     v  HTTPS
 Google Cloud Load Balancer

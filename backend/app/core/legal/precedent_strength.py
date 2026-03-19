@@ -10,10 +10,11 @@ as applied in Indian courts:
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from enum import Enum
 from typing import Final
 
-_CURRENT_YEAR: Final[int] = 2026
+_CURRENT_YEAR: Final[int] = datetime.now().year
 
 _STRENGTH_NUMERIC: Final[dict[str, float]] = {
     "BINDING": 1.0,

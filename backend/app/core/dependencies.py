@@ -128,3 +128,21 @@ def get_checkpointer():
     from langgraph.checkpoint.memory import MemorySaver
 
     return MemorySaver()
+
+
+async def cleanup_providers() -> None:
+    """Close cached provider connections on shutdown."""
+    try:
+        if get_graph_store.cache_info().currsize > 0:
+            store = get_graph_store()
+            if hasattr(store, "close"):
+                await store.close()
+    except Exception:
+        pass
+    try:
+        if get_reranker.cache_info().currsize > 0:
+            reranker = get_reranker()
+            if hasattr(reranker, "close"):
+                await reranker.close()
+    except Exception:
+        pass

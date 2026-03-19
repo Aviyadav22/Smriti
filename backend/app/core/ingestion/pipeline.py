@@ -273,6 +273,7 @@ async def ingest_judgment(
         )
 
     db_committed = False
+    vectors_upserted = False
     try:
         # --------------------------------------------------------------
         # 6. DETECT SECTIONS + CHUNK
@@ -324,8 +325,17 @@ async def ingest_judgment(
             f"{case_id}_{chunk.chunk_index}" for chunk in chunks
         ]
 
-        try:
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=2, min=2, max=30),
+            reraise=True,
+        )
+        async def _upsert_with_retry():
             await _upsert_vectors(case_id, chunks, embeddings, metadata, vector_store)
+
+        try:
+            await _upsert_with_retry()
+            vectors_upserted = True
         except Exception:
             raise
 
@@ -403,6 +413,15 @@ async def ingest_judgment(
                 await db.rollback()
             except Exception:
                 logger.error("Rollback failed for case_id=%s", case_id)
+            # Clean up orphan vectors if they were upserted but DB commit failed
+            if vectors_upserted:
+                try:
+                    await vector_store.delete_by_metadata({"case_id": case_id})
+                    logger.info("Cleaned up orphan vectors for case_id=%s", case_id)
+                except Exception:
+                    logger.error(
+                        "Failed to clean up orphan vectors for case_id=%s", case_id,
+                    )
         if db_committed:
             try:
                 await db.execute(

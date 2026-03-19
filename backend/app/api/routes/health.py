@@ -78,10 +78,11 @@ async def _check_pinecone() -> dict[str, object]:
     """Check Pinecone connectivity and measure response time."""
     start = time.perf_counter()
     try:
-        from pinecone import Pinecone
+        from app.core.dependencies import get_vector_store
 
-        pc = Pinecone(api_key=settings.pinecone_api_key)
-        pc.describe_index(settings.pinecone_index_name)
+        store = get_vector_store()
+        # Use the cached client to describe the index (sync call, run in thread)
+        await asyncio.to_thread(store._client.describe_index, settings.pinecone_index_name)
         return {
             "status": "healthy",
             "response_ms": round((time.perf_counter() - start) * 1000, 1),
@@ -99,20 +100,14 @@ async def _check_neo4j() -> dict[str, object]:
     """Check Neo4j connectivity and measure response time."""
     start = time.perf_counter()
     try:
-        from neo4j import AsyncGraphDatabase
+        from app.core.dependencies import get_graph_store
 
-        driver = AsyncGraphDatabase.driver(
-            settings.neo4j_uri,
-            auth=(settings.neo4j_user, settings.neo4j_password),
-        )
-        try:
-            await driver.verify_connectivity()
-            return {
-                "status": "healthy",
-                "response_ms": round((time.perf_counter() - start) * 1000, 1),
-            }
-        finally:
-            await driver.close()
+        graph = get_graph_store()
+        await graph._driver.verify_connectivity()
+        return {
+            "status": "healthy",
+            "response_ms": round((time.perf_counter() - start) * 1000, 1),
+        }
     except Exception as exc:
         logger.warning("Neo4j health check failed: %s", exc)
         return {
@@ -126,10 +121,11 @@ async def _check_gemini() -> dict[str, object]:
     """Check Gemini LLM connectivity with a lightweight call."""
     start = time.perf_counter()
     try:
-        from google import genai
+        from app.core.dependencies import get_llm
 
-        client = genai.Client(api_key=settings.gemini_api_key)
-        client.models.list(config={"page_size": 1})
+        llm = get_llm()
+        # Use the cached client to list models (sync call, run in thread)
+        await asyncio.to_thread(llm._client.models.list, config={"page_size": 1})
         return {
             "status": "healthy",
             "response_ms": round((time.perf_counter() - start) * 1000, 1),

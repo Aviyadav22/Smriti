@@ -62,6 +62,9 @@ dependencies = [
     # HTTP Client
     "httpx==0.28.1",
 
+    # Retry logic
+    "tenacity>=8.2,<10.0",
+
     # Cloud Storage
     "google-cloud-storage==2.19.0",
     "sentry-sdk[fastapi]==2.20.0",
@@ -73,7 +76,6 @@ dev = [
     "pytest-asyncio==0.25.0",
     "pytest-cov==6.0.0",
     "pytest-mock==3.14.0",
-    "httpx==0.28.1",
     "ruff==0.8.6",
     "mypy==1.14.1",
     "pre-commit==4.0.1",

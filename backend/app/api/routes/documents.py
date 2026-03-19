@@ -10,7 +10,7 @@ from tempfile import NamedTemporaryFile
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from app.security.rate_limiter import rate_limit_dependency
-from fastapi.responses import Response
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -157,6 +157,11 @@ async def get_document(
     current_user: TokenPayload = Depends(get_current_user),
 ) -> dict:
     """Get document details with analysis results."""
+    try:
+        uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid document_id format")
+
     result = await db.execute(
         text(
             "SELECT id, filename, status, processing_step, file_size, "
@@ -188,14 +193,19 @@ async def get_document(
     return response
 
 
-@router.delete("/{document_id}", status_code=204, response_class=Response)
+@router.delete("/{document_id}")
 async def delete_document(
     document_id: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: TokenPayload = Depends(get_current_user),
-) -> Response:
+) -> dict:
     """Delete a document and its analysis. Owner only."""
+    try:
+        uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid document_id format")
+
     result = await db.execute(
         text(
             "SELECT id, storage_path FROM documents "
@@ -230,7 +240,7 @@ async def delete_document(
         user_agent=request.headers.get("user-agent"),
     )
 
-    return Response(status_code=204)
+    return {"status": "deleted"}
 
 
 @router.get("/{document_id}/memo")
@@ -240,6 +250,11 @@ async def get_research_memo(
     current_user: TokenPayload = Depends(get_current_user),
 ) -> dict:
     """Get the research memo for a document."""
+    try:
+        uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid document_id format")
+
     doc_result = await db.execute(
         text("SELECT id FROM documents WHERE id = :id AND user_id = :user_id"),
         {"id": document_id, "user_id": current_user.sub},

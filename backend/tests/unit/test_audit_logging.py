@@ -30,7 +30,7 @@ class TestCreateAuditLog:
         )
 
         mock_db.execute.assert_called_once()
-        mock_db.commit.assert_called_once()
+        mock_db.flush.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_handles_none_metadata(self) -> None:

@@ -100,6 +100,22 @@ function ChatPageInner() {
     const [isStreaming, setIsStreaming] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
 
+    // Streaming content accumulator (reduces re-renders from per-chunk to ~10/sec)
+    const streamingContentRef = useRef("");
+    const streamingFlushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const stopFlushTimer = () => {
+        if (streamingFlushTimerRef.current) {
+            clearInterval(streamingFlushTimerRef.current);
+            streamingFlushTimerRef.current = null;
+        }
+    };
+
+    // Cleanup flush timer on unmount
+    useEffect(() => {
+        return () => stopFlushTimer();
+    }, []);
+
     // Error state
     const [networkError, setNetworkError] = useState<string | null>(null);
 
@@ -245,6 +261,8 @@ function ChatPageInner() {
             };
 
             setMessages((prev) => [...prev, userMsg, assistantMsg]);
+            streamingContentRef.current = "";
+            stopFlushTimer();
             setIsStreaming(true);
 
             let currentSessionId = activeSessionId;
@@ -272,17 +290,24 @@ function ChatPageInner() {
 
                     case "chunk":
                         if (event.content) {
-                            setMessages((prev) => {
-                                const updated = [...prev];
-                                const last = updated[updated.length - 1];
-                                if (last && last.role === "assistant") {
-                                    updated[updated.length - 1] = {
-                                        ...last,
-                                        content: last.content + event.content,
-                                    };
-                                }
-                                return updated;
-                            });
+                            streamingContentRef.current += event.content;
+                            // Start flush interval on first chunk
+                            if (!streamingFlushTimerRef.current) {
+                                streamingFlushTimerRef.current = setInterval(() => {
+                                    const content = streamingContentRef.current;
+                                    setMessages((prev) => {
+                                        const updated = [...prev];
+                                        const last = updated[updated.length - 1];
+                                        if (last && last.role === "assistant") {
+                                            updated[updated.length - 1] = {
+                                                ...last,
+                                                content,
+                                            };
+                                        }
+                                        return updated;
+                                    });
+                                }, 100);
+                            }
                         }
                         break;
 
@@ -317,19 +342,22 @@ function ChatPageInner() {
                         break;
 
                     case "done":
-                        // Finalize the assistant message with sources
+                        // Final flush of accumulated streaming content
+                        stopFlushTimer();
                         setMessages((prev) => {
                             const updated = [...prev];
                             const last = updated[updated.length - 1];
                             if (last && last.role === "assistant") {
                                 updated[updated.length - 1] = {
                                     ...last,
+                                    content: streamingContentRef.current || last.content,
                                     sources: [...sources],
                                     isStreaming: false,
                                 };
                             }
                             return updated;
                         });
+                        streamingContentRef.current = "";
                         setIsStreaming(false);
                         // Refresh session list to update message counts
                         loadSessions();
@@ -338,6 +366,8 @@ function ChatPageInner() {
             };
 
             const onError = (err: Error) => {
+                stopFlushTimer();
+                streamingContentRef.current = "";
                 setMessages((prev) => {
                     const updated = [...prev];
                     const last = updated[updated.length - 1];

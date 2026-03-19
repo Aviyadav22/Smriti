@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,8 +12,15 @@ import { useAuth } from "@/lib/auth-context";
 import { Scale, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
-    const { login } = useAuth();
+    const { login, isAuthenticated, isLoading: authLoading } = useAuth();
     const router = useRouter();
+
+    useEffect(() => {
+        if (!authLoading && isAuthenticated) {
+            router.push("/search");
+        }
+    }, [authLoading, isAuthenticated, router]);
+
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");

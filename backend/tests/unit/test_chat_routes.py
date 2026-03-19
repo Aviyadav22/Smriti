@@ -250,33 +250,38 @@ class TestListSessions:
         authed_client: TestClient,
         mock_db: AsyncMock,
     ) -> None:
-        """GET /chat/sessions returns a list of sessions for the authed user."""
+        """GET /chat/sessions returns paginated sessions for the authed user."""
         rows = [_make_session_row(), _make_session_row(session_id=str(uuid.uuid4()), title="Second")]
-        mock_result = MagicMock()
-        mock_result.mappings.return_value.all.return_value = rows
-        mock_db.execute = AsyncMock(return_value=mock_result)
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = 2
+        sessions_result = MagicMock()
+        sessions_result.mappings.return_value.all.return_value = rows
+        mock_db.execute = AsyncMock(side_effect=[count_result, sessions_result])
 
         resp = authed_client.get("/api/v1/chat/sessions")
         assert resp.status_code == 200
         data = resp.json()
-        assert isinstance(data, list)
-        assert len(data) == 2
-        assert data[0]["title"] == "Test session"
-        assert data[1]["title"] == "Second"
-        assert "message_count" in data[0]
+        assert isinstance(data, dict)
+        assert len(data["sessions"]) == 2
+        assert data["total"] == 2
+        assert data["sessions"][0]["title"] == "Test session"
+        assert data["sessions"][1]["title"] == "Second"
+        assert "message_count" in data["sessions"][0]
 
     def test_get_sessions_returns_empty_list(
         self,
         authed_client: TestClient,
         mock_db: AsyncMock,
     ) -> None:
-        mock_result = MagicMock()
-        mock_result.mappings.return_value.all.return_value = []
-        mock_db.execute = AsyncMock(return_value=mock_result)
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = 0
+        sessions_result = MagicMock()
+        sessions_result.mappings.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(side_effect=[count_result, sessions_result])
 
         resp = authed_client.get("/api/v1/chat/sessions")
         assert resp.status_code == 200
-        assert resp.json() == []
+        assert resp.json() == {"sessions": [], "total": 0, "page": 1, "page_size": 20}
 
 
 # ---------------------------------------------------------------------------
@@ -309,9 +314,9 @@ class TestGetHistory:
         resp = authed_client.get(f"/api/v1/chat/{_SESSION_ID}/history")
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data) == 2
-        assert data[0]["role"] == "user"
-        assert data[1]["content"] == "Article 21 guarantees..."
+        assert data["total"] == 2
+        assert data["messages"][0]["role"] == "user"
+        assert data["messages"][1]["content"] == "Article 21 guarantees..."
         assert mock_decrypt.call_count == 2
 
     def test_get_history_returns_404_for_missing_session(
@@ -345,7 +350,7 @@ class TestGetHistory:
             resp = authed_client.get(f"/api/v1/chat/{_SESSION_ID}/history")
 
         assert resp.status_code == 200
-        assert resp.json()[0]["sources"] == []
+        assert resp.json()["messages"][0]["sources"] == []
 
 
 # ---------------------------------------------------------------------------

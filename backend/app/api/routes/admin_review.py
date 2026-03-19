@@ -13,12 +13,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.postgres import get_db
 from app.security.auth import TokenPayload
+from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import require_role
 
 router = APIRouter()
 
 
-@router.get("")
+def _validate_uuid(value: str, name: str = "ID") -> None:
+    """Validate that a string is a valid UUID format."""
+    import uuid
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid {name} format")
+
+
+@router.get("", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def list_review_queue(
     status: str = Query(
         "needs_review",
@@ -91,13 +101,15 @@ async def list_review_queue(
     }
 
 
-@router.get("/{case_id}")
+@router.get("/{case_id}", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def get_review_detail(
     case_id: str,
     user: TokenPayload = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Get full details of a case pending review, including provenance."""
+    _validate_uuid(case_id, "case_id")
+
     result = await db.execute(
         text(
             "SELECT id, title, citation, court, year, case_type, jurisdiction, "
@@ -117,13 +129,15 @@ async def get_review_detail(
     return {k: (str(v) if k in ("id", "created_at", "decision_date") and v else v) for k, v in row.items()}
 
 
-@router.post("/{case_id}/approve")
+@router.post("/{case_id}/approve", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def approve_case(
     case_id: str,
     user: TokenPayload = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Mark a case as reviewed and approved (sets ingestion_status='complete')."""
+    _validate_uuid(case_id, "case_id")
+
     result = await db.execute(
         text(
             "UPDATE cases SET ingestion_status = 'complete' "
@@ -142,13 +156,15 @@ async def approve_case(
     return {"id": case_id, "status": "complete"}
 
 
-@router.post("/{case_id}/reject")
+@router.post("/{case_id}/reject", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def reject_case(
     case_id: str,
     user: TokenPayload = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Reject a case (sets ingestion_status='rejected') for re-ingestion."""
+    _validate_uuid(case_id, "case_id")
+
     result = await db.execute(
         text(
             "UPDATE cases SET ingestion_status = 'rejected' "

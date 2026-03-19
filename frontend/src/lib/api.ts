@@ -39,6 +39,10 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 let accessToken: string | null = null;
 let refreshToken: string | null = null;
 
+// SECURITY TODO: migrate refresh token to httpOnly cookie to prevent XSS exfiltration.
+// localStorage is accessible to any JS on the same origin. The refresh token is long-lived
+// and should be stored in an httpOnly cookie instead. This requires coordinated backend
+// changes (Set-Cookie headers, CSRF protection). Access token can remain in memory.
 export function setTokens(access: string, refresh: string): void {
     accessToken = access;
     refreshToken = refresh;
@@ -118,8 +122,18 @@ async function apiFetch<T>(
         headers["Authorization"] = `Bearer ${accessToken}`;
     }
 
+    // Use caller-provided signal if available, otherwise create a timeout-only controller
+    const externalSignal = options.signal;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    // If the caller already aborted, abort immediately
+    if (externalSignal?.aborted) {
+        controller.abort();
+    } else {
+        // Forward external abort to our internal controller
+        externalSignal?.addEventListener("abort", () => controller.abort(), { once: true });
+    }
 
     try {
         const res = await fetch(`${API_BASE}${path}`, {
@@ -129,7 +143,17 @@ async function apiFetch<T>(
         });
 
         if (res.status === 401 && refreshToken) {
-            const refreshed = await tryRefresh();
+            let refreshed: boolean;
+            try {
+                refreshed = await tryRefresh();
+            } catch (err) {
+                // Network error during refresh — don't clear tokens, the user
+                // may just be temporarily offline.
+                if (err instanceof TypeError) {
+                    throw new ApiError(0, "NETWORK_ERROR", "Network error during authentication");
+                }
+                throw err;
+            }
             if (refreshed) {
                 headers["Authorization"] = `Bearer ${accessToken}`;
                 const retry = await fetch(`${API_BASE}${path}`, { ...options, headers });
@@ -140,8 +164,7 @@ async function apiFetch<T>(
                 if (retry.status === 204) return undefined as T;
                 return retry.json() as Promise<T>;
             }
-            // Only clear tokens if refresh returned false due to a real 401,
-            // not a network blip. Check if we still have connectivity.
+            // Real auth failure (server returned non-OK) — clear tokens.
             clearTokens();
             throw new ApiError(401, "UNAUTHORIZED", "Session expired");
         }
@@ -174,25 +197,18 @@ async function tryRefresh(): Promise<boolean> {
 }
 
 async function _doRefresh(): Promise<boolean> {
-    try {
-        const res = await fetch(`${API_BASE}/auth/refresh`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refresh_token: refreshToken }),
-        });
-        if (!res.ok) return false;
-        const data: TokenResponse = await res.json();
-        setTokens(data.access_token, data.refresh_token);
-        return true;
-    } catch (err) {
-        // Network errors (TypeError from fetch) should not force logout —
-        // the user may just be temporarily offline. Only actual 401 responses
-        // (handled above via !res.ok) should invalidate the session.
-        if (err instanceof TypeError) {
-            console.warn("Token refresh failed due to network error:", err.message);
-        }
-        return false;
-    }
+    // Network errors (TypeError from fetch) are intentionally NOT caught here —
+    // they propagate to the caller so it can distinguish network failures from
+    // real auth failures and avoid clearing tokens on a transient network blip.
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!res.ok) return false;
+    const data: TokenResponse = await res.json();
+    setTokens(data.access_token, data.refresh_token);
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +260,7 @@ export async function search(params: {
     page?: number;
     page_size?: number;
     language?: string;
+    signal?: AbortSignal;
 }): Promise<SearchResponse> {
     const query = new URLSearchParams();
     query.set("q", params.q);
@@ -258,7 +275,9 @@ export async function search(params: {
     if (params.page) query.set("page", String(params.page));
     if (params.page_size) query.set("page_size", String(params.page_size));
     if (params.language) query.set("language", params.language);
-    return apiFetch<SearchResponse>(`/search?${query.toString()}`);
+    return apiFetch<SearchResponse>(`/search?${query.toString()}`, {
+        signal: params.signal,
+    });
 }
 
 export async function searchFacets(): Promise<FacetsResponse> {
@@ -374,7 +393,15 @@ function _streamSSE<T>(
             });
 
             if (res.status === 401 && refreshToken) {
-                const refreshed = await tryRefresh();
+                let refreshed: boolean;
+                try {
+                    refreshed = await tryRefresh();
+                } catch (err) {
+                    if (err instanceof TypeError) {
+                        throw new ApiError(0, "NETWORK_ERROR", "Network error during authentication");
+                    }
+                    throw err;
+                }
                 if (refreshed) {
                     headers["Authorization"] = `Bearer ${accessToken}`;
                     res = await fetch(`${API_BASE}${path}`, {
@@ -555,7 +582,15 @@ export async function uploadDocument(file: File): Promise<DocumentUploadResponse
         });
 
         if (res.status === 401 && refreshToken) {
-            const refreshed = await tryRefresh();
+            let refreshed: boolean;
+            try {
+                refreshed = await tryRefresh();
+            } catch (err) {
+                if (err instanceof TypeError) {
+                    throw new ApiError(0, "NETWORK_ERROR", "Network error during authentication");
+                }
+                throw err;
+            }
             if (refreshed) {
                 headers["Authorization"] = `Bearer ${accessToken}`;
                 res = await fetch(`${API_BASE}/documents/upload`, {
@@ -727,7 +762,15 @@ export async function exportDraft(
     );
 
     if (res.status === 401 && refreshToken) {
-        const refreshed = await tryRefresh();
+        let refreshed: boolean;
+        try {
+            refreshed = await tryRefresh();
+        } catch (err) {
+            if (err instanceof TypeError) {
+                throw new ApiError(0, "NETWORK_ERROR", "Network error during authentication");
+            }
+            throw err;
+        }
         if (refreshed) {
             headers["Authorization"] = `Bearer ${accessToken}`;
             res = await fetch(

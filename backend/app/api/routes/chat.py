@@ -28,6 +28,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _validate_uuid(value: str, name: str = "ID") -> None:
+    """Validate that a string is a valid UUID format."""
+    import uuid
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid {name} format")
+
+
 # ---------------------------------------------------------------------------
 # Request schemas
 # ---------------------------------------------------------------------------
@@ -113,6 +122,8 @@ async def send_message(
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Send a message in an existing chat session and stream the response."""
+    _validate_uuid(session_id, "session_id")
+
     # Verify session ownership (IDOR protection)
     session_check = await db.execute(
         text("SELECT user_id FROM chat_sessions WHERE id = :id"),
@@ -180,12 +191,23 @@ async def send_message(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/sessions")
+@router.get("/sessions", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def list_sessions(
     user: TokenPayload = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> list[dict]:
-    """List all chat sessions for the current user."""
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+) -> dict:
+    """List all chat sessions for the current user (paginated)."""
+    # Total count
+    count_result = await db.execute(
+        text("SELECT COUNT(*) FROM chat_sessions WHERE user_id = :user_id"),
+        {"user_id": user.sub},
+    )
+    total = count_result.scalar_one()
+
+    # Paginated results
+    offset = (page - 1) * page_size
     result = await db.execute(
         text(
             "SELECT s.id, s.title, s.created_at, s.updated_at, "
@@ -194,13 +216,14 @@ async def list_sessions(
             "LEFT JOIN chat_messages m ON m.session_id = s.id "
             "WHERE s.user_id = :user_id "
             "GROUP BY s.id "
-            "ORDER BY s.updated_at DESC"
+            "ORDER BY s.updated_at DESC "
+            "LIMIT :limit OFFSET :offset"
         ),
-        {"user_id": user.sub},
+        {"user_id": user.sub, "limit": page_size, "offset": offset},
     )
     rows = result.mappings().all()
 
-    return [
+    sessions = [
         {
             "id": str(r["id"]),
             "title": r["title"],
@@ -211,19 +234,23 @@ async def list_sessions(
         for r in rows
     ]
 
+    return {"sessions": sessions, "total": total, "page": page, "page_size": page_size}
+
 
 # ---------------------------------------------------------------------------
 # GET /chat/{session_id}/history — Full message history
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{session_id}/history")
+@router.get("/{session_id}/history", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def get_history(
     session_id: str,
     user: TokenPayload = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> list[dict]:
+) -> dict:
     """Get the full message history for a chat session."""
+    _validate_uuid(session_id, "session_id")
+
     # Verify session ownership
     session_result = await db.execute(
         text("SELECT user_id, title FROM chat_sessions WHERE id = :id"),
@@ -246,7 +273,7 @@ async def get_history(
     )
     rows = result.mappings().all()
 
-    return [
+    messages = [
         {
             "id": str(r["id"]),
             "role": r["role"],
@@ -256,6 +283,7 @@ async def get_history(
         }
         for r in rows
     ]
+    return {"messages": messages, "total": len(messages)}
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +291,7 @@ async def get_history(
 # ---------------------------------------------------------------------------
 
 
-@router.delete("/{session_id}")
+@router.delete("/{session_id}", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def delete_session(
     session_id: str,
     request: Request,
@@ -271,6 +299,8 @@ async def delete_session(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Delete a chat session and all its messages."""
+    _validate_uuid(session_id, "session_id")
+
     # Verify session ownership
     session_result = await db.execute(
         text("SELECT user_id FROM chat_sessions WHERE id = :id"),

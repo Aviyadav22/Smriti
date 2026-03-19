@@ -267,7 +267,7 @@ async def get_cited_by(
 @router.get("/{case_id}/similar", dependencies=[Depends(rate_limit_dependency("20/minute"))])
 async def get_similar(
     case_id: str,
-    limit: int = 5,
+    limit: int = Query(5, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
     _current_user: TokenPayload | None = Depends(get_current_user_optional),
 ) -> dict:

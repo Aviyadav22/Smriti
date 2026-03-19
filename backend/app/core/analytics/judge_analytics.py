@@ -112,6 +112,7 @@ class JudgeAnalyticsService:
         )
 
         if search:
+            search = search.replace("%", "\\%").replace("_", "\\_")
             base_query = base_query.where(
                 unnested.c.judge_name.ilike(f"%{search}%")
             )

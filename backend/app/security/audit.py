@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+AUDIT_IP_SALT = "smriti_audit_ip_v1"
 
 
 async def create_audit_log(
@@ -47,7 +47,7 @@ async def create_audit_log(
     # Use encryption key as salt (dedicated to data protection, not JWT signing)
     hashed_ip = (
         hashlib.sha256(
-            f"{ip_address}:{settings.encryption_key}".encode()
+            f"{ip_address}:{AUDIT_IP_SALT}".encode()
         ).hexdigest()[:16]
         if ip_address
         else None
@@ -88,4 +88,4 @@ async def create_audit_log(
             "created_at": now,
         },
     )
-    await db.commit()
+    await db.flush()

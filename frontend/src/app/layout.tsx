@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Lora } from "next/font/google";
+import { Inter, Lora, Noto_Sans_Devanagari } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
@@ -16,6 +16,13 @@ const inter = Inter({
 const lora = Lora({
   subsets: ["latin", "latin-ext"],
   variable: "--font-lora",
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
+});
+
+const notoDevanagari = Noto_Sans_Devanagari({
+  subsets: ["devanagari"],
+  variable: "--font-devanagari",
   display: "swap",
   weight: ["400", "500", "600", "700"],
 });
@@ -44,7 +51,7 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} suppressHydrationWarning>
-      <body className={`${inter.variable} ${lora.variable} font-sans`}>
+      <body className={`${inter.variable} ${lora.variable} ${notoDevanagari.variable} font-sans`}>
         <NextIntlClientProvider messages={messages}>
           <Providers>
             <ErrorBoundary>{children}</ErrorBoundary>

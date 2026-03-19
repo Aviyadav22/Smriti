@@ -64,7 +64,7 @@ Need a backend framework for AI-heavy workloads: LLM calls, embedding generation
 
 ---
 
-## ADR-003: Next.js 15 Over React + Vite
+## ADR-003: Next.js 16 Over React + Vite
 
 **Status**: Accepted
 **Date**: 2026-03
@@ -73,7 +73,7 @@ Need a backend framework for AI-heavy workloads: LLM calls, embedding generation
 Need a frontend framework for a search-heavy, SEO-friendly application.
 
 ### Decision
-**Next.js 15** (App Router) with TypeScript, Tailwind CSS, and shadcn/ui
+**Next.js 16** (App Router) with TypeScript, Tailwind CSS, and shadcn/ui
 
 ### Alternatives Considered
 1. **React + Vite**: Lighter, but no SSR (bad for SEO), no API routes, manual routing

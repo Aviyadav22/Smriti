@@ -33,7 +33,6 @@ load_dotenv()
 
 import asyncpg
 from neo4j import AsyncGraphDatabase
-from sqlalchemy import text
 
 logging.basicConfig(
     level=logging.INFO,
@@ -508,21 +507,19 @@ async def sync_cited_by_counts_to_pg(
     batch_size = 500
     for i in range(0, len(records), batch_size):
         batch = records[i : i + batch_size]
-        # Build parameterized VALUES clause
+        # Build parameterized VALUES clause (asyncpg positional $N syntax)
         value_placeholders = ", ".join(
-            f"(:id_{j}::text, :count_{j}::integer)" for j in range(len(batch))
+            f"(${2*j+1}::text, ${2*j+2}::integer)" for j in range(len(batch))
         )
-        params = {}
-        for j, r in enumerate(batch):
-            params[f"id_{j}"] = r["id"]
-            params[f"count_{j}"] = r["count"]
+        params = []
+        for r in batch:
+            params.append(r["id"])
+            params.append(r["count"])
         await conn.execute(
-            text(
-                f"UPDATE cases SET cited_by_count = v.count "
-                f"FROM (VALUES {value_placeholders}) AS v(id, count) "
-                f"WHERE cases.id::text = v.id"
-            ),
-            params,
+            f"UPDATE cases SET cited_by_count = v.count "
+            f"FROM (VALUES {value_placeholders}) AS v(id, count) "
+            f"WHERE cases.id::text = v.id",
+            *params,
         )
         updated += len(batch)
 

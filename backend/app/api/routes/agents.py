@@ -477,7 +477,7 @@ async def run_agent(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/executions")
+@router.get("/executions", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def list_executions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -534,7 +534,7 @@ async def list_executions(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/executions/{execution_id}")
+@router.get("/executions/{execution_id}", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def get_execution(
     execution_id: str,
     user: TokenPayload = Depends(get_current_user),
@@ -712,7 +712,7 @@ async def resume_execution(
 # ---------------------------------------------------------------------------
 
 
-@router.delete("/executions/{execution_id}")
+@router.delete("/executions/{execution_id}", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def cancel_execution(
     execution_id: str,
     user: TokenPayload = Depends(get_current_user),
@@ -765,7 +765,7 @@ async def cancel_execution(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/drafting/templates")
+@router.get("/drafting/templates", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def get_drafting_templates(
     user: TokenPayload = Depends(get_current_user),
 ) -> dict:

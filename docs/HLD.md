@@ -1549,7 +1549,7 @@ See [Admin Module](#11-admin-module-apiroutesadmin_correctionspy-admin_reviewpy-
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│                Next.js 15 Frontend                          │
+│                Next.js 16 Frontend                          │
 │  Separate Cloud Run container                               │
 │  SSR + client-side hydration                                │
 └─────────────────────────────────────────────────────────────┘

@@ -16,7 +16,10 @@ import { ArrowLeft, FileText, BookOpen, Link2, Scale, ExternalLink, Loader2, Git
 import AudioPlayer from "@/components/audio-player";
 import { CaseDetailSkeleton } from "@/components/skeleton";
 
-const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
+const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
+    ssr: false,
+    loading: () => <div className="flex items-center justify-center h-64"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>,
+});
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

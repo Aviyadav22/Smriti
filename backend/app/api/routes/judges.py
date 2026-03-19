@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import urllib.parse
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.analytics.judge_analytics import JudgeAnalyticsService
 from app.db.postgres import get_db
 from app.db.redis_client import get_redis
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -36,8 +39,8 @@ async def _get_cached_or_compute(
             cached = await redis_client.get(cache_key)  # type: ignore[union-attr]
             if cached:
                 return json.loads(cached)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Redis cache miss/error: %s", exc)
 
     result = await compute_fn()  # type: ignore[operator]
 
@@ -51,8 +54,8 @@ async def _get_cached_or_compute(
             await redis_client.set(  # type: ignore[union-attr]
                 cache_key, json.dumps(serializable, default=str), ex=ttl
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Redis cache miss/error: %s", exc)
 
     return result
 

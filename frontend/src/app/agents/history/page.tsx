@@ -121,6 +121,16 @@ export default function AgentHistoryPage() {
         }
     }, [isAuthenticated, fetchExecutions]);
 
+    // Close modal on Escape key
+    useEffect(() => {
+        if (!viewingMemo) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") setViewingMemo(null);
+        };
+        document.addEventListener("keydown", handleKeyDown);
+        return () => document.removeEventListener("keydown", handleKeyDown);
+    }, [viewingMemo]);
+
     if (authLoading || !isAuthenticated) return null;
 
     const memoContent =
@@ -258,7 +268,7 @@ export default function AgentHistoryPage() {
             {/* Inline memo viewer dialog */}
             {viewingMemo && memoContent && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div className="bg-card rounded-lg shadow-lg max-w-3xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+                    <div role="dialog" aria-modal="true" aria-label="Memo viewer" className="bg-card rounded-lg shadow-lg max-w-3xl w-full mx-4 max-h-[80vh] overflow-y-auto">
                         <div className="flex items-center justify-between p-4 border-b">
                             <div>
                                 <h3 className="font-semibold text-sm">

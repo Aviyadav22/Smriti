@@ -79,7 +79,7 @@ smriti/
 │   │   ├── models/                # 12 SQLAlchemy models (User, Case, ChatSession, etc.)
 │   │   └── db/                    # Database connections (PostgreSQL, Redis)
 │   ├── scripts/                   # ingest_s3, populate_neo4j, daily_ingest, verify_ingestion, benchmark
-│   ├── migrations/                # 14 Alembic migrations (001-014)
+│   ├── migrations/                # 18 Alembic migrations (001-018)
 │   └── tests/                     # 1,398 unit + 46 integration + 13 quality tests
 ├── docker-compose.yml             # Local dev services
 └── .env.example                   # Environment template
