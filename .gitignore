@@ -31,10 +31,7 @@ ENV/
 .env.*.local
 
 # Data
-backend/data/raw/
-backend/data/extracted/
-backend/data/pdfs/
-backend/data/ingestion_tracker.db
+backend/data/
 
 # Node
 node_modules/
