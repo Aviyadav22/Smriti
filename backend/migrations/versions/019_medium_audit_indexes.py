@@ -1,7 +1,7 @@
 """Add indexes for medium-priority audit columns.
 
-Revision ID: a1b2c3d4e5f6
-Revises: 017
+Revision ID: 019
+Revises: 018
 Create Date: 2026-03-19
 
 Changes:
@@ -15,8 +15,8 @@ Changes:
 
 from alembic import op
 
-revision = "a1b2c3d4e5f6"
-down_revision = "017"
+revision = "019"
+down_revision = "018"
 branch_labels = None
 depends_on = None
 
