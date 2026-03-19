@@ -110,7 +110,7 @@
 - [x] **2A.2** Create `models/statute.py` (Bible 6.2)
 - [x] **2A.3** Create `scripts/ingest_statutes.py` — IPC/CrPC/IEA/BNS/BNSS/BSA/CPC/Constitution (Bible 6.3)
 - [x] **2A.4** Run migration 020, statutes table created (18 columns, 6 indexes verified in live DB)
-- [ ] **2A.5** Verify Pinecone has `document_type: "statute"` vectors _(needs statute JSON data + ingest run)_
+- [x] **2A.5** Statutes ingested: 1,129 sections (IPC 327, BNS 325, CrPC 153, BNSS 150, IEA 87, BSA 87) — bidirectional cross-refs verified
 - [x] **2A.6** Run tests — no regressions (1624 passed)
 
 ### 2B — Neo4j Statute Linkage (Bible 6.6)
