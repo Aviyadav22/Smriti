@@ -7,7 +7,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy.ext.asyncio import async_engine_from_config  # noqa: F401
 
 from app.models.base import Base
 
@@ -58,12 +58,16 @@ def do_run_migrations(connection) -> None:  # type: ignore[no-untyped-def]
 
 
 async def run_async_migrations() -> None:
-    cfg = config.get_section(config.config_ini_section, {})
-    connectable = async_engine_from_config(
-        cfg,
-        prefix="sqlalchemy.",
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    url = config.get_main_option("sqlalchemy.url")
+    connect_args = _get_connect_args()
+    # For PgBouncer/Supavisor: disable named prepared statements entirely
+    connect_args["prepared_statement_name_func"] = lambda: ""
+    connectable = create_async_engine(
+        url,
         poolclass=pool.NullPool,
-        connect_args=_get_connect_args(),
+        connect_args=connect_args,
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

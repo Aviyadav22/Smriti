@@ -54,6 +54,10 @@ def get_vector_store() -> VectorStore:
         from app.core.providers.vector.pinecone_store import PineconeStore
 
         return PineconeStore()
+    if settings.vector_provider == "pgvector":
+        from app.core.providers.vector.pgvector_store import PgvectorStore
+
+        return PgvectorStore()
     raise ValueError(f"Unknown vector provider: {settings.vector_provider}")
 
 
@@ -64,6 +68,10 @@ def get_graph_store() -> GraphStore:
         from app.core.providers.graph.neo4j_store import Neo4jGraph
 
         return Neo4jGraph()
+    if settings.graph_provider == "postgresql":
+        from app.core.providers.graph.pg_graph_store import PgGraphStore
+
+        return PgGraphStore()
     raise ValueError(f"Unknown graph provider: {settings.graph_provider}")
 
 
