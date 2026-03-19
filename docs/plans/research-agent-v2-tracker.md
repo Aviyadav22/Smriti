@@ -96,7 +96,7 @@
 - [x] **1Z.4** Fast path tests pass (tests 39-41)
 - [x] **1Z.5** Full 1546 test suite passes (up from 1411 baseline — all existing tests updated)
 - [x] **1Z.6** Live services verified: PostgreSQL, Pinecone, Neo4j (796 nodes), Redis all connected
-- [ ] **1Z.7** Commit: `feat: research agent v2 — Phase 1 core orchestration`
+- [x] **1Z.7** Commit: `feat: research agent v2 — Phase 1 core orchestration` — eff1dbb
 
 ---
 
@@ -154,7 +154,7 @@
 - [x] **2Z.4** Statute ingestion test passes (test 72) — 5 model tests + 4 helper tests pass
 - [x] **2Z.5** RAPTOR ingestion test passes (test 74) — 3 tests in TestRaptorIngestionPipeline pass
 - [x] **2Z.6** Full test suite passes — 1630 passed
-- [ ] **2Z.7** Commit: `feat: research agent v2 — Phase 2 data expansion + RAPTOR + code mapping` _(awaiting user)_
+- [x] **2Z.7** Commit: `feat: research agent v2 — Phase 2 data expansion + RAPTOR + code mapping` — 2d16dd2
 
 ---
 
