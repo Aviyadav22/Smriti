@@ -9,6 +9,7 @@ import { Check, Clipboard, Download } from "lucide-react";
 interface AgentMemoViewerProps {
     content: string;
     confidence?: number;
+    onFootnoteClick?: (num: number) => void;
 }
 
 /** Regex to match UUID-style case IDs in the memo content. */
@@ -42,7 +43,53 @@ function renderTextWithCitations(text: string): React.ReactNode[] {
     return parts;
 }
 
-export function AgentMemoViewer({ content, confidence }: AgentMemoViewerProps) {
+/**
+ * Convert footnote references like [^1] and [1] in text into clickable gold pill badges.
+ * When onFootnoteClick is not provided, returns the input nodes unchanged.
+ */
+function renderWithFootnotes(
+    nodes: React.ReactNode[],
+    onFootnoteClick?: (n: number) => void
+): React.ReactNode[] {
+    if (!onFootnoteClick) return nodes;
+
+    const result: React.ReactNode[] = [];
+    let keyCounter = 0;
+
+    for (const node of nodes) {
+        if (typeof node !== "string") {
+            result.push(node);
+            continue;
+        }
+
+        const parts = node.split(/(\[\^?\d+\])/g);
+        for (const part of parts) {
+            const match = part.match(/^\[\^?(\d+)\]$/);
+            if (match) {
+                const num = parseInt(match[1], 10);
+                result.push(
+                    <button
+                        key={`fn-${num}-${keyCounter++}`}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            onFootnoteClick(num);
+                        }}
+                        className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-[var(--gold)]/20 text-[var(--gold)] text-[10px] font-bold hover:bg-[var(--gold)]/30 transition-colors mx-0.5 align-super cursor-pointer"
+                        title={`View source [${num}]`}
+                    >
+                        {num}
+                    </button>
+                );
+            } else if (part.length > 0) {
+                result.push(part);
+            }
+        }
+    }
+
+    return result;
+}
+
+export function AgentMemoViewer({ content, confidence, onFootnoteClick }: AgentMemoViewerProps) {
     const [copied, setCopied] = useState(false);
 
     const handleCopy = useCallback(async () => {
@@ -111,7 +158,7 @@ export function AgentMemoViewer({ content, confidence }: AgentMemoViewerProps) {
                 if (i === 0) {
                     return (
                         <div key={i} className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-                            {renderTextWithCitations(section.trim())}
+                            {renderWithFootnotes(renderTextWithCitations(section.trim()), onFootnoteClick)}
                         </div>
                     );
                 }
@@ -126,7 +173,7 @@ export function AgentMemoViewer({ content, confidence }: AgentMemoViewerProps) {
                         <h3 className="text-sm font-semibold text-foreground">{heading}</h3>
                         {body && (
                             <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                                {renderTextWithCitations(body)}
+                                {renderWithFootnotes(renderTextWithCitations(body), onFootnoteClick)}
                             </div>
                         )}
                     </div>
