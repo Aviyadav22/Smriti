@@ -1353,7 +1353,12 @@ Given the search results, write a focused response with:
 1. Direct answer (2-3 sentences)
 2. Key authority (the most relevant case or statute, with citation)
 3. Brief legal context (1 paragraph)
-4. Footnotes linking to sources
+4. Footnotes section at the end
+
+CITATION FORMAT (mandatory):
+- Use [^N] footnote format for ALL citations in the text (e.g., [^1], [^2]).
+- At the end, list each footnote as: [^N]: Full Citation | Court, Year | Source: Internal/Indian Kanoon/Web | URL
+- Every source you reference MUST have a [^N] marker in the text body.
 
 Keep it concise — this is a simple query that doesn't need full IRAC analysis. \
 NEVER fabricate or hallucinate case names, citations, or legal propositions. \
@@ -1495,6 +1500,124 @@ LEGAL_QUALITY_CHECK_SCHEMA: Final[dict] = {
     },
     "required": ["overall_score", "data_points", "omissions", "logical_issues"],
 }
+
+# ---------------------------------------------------------------------------
+# [V3] Element Decomposition
+# ---------------------------------------------------------------------------
+
+ELEMENT_DECOMPOSITION_SYSTEM: Final[str] = """\
+You are an expert Indian legal analyst. Given a legal question and the relevant \
+statute text, decompose the question into discrete legal elements that must each \
+be independently researched.
+
+For criminal law questions:
+- Actus reus elements (physical act required by the section)
+- Mens rea elements (intent/knowledge required)
+- Exception/defense applicability (e.g., Exception 1 to Section 300 IPC)
+- Sentencing considerations (punishment provisions)
+- Procedural requirements (e.g., sanction to prosecute, cognizable/non-cognizable)
+
+For civil law questions:
+- Cause of action elements (what must be proved)
+- Limitation period (relevant limitation provisions)
+- Jurisdiction requirements (territorial, pecuniary, subject-matter)
+- Burden of proof (who bears it, standard)
+- Remedy available (injunction, damages, specific performance)
+
+For constitutional questions:
+- Fundamental right scope (which Article, what it protects)
+- Reasonable restriction grounds (Article 19(2)-(6), etc.)
+- Proportionality test (modern SC doctrine from KS Puttaswamy)
+- Doctrine of basic structure (if applicable)
+- State action requirement (whether challenged action is state action)
+
+For each element, provide:
+- element_id: short snake_case identifier (e.g., "mens_rea", "limitation_period")
+- description: what needs to be established (1-2 sentences)
+- statute_basis: which section/article grounds this element (quote relevant text if available)
+- search_query: targeted case law search query for this element
+- is_contested: whether this element is likely disputed in the query context
+
+Return 1-2 elements for simple queries, 3-6 for complex/multi_issue queries.
+Do NOT add elements for topics not raised by the query.
+Do NOT decompose beyond what the statute and query require.\
+"""
+
+ELEMENT_DECOMPOSITION_SCHEMA: Final[dict] = {
+    "type": "object",
+    "properties": {
+        "elements": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "element_id": {"type": "string"},
+                    "description": {"type": "string"},
+                    "statute_basis": {"type": "string"},
+                    "search_query": {"type": "string"},
+                    "is_contested": {"type": "boolean"},
+                },
+                "required": ["element_id", "description", "statute_basis",
+                             "search_query", "is_contested"],
+            },
+        },
+    },
+    "required": ["elements"],
+}
+
+
+# ---------------------------------------------------------------------------
+# [V3] Adversarial Search
+# ---------------------------------------------------------------------------
+
+ADVERSARIAL_SEARCH_SYSTEM: Final[str] = """\
+You are opposing counsel reviewing your opponent's research findings. Given the \
+research results so far, identify the 2-3 strongest counter-arguments and generate \
+targeted search queries to find cases that CONTRADICT the emerging conclusion.
+
+Focus on:
+1. Cases where the court reached the OPPOSITE conclusion on similar facts
+2. Cases that DISTINGUISH the key authorities being relied upon
+3. Statutory provisions that limit or qualify the main provision being cited
+4. Higher bench decisions that narrow the cited authorities
+5. Recent developments that may have changed the legal position
+
+For each counter-argument, provide:
+- counter_thesis: what the opposing side would argue (1-2 sentences)
+- search_query: NL query to find supporting cases
+- boolean_query: keyword query for FTS/Indian Kanoon
+- target_source: "case_law" | "ik_search" — which worker should handle this
+- priority: 1 (strongest counter-argument) to 3
+
+Generate EXACTLY 2-3 counter-arguments. Focus on quality over quantity.
+Do NOT generate counter-arguments that the findings already address.\
+"""
+
+ADVERSARIAL_SEARCH_SCHEMA: Final[dict] = {
+    "type": "object",
+    "properties": {
+        "counter_arguments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "counter_thesis": {"type": "string"},
+                    "search_query": {"type": "string"},
+                    "boolean_query": {"type": "string"},
+                    "target_source": {
+                        "type": "string",
+                        "enum": ["case_law", "ik_search"],
+                    },
+                    "priority": {"type": "integer"},
+                },
+                "required": ["counter_thesis", "search_query", "boolean_query",
+                             "target_source", "priority"],
+            },
+        },
+    },
+    "required": ["counter_arguments"],
+}
+
 
 # ---------------------------------------------------------------------------
 # Case Prep Agent — issue prioritization, argument ordering, strategy

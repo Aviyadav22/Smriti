@@ -12,6 +12,11 @@ from app.core.legal.prompts import (
     RESEARCH_CONTRADICTIONS_SYSTEM,
     RESEARCH_SYNTHESIZE_SYSTEM,
     RESEARCH_SYNTHESIZE_USER,
+    # V3 prompts
+    ELEMENT_DECOMPOSITION_SYSTEM,
+    ELEMENT_DECOMPOSITION_SCHEMA,
+    ADVERSARIAL_SEARCH_SYSTEM,
+    ADVERSARIAL_SEARCH_SCHEMA,
     # Case Prep Agent prompts
     CASE_PREP_PRIORITIZE_SYSTEM,
     CASE_PREP_PRIORITIZE_USER,
@@ -222,6 +227,36 @@ class TestPromptHardening:
         """Case prep prompt must flag time-barred arguments."""
         from app.core.legal.prompts import CASE_PREP_PRIORITIZE_SYSTEM
         assert "time-bar" in CASE_PREP_PRIORITIZE_SYSTEM.lower() or "limitation" in CASE_PREP_PRIORITIZE_SYSTEM.lower()
+
+
+class TestV3Prompts:
+    """Tests for Research Agent V3 prompts."""
+
+    def test_element_decomposition_prompt_exists(self) -> None:
+        assert isinstance(ELEMENT_DECOMPOSITION_SYSTEM, str)
+        assert len(ELEMENT_DECOMPOSITION_SYSTEM) > 100
+        assert "decompose" in ELEMENT_DECOMPOSITION_SYSTEM.lower() or \
+               "element" in ELEMENT_DECOMPOSITION_SYSTEM.lower()
+
+    def test_element_decomposition_schema_valid(self) -> None:
+        assert isinstance(ELEMENT_DECOMPOSITION_SCHEMA, dict)
+        assert "elements" in ELEMENT_DECOMPOSITION_SCHEMA["properties"]
+        items = ELEMENT_DECOMPOSITION_SCHEMA["properties"]["elements"]["items"]
+        assert "element_id" in items["properties"]
+        assert "is_contested" in items["properties"]
+
+    def test_adversarial_search_prompt_exists(self) -> None:
+        assert isinstance(ADVERSARIAL_SEARCH_SYSTEM, str)
+        assert len(ADVERSARIAL_SEARCH_SYSTEM) > 100
+        assert "opposing" in ADVERSARIAL_SEARCH_SYSTEM.lower() or \
+               "counter" in ADVERSARIAL_SEARCH_SYSTEM.lower()
+
+    def test_adversarial_search_schema_valid(self) -> None:
+        assert isinstance(ADVERSARIAL_SEARCH_SCHEMA, dict)
+        assert "counter_arguments" in ADVERSARIAL_SEARCH_SCHEMA["properties"]
+        items = ADVERSARIAL_SEARCH_SCHEMA["properties"]["counter_arguments"]["items"]
+        assert "counter_thesis" in items["properties"]
+        assert "target_source" in items["properties"]
 
 
 class TestResearchPlanPromptIKFilters:
