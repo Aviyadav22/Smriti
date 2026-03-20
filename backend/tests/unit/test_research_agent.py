@@ -469,6 +469,86 @@ class TestClassifyV3Fields:
 # ---------------------------------------------------------------------------
 
 
+class TestCaseLawWorkerV3:
+    @pytest.mark.asyncio
+    async def test_element_context_enriches_query(self) -> None:
+        """case_law_worker should prepend element context to query."""
+        from app.core.agents.nodes.worker_nodes import case_law_worker
+
+        state = {
+            "task": {
+                "task_id": "t1",
+                "task_type": "case_law",
+                "nl_query": "murder conviction",
+                "boolean_query": "",
+                "named_cases": [],
+                "rationale": "test",
+                "filters": {"element_context": "Intent to cause death under Section 300"},
+                "priority": 1,
+            },
+            "precomputed_embeddings": {},
+        }
+
+        with patch(
+            "app.core.agents.nodes.worker_nodes.parallel_hybrid_search",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock_search, patch(
+            "app.core.agents.nodes.worker_nodes.async_session_factory",
+        ) as mock_factory:
+            mock_factory.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+            mock_factory.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await case_law_worker(
+                state, AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock()
+            )
+
+            # The first query should have element context prepended
+            call_args = mock_search.call_args
+            queries = call_args[0][0]  # first positional arg
+            assert "Intent to cause death" in queries[0]
+            assert "murder conviction" in queries[0]
+
+    @pytest.mark.asyncio
+    async def test_bench_filter_passed_to_search(self) -> None:
+        """case_law_worker should pass bench_type filter when target_bench specified."""
+        from app.core.agents.nodes.worker_nodes import case_law_worker
+
+        state = {
+            "task": {
+                "task_id": "t1",
+                "task_type": "case_law",
+                "nl_query": "right to privacy",
+                "boolean_query": "",
+                "named_cases": [],
+                "rationale": "test",
+                "filters": {"target_bench": "constitutional"},
+                "priority": 1,
+            },
+            "precomputed_embeddings": {},
+        }
+
+        with patch(
+            "app.core.agents.nodes.worker_nodes.parallel_hybrid_search",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock_search, patch(
+            "app.core.agents.nodes.worker_nodes.async_session_factory",
+        ) as mock_factory:
+            mock_factory.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+            mock_factory.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await case_law_worker(
+                state, AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock()
+            )
+
+            # Check that filters were passed
+            call_kwargs = mock_search.call_args.kwargs
+            filters = call_kwargs.get("filters")
+            assert filters is not None
+            assert filters.bench_type == "constitutional"
+
+
 class TestPlanResearchV3:
     @pytest.mark.asyncio
     async def test_plan_receives_statute_and_elements(self) -> None:

@@ -65,18 +65,40 @@ async def case_law_worker(
     Wraps the existing parallel_hybrid_search with multi-query support.
     """
     task = state["task"]
-    precomputed = state.get("precomputed_embeddings", {})
+    task_filters = task.get("filters", {})
 
     # Use BOTH nl_query (vector-heavy) and boolean_query (keyword-heavy)
-    queries = [task["nl_query"]]
+    nl_query = task["nl_query"]
+
+    # [V3] Element context enrichment — prepend element description to query
+    element_context = task_filters.get("element_context", "")
+    if element_context:
+        nl_query = f"{element_context}. {nl_query}"
+
+    queries = [nl_query]
     if task.get("boolean_query"):
         queries.append(task["boolean_query"])
+
+    # [V3] Bench-strength filtering
+    search_kwargs: dict = {}
+    target_bench = task_filters.get("target_bench")
+    if target_bench:
+        bench_map = {
+            "constitutional": "constitutional",
+            "full": "full",
+            "division": "division",
+            "single": "single",
+        }
+        bench_value = bench_map.get(target_bench)
+        if bench_value:
+            from app.core.search.query import SearchFilters
+            search_kwargs["filters"] = SearchFilters(bench_type=bench_value)
 
     try:
         async with async_session_factory() as db:
             results = await parallel_hybrid_search(
                 queries, llm, embedder, vector_store, reranker, db,
-                precomputed_embeddings=precomputed,
+                **search_kwargs,
             )
             results = await enrich_results_with_ratio(results, db, max_ratio_len=3000)
     except Exception as exc:
