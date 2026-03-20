@@ -441,6 +441,31 @@ class TestDualStageVerification:
         assert "Semaphore" in source, "Must use semaphore to limit concurrency"
 
     @pytest.mark.asyncio
+    async def test_citation_verification_uses_cite_filter(self) -> None:
+        """IK citation verification should use cite_filter for precision."""
+        from app.core.agents.nodes.research_nodes import _verify_citations_against_sources
+
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=MagicMock(scalar=lambda: None))
+
+        mock_ik = AsyncMock()
+        mock_ik.search = AsyncMock(return_value=[{"tid": 1, "title": "Match"}])
+
+        footnotes = [
+            Footnote(
+                number=1, citation="(2020) 5 SCC 1", source_type="case_law",
+                source_url="", case_id=None, excerpt="Test",
+                is_used=True, verification_status="pending", verified_against="none",
+            ),
+        ]
+        result = await _verify_citations_against_sources(footnotes, mock_db, mock_ik, None)
+
+        mock_ik.search.assert_called_once()
+        call_kwargs = mock_ik.search.call_args[1]
+        assert call_kwargs.get("cite_filter") == "(2020) 5 SCC 1"
+        assert result[0]["verification_status"] == "verified_ik"
+
+    @pytest.mark.asyncio
     async def test_t4_guardrail_removes_unverifiable_citations(self) -> None:
         """Test 52: [T4] Unverifiable citations are REMOVED, not just flagged."""
         from app.core.agents.nodes.research_nodes import _verify_citations_against_sources

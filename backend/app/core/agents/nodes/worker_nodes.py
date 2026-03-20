@@ -324,6 +324,9 @@ async def ik_search_worker(
     to_date = f"31-12-{to_year}" if to_year else None
     boolean_query = task.get("boolean_query") or None
     sort_by = filters.get("sort_by")  # "mostrecent" for recency queries
+    title_filter = filters.get("title")
+    author_filter = filters.get("author")
+    bench_filter = filters.get("bench")
 
     try:
         # [S8-L3] Check IK search cache
@@ -346,6 +349,10 @@ async def ik_search_worker(
             from_date=from_date,
             to_date=to_date,
             sort_by=sort_by,
+            title_filter=title_filter,
+            author_filter=author_filter,
+            bench_filter=bench_filter,
+            max_cites=5,  # Get citation list for free
         )
 
         results: list[dict] = []
@@ -393,6 +400,7 @@ async def ik_search_worker(
                 "snippet": snippet,
                 "source": "indian_kanoon",
                 "ik_doc_id": doc_id,
+                "court_copy_url": f"https://indiankanoon.org/origdoc/{doc_id}/",
             })
             source_urls.append(f"https://indiankanoon.org/doc/{doc_id}/")
 

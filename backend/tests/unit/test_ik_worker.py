@@ -92,6 +92,46 @@ class TestIKWorkerFilterPropagation:
         assert call_kwargs["sort_by"] == "mostrecent"
 
     @pytest.mark.asyncio
+    async def test_passes_title_filter(self, mock_ik_client) -> None:
+        """title from filters should be passed as title_filter."""
+        from app.core.agents.nodes.worker_nodes import ik_search_worker
+
+        state = {"task": _make_task(filters={"title": "Puttaswamy"})}
+        await ik_search_worker(state, mock_ik_client)
+        call_kwargs = mock_ik_client.search.call_args[1]
+        assert call_kwargs["title_filter"] == "Puttaswamy"
+
+    @pytest.mark.asyncio
+    async def test_passes_author_filter(self, mock_ik_client) -> None:
+        """author from filters should be passed as author_filter."""
+        from app.core.agents.nodes.worker_nodes import ik_search_worker
+
+        state = {"task": _make_task(filters={"author": "chandrachud"})}
+        await ik_search_worker(state, mock_ik_client)
+        call_kwargs = mock_ik_client.search.call_args[1]
+        assert call_kwargs["author_filter"] == "chandrachud"
+
+    @pytest.mark.asyncio
+    async def test_passes_bench_filter(self, mock_ik_client) -> None:
+        """bench from filters should be passed as bench_filter."""
+        from app.core.agents.nodes.worker_nodes import ik_search_worker
+
+        state = {"task": _make_task(filters={"bench": "nariman"})}
+        await ik_search_worker(state, mock_ik_client)
+        call_kwargs = mock_ik_client.search.call_args[1]
+        assert call_kwargs["bench_filter"] == "nariman"
+
+    @pytest.mark.asyncio
+    async def test_passes_maxcites(self, mock_ik_client) -> None:
+        """Worker should always request max_cites=5 for free citation data."""
+        from app.core.agents.nodes.worker_nodes import ik_search_worker
+
+        state = {"task": _make_task()}
+        await ik_search_worker(state, mock_ik_client)
+        call_kwargs = mock_ik_client.search.call_args[1]
+        assert call_kwargs["max_cites"] == 5
+
+    @pytest.mark.asyncio
     async def test_extracts_rich_fields(self, mock_ik_client) -> None:
         """Worker should extract docsource, author, publishdate, numcites from search results."""
         from app.core.agents.nodes.worker_nodes import ik_search_worker
@@ -122,6 +162,17 @@ class TestIKWorkerFilterPropagation:
 
         assert result["worker_results"][0]["error"] is None
         assert len(result["worker_results"][0]["results"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_includes_court_copy_url(self, mock_ik_client) -> None:
+        """Results should include court_copy_url for trusted references."""
+        from app.core.agents.nodes.worker_nodes import ik_search_worker
+
+        state = {"task": _make_task()}
+        result = await ik_search_worker(state, mock_ik_client)
+
+        r = result["worker_results"][0]["results"][0]
+        assert r["court_copy_url"] == "https://indiankanoon.org/origdoc/123/"
 
     @pytest.mark.asyncio
     async def test_returns_source_urls(self, mock_ik_client) -> None:

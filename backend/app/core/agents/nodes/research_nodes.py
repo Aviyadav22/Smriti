@@ -1720,10 +1720,14 @@ async def _verify_citations_against_sources(
                 except Exception:
                     logger.warning("PG verification failed for %s", fn.get("case_id"))
 
-            # Check 2: Indian Kanoon API
+            # Check 2: Indian Kanoon API — use cite: filter for precision
             if status == "unverified" and ik_client and fn.get("citation"):
                 try:
-                    ik_results = await ik_client.search(fn["citation"], max_results=1)
+                    ik_results = await ik_client.search(
+                        fn["citation"],
+                        max_results=1,
+                        cite_filter=fn["citation"],
+                    )
                     if ik_results:
                         status = "verified_ik"
                 except Exception:
