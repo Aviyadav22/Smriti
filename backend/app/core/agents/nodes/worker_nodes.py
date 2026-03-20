@@ -283,30 +283,57 @@ def func_websearch_to_tsquery(query: str):
 # ---------------------------------------------------------------------------
 
 
+_MAX_IK_FRAGMENT_CALLS = 5  # Cost control: Rs 0.05/fragment
+
+
 async def ik_search_worker(
     state: dict,
     ik_client: ExternalDocProvider,
 ) -> dict:
-    """Search Indian Kanoon API for cases not in our database.
+    """Search Indian Kanoon API with full filter propagation.
 
     Uses /search/ for discovery + /docfragment/ for targeted passage extraction.
+    Propagates filters (court, dates, boolean_query) from the research plan.
+    Limits fragment calls to top N results for cost control.
     """
     task = state["task"]
+    filters = task.get("filters", {})
+
+    # Build IK-specific search params from research plan filters
+    court_filter = filters.get("court")
+    from_year = filters.get("from_year")
+    to_year = filters.get("to_year")
+    # IK uses DD-MM-YYYY format
+    from_date = f"01-01-{from_year}" if from_year else None
+    to_date = f"31-12-{to_year}" if to_year else None
+    boolean_query = task.get("boolean_query") or None
+    sort_by = filters.get("sort_by")  # "mostrecent" for recency queries
 
     try:
-        search_results = await ik_client.search(task["nl_query"], max_results=10)
+        search_results = await ik_client.search(
+            task["nl_query"],
+            max_results=10,
+            boolean_query=boolean_query,
+            court_filter=court_filter,
+            from_date=from_date,
+            to_date=to_date,
+            sort_by=sort_by,
+        )
 
         results: list[dict] = []
         source_urls: list[str] = []
-        for doc in search_results:
+        for idx, doc in enumerate(search_results):
             doc_id = str(doc.get("tid", ""))
             if not doc_id:
                 continue
-            # Get relevant fragment (Rs 0.05 — cheapest way to get context)
-            try:
-                fragment = await ik_client.get_fragment(doc_id, task["nl_query"])
-            except Exception:
-                fragment = {}
+
+            # Only fetch fragments for top N results (cost control)
+            fragment: dict = {}
+            if idx < _MAX_IK_FRAGMENT_CALLS:
+                try:
+                    fragment = await ik_client.get_fragment(doc_id, task["nl_query"])
+                except Exception:
+                    fragment = {}
 
             results.append({
                 "case_id": f"ik:{doc_id}",
@@ -333,7 +360,7 @@ async def ik_search_worker(
         task_id=task["task_id"], task_type="ik_search",
         query=task["nl_query"], results=results,
         source_urls=source_urls,
-        metadata={"source": "indian_kanoon"},
+        metadata={"source": "indian_kanoon", "filters_applied": bool(filters)},
         error=None, reasoning="",
     )]}
 
