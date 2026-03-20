@@ -1415,6 +1415,15 @@ async def speculative_synthesis_with_contradictions_node(
 # ---------------------------------------------------------------------------
 
 
+def _infer_source_label(source_type: str) -> str:
+    """Map internal source_type to a human-readable display label."""
+    return {
+        "case_law": "Case", "ik_search": "Case", "named_case": "Case",
+        "statute": "Statute", "constitution": "Constitution",
+        "web": "Web", "graph": "Case", "graph_community": "Case",
+    }.get(source_type, "Source")
+
+
 async def format_footnotes_node(state: ResearchState) -> dict:
     """Post-processing: extract [^N] references, build structured footnotes.
 
@@ -1441,9 +1450,14 @@ async def format_footnotes_node(state: ResearchState) -> dict:
                 citation_lookup[citation] = {
                     "case_id": r.get("case_id"),
                     "source_type": wr.get("task_type", "case_law"),
-                    "court": r.get("court", ""),
+                    "court": r.get("court", r.get("docsource", "")),
                     "year": r.get("year"),
                     "snippet": (r.get("snippet") or r.get("ratio") or "")[:300],
+                    "title": r.get("title", ""),
+                    "author": r.get("author", r.get("judge", "")),
+                    "bench": r.get("bench_type", ""),
+                    "ik_doc_id": r.get("ik_doc_id", ""),
+                    "url": r.get("url", ""),
                 }
 
     # Extract footnote definitions from the memo itself (if LLM wrote them)
@@ -1496,6 +1510,14 @@ async def format_footnotes_node(state: ResearchState) -> dict:
             is_used=True,
             verification_status="pending",
             verified_against="none",
+            title=meta.get("title", fn_def.get("citation", "")),
+            court=meta.get("court", ""),
+            year=meta.get("year"),
+            author=meta.get("author", ""),
+            bench=meta.get("bench", ""),
+            ik_doc_id=meta.get("ik_doc_id", ""),
+            pdf_available=bool(case_id and not str(case_id).startswith("ik:")),
+            source_label=_infer_source_label(source_type),
         ))
 
     # Add unused sources (searched but not cited)
@@ -1503,16 +1525,26 @@ async def format_footnotes_node(state: ResearchState) -> dict:
     next_num = max((fn["number"] for fn in footnotes), default=0) + 1
     for citation, meta in citation_lookup.items():
         if citation not in cited_citations:
+            unused_source_type = meta.get("source_type", "case_law")
+            unused_case_id = meta.get("case_id")
             footnotes.append(Footnote(
                 number=next_num,
                 citation=citation,
-                source_type=meta.get("source_type", "case_law"),
-                source_url=f"/case/{meta['case_id']}" if meta.get("case_id") else "",
-                case_id=meta.get("case_id"),
+                source_type=unused_source_type,
+                source_url=f"/case/{unused_case_id}" if unused_case_id else "",
+                case_id=unused_case_id,
                 excerpt=meta.get("snippet", "")[:300],
                 is_used=False,
                 verification_status="pending",
                 verified_against="none",
+                title=meta.get("title", ""),
+                court=meta.get("court", ""),
+                year=meta.get("year"),
+                author=meta.get("author", ""),
+                bench=meta.get("bench", ""),
+                ik_doc_id=meta.get("ik_doc_id", ""),
+                pdf_available=bool(unused_case_id and not str(unused_case_id).startswith("ik:")),
+                source_label=_infer_source_label(unused_source_type),
             ))
             next_num += 1
 

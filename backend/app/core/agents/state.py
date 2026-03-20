@@ -93,6 +93,15 @@ class Footnote(TypedDict):
     is_used: bool         # True if cited in memo, False if searched but not cited
     verification_status: str  # [T4] "verified_pg"|"verified_ik"|"verified_neo4j"|"unverified"|"removed"
     verified_against: str     # [T4] Which source confirmed
+    # Enriched fields for preview panel
+    title: str                # Case title or web page title
+    court: str                # Court name (e.g., "Supreme Court of India")
+    year: int | None          # Decision year
+    author: str               # Author judge
+    bench: str                # Bench composition
+    ik_doc_id: str            # Indian Kanoon doc ID (for IK link)
+    pdf_available: bool       # True if pdf_storage_path exists
+    source_label: str         # Display label: "Case" | "Statute" | "Web" | "Constitution"
 
 
 class LegalQualityResult(TypedDict):

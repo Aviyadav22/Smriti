@@ -395,7 +395,9 @@ class TestDualStageVerification:
         footnotes = [
             Footnote(number=1, citation="(2024) 1 SCC 100", source_type="case_law",
                      source_url="/case/1", case_id="case-1", excerpt="test",
-                     is_used=True, verification_status="pending", verified_against="none"),
+                     is_used=True, verification_status="pending", verified_against="none",
+                     title="Test v State", court="Supreme Court of India", year=2024,
+                     author="", bench="", ik_doc_id="", pdf_available=True, source_label="Case"),
         ]
 
         db = AsyncMock()
@@ -414,6 +416,8 @@ class TestDualStageVerification:
             number=1, citation="Test v Test", source_type="case_law",
             source_url="", case_id="'; DROP TABLE cases; --", excerpt="x",
             is_used=True, verification_status="pending", verified_against="none",
+            title="", court="", year=None, author="", bench="",
+            ik_doc_id="", pdf_available=False, source_label="Case",
         )
 
         db = AsyncMock()
@@ -456,6 +460,8 @@ class TestDualStageVerification:
                 number=1, citation="(2020) 5 SCC 1", source_type="case_law",
                 source_url="", case_id=None, excerpt="Test",
                 is_used=True, verification_status="pending", verified_against="none",
+                title="", court="", year=2020, author="", bench="",
+                ik_doc_id="", pdf_available=False, source_label="Case",
             ),
         ]
         result = await _verify_citations_against_sources(footnotes, mock_db, mock_ik, None)
@@ -473,10 +479,14 @@ class TestDualStageVerification:
         footnotes = [
             Footnote(number=1, citation="(2024) 1 SCC 100", source_type="case_law",
                      source_url="/case/1", case_id="case-1", excerpt="test",
-                     is_used=True, verification_status="pending", verified_against="none"),
+                     is_used=True, verification_status="pending", verified_against="none",
+                     title="Test v State", court="Supreme Court of India", year=2024,
+                     author="", bench="", ik_doc_id="", pdf_available=True, source_label="Case"),
             Footnote(number=2, citation="Fake Case v. State", source_type="case_law",
                      source_url="", case_id=None, excerpt="fake",
-                     is_used=True, verification_status="pending", verified_against="none"),
+                     is_used=True, verification_status="pending", verified_against="none",
+                     title="", court="", year=None, author="", bench="",
+                     ik_doc_id="", pdf_available=False, source_label="Case"),
         ]
 
         # DB returns exists for case-1
@@ -508,7 +518,9 @@ class TestDualStageVerification:
             footnotes=[
                 Footnote(number=1, citation="(2024) 1 SCC 100", source_type="case_law",
                          source_url="/case/case-0", case_id="case-0", excerpt="test",
-                         is_used=True, verification_status="pending", verified_against="none"),
+                         is_used=True, verification_status="pending", verified_against="none",
+                         title="Test v State", court="Supreme Court of India", year=2024,
+                         author="", bench="", ik_doc_id="", pdf_available=True, source_label="Case"),
             ],
             research_audit={"total_sources_searched": 10},
             draft_memo="Test memo [^1] citation.\n\n[^1]: (2024) 1 SCC 100",
@@ -989,6 +1001,9 @@ class TestProcessEventsInNodes:
                     source_type="case_law", source_url="/case/case-0",
                     case_id="case-0", excerpt="Test", is_used=True,
                     verification_status="unverified", verified_against="none",
+                    title="Test Case v. State", court="Supreme Court of India",
+                    year=2024, author="Justice X", bench="Division Bench",
+                    ik_doc_id="", pdf_available=True, source_label="Case",
                 ),
             ],
             "extracted_passages": _make_extracted_passages(),
@@ -1098,3 +1113,26 @@ class TestFuzzyMatch:
         assert _fuzzy_match("", "something") is False
         assert _fuzzy_match("something", "") is False
         assert _fuzzy_match("", "") is False
+
+
+# ---------------------------------------------------------------------------
+# Source label inference
+# ---------------------------------------------------------------------------
+
+
+class TestInferSourceLabel:
+    """Tests for _infer_source_label helper."""
+
+    def test_infer_source_label(self) -> None:
+        from app.core.agents.nodes.research_nodes import _infer_source_label
+
+        assert _infer_source_label("case_law") == "Case"
+        assert _infer_source_label("ik_search") == "Case"
+        assert _infer_source_label("named_case") == "Case"
+        assert _infer_source_label("statute") == "Statute"
+        assert _infer_source_label("constitution") == "Constitution"
+        assert _infer_source_label("web") == "Web"
+        assert _infer_source_label("graph") == "Case"
+        assert _infer_source_label("graph_community") == "Case"
+        assert _infer_source_label("unknown") == "Source"
+        assert _infer_source_label("") == "Source"

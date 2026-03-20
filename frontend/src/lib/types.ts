@@ -436,6 +436,15 @@ export interface ResearchFootnote {
     is_used: boolean;
     verification_status: string;
     verified_against: string;
+    // Enriched fields for preview panel
+    title: string;
+    court: string;
+    year: number | null;
+    author: string;
+    bench: string;
+    ik_doc_id: string;
+    pdf_available: boolean;
+    source_label: string;  // "Case" | "Statute" | "Web" | "Constitution"
 }
 
 export interface ResearchAudit {
