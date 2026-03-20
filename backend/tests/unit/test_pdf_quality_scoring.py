@@ -129,7 +129,7 @@ class TestExtractAndScore:
         with patch(
             "app.core.ingestion.pdf.extract_pdf_text",
             new_callable=AsyncMock,
-            return_value=(long_legal_text, 10),
+            return_value=(long_legal_text, 10, []),
         ):
             result = await extract_and_score("/fake/path.pdf")
 
@@ -149,7 +149,7 @@ class TestExtractAndScore:
         with patch(
             "app.core.ingestion.pdf.extract_pdf_text",
             new_callable=AsyncMock,
-            return_value=("short", 5),  # < 100 chars triggers OCR
+            return_value=("short", 5, []),  # < 100 chars triggers OCR
         ), patch(
             "app.core.ingestion.pdf.extract_with_ocr",
             new_callable=AsyncMock,
@@ -166,7 +166,7 @@ class TestExtractAndScore:
         with patch(
             "app.core.ingestion.pdf.extract_pdf_text",
             new_callable=AsyncMock,
-            return_value=("", 0),
+            return_value=("", 0, []),
         ), patch(
             "app.core.ingestion.pdf.extract_with_ocr",
             new_callable=AsyncMock,
@@ -189,7 +189,7 @@ class TestExtractAndScore:
         with patch(
             "app.core.ingestion.pdf.extract_pdf_text",
             new_callable=AsyncMock,
-            return_value=(sufficient_text, 1),
+            return_value=(sufficient_text, 1, []),
         ) as mock_pdf, patch(
             "app.core.ingestion.pdf.extract_with_ocr",
             new_callable=AsyncMock,

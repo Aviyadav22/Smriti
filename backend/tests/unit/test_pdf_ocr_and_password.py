@@ -30,11 +30,12 @@ class TestOCRFallbackPath:
             mock_pdfplumber.open.return_value = mock_pdf
             mock_ocr.return_value = "This is OCR extracted text from a scanned page of the judgment."
 
-            text, page_count = _extract_pdf_text_sync("/fake/scanned.pdf")
+            text, page_count, page_map = _extract_pdf_text_sync("/fake/scanned.pdf")
 
         mock_ocr.assert_called_once_with("/fake/scanned.pdf", 1)
         assert "OCR extracted text" in text
         assert page_count == 1
+        assert isinstance(page_map, list)
 
     def test_ocr_not_triggered_when_sufficient_text(self):
         """When pdfplumber returns >= 30 chars, OCR should NOT be attempted."""
@@ -51,7 +52,7 @@ class TestOCRFallbackPath:
         with patch("app.core.ingestion.pdf.pdfplumber") as mock_pdfplumber, \
              patch("app.core.ingestion.pdf._ocr_single_page") as mock_ocr:
             mock_pdfplumber.open.return_value = mock_pdf
-            text, page_count = _extract_pdf_text_sync("/fake/good.pdf")
+            text, page_count, page_map = _extract_pdf_text_sync("/fake/good.pdf")
 
         mock_ocr.assert_not_called()
         assert "petitioner" in text
@@ -71,7 +72,7 @@ class TestOCRFallbackPath:
             mock_pdfplumber.open.return_value = mock_pdf
             # OCR returns even less text
             mock_ocr.return_value = ""
-            text, page_count = _extract_pdf_text_sync("/fake/bad_ocr.pdf")
+            text, page_count, page_map = _extract_pdf_text_sync("/fake/bad_ocr.pdf")
 
         # With both short, we get whatever pdfplumber had (may be stripped empty)
         # The important thing is no crash occurred
@@ -97,7 +98,7 @@ class TestOCRFallbackPath:
              patch("app.core.ingestion.pdf._ocr_single_page") as mock_ocr:
             mock_pdfplumber.open.return_value = mock_pdf
             mock_ocr.return_value = "OCR text for the scanned page of the judgment."
-            text, page_count = _extract_pdf_text_sync("/fake/mixed.pdf")
+            text, page_count, page_map = _extract_pdf_text_sync("/fake/mixed.pdf")
 
         # OCR should only be called for page 2 (1-indexed)
         mock_ocr.assert_called_once_with("/fake/mixed.pdf", 2)
@@ -114,7 +115,7 @@ class TestPasswordProtectedPDF:
 
         with patch("app.core.ingestion.pdf.pdfplumber") as mock_pdfplumber:
             mock_pdfplumber.open.side_effect = RealException()
-            text, page_count = _extract_pdf_text_sync("/fake/encrypted.pdf")
+            text, page_count, page_map = _extract_pdf_text_sync("/fake/encrypted.pdf")
 
         assert text == ""
         assert page_count == 0
@@ -126,7 +127,7 @@ class TestPasswordProtectedPDF:
         with patch("app.core.ingestion.pdf.pdfplumber") as mock_pdfplumber:
             mock_pdfplumber.open.side_effect = RealException()
             # Should not raise
-            text, page_count = _extract_pdf_text_sync("/fake/encrypted.pdf")
+            text, page_count, page_map = _extract_pdf_text_sync("/fake/encrypted.pdf")
 
         assert text == ""
 
@@ -134,7 +135,7 @@ class TestPasswordProtectedPDF:
         """File not found or permission errors should return empty."""
         with patch("app.core.ingestion.pdf.pdfplumber") as mock_pdfplumber:
             mock_pdfplumber.open.side_effect = OSError("File not found")
-            text, page_count = _extract_pdf_text_sync("/fake/missing.pdf")
+            text, page_count, page_map = _extract_pdf_text_sync("/fake/missing.pdf")
 
         assert text == ""
         assert page_count == 0
@@ -148,7 +149,7 @@ class TestPasswordProtectedPDF:
 
         with patch("app.core.ingestion.pdf.pdfplumber") as mock_pdfplumber:
             mock_pdfplumber.open.return_value = mock_pdf
-            text, page_count = _extract_pdf_text_sync("/fake/huge.pdf")
+            text, page_count, page_map = _extract_pdf_text_sync("/fake/huge.pdf")
 
         assert text == ""
         assert page_count == 0
