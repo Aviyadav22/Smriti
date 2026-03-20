@@ -53,24 +53,27 @@ class IndianKanoonClient:
                 "Indian Kanoon API token is required. Set IK_API_TOKEN environment variable."
             )
         self._client = httpx.AsyncClient(
-            timeout=_IK_TIMEOUT,
+            timeout=settings.web_search_timeout or _IK_TIMEOUT,
             headers={"Authorization": f"Token {self.token}"},
         )
         self._rate_limit = settings.ik_rate_limit
         self._last_request_time: float = 0.0
+        self._lock = asyncio.Lock()
 
     async def _rate_limited_post(self, url: str, data: dict | None = None) -> dict:
-        """POST with rate limiting (2 req/sec default)."""
-        now = asyncio.get_event_loop().time()
-        min_interval = 1.0 / self._rate_limit
-        wait_time = self._last_request_time + min_interval - now
-        if wait_time > 0:
-            await asyncio.sleep(wait_time)
+        """POST with rate limiting (2 req/sec default), protected by asyncio.Lock."""
+        async with self._lock:
+            loop = asyncio.get_running_loop()
+            now = loop.time()
+            min_interval = 1.0 / self._rate_limit
+            wait_time = self._last_request_time + min_interval - now
+            if wait_time > 0:
+                await asyncio.sleep(wait_time)
 
-        response = await self._client.post(url, data=data or {})
-        self._last_request_time = asyncio.get_event_loop().time()
-        response.raise_for_status()
-        return response.json()
+            response = await self._client.post(url, data=data or {})
+            self._last_request_time = asyncio.get_running_loop().time()
+            response.raise_for_status()
+            return response.json()
 
     @_ik_retry
     async def search(
