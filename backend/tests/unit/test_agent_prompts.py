@@ -259,6 +259,40 @@ class TestV3Prompts:
         assert "target_source" in items["properties"]
 
 
+class TestV3PromptUpgrades:
+    """Tests for V3 prompt upgrades to existing prompts."""
+
+    def test_classify_schema_has_procedural_context(self) -> None:
+        props = RESEARCH_CLASSIFY_SCHEMA["properties"]
+        assert "procedural_context" in props
+        assert "client_position" in props
+
+    def test_evaluate_extract_has_bench_and_obiter(self) -> None:
+        from app.core.legal.prompts import RESEARCH_EVALUATE_AND_EXTRACT_SYSTEM
+        text = RESEARCH_EVALUATE_AND_EXTRACT_SYSTEM.lower()
+        assert "bench" in text
+        assert "ratio" in text
+        assert "obiter" in text
+
+    def test_merge_has_risk_assessment(self) -> None:
+        from app.core.legal.prompts import SPECULATIVE_MERGE_SYSTEM
+        assert "risk assessment" in SPECULATIVE_MERGE_SYSTEM.lower()
+        assert "counter-argument" in SPECULATIVE_MERGE_SYSTEM.lower()
+
+    def test_quality_check_has_temporal_and_bench(self) -> None:
+        from app.core.legal.prompts import LEGAL_QUALITY_CHECK_SYSTEM
+        text = LEGAL_QUALITY_CHECK_SYSTEM.lower()
+        assert "temporal" in text
+        assert "bench" in text
+        assert "obiter" in text
+
+    def test_plan_has_element_context(self) -> None:
+        from app.core.legal.prompts import RESEARCH_PLAN_SYSTEM
+        assert "element" in RESEARCH_PLAN_SYSTEM.lower()
+        assert "statute text" in RESEARCH_PLAN_SYSTEM.lower() or "statute" in RESEARCH_PLAN_SYSTEM.lower()
+        assert "procedural_context" in RESEARCH_PLAN_SYSTEM
+
+
 class TestResearchPlanPromptIKFilters:
     """Research plan prompt must mention all IK filter capabilities."""
 

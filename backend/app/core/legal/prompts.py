@@ -827,6 +827,12 @@ and landmark case names mentioned in the query.
 - search_hints: generate 3-5 alternative phrasings or related legal terms that would \
 help retrieve relevant Indian judgments (e.g., synonyms, related statutory provisions, \
 commonly paired legal concepts).
+- procedural_context: identify the litigation stage (pre_trial, trial, appeal, slp, writ, advisory). \
+Look for phrases like "filing in", "appeal against", "SLP", "writ petition", \
+"under Article 226/32". Return null if not determinable.
+- client_position: identify the client's role (petitioner, respondent, accused, complainant, \
+appellant, advisory). Look for phrases like "my client is accused", "we represent", \
+"defending against", "advise on". Return null if not determinable.
 """
 
 RESEARCH_CLASSIFY_SCHEMA: Final[dict] = {
@@ -857,6 +863,24 @@ RESEARCH_CLASSIFY_SCHEMA: Final[dict] = {
         "search_hints": {
             "type": "array",
             "items": {"type": "string"},
+        },
+        "procedural_context": {
+            "type": "string",
+            "nullable": True,
+            "enum": ["pre_trial", "trial", "appeal", "slp", "writ", "advisory"],
+            "description": (
+                "Stage of the legal matter. Look for: 'filing in', 'appeal against', "
+                "'SLP', 'writ petition', 'under Article 226/32'. Null if not determinable."
+            ),
+        },
+        "client_position": {
+            "type": "string",
+            "nullable": True,
+            "enum": ["petitioner", "respondent", "accused", "complainant", "appellant", "advisory"],
+            "description": (
+                "Client's role. Look for: 'my client is accused', 'we represent the petitioner', "
+                "'defending against', 'advise on'. Null if not determinable."
+            ),
         },
     },
     "required": ["topic", "complexity", "key_entities", "search_hints"],
@@ -1130,7 +1154,20 @@ Rules:
 - Each task must have a clear rationale explaining why it's necessary.
 - Prioritize tasks: 1=essential, 2=important, 3=supplementary.
 - Use precise Indian legal terminology.
-- For "ik_search" tasks, always set court and date filters when the question implies a specific court or time period."""
+- For "ik_search" tasks, always set court and date filters when the question implies a specific court or time period.
+
+ADDITIONAL CONTEXT (V3):
+You will receive statute text for relevant provisions and legal elements decomposed \
+from the query. Use these to generate TARGETED tasks.
+
+- Generate at least ONE case_law task per legal element.
+- Reference the specific statute section in each task's nl_query \
+(e.g., "cases interpreting Section 300 Exception 1 IPC on sudden provocation").
+- If an element is_contested, generate BOTH a supporting and a probing task.
+- Include element_id in each task's filters dict for traceability.
+- If procedural_context is "appeal", prioritize appellate court decisions.
+- If client_position is "accused"/"respondent", include tasks searching for \
+favorable precedents from the defense perspective."""
 
 RESEARCH_PLAN_SCHEMA: Final[dict] = {
     "type": "object",
@@ -1204,7 +1241,26 @@ For each retrieved document, do TWO things:
    - If paraphrasing is unavoidable, prefix with [paraphrased]
 
 Be strict — a document about a different section of the same act is \
-"ambiguous", not "correct"."""
+"ambiguous", not "correct".
+
+3. PRECEDENT WEIGHT (mandatory for case_law results):
+   Score adjustment based on authority hierarchy for the target court:
+   - Constitution Bench (5+ judges): +0.15 to base relevance score
+   - 3-judge bench: +0.10
+   - Division Bench (2 judges): +0.05
+   - Single Judge: no adjustment
+   - High Court (when target is Supreme Court): -0.10
+   A binding 3-judge bench decision at 0.5 relevance is more valuable than \
+a perfectly relevant single-judge HC ruling at 0.9.
+   Include bench_adjustment and adjusted_score in your output.
+
+4. RATIO vs OBITER DISTINCTION:
+   For each passage extracted, classify:
+   - "ratio": The holding is part of the core reasoning chain (binding)
+   - "obiter": The statement is a passing observation, hypothetical, or \
+discussion of a point not necessary for the decision (persuasive only)
+   - "uncertain": Cannot determine without full judgment context
+   Include ratio_or_obiter field in your output."""
 
 EVALUATE_AND_EXTRACT_SCHEMA: Final[dict] = {
     "type": "object",
@@ -1228,6 +1284,13 @@ EVALUATE_AND_EXTRACT_SCHEMA: Final[dict] = {
                     "passage": {"type": "string", "nullable": True},
                     "passage_source_field": {"type": "string", "nullable": True},
                     "is_verbatim": {"type": "boolean", "nullable": True},
+                    "bench_adjustment": {"type": "number", "nullable": True},
+                    "adjusted_score": {"type": "number", "nullable": True},
+                    "ratio_or_obiter": {
+                        "type": "string",
+                        "nullable": True,
+                        "enum": ["ratio", "obiter", "uncertain"],
+                    },
                 },
                 "required": ["case_id", "score", "verdict", "reason", "action"],
             },
@@ -1435,6 +1498,27 @@ provided. Remove any quotes not found in the source material.
    - Data quality: How many sources were verified? Are key authorities binding?
    - Legal coherence: Do the holdings consistently support the conclusion?
    - Coverage: Were all aspects of the question addressed?
+
+8. **RISK ASSESSMENT** (add after Conclusion section):
+   For each legal issue analyzed, provide:
+   - Likely outcome: what will the court probably decide?
+   - Probability: HIGH (>70%) / MEDIUM (40-70%) / LOW (<40%)
+   - Best case: if the court follows the strongest authority
+   - Worst case: if the court distinguishes on specific grounds
+   - Key swing factor: what fact or argument could tip the balance
+
+9. **COUNTER-ARGUMENTS** (include ONLY if adversarial results are provided):
+   For each counter-argument found:
+   - Opposing thesis: what the other side would argue
+   - Supporting authority: case/statute they'd cite
+   - Rebuttal: how to respond (with authority)
+   - Risk level: how dangerous is this counter-argument (HIGH/MEDIUM/LOW)
+
+10. **RATIO vs OBITER**: When citing a passage, note whether it is ratio decidendi \
+(binding) or obiter dicta (persuasive only). Use [ratio] or [obiter] tags after quotes.
+
+11. **TEMPORAL WARNINGS**: In the Precedent Network section, flag any old-code case \
+where the new-code wording materially differs. Use a warning marker.
 """
 
 
@@ -1461,6 +1545,22 @@ by the analysis? Flag any non sequiturs or gaps in reasoning.
 
 4. MISAPPLICATION: Is any authority applied to the wrong legal issue? Flag cases cited \
 for propositions they don't actually support.
+
+5. RATIO vs OBITER MISUSE: Flag any claim supported ONLY by obiter dicta without \
+acknowledging its non-binding nature. Flag any obiter cited as if it were ratio.
+
+6. TEMPORAL VALIDITY: Check temporal_warnings from state. Flag any old-code case \
+cited without noting the new-code equivalent. Flag cases where the new-code section \
+wording materially changed from the old code the case interpreted.
+
+7. BENCH STRENGTH CONSISTENCY: Flag where a single-judge ruling is presented as \
+authoritative when a larger bench ruled differently on the same point. Flag where a \
+High Court decision is cited as binding for Supreme Court matters. Verify precedent \
+strength labels (BINDING/PERSUASIVE) are correct for the target court.
+
+8. ADVERSARIAL COMPLETENESS (only if counter-arguments section exists): Are \
+counter-arguments fairly presented? Is each rebuttal supported by actual authority? \
+Did the memo acknowledge weaknesses honestly?
 
 Score the memo 0.0-1.0 overall. Flag specific issues with references to the memo text."""
 
