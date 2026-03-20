@@ -13,6 +13,7 @@ import logging
 import re
 import uuid
 from collections.abc import Callable
+from difflib import SequenceMatcher
 from uuid import uuid4
 
 from sqlalchemy import select, text
@@ -71,6 +72,8 @@ from app.core.legal.prompts import (
     RESEARCH_WORKER_COT_SYSTEM,
     SPECULATIVE_DRAFT_SYSTEM,
     SPECULATIVE_MERGE_SYSTEM,
+    ADVERSARIAL_SEARCH_SYSTEM,
+    ADVERSARIAL_SEARCH_SCHEMA,
 )
 from app.security.sanitizer import sanitize_search_query
 
@@ -129,6 +132,14 @@ async def classify_query_node(
         result["target_court"] = target_court
     if target_bench:
         result["target_bench"] = target_bench
+
+    # [V3] Extract procedural context and client position
+    procedural_context = classification.get("procedural_context") or ""
+    client_position = classification.get("client_position") or ""
+    if procedural_context:
+        result["procedural_context"] = procedural_context
+    if client_position:
+        result["client_position"] = client_position
 
     return result
 
@@ -1424,11 +1435,91 @@ def _infer_source_label(source_type: str) -> str:
     }.get(source_type, "Source")
 
 
+def _normalize_citation(text: str) -> str:
+    """Normalize citation text for fuzzy matching."""
+    # Lowercase, collapse whitespace, strip punctuation noise
+    t = re.sub(r"\s+", " ", text.strip().lower())
+    # Remove common prefixes the LLM adds
+    t = re.sub(r"^(see|cf\.?|per|in)\s+", "", t)
+    return t
+
+
+def _fuzzy_lookup(
+    citation_text: str,
+    citation_lookup: dict[str, dict],
+    _norm_index: dict[str, str] | None = None,
+) -> dict:
+    """Match footnote citation text to citation_lookup using fallback chain.
+
+    Tries: exact → normalized exact → substring containment → best overlap.
+    Returns matched metadata dict, or empty dict if no match.
+    """
+    # 1. Exact match
+    if citation_text in citation_lookup:
+        return citation_lookup[citation_text]
+
+    # Build normalized index on first call
+    if _norm_index is None:
+        _norm_index = {}
+    if not _norm_index:
+        for key in citation_lookup:
+            _norm_index[_normalize_citation(key)] = key
+
+    norm_text = _normalize_citation(citation_text)
+
+    # 2. Normalized exact match
+    if norm_text in _norm_index:
+        return citation_lookup[_norm_index[norm_text]]
+
+    # 3. Substring containment (either direction)
+    best_key = None
+    best_len = 0
+    for norm_key, orig_key in _norm_index.items():
+        if norm_text in norm_key or norm_key in norm_text:
+            # Prefer longest match
+            if len(norm_key) > best_len:
+                best_len = len(norm_key)
+                best_key = orig_key
+    if best_key:
+        return citation_lookup[best_key]
+
+    # 4. Token overlap — at least 60% of tokens must match
+    text_tokens = set(norm_text.split())
+    if len(text_tokens) >= 2:
+        best_overlap = 0.0
+        best_key = None
+        for norm_key, orig_key in _norm_index.items():
+            key_tokens = set(norm_key.split())
+            if not key_tokens:
+                continue
+            overlap = len(text_tokens & key_tokens) / max(len(text_tokens), len(key_tokens))
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_key = orig_key
+        if best_overlap >= 0.6 and best_key:
+            return citation_lookup[best_key]
+
+    return {}
+
+
+def _build_source_url(case_id: str | None, ik_doc_id: str, url: str) -> str:
+    """Build best available source URL for a footnote."""
+    if case_id and not str(case_id).startswith("ik:"):
+        return f"/case/{case_id}"
+    # Task 4: Generate IK URL from ik_doc_id when source_url is empty
+    if ik_doc_id:
+        return f"https://indiankanoon.org/doc/{ik_doc_id}/"
+    if url:
+        return url
+    return ""
+
+
 async def format_footnotes_node(state: ResearchState) -> dict:
     """Post-processing: extract [^N] references, build structured footnotes.
 
     Parses the memo for [^N] references and builds Footnote entries with
     source URLs. Also identifies searched-but-not-cited sources.
+    Uses fuzzy citation matching (Task 1) and includes statute/web sources (Task 2).
     """
     memo = state.get("draft_memo", "")
     if not memo:
@@ -1436,29 +1527,54 @@ async def format_footnotes_node(state: ResearchState) -> dict:
 
     # Get all worker results for source mapping
     worker_results = state.get("worker_results", [])
-    source_attribution = state.get("source_attribution", {})
 
     # Parse [^N] references from memo
     refs_in_memo = set(re.findall(r"\[\^(\d+)\]", memo))
 
     # Build a lookup from citation → result metadata
+    # Task 2: Include ALL source types (statute, web, community), not just case law
     citation_lookup: dict[str, dict] = {}
     for wr in worker_results:
+        task_type = wr.get("task_type", "case_law")
         for r in wr.get("results", []):
             citation = r.get("citation", "")
+
+            # Task 2: Generate synthetic keys for non-case sources
+            if not citation:
+                title = r.get("title", "")
+                if task_type in ("statute", "constitution"):
+                    # Use act + section as synthetic citation key
+                    act = r.get("act_name", r.get("title", ""))
+                    section = r.get("section", "")
+                    citation = f"{act} Section {section}".strip() if section else act
+                elif task_type == "web":
+                    # Use title or URL as key
+                    citation = title or r.get("url", "")
+                elif task_type == "graph_community":
+                    citation = title or r.get("community_id", "")
+                else:
+                    citation = title
+
             if citation and citation not in citation_lookup:
+                ik_doc_id = r.get("ik_doc_id", "")
+                raw_url = r.get("url", r.get("source_url", ""))
                 citation_lookup[citation] = {
                     "case_id": r.get("case_id"),
-                    "source_type": wr.get("task_type", "case_law"),
+                    "source_type": task_type,
                     "court": r.get("court", r.get("docsource", "")),
                     "year": r.get("year"),
                     "snippet": (r.get("snippet") or r.get("ratio") or "")[:300],
                     "title": r.get("title", ""),
                     "author": r.get("author", r.get("judge", "")),
                     "bench": r.get("bench_type", ""),
-                    "ik_doc_id": r.get("ik_doc_id", ""),
-                    "url": r.get("url", ""),
+                    "ik_doc_id": ik_doc_id,
+                    "url": raw_url,
                 }
+
+    # Pre-build normalized index for fuzzy matching (Task 1)
+    norm_index: dict[str, str] = {
+        _normalize_citation(k): k for k in citation_lookup
+    }
 
     # Extract footnote definitions from the memo itself (if LLM wrote them)
     footnote_defs: dict[int, dict] = {}
@@ -1479,21 +1595,26 @@ async def format_footnotes_node(state: ResearchState) -> dict:
         }
 
     footnotes: list[Footnote] = []
+    matched_keys: set[str] = set()  # Track which citation_lookup keys were matched
     for ref_str in sorted(refs_in_memo, key=int):
         ref_num = int(ref_str)
         fn_def = footnote_defs.get(ref_num, {})
         citation = fn_def.get("citation", f"[Citation {ref_num}]")
 
-        # Look up source metadata
-        meta = citation_lookup.get(citation, {})
+        # Task 1: Fuzzy lookup instead of exact match
+        meta = _fuzzy_lookup(citation, citation_lookup, norm_index)
         case_id = meta.get("case_id")
+        ik_doc_id = meta.get("ik_doc_id", "")
 
-        # Build source URL
-        source_url = ""
-        if case_id and not str(case_id).startswith("ik:"):
-            source_url = f"/case/{case_id}"
-        elif fn_def.get("url"):
-            source_url = fn_def["url"]
+        # Track matched citation_lookup key for unused-source tracking
+        if meta:
+            for k, v in citation_lookup.items():
+                if v is meta:
+                    matched_keys.add(k)
+                    break
+
+        # Task 4: Build source URL with IK URL generation
+        source_url = _build_source_url(case_id, ik_doc_id, fn_def.get("url", ""))
 
         # Determine source type
         source_type = meta.get("source_type", "case_law")
@@ -1515,38 +1636,39 @@ async def format_footnotes_node(state: ResearchState) -> dict:
             year=meta.get("year"),
             author=meta.get("author", ""),
             bench=meta.get("bench", ""),
-            ik_doc_id=meta.get("ik_doc_id", ""),
+            ik_doc_id=ik_doc_id,
             pdf_available=bool(case_id and not str(case_id).startswith("ik:")),
             source_label=_infer_source_label(source_type),
         ))
 
     # Add unused sources (searched but not cited)
-    cited_citations = {fn["citation"] for fn in footnotes}
     next_num = max((fn["number"] for fn in footnotes), default=0) + 1
     for citation, meta in citation_lookup.items():
-        if citation not in cited_citations:
-            unused_source_type = meta.get("source_type", "case_law")
-            unused_case_id = meta.get("case_id")
-            footnotes.append(Footnote(
-                number=next_num,
-                citation=citation,
-                source_type=unused_source_type,
-                source_url=f"/case/{unused_case_id}" if unused_case_id else "",
-                case_id=unused_case_id,
-                excerpt=meta.get("snippet", "")[:300],
-                is_used=False,
-                verification_status="pending",
-                verified_against="none",
-                title=meta.get("title", ""),
-                court=meta.get("court", ""),
-                year=meta.get("year"),
-                author=meta.get("author", ""),
-                bench=meta.get("bench", ""),
-                ik_doc_id=meta.get("ik_doc_id", ""),
-                pdf_available=bool(unused_case_id and not str(unused_case_id).startswith("ik:")),
-                source_label=_infer_source_label(unused_source_type),
-            ))
-            next_num += 1
+        if citation in matched_keys:
+            continue
+        unused_source_type = meta.get("source_type", "case_law")
+        unused_case_id = meta.get("case_id")
+        unused_ik_doc_id = meta.get("ik_doc_id", "")
+        footnotes.append(Footnote(
+            number=next_num,
+            citation=citation,
+            source_type=unused_source_type,
+            source_url=_build_source_url(unused_case_id, unused_ik_doc_id, meta.get("url", "")),
+            case_id=unused_case_id,
+            excerpt=meta.get("snippet", "")[:300],
+            is_used=False,
+            verification_status="pending",
+            verified_against="none",
+            title=meta.get("title", ""),
+            court=meta.get("court", ""),
+            year=meta.get("year"),
+            author=meta.get("author", ""),
+            bench=meta.get("bench", ""),
+            ik_doc_id=unused_ik_doc_id,
+            pdf_available=bool(unused_case_id and not str(unused_case_id).startswith("ik:")),
+            source_label=_infer_source_label(unused_source_type),
+        ))
+        next_num += 1
 
     return {"footnotes": footnotes}
 
@@ -1974,3 +2096,153 @@ def _build_research_audit(state: ResearchState, all_results: list[dict]) -> dict
     }
 
 
+# ---------------------------------------------------------------------------
+# [V3] Adversarial search — find cases AGAINST the emerging conclusion
+# ---------------------------------------------------------------------------
+
+
+async def _run_adversarial_search(
+    counter_args: list[dict],
+    llm: LLMProvider,
+    embedder: EmbeddingProvider,
+    vector_store: VectorStore,
+    reranker: Reranker,
+) -> list[dict]:
+    """Execute searches for each counter-argument query."""
+    from app.core.agents.nodes.worker_nodes import case_law_worker
+
+    results: list[dict] = []
+    for ca in counter_args[:3]:  # Max 3 counter-arguments
+        task = {
+            "task_id": f"adversarial_{ca.get('priority', 0)}",
+            "task_type": ca.get("target_source", "case_law"),
+            "nl_query": ca["search_query"],
+            "boolean_query": ca.get("boolean_query", ""),
+            "named_cases": [],
+            "rationale": f"Adversarial: {ca['counter_thesis']}",
+            "filters": {},
+            "priority": 1,
+        }
+        try:
+            worker_result = await case_law_worker(
+                {"task": task, "precomputed_embeddings": {}},
+                llm, embedder, vector_store, reranker,
+            )
+            for wr in worker_result.get("worker_results", []):
+                wr["metadata"] = {**wr.get("metadata", {}), "adversarial": True}
+                wr["reasoning"] = f"Counter-argument: {ca['counter_thesis']}"
+                results.append(wr)
+        except Exception as exc:
+            logger.warning(
+                "Adversarial search failed for %s: %s",
+                ca["counter_thesis"][:50], exc,
+            )
+    return results
+
+
+async def adversarial_search_node(
+    state: dict,
+    llm: LLMProvider,
+    embedder: EmbeddingProvider,
+    vector_store: VectorStore,
+    reranker: Reranker,
+) -> dict:
+    """[V3 Stage 4] Find cases AGAINST the emerging conclusion.
+
+    Only runs when state["include_adversarial"] is True (user-toggled at HITL).
+    Generates counter-argument queries via LLM and dispatches to case_law_worker.
+    Results are tagged with metadata.adversarial=True.
+    """
+    if not state.get("include_adversarial", False):
+        return {}
+
+    worker_results = state.get("worker_results", [])
+    elements = state.get("legal_elements", [])
+    reasonings = state.get("worker_reasonings", [])
+    query = state.get("rewritten_query", "") or state.get("query", "")
+
+    # Summarize findings for the adversarial LLM
+    findings_summary: list[str] = []
+    for wr in worker_results[:10]:
+        if isinstance(wr, dict):
+            for r in wr.get("results", [])[:3]:
+                findings_summary.append(
+                    f"- {r.get('title', '')}: {r.get('snippet', '')[:200]}"
+                )
+
+    user_prompt = (
+        f"## Research Question\n{query}\n\n"
+        f"## Current Findings\n" + "\n".join(findings_summary[:20]) + "\n\n"
+        f"## Worker Reasoning\n" + "\n".join(reasonings[:3]) + "\n\n"
+        "Generate counter-arguments."
+    )
+
+    try:
+        result = await llm.generate_structured(
+            system_prompt=ADVERSARIAL_SEARCH_SYSTEM,
+            user_prompt=user_prompt,
+            schema=ADVERSARIAL_SEARCH_SCHEMA,
+        )
+        counter_args = result.get("counter_arguments", [])
+    except Exception as exc:
+        logger.warning("Adversarial search LLM call failed: %s", exc)
+        return {}
+
+    if not counter_args:
+        return {}
+
+    adv_results = await _run_adversarial_search(
+        counter_args, llm, embedder, vector_store, reranker,
+    )
+    return {"worker_results": adv_results} if adv_results else {}
+
+
+# ---------------------------------------------------------------------------
+# [V3] Temporal validation — deterministic old/new code comparison
+# ---------------------------------------------------------------------------
+
+
+def _text_similarity(a: str, b: str) -> float:
+    """Compute normalized text similarity between two strings."""
+    if not a or not b:
+        return 0.0
+    a_norm = " ".join(a.lower().split())
+    b_norm = " ".join(b.lower().split())
+    return SequenceMatcher(None, a_norm, b_norm).ratio()
+
+
+async def temporal_validation_node(state: dict) -> dict:
+    """[V3 Stage 4] Check old-code cases against new-code wording.
+
+    Deterministic — no LLM call. Compares statute text between old and new codes.
+    Warns when the wording has materially changed (similarity < 0.8).
+    """
+    statute_context = state.get("statute_context", [])
+    warnings: list[dict] = []
+
+    for s in statute_context:
+        if not s.get("is_repealed") or not s.get("new_code_text"):
+            continue
+
+        old_text = s.get("section_text", "")
+        new_text = s.get("new_code_text", "")
+
+        if not old_text or not new_text:
+            continue
+
+        similarity = _text_similarity(old_text, new_text)
+        if similarity < 0.8:
+            warnings.append({
+                "case_id": "",
+                "case_citation": "",
+                "old_section": f"{s['act_short_name']} {s['section_number']}",
+                "new_section": s.get("replaced_by", ""),
+                "similarity": round(similarity, 2),
+                "warning": (
+                    f"{s['act_short_name']} Section {s['section_number']} wording "
+                    f"changed ({similarity:.0%} similar to new code). "
+                    f"Cases interpreting the old section may not apply directly."
+                ),
+            })
+
+    return {"temporal_warnings": warnings}

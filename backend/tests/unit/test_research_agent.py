@@ -1,6 +1,8 @@
 """Tests for the Research Agent LangGraph graph."""
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from app.core.agents.research import (
@@ -63,8 +65,10 @@ EXPECTED_NODES = {
     "evaluate_and_extract",
     "gap_analysis",
     "checkpoint_findings",
-    "synthesize",
-    "verify",
+    "speculative_synthesis",
+    "format_footnotes",
+    "verify_v2",
+    "quality_check",
     "checkpoint_memo",
     "fast_path_search",
     "fast_path_synthesis",
@@ -251,3 +255,210 @@ class TestRouteAfterMemo:
             iteration=0,
         )
         assert route_after_memo(state) == END
+
+
+# ---------------------------------------------------------------------------
+# [V3] adversarial_search_node
+# ---------------------------------------------------------------------------
+
+
+class TestAdversarialSearchNode:
+    @pytest.mark.asyncio
+    async def test_skips_when_disabled(self) -> None:
+        from app.core.agents.nodes.research_nodes import adversarial_search_node
+
+        state = {
+            "include_adversarial": False,
+            "worker_results": [],
+            "legal_elements": [],
+            "worker_reasonings": [],
+        }
+        result = await adversarial_search_node(
+            state, AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock()
+        )
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_generates_counter_queries(self) -> None:
+        from app.core.agents.nodes.research_nodes import adversarial_search_node
+
+        mock_llm = AsyncMock()
+        mock_llm.generate_structured.return_value = {
+            "counter_arguments": [
+                {
+                    "counter_thesis": "The accused acted under provocation",
+                    "search_query": "sudden provocation Exception 1 Section 300 IPC",
+                    "boolean_query": "provocation AND Section 300 AND exception",
+                    "target_source": "case_law",
+                    "priority": 1,
+                },
+            ],
+        }
+
+        state = {
+            "include_adversarial": True,
+            "worker_results": [
+                {"task_type": "case_law", "results": [{"title": "State v Ram"}]}
+            ],
+            "legal_elements": [{"element_id": "mens_rea", "description": "intent"}],
+            "worker_reasonings": ["Cases point toward murder conviction"],
+            "rewritten_query": "Is this murder?",
+        }
+
+        with patch(
+            "app.core.agents.nodes.research_nodes._run_adversarial_search",
+            new_callable=AsyncMock,
+            return_value=[{
+                "task_id": "adv_1",
+                "task_type": "case_law",
+                "query": "provocation",
+                "results": [{"title": "Nanavati v State"}],
+                "source_urls": [],
+                "metadata": {"adversarial": True},
+                "error": None,
+                "reasoning": "",
+            }],
+        ):
+            result = await adversarial_search_node(
+                state, mock_llm, AsyncMock(), AsyncMock(), AsyncMock(),
+            )
+
+        assert "worker_results" in result
+        assert len(result["worker_results"]) >= 1
+        assert result["worker_results"][0]["metadata"].get("adversarial") is True
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_llm_failure(self) -> None:
+        from app.core.agents.nodes.research_nodes import adversarial_search_node
+
+        mock_llm = AsyncMock()
+        mock_llm.generate_structured.side_effect = RuntimeError("LLM down")
+
+        state = {
+            "include_adversarial": True,
+            "worker_results": [],
+            "legal_elements": [],
+            "worker_reasonings": [],
+            "rewritten_query": "test",
+        }
+
+        result = await adversarial_search_node(
+            state, mock_llm, AsyncMock(), AsyncMock(), AsyncMock(),
+        )
+        assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# [V3] temporal_validation_node
+# ---------------------------------------------------------------------------
+
+
+class TestTemporalValidationNode:
+    @pytest.mark.asyncio
+    async def test_flags_changed_sections(self) -> None:
+        from app.core.agents.nodes.research_nodes import temporal_validation_node
+
+        state = {
+            "statute_context": [{
+                "act_short_name": "IPC",
+                "section_number": "302",
+                "section_text": "Whoever commits murder shall be punished with death.",
+                "is_repealed": True,
+                "replaced_by": "BNS, Section 103",
+                "new_code_text": "Whoever commits murder shall be punished with death plus community service and rehabilitation.",
+            }],
+        }
+
+        result = await temporal_validation_node(state)
+        assert "temporal_warnings" in result
+        # Texts differ significantly, should produce a warning
+        assert len(result["temporal_warnings"]) >= 1
+        assert "IPC" in result["temporal_warnings"][0]["old_section"]
+
+    @pytest.mark.asyncio
+    async def test_no_warning_for_identical_text(self) -> None:
+        from app.core.agents.nodes.research_nodes import temporal_validation_node
+
+        same_text = "Whoever commits murder shall be punished with death or imprisonment for life."
+        state = {
+            "statute_context": [{
+                "act_short_name": "IPC",
+                "section_number": "302",
+                "section_text": same_text,
+                "is_repealed": True,
+                "replaced_by": "BNS, Section 103",
+                "new_code_text": same_text,
+            }],
+        }
+
+        result = await temporal_validation_node(state)
+        assert result["temporal_warnings"] == []
+
+    @pytest.mark.asyncio
+    async def test_skips_non_repealed(self) -> None:
+        from app.core.agents.nodes.research_nodes import temporal_validation_node
+
+        state = {
+            "statute_context": [{
+                "act_short_name": "CPC",
+                "section_number": "9",
+                "section_text": "Courts shall try all civil suits.",
+                "is_repealed": False,
+                "replaced_by": "",
+                "new_code_text": "",
+            }],
+        }
+
+        result = await temporal_validation_node(state)
+        assert result["temporal_warnings"] == []
+
+
+# ---------------------------------------------------------------------------
+# [V3] classify_query_node V3 fields
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyV3Fields:
+    @pytest.mark.asyncio
+    async def test_extracts_procedural_context(self) -> None:
+        from app.core.agents.nodes.research_nodes import classify_query_node
+
+        mock_llm = AsyncMock()
+        mock_llm.generate_structured.return_value = {
+            "topic": "criminal",
+            "complexity": "complex",
+            "jurisdiction": None,
+            "target_court": "Supreme Court of India",
+            "target_bench": None,
+            "key_entities": ["Section 302 IPC"],
+            "search_hints": ["murder punishment"],
+            "procedural_context": "appeal",
+            "client_position": "accused",
+        }
+
+        state = _base_state(
+            query="My client is accused of murder, appealing against conviction"
+        )
+        result = await classify_query_node(state, mock_llm)
+
+        assert result.get("procedural_context") == "appeal"
+        assert result.get("client_position") == "accused"
+
+    @pytest.mark.asyncio
+    async def test_defaults_to_empty_string(self) -> None:
+        from app.core.agents.nodes.research_nodes import classify_query_node
+
+        mock_llm = AsyncMock()
+        mock_llm.generate_structured.return_value = {
+            "topic": "civil",
+            "complexity": "simple",
+            "jurisdiction": None,
+            "key_entities": [],
+            "search_hints": [],
+        }
+
+        state = _base_state(query="What is natural justice?")
+        result = await classify_query_node(state, mock_llm)
+
+        assert result.get("procedural_context", "") == ""
+        assert result.get("client_position", "") == ""
