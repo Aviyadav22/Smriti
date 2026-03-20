@@ -121,6 +121,36 @@ class StrategyAdjustment(TypedDict):
     reframe_query: str | None
 
 
+class StatuteContext(TypedDict):
+    """[V3] Statute text retrieved before planning."""
+    act_short_name: str         # "IPC"
+    section_number: str         # "302"
+    section_title: str          # "Punishment for murder"
+    section_text: str           # Full section text
+    is_repealed: bool
+    replaced_by: str            # "BNS, Section 103"
+    new_code_text: str          # Auto-fetched new-code equivalent text
+
+
+class LegalElement(TypedDict):
+    """[V3] Constituent legal element decomposed from the research question."""
+    element_id: str             # "mens_rea"
+    description: str            # What needs to be established
+    statute_basis: str          # "IPC Section 300, Exception 1"
+    search_query: str           # Targeted case law search query
+    is_contested: bool          # Whether likely disputed
+
+
+class TemporalWarning(TypedDict):
+    """[V3] Warning about old-code case validity under new codes."""
+    case_id: str
+    case_citation: str
+    old_section: str            # "IPC 302"
+    new_section: str            # "BNS 103"
+    similarity: float           # 0.0-1.0 text similarity
+    warning: str                # Human-readable warning
+
+
 # ---------------------------------------------------------------------------
 # Research Agent State (V2 — backward-compatible with V1 fields)
 # ---------------------------------------------------------------------------
@@ -162,6 +192,13 @@ class ResearchState(TypedDict):
     legal_quality_result: LegalQualityResult | None  # [Q4] LeMAJ check
     citation_verification_results: list[dict]  # [T4] Per-citation verification
     process_events: Annotated[list[dict], operator.add]  # [T1] Accumulated SSE events
+    # --- V3 fields (sequential-reactive pipeline) ---
+    statute_context: list[StatuteContext]     # [V3] Statute text found before planning
+    legal_elements: list[LegalElement]        # [V3] Element-wise breakdown
+    procedural_context: str                   # [V3] "trial"|"appeal"|"slp"|"advisory"|""
+    client_position: str                      # [V3] "petitioner"|"respondent"|"accused"|""
+    include_adversarial: bool                 # [V3] User toggle from HITL
+    temporal_warnings: list[TemporalWarning]  # [V3] Old-code vs new-code warnings
 
 
 class CasePrepState(TypedDict):
