@@ -1775,21 +1775,39 @@ def _matches_indian_citation_pattern(citation: str) -> bool:
 
 
 def _fuzzy_match(quote: str, passage: str, threshold: int = 85) -> bool:
-    """Simple substring fuzzy match — checks if quote appears in passage."""
+    """Word + trigram fuzzy match — more accurate than character overlap.
+
+    Three-tier matching:
+    1. Exact substring check (fast path)
+    2. Word-level overlap ratio (semantic accuracy)
+    3. Trigram overlap (catches typos/OCR errors)
+    """
     if not quote or not passage:
         return False
     # Normalize whitespace
     q = " ".join(quote.lower().split())
     p = " ".join(passage.lower().split())
-    # Exact substring check
+    # Exact substring check (fast path)
     if q in p:
         return True
-    # Simple overlap ratio (without fuzzywuzzy dependency)
-    if len(q) > len(p):
-        q, p = p, q
-    overlap = sum(1 for c in q if c in p)
-    ratio = (overlap / max(len(q), 1)) * 100
-    return ratio >= threshold
+    # Word-level overlap (much more accurate than char-level)
+    q_words = set(q.split())
+    p_words = set(p.split())
+    if not q_words:
+        return False
+    word_overlap = len(q_words & p_words)
+    word_ratio = (word_overlap / len(q_words)) * 100
+    if word_ratio >= threshold:
+        return True
+    # Trigram overlap as fallback for near-exact matches (typos, OCR errors)
+    def _trigrams(s: str) -> set[str]:
+        return {s[i:i + 3] for i in range(max(0, len(s) - 2))}
+    q_tri = _trigrams(q)
+    p_tri = _trigrams(p)
+    if not q_tri:
+        return False
+    tri_ratio = (len(q_tri & p_tri) / len(q_tri)) * 100
+    return tri_ratio >= threshold
 
 
 # ---------------------------------------------------------------------------

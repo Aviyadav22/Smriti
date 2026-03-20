@@ -1017,3 +1017,49 @@ class TestProcessEventsAccumulation:
         assert forwarded[0]["type"] == "drafting"
         assert forwarded[0]["execution_id"] == exec_id
         assert forwarded[1]["type"] == "verification"
+
+
+# ---------------------------------------------------------------------------
+# Fuzzy match tests
+# ---------------------------------------------------------------------------
+
+
+class TestFuzzyMatch:
+    """Tests for _fuzzy_match — word + trigram algorithm."""
+
+    def test_exact_substring(self) -> None:
+        from app.core.agents.nodes.research_nodes import _fuzzy_match
+
+        assert _fuzzy_match("the court held", "In this case the court held that") is True
+
+    def test_rejects_unrelated_strings(self) -> None:
+        """Character-overlap fuzzy match must not produce false positives."""
+        from app.core.agents.nodes.research_nodes import _fuzzy_match
+
+        # These share many common characters but are completely different passages
+        assert _fuzzy_match("Section 498A IPC", "Section 302 IPC deals with murder") is False
+
+    def test_rejects_anagram_like(self) -> None:
+        from app.core.agents.nodes.research_nodes import _fuzzy_match
+
+        assert _fuzzy_match("abc", "cba") is False
+
+    def test_same_words_reordered(self) -> None:
+        from app.core.agents.nodes.research_nodes import _fuzzy_match
+
+        assert _fuzzy_match("the court held", "held the court") is True
+
+    def test_near_exact_with_typo(self) -> None:
+        from app.core.agents.nodes.research_nodes import _fuzzy_match
+
+        assert _fuzzy_match(
+            "the court dismissed the appeal",
+            "the court dismissed the appael",
+        ) is True
+
+    def test_empty_strings(self) -> None:
+        from app.core.agents.nodes.research_nodes import _fuzzy_match
+
+        assert _fuzzy_match("", "something") is False
+        assert _fuzzy_match("something", "") is False
+        assert _fuzzy_match("", "") is False
