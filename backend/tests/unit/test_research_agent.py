@@ -462,3 +462,63 @@ class TestClassifyV3Fields:
 
         assert result.get("procedural_context", "") == ""
         assert result.get("client_position", "") == ""
+
+
+# ---------------------------------------------------------------------------
+# [V3] plan_research_node with statute/element context
+# ---------------------------------------------------------------------------
+
+
+class TestPlanResearchV3:
+    @pytest.mark.asyncio
+    async def test_plan_receives_statute_and_elements(self) -> None:
+        from app.core.agents.nodes.research_nodes import plan_research_node
+
+        mock_llm = AsyncMock()
+        mock_llm.generate_structured.return_value = {
+            "research_tasks": [{
+                "task_type": "case_law",
+                "nl_query": "cases interpreting Section 300 Exception 1",
+                "boolean_query": "Section 300 exception provocation",
+                "named_cases": [],
+                "rationale": "Need case law on provocation defense",
+                "filters": {"element_id": "provocation_defense"},
+                "priority": 1,
+            }],
+        }
+
+        state = _base_state(
+            rewritten_query="Is this murder or culpable homicide under Section 302/300 IPC?",
+            complexity="complex",
+            messages=[{"type": "classification", "data": {"topic": "criminal"}}],
+            statute_context=[{
+                "act_short_name": "IPC",
+                "section_number": "300",
+                "section_text": "Murder definition...",
+                "is_repealed": True,
+                "replaced_by": "BNS 101",
+                "new_code_text": "",
+                "section_title": "Murder",
+            }],
+            legal_elements=[{
+                "element_id": "provocation_defense",
+                "description": "Whether Exception 1 applies",
+                "statute_basis": "IPC Section 300, Exception 1",
+                "search_query": "sudden provocation",
+                "is_contested": True,
+            }],
+            procedural_context="trial",
+            client_position="accused",
+        )
+
+        result = await plan_research_node(state, mock_llm)
+        assert "research_plan" in result
+
+        # Verify LLM was called with V3 context in the prompt
+        call_args = mock_llm.generate_structured.call_args
+        prompt = call_args.kwargs.get("prompt", "")
+        assert "Statute" in prompt or "statute" in prompt.lower()
+        assert "Element" in prompt or "element" in prompt.lower()
+        assert "provocation_defense" in prompt
+        assert "trial" in prompt
+        assert "accused" in prompt

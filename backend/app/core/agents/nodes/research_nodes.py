@@ -536,11 +536,37 @@ async def plan_research_node(
 
     classification_str = json.dumps(classification) if classification else "N/A"
 
+    # [V3] Format statute context for planning
+    statute_parts: list[str] = []
+    for s in state.get("statute_context", []):
+        entry = f"- {s['act_short_name']} Section {s['section_number']}: {s.get('section_title', '')}"
+        entry += f"\n  Text: {s['section_text'][:500]}"
+        if s.get("is_repealed"):
+            entry += f"\n  [REPEALED → {s.get('replaced_by', '')}]"
+        statute_parts.append(entry)
+
+    # [V3] Format legal elements for planning
+    element_parts: list[str] = []
+    for e in state.get("legal_elements", []):
+        entry = f"- {e['element_id']}: {e['description']}"
+        entry += f"\n  Statute basis: {e.get('statute_basis', '')}"
+        entry += f"\n  Contested: {'Yes' if e.get('is_contested') else 'No'}"
+        element_parts.append(entry)
+
+    procedural = state.get("procedural_context", "")
+    position = state.get("client_position", "")
+
     prompt = (
         f"Create a research plan for the following legal question.\n\n"
-        f"Research Question: {query}\n\n"
-        f"Classification: {classification_str}\n\n"
-        f"Generate 3-8 typed research tasks with dual queries and named cases."
+        f"## Research Question\n{query}\n\n"
+        f"## Classification\n{classification_str}\n\n"
+        f"## Statute Context\n{chr(10).join(statute_parts) or 'None found'}\n\n"
+        f"## Legal Elements\n{chr(10).join(element_parts) or 'None decomposed'}\n\n"
+        f"## Procedural Context\n"
+        f"Stage: {procedural or 'not specified'}\n"
+        f"Client position: {position or 'not specified'}\n\n"
+        f"Generate 3-8 typed research tasks with dual queries and named cases. "
+        f"Target at least ONE case_law task per legal element."
     )
 
     if user_feedback:
