@@ -393,3 +393,102 @@ class TestStatuteLookupNode:
             s["act_short_name"] == "CPC" and s["section_number"] == "9"
             for s in result["statute_context"]
         )
+
+
+# ---------------------------------------------------------------------------
+# [V3] element_decomposition_node
+# ---------------------------------------------------------------------------
+
+
+class TestElementDecompositionNode:
+    @pytest.mark.asyncio
+    async def test_returns_elements_from_llm(self) -> None:
+        from app.core.agents.nodes.common import element_decomposition_node
+
+        mock_llm = AsyncMock()
+        mock_llm.generate_structured.return_value = {
+            "elements": [
+                {
+                    "element_id": "mens_rea",
+                    "description": "Intention to cause death",
+                    "statute_basis": "IPC Section 300",
+                    "search_query": "intention cause death Section 300",
+                    "is_contested": True,
+                },
+                {
+                    "element_id": "exceptions",
+                    "description": "Whether Exception 1 (provocation) applies",
+                    "statute_basis": "IPC Section 300, Exception 1",
+                    "search_query": "sudden provocation Exception 1 Section 300",
+                    "is_contested": True,
+                },
+            ],
+        }
+
+        state = {
+            "rewritten_query": "Is this murder or culpable homicide under Section 302 IPC?",
+            "statute_context": [{
+                "act_short_name": "IPC",
+                "section_number": "300",
+                "section_title": "Murder",
+                "section_text": "Except in the cases hereinafter excepted...",
+                "is_repealed": True,
+                "replaced_by": "BNS, Section 101",
+                "new_code_text": "...",
+            }],
+            "complexity": "complex",
+        }
+
+        result = await element_decomposition_node(state, mock_llm)
+
+        assert "legal_elements" in result
+        assert len(result["legal_elements"]) == 2
+        assert result["legal_elements"][0]["element_id"] == "mens_rea"
+
+    @pytest.mark.asyncio
+    async def test_fallback_on_llm_error(self) -> None:
+        from app.core.agents.nodes.common import element_decomposition_node
+
+        mock_llm = AsyncMock()
+        mock_llm.generate_structured.side_effect = RuntimeError("LLM down")
+
+        state = {
+            "rewritten_query": "Is this murder under Section 302?",
+            "statute_context": [],
+            "complexity": "simple",
+        }
+
+        result = await element_decomposition_node(state, mock_llm)
+
+        assert "legal_elements" in result
+        assert len(result["legal_elements"]) == 1
+        assert result["legal_elements"][0]["element_id"] == "primary_issue"
+
+    @pytest.mark.asyncio
+    async def test_includes_statute_text_in_prompt(self) -> None:
+        from app.core.agents.nodes.common import element_decomposition_node
+
+        mock_llm = AsyncMock()
+        mock_llm.generate_structured.return_value = {"elements": []}
+
+        state = {
+            "rewritten_query": "test query",
+            "statute_context": [{
+                "act_short_name": "IPC",
+                "section_number": "302",
+                "section_title": "Punishment for murder",
+                "section_text": "Whoever commits murder...",
+                "is_repealed": False,
+                "replaced_by": "",
+                "new_code_text": "",
+            }],
+            "complexity": "complex",
+        }
+
+        await element_decomposition_node(state, mock_llm)
+
+        # Verify LLM was called with statute text in the user prompt
+        call_args = mock_llm.generate_structured.call_args
+        user_prompt = call_args.kwargs.get("user_prompt", "")
+        assert "IPC Section 302" in user_prompt
+        assert "Whoever commits murder" in user_prompt

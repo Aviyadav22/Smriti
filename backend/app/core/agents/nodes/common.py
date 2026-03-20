@@ -18,6 +18,10 @@ from app.core.agents.nodes.citation_verifier import (
 )
 from app.core.legal.constants import IPC_TO_BNS_MAP, CRPC_TO_BNSS_MAP, EVIDENCE_TO_BSA_MAP
 from app.core.legal.extractor import extract_citations
+from app.core.legal.prompts import (
+    ELEMENT_DECOMPOSITION_SYSTEM,
+    ELEMENT_DECOMPOSITION_SCHEMA,
+)
 from app.core.interfaces import (
     EmbeddingProvider,
     GraphStore,
@@ -192,6 +196,59 @@ async def statute_lookup_node(
         logger.warning("Semantic statute search failed", exc_info=True)
 
     return {"statute_context": statute_context}
+
+
+async def element_decomposition_node(
+    state: dict,
+    llm: LLMProvider,
+) -> dict:
+    """[V3 Stage 2] Break legal question into constituent elements.
+
+    Uses the statute text found in Stage 1 to identify specific legal elements
+    (mens rea, actus reus, exceptions, etc.) that each need independent research.
+    """
+    query = state.get("rewritten_query", "") or state.get("query", "")
+    statute_context = state.get("statute_context", [])
+    complexity = state.get("complexity", "complex")
+
+    # Format statute context for LLM
+    statute_text_parts: list[str] = []
+    for s in statute_context:
+        entry = f"**{s['act_short_name']} Section {s['section_number']}** — {s['section_title']}\n"
+        entry += s["section_text"][:2000]
+        if s.get("is_repealed") and s.get("replaced_by"):
+            entry += f"\n[REPEALED — replaced by {s['replaced_by']}]"
+            if s.get("new_code_text"):
+                entry += f"\nNew code text: {s['new_code_text'][:1000]}"
+        statute_text_parts.append(entry)
+
+    statute_text = "\n\n".join(statute_text_parts) if statute_text_parts else "No statute text available."
+
+    user_prompt = (
+        f"## Research Question\n{query}\n\n"
+        f"## Relevant Statute Text\n{statute_text}\n\n"
+        f"## Query Complexity\n{complexity}\n\n"
+        "Decompose this question into legal elements."
+    )
+
+    try:
+        result = await llm.generate_structured(
+            system_prompt=ELEMENT_DECOMPOSITION_SYSTEM,
+            user_prompt=user_prompt,
+            schema=ELEMENT_DECOMPOSITION_SCHEMA,
+        )
+        elements = result.get("elements", [])
+    except Exception as exc:
+        logger.warning("Element decomposition failed: %s — using query as single element", exc)
+        elements = [{
+            "element_id": "primary_issue",
+            "description": query[:200],
+            "statute_basis": "",
+            "search_query": query,
+            "is_contested": True,
+        }]
+
+    return {"legal_elements": elements}
 
 
 _BENCH_LABELS = {
