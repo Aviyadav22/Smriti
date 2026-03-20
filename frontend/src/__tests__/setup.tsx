@@ -96,6 +96,15 @@ vi.mock("next-intl", () => ({
   NextIntlClientProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+// Mock react-pdf to avoid DOMMatrix errors in jsdom
+vi.mock("react-pdf", () => ({
+  Document: ({ children }: { children: React.ReactNode }) => <div data-testid="pdf-document">{children}</div>,
+  Page: () => <div data-testid="pdf-page" />,
+  pdfjs: { GlobalWorkerOptions: { workerSrc: "" }, version: "0.0.0" },
+}));
+vi.mock("react-pdf/dist/Page/AnnotationLayer.css", () => ({}));
+vi.mock("react-pdf/dist/Page/TextLayer.css", () => ({}));
+
 // Stub window.scrollTo
 Object.defineProperty(window, "scrollTo", {
   value: vi.fn(),
