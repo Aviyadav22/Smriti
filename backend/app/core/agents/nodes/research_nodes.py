@@ -1675,9 +1675,8 @@ async def _deterministic_verify(
         ):
             try:
                 exists = await db.execute(
-                    select(1).select_from(
-                        text("cases")
-                    ).where(text(f"id = '{fn['case_id']}'::uuid"))
+                    text("SELECT 1 FROM cases WHERE id = :case_id::uuid"),
+                    {"case_id": fn["case_id"]},
                 )
                 if not exists.scalar():
                     issues.append({

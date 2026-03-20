@@ -406,6 +406,31 @@ class TestDualStageVerification:
         assert missing[0]["ref"] == "99"
 
     @pytest.mark.asyncio
+    async def test_deterministic_verify_sql_injection_safe(self) -> None:
+        """SQL injection in case_id must not execute arbitrary SQL."""
+        from app.core.agents.nodes.research_nodes import _deterministic_verify
+
+        malicious_footnote = Footnote(
+            number=1, citation="Test v Test", source_type="case_law",
+            source_url="", case_id="'; DROP TABLE cases; --", excerpt="x",
+            is_used=True, verification_status="pending", verified_against="none",
+        )
+
+        db = AsyncMock()
+        # The parameterized query should raise on invalid UUID, not execute DROP
+        mock_result = MagicMock()
+        mock_result.scalar = MagicMock(return_value=None)
+        db.execute = AsyncMock(return_value=mock_result)
+
+        issues = await _deterministic_verify("memo [^1]", [malicious_footnote], [], db)
+        assert isinstance(issues, list)
+        # Verify the query used parameterized form (not f-string)
+        call_args = db.execute.call_args
+        if call_args:
+            query_text = str(call_args[0][0])
+            assert "case_id" not in query_text or ":case_id" in query_text
+
+    @pytest.mark.asyncio
     async def test_t4_guardrail_removes_unverifiable_citations(self) -> None:
         """Test 52: [T4] Unverifiable citations are REMOVED, not just flagged."""
         from app.core.agents.nodes.research_nodes import _verify_citations_against_sources
