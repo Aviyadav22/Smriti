@@ -157,12 +157,13 @@ def get_ik_client() -> ExternalDocProvider:
 
 
 async def cleanup_providers() -> None:
-    """Close cached provider connections on shutdown."""
+    """Close cached provider connections on shutdown and clear LRU caches."""
     try:
         if get_graph_store.cache_info().currsize > 0:
             store = get_graph_store()
             if hasattr(store, "close"):
                 await store.close()
+            get_graph_store.cache_clear()
     except Exception:
         pass
     try:
@@ -170,6 +171,7 @@ async def cleanup_providers() -> None:
             reranker = get_reranker()
             if hasattr(reranker, "close"):
                 await reranker.close()
+            get_reranker.cache_clear()
     except Exception:
         pass
     try:
@@ -177,6 +179,7 @@ async def cleanup_providers() -> None:
             ik = get_ik_client()
             if hasattr(ik, "close"):
                 await ik.close()
+            get_ik_client.cache_clear()
     except Exception:
         pass
     try:
@@ -184,5 +187,6 @@ async def cleanup_providers() -> None:
             ws = get_web_search()
             if hasattr(ws, "close"):
                 await ws.close()
+            get_web_search.cache_clear()
     except Exception:
         pass
