@@ -252,6 +252,7 @@ async def ingest_judgment(
         db, case_id, metadata, full_text, storage_path, parquet_metadata,
         provenance=provenance, text_hash=text_hash,
         extraction_confidence=extraction_confidence,
+        page_map=quality.page_map,
     )
 
     if already_ingested:
@@ -354,7 +355,10 @@ async def ingest_judgment(
             reraise=True,
         )
         async def _upsert_with_retry():
-            await _upsert_vectors(case_id, chunks, embeddings, metadata, vector_store)
+            await _upsert_vectors(
+                case_id, chunks, embeddings, metadata, vector_store,
+                page_map=quality.page_map, full_text=full_text,
+            )
 
         try:
             await _upsert_with_retry()
@@ -540,6 +544,7 @@ async def _insert_case(
     provenance: dict[str, str] | None = None,
     text_hash: str | None = None,
     extraction_confidence: float | None = None,
+    page_map: list[dict] | None = None,
 ) -> tuple[str, bool]:
     """Insert or update a case record into PostgreSQL.
 
@@ -608,6 +613,31 @@ async def _insert_case(
         "extraction_confidence": extraction_confidence,
         "is_anonymized": metadata.is_anonymized,
         "anonymization_flags": metadata.anonymization_flags,
+        # V2 fields
+        "arguments_raised": json.dumps(metadata.arguments_raised) if metadata.arguments_raised else None,
+        "relief_granted": metadata.relief_granted,
+        "relief_sought": metadata.relief_sought,
+        "sentence_details": json.dumps(metadata.sentence_details) if metadata.sentence_details else None,
+        "damages_awarded": json.dumps(metadata.damages_awarded) if metadata.damages_awarded else None,
+        "judicial_tone": metadata.judicial_tone,
+        "key_observations": metadata.key_observations,
+        "hearing_count": metadata.hearing_count,
+        "citation_treatments": json.dumps(metadata.citation_treatments) if metadata.citation_treatments else None,
+        "distinguished_cases": metadata.distinguished_cases,
+        "overruled_cases": metadata.overruled_cases,
+        "legal_principles_applied": metadata.legal_principles_applied,
+        "procedural_history": json.dumps(metadata.procedural_history) if metadata.procedural_history else None,
+        "interim_orders": metadata.interim_orders,
+        "filing_date": metadata.filing_date,
+        "urgency_indicators": metadata.urgency_indicators,
+        "party_counsel": json.dumps(metadata.party_counsel) if metadata.party_counsel else None,
+        "issue_classification": metadata.issue_classification,
+        "fact_pattern_tags": metadata.fact_pattern_tags,
+        "operative_order": metadata.operative_order,
+        "conditions_imposed": metadata.conditions_imposed,
+        "costs_awarded": json.dumps(metadata.costs_awarded) if metadata.costs_awarded else None,
+        "page_map": json.dumps(page_map) if page_map else None,
+        "enrichment_status": metadata.enrichment_status,
     }
 
     # Check for content-based duplicate via text_hash
@@ -662,7 +692,16 @@ async def _insert_case(
                 opinion_type, dissenting_judges, concurring_judges, split_ratio,
                 petitioner_type, respondent_type, is_pil, companion_cases,
                 metadata_provenance, text_hash, extraction_confidence,
-                is_anonymized, anonymization_flags
+                is_anonymized, anonymization_flags,
+                arguments_raised, relief_granted, relief_sought,
+                sentence_details, damages_awarded, judicial_tone,
+                key_observations, hearing_count,
+                citation_treatments, distinguished_cases, overruled_cases,
+                legal_principles_applied,
+                procedural_history, interim_orders, filing_date, urgency_indicators,
+                party_counsel, issue_classification, fact_pattern_tags,
+                operative_order, conditions_imposed, costs_awarded,
+                page_map, enrichment_status
             ) VALUES (
                 :id, :title, :citation, :case_id, :cnr, :court, :year, :case_type,
                 :jurisdiction, :bench_type, :judge, :author_judge, :petitioner,
@@ -677,7 +716,16 @@ async def _insert_case(
                 :opinion_type, :dissenting_judges, :concurring_judges, :split_ratio,
                 :petitioner_type, :respondent_type, :is_pil, :companion_cases,
                 :metadata_provenance, :text_hash, :extraction_confidence,
-                :is_anonymized, :anonymization_flags
+                :is_anonymized, :anonymization_flags,
+                :arguments_raised, :relief_granted, :relief_sought,
+                :sentence_details, :damages_awarded, :judicial_tone,
+                :key_observations, :hearing_count,
+                :citation_treatments, :distinguished_cases, :overruled_cases,
+                :legal_principles_applied,
+                :procedural_history, :interim_orders, :filing_date, :urgency_indicators,
+                :party_counsel, :issue_classification, :fact_pattern_tags,
+                :operative_order, :conditions_imposed, :costs_awarded,
+                :page_map, :enrichment_status
             )
             ON CONFLICT (citation) WHERE citation IS NOT NULL DO UPDATE SET
                 full_text = EXCLUDED.full_text,
@@ -709,7 +757,31 @@ async def _insert_case(
                 text_hash = COALESCE(EXCLUDED.text_hash, cases.text_hash),
                 extraction_confidence = COALESCE(EXCLUDED.extraction_confidence, cases.extraction_confidence),
                 is_anonymized = EXCLUDED.is_anonymized,
-                anonymization_flags = COALESCE(EXCLUDED.anonymization_flags, cases.anonymization_flags)
+                anonymization_flags = COALESCE(EXCLUDED.anonymization_flags, cases.anonymization_flags),
+                arguments_raised = COALESCE(EXCLUDED.arguments_raised, cases.arguments_raised),
+                relief_granted = COALESCE(EXCLUDED.relief_granted, cases.relief_granted),
+                relief_sought = COALESCE(EXCLUDED.relief_sought, cases.relief_sought),
+                sentence_details = COALESCE(EXCLUDED.sentence_details, cases.sentence_details),
+                damages_awarded = COALESCE(EXCLUDED.damages_awarded, cases.damages_awarded),
+                judicial_tone = COALESCE(EXCLUDED.judicial_tone, cases.judicial_tone),
+                key_observations = COALESCE(EXCLUDED.key_observations, cases.key_observations),
+                hearing_count = COALESCE(EXCLUDED.hearing_count, cases.hearing_count),
+                citation_treatments = COALESCE(EXCLUDED.citation_treatments, cases.citation_treatments),
+                distinguished_cases = COALESCE(EXCLUDED.distinguished_cases, cases.distinguished_cases),
+                overruled_cases = COALESCE(EXCLUDED.overruled_cases, cases.overruled_cases),
+                legal_principles_applied = COALESCE(EXCLUDED.legal_principles_applied, cases.legal_principles_applied),
+                procedural_history = COALESCE(EXCLUDED.procedural_history, cases.procedural_history),
+                interim_orders = COALESCE(EXCLUDED.interim_orders, cases.interim_orders),
+                filing_date = COALESCE(EXCLUDED.filing_date, cases.filing_date),
+                urgency_indicators = COALESCE(EXCLUDED.urgency_indicators, cases.urgency_indicators),
+                party_counsel = COALESCE(EXCLUDED.party_counsel, cases.party_counsel),
+                issue_classification = COALESCE(EXCLUDED.issue_classification, cases.issue_classification),
+                fact_pattern_tags = COALESCE(EXCLUDED.fact_pattern_tags, cases.fact_pattern_tags),
+                operative_order = COALESCE(EXCLUDED.operative_order, cases.operative_order),
+                conditions_imposed = COALESCE(EXCLUDED.conditions_imposed, cases.conditions_imposed),
+                costs_awarded = COALESCE(EXCLUDED.costs_awarded, cases.costs_awarded),
+                page_map = COALESCE(EXCLUDED.page_map, cases.page_map),
+                enrichment_status = COALESCE(EXCLUDED.enrichment_status, cases.enrichment_status)
             RETURNING id
             """
         ),
@@ -799,6 +871,9 @@ async def _upsert_vectors(
     embeddings: list[list[float]],
     metadata: CaseMetadata,
     vector_store: VectorStore,
+    *,
+    page_map: list[dict] | None = None,
+    full_text: str | None = None,
 ) -> None:
     """Upsert chunk vectors to the vector store with metadata."""
     vectors: list[dict] = []
@@ -809,6 +884,29 @@ async def _upsert_vectors(
                 "Chunk %s_%d text truncated from %d to 2000 chars for Pinecone metadata",
                 case_id, chunk.chunk_index, len(chunk.text),
             )
+
+        # V2: compute page location from page_map
+        page_start = 0
+        page_end = 0
+        char_start = 0
+        char_end = 0
+        if page_map and full_text:
+            anchor = chunk.text[:50]
+            chunk_pos = full_text.find(anchor) if anchor else -1
+            if chunk_pos >= 0:
+                char_start = chunk_pos
+                char_end = chunk_pos + len(chunk.text)
+                for pm in page_map:
+                    if pm["char_start"] <= chunk_pos < pm["char_end"]:
+                        page_start = pm["page_number"]
+                        break
+                for pm in page_map:
+                    if pm["char_start"] < char_end <= pm["char_end"]:
+                        page_end = pm["page_number"]
+                        break
+                if page_end == 0:
+                    page_end = page_start  # same page if not found
+
         vectors.append({
             "id": vector_id,
             "values": embedding,
@@ -832,6 +930,14 @@ async def _upsert_vectors(
                 "para_end": chunk.para_end or 0,
                 "text": chunk.text[:2000],  # Pinecone 40KB metadata cap; full text lives in PostgreSQL
                 "document_type": "case_law",
+                # V2 fields
+                "judicial_tone": metadata.judicial_tone or "",
+                "fact_pattern_tags": list(metadata.fact_pattern_tags[:5]) if metadata.fact_pattern_tags else [],
+                "issue_classification": list(metadata.issue_classification[:5]) if metadata.issue_classification else [],
+                "page_start": page_start,
+                "page_end": page_end,
+                "char_start": char_start,
+                "char_end": char_end,
             },
         })
 
@@ -914,6 +1020,72 @@ async def _build_citation_graph(
         )
     except (OSError, ConnectionError, RuntimeError) as exc:
         logger.warning("Failed to batch-create citation edges for %s: %s", case_id, exc)
+
+    # --- V2: Enriched CITES edges with treatment context ---
+    if metadata.citation_treatments:
+        for ct in metadata.citation_treatments:
+            cited = ct.get("cited_case", "")
+            if not cited:
+                continue
+            context = ct.get("context", "")
+            paragraph = ct.get("paragraph")
+            try:
+                await graph_store.query(
+                    "MATCH (a:Case {id: $case_id})-[r:CITES]->(b:Case) "
+                    "WHERE b.citation CONTAINS $cited_fragment "
+                    "SET r.context = $context, r.paragraph = $paragraph",
+                    params={"case_id": case_id, "cited_fragment": cited[:50],
+                            "context": context[:500], "paragraph": paragraph},
+                )
+            except Exception:
+                logger.debug("Could not enrich CITES edge for %s", cited)
+
+    # --- V2: Counsel nodes ---
+    if metadata.party_counsel:
+        for pc in metadata.party_counsel:
+            name = pc.get("counsel_name", "").strip() if isinstance(pc, dict) else ""
+            if not name:
+                continue
+            try:
+                await graph_store.query(
+                    "MERGE (c:Counsel {name: $name}) "
+                    "SET c.designation = $designation "
+                    "WITH c "
+                    "MATCH (case:Case {id: $case_id}) "
+                    "MERGE (case)-[:REPRESENTED_BY {party: $party}]->(c)",
+                    params={"name": name, "designation": pc.get("designation", "advocate"),
+                            "party": pc.get("party", ""), "case_id": case_id},
+                )
+            except Exception:
+                logger.debug("Could not create Counsel node for %s", name)
+
+    # --- V2: LegalPrinciple nodes ---
+    if metadata.legal_principles_applied:
+        for principle in metadata.legal_principles_applied[:10]:
+            try:
+                await graph_store.query(
+                    "MERGE (p:LegalPrinciple {name: $name}) "
+                    "WITH p "
+                    "MATCH (case:Case {id: $case_id}) "
+                    "MERGE (case)-[:APPLIES_PRINCIPLE]->(p)",
+                    params={"name": principle.strip(), "case_id": case_id},
+                )
+            except Exception:
+                logger.debug("Could not create LegalPrinciple node for %s", principle)
+
+    # --- V2: Issue nodes ---
+    if metadata.issue_classification:
+        for tag in metadata.issue_classification[:10]:
+            try:
+                await graph_store.query(
+                    "MERGE (i:Issue {tag: $tag}) "
+                    "WITH i "
+                    "MATCH (case:Case {id: $case_id}) "
+                    "MERGE (case)-[:ADDRESSES]->(i)",
+                    params={"tag": tag.strip(), "case_id": case_id},
+                )
+            except Exception:
+                logger.debug("Could not create Issue node for %s", tag)
 
 
 async def _link_citation_equivalents(
@@ -1076,8 +1248,20 @@ async def bulk_upsert_cases(
             full_text, searchable_text, pdf_storage_path, s3_source_path,
             source, language, available_languages, chunk_count,
             case_number, is_reportable, headnotes, outcome_summary,
+            coram_size, lower_court, lower_court_case_number, appeal_from,
+            opinion_type, dissenting_judges, concurring_judges, split_ratio,
+            petitioner_type, respondent_type, is_pil, companion_cases,
             metadata_provenance, extraction_confidence, text_hash,
-            ingestion_status, is_anonymized, anonymization_flags
+            ingestion_status, is_anonymized, anonymization_flags,
+            arguments_raised, relief_granted, relief_sought,
+            sentence_details, damages_awarded, judicial_tone,
+            key_observations, hearing_count,
+            citation_treatments, distinguished_cases, overruled_cases,
+            legal_principles_applied,
+            procedural_history, interim_orders, filing_date, urgency_indicators,
+            party_counsel, issue_classification, fact_pattern_tags,
+            operative_order, conditions_imposed, costs_awarded,
+            page_map, enrichment_status
         ) VALUES (
             :id, :title, :citation, :case_id, :cnr, :court, :year, :case_type,
             :jurisdiction, :bench_type, :judge, :author_judge, :petitioner,
@@ -1088,8 +1272,20 @@ async def bulk_upsert_cases(
             :pdf_storage_path, :s3_source_path, :source,
             :language, :available_languages, :chunk_count,
             :case_number, :is_reportable, :headnotes, :outcome_summary,
+            :coram_size, :lower_court, :lower_court_case_number, :appeal_from,
+            :opinion_type, :dissenting_judges, :concurring_judges, :split_ratio,
+            :petitioner_type, :respondent_type, :is_pil, :companion_cases,
             :metadata_provenance, :extraction_confidence, :text_hash,
-            :ingestion_status, :is_anonymized, :anonymization_flags
+            :ingestion_status, :is_anonymized, :anonymization_flags,
+            :arguments_raised, :relief_granted, :relief_sought,
+            :sentence_details, :damages_awarded, :judicial_tone,
+            :key_observations, :hearing_count,
+            :citation_treatments, :distinguished_cases, :overruled_cases,
+            :legal_principles_applied,
+            :procedural_history, :interim_orders, :filing_date, :urgency_indicators,
+            :party_counsel, :issue_classification, :fact_pattern_tags,
+            :operative_order, :conditions_imposed, :costs_awarded,
+            :page_map, :enrichment_status
         )
         ON CONFLICT (citation) WHERE citation IS NOT NULL DO UPDATE SET
             full_text = EXCLUDED.full_text,
@@ -1105,12 +1301,48 @@ async def bulk_upsert_cases(
             is_reportable = COALESCE(EXCLUDED.is_reportable, cases.is_reportable),
             headnotes = COALESCE(EXCLUDED.headnotes, cases.headnotes),
             outcome_summary = COALESCE(EXCLUDED.outcome_summary, cases.outcome_summary),
+            coram_size = COALESCE(EXCLUDED.coram_size, cases.coram_size),
+            lower_court = COALESCE(EXCLUDED.lower_court, cases.lower_court),
+            lower_court_case_number = COALESCE(EXCLUDED.lower_court_case_number, cases.lower_court_case_number),
+            appeal_from = COALESCE(EXCLUDED.appeal_from, cases.appeal_from),
+            opinion_type = COALESCE(EXCLUDED.opinion_type, cases.opinion_type),
+            dissenting_judges = COALESCE(EXCLUDED.dissenting_judges, cases.dissenting_judges),
+            concurring_judges = COALESCE(EXCLUDED.concurring_judges, cases.concurring_judges),
+            split_ratio = COALESCE(EXCLUDED.split_ratio, cases.split_ratio),
+            petitioner_type = COALESCE(EXCLUDED.petitioner_type, cases.petitioner_type),
+            respondent_type = COALESCE(EXCLUDED.respondent_type, cases.respondent_type),
+            is_pil = COALESCE(EXCLUDED.is_pil, cases.is_pil),
+            companion_cases = COALESCE(EXCLUDED.companion_cases, cases.companion_cases),
             metadata_provenance = COALESCE(EXCLUDED.metadata_provenance, cases.metadata_provenance),
             extraction_confidence = COALESCE(EXCLUDED.extraction_confidence, cases.extraction_confidence),
             text_hash = COALESCE(EXCLUDED.text_hash, cases.text_hash),
             ingestion_status = COALESCE(EXCLUDED.ingestion_status, cases.ingestion_status),
             is_anonymized = EXCLUDED.is_anonymized,
-            anonymization_flags = COALESCE(EXCLUDED.anonymization_flags, cases.anonymization_flags)
+            anonymization_flags = COALESCE(EXCLUDED.anonymization_flags, cases.anonymization_flags),
+            arguments_raised = COALESCE(EXCLUDED.arguments_raised, cases.arguments_raised),
+            relief_granted = COALESCE(EXCLUDED.relief_granted, cases.relief_granted),
+            relief_sought = COALESCE(EXCLUDED.relief_sought, cases.relief_sought),
+            sentence_details = COALESCE(EXCLUDED.sentence_details, cases.sentence_details),
+            damages_awarded = COALESCE(EXCLUDED.damages_awarded, cases.damages_awarded),
+            judicial_tone = COALESCE(EXCLUDED.judicial_tone, cases.judicial_tone),
+            key_observations = COALESCE(EXCLUDED.key_observations, cases.key_observations),
+            hearing_count = COALESCE(EXCLUDED.hearing_count, cases.hearing_count),
+            citation_treatments = COALESCE(EXCLUDED.citation_treatments, cases.citation_treatments),
+            distinguished_cases = COALESCE(EXCLUDED.distinguished_cases, cases.distinguished_cases),
+            overruled_cases = COALESCE(EXCLUDED.overruled_cases, cases.overruled_cases),
+            legal_principles_applied = COALESCE(EXCLUDED.legal_principles_applied, cases.legal_principles_applied),
+            procedural_history = COALESCE(EXCLUDED.procedural_history, cases.procedural_history),
+            interim_orders = COALESCE(EXCLUDED.interim_orders, cases.interim_orders),
+            filing_date = COALESCE(EXCLUDED.filing_date, cases.filing_date),
+            urgency_indicators = COALESCE(EXCLUDED.urgency_indicators, cases.urgency_indicators),
+            party_counsel = COALESCE(EXCLUDED.party_counsel, cases.party_counsel),
+            issue_classification = COALESCE(EXCLUDED.issue_classification, cases.issue_classification),
+            fact_pattern_tags = COALESCE(EXCLUDED.fact_pattern_tags, cases.fact_pattern_tags),
+            operative_order = COALESCE(EXCLUDED.operative_order, cases.operative_order),
+            conditions_imposed = COALESCE(EXCLUDED.conditions_imposed, cases.conditions_imposed),
+            costs_awarded = COALESCE(EXCLUDED.costs_awarded, cases.costs_awarded),
+            page_map = COALESCE(EXCLUDED.page_map, cases.page_map),
+            enrichment_status = COALESCE(EXCLUDED.enrichment_status, cases.enrichment_status)
         RETURNING id
         """
     )
@@ -1156,13 +1388,51 @@ async def bulk_upsert_cases(
                 "is_reportable": row.get("is_reportable"),
                 "headnotes": row.get("headnotes"),
                 "outcome_summary": row.get("outcome_summary"),
-                "ingestion_status": row.get("ingestion_status", "completed"),
+                "ingestion_status": row.get("ingestion_status", "complete"),
+                # Phase C columns
+                "coram_size": row.get("coram_size"),
+                "lower_court": row.get("lower_court"),
+                "lower_court_case_number": row.get("lower_court_case_number"),
+                "appeal_from": row.get("appeal_from"),
+                "opinion_type": row.get("opinion_type"),
+                "dissenting_judges": row.get("dissenting_judges"),
+                "concurring_judges": row.get("concurring_judges"),
+                "split_ratio": row.get("split_ratio"),
+                "petitioner_type": row.get("petitioner_type"),
+                "respondent_type": row.get("respondent_type"),
+                "is_pil": row.get("is_pil"),
+                "companion_cases": row.get("companion_cases"),
                 # Migration 013 columns
                 "metadata_provenance": row.get("metadata_provenance"),
                 "extraction_confidence": row.get("extraction_confidence"),
                 "text_hash": row.get("text_hash"),
                 "is_anonymized": row.get("is_anonymized", False),
                 "anonymization_flags": row.get("anonymization_flags"),
+                # V2 fields
+                "arguments_raised": row.get("arguments_raised"),
+                "relief_granted": row.get("relief_granted"),
+                "relief_sought": row.get("relief_sought"),
+                "sentence_details": row.get("sentence_details"),
+                "damages_awarded": row.get("damages_awarded"),
+                "judicial_tone": row.get("judicial_tone"),
+                "key_observations": row.get("key_observations"),
+                "hearing_count": row.get("hearing_count"),
+                "citation_treatments": row.get("citation_treatments"),
+                "distinguished_cases": row.get("distinguished_cases"),
+                "overruled_cases": row.get("overruled_cases"),
+                "legal_principles_applied": row.get("legal_principles_applied"),
+                "procedural_history": row.get("procedural_history"),
+                "interim_orders": row.get("interim_orders"),
+                "filing_date": row.get("filing_date"),
+                "urgency_indicators": row.get("urgency_indicators"),
+                "party_counsel": row.get("party_counsel"),
+                "issue_classification": row.get("issue_classification"),
+                "fact_pattern_tags": row.get("fact_pattern_tags"),
+                "operative_order": row.get("operative_order"),
+                "conditions_imposed": row.get("conditions_imposed"),
+                "costs_awarded": row.get("costs_awarded"),
+                "page_map": row.get("page_map"),
+                "enrichment_status": row.get("enrichment_status", "flash_only"),
             })
 
         # Batch execution: single round-trip for all rows in this batch.
