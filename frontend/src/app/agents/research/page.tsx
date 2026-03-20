@@ -10,12 +10,14 @@ import { AgentCheckpointPrompt } from "@/components/agent-checkpoint-prompt";
 import { AgentMemoViewer } from "@/components/agent-memo-viewer";
 import { ResearchProcessPanel } from "@/components/research-process-panel";
 import { ResearchFootnotes } from "@/components/research-footnotes";
+import { FootnotesPanel } from "@/components/footnotes-panel";
 import { VerificationBanner } from "@/components/verification-banner";
 import { ResearchAuditTrail } from "@/components/research-audit-trail";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, ArrowLeft, RotateCcw } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Loader2, ArrowLeft, RotateCcw, FileText } from "lucide-react";
 import { LegalDisclaimer } from "@/components/legal-disclaimer";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
@@ -79,6 +81,8 @@ export default function ResearchAgentPage() {
     const [verificationBanner, setVerificationBanner] = useState<string | null>(null);
     const [citationsVerified, setCitationsVerified] = useState(0);
     const [citationsRemoved, setCitationsRemoved] = useState(0);
+    const [footnotesPanelOpen, setFootnotesPanelOpen] = useState(false);
+    const [selectedFootnoteNum, setSelectedFootnoteNum] = useState<number | null>(null);
 
     useEffect(() => {
         if (!authLoading && !isAuthenticated) router.push("/login");
@@ -150,6 +154,9 @@ export default function ResearchAgentPage() {
                 // Extract Phase 4 structured data
                 if (data?.footnotes) {
                     setFootnotes(data.footnotes as ResearchFootnote[]);
+                    if ((data.footnotes as ResearchFootnote[]).length > 0) {
+                        setFootnotesPanelOpen(true);
+                    }
                 }
                 if (data?.research_audit) {
                     const audit = data.research_audit as ResearchAudit;
@@ -260,6 +267,8 @@ export default function ResearchAgentPage() {
         setVerificationBanner(null);
         setCitationsVerified(0);
         setCitationsRemoved(0);
+        setFootnotesPanelOpen(false);
+        setSelectedFootnoteNum(null);
     }, []);
 
     if (authLoading || !isAuthenticated) {
@@ -282,7 +291,9 @@ export default function ResearchAgentPage() {
             <Header />
 
             <main className="flex-1">
-                <div className="mx-auto max-w-6xl px-4 py-8">
+                <div className={`mx-auto px-4 py-8 ${
+                    footnotesPanelOpen && footnotes.length > 0 && !isRunning ? "max-w-[1400px]" : "max-w-6xl"
+                }`}>
             <div className="flex items-center gap-3 mb-6">
                 <Button variant="ghost" size="sm" asChild>
                     <Link href="/agents">
@@ -328,7 +339,9 @@ export default function ResearchAgentPage() {
 
             {/* Running or completed state */}
             {showWorkspace && (
-                <div className="grid gap-6 md:grid-cols-[240px_1fr]">
+                <div className={`grid gap-6 md:grid-cols-[240px_1fr] ${
+                    footnotesPanelOpen && footnotes.length > 0 && !isRunning ? "lg:grid-cols-[240px_1fr_380px]" : ""
+                }`}>
                     {/* Left: Step Timeline + Process Panel */}
                     <div className="hidden md:block">
                         <div className="sticky top-20 space-y-4">
@@ -389,14 +402,36 @@ export default function ResearchAgentPage() {
                                     <AgentMemoViewer
                                         content={displayMemo}
                                         confidence={confidence}
+                                        onFootnoteClick={(num) => {
+                                            setSelectedFootnoteNum(num);
+                                            setFootnotesPanelOpen(true);
+                                        }}
                                     />
                                 </CardContent>
                             </Card>
                         )}
 
-                        {/* Footnotes & Sources */}
+                        {/* Mobile: Footnotes Sheet Drawer */}
                         {footnotes.length > 0 && !isRunning && (
-                            <ResearchFootnotes footnotes={footnotes} />
+                            <div className="lg:hidden">
+                                <Sheet>
+                                    <SheetTrigger asChild>
+                                        <Button variant="outline" size="sm" className="w-full">
+                                            <FileText className="h-4 w-4 mr-2" />
+                                            Footnotes & Sources ({footnotes.filter(f => f.is_used).length})
+                                        </Button>
+                                    </SheetTrigger>
+                                    <SheetContent side="bottom" className="h-[80vh] p-0">
+                                        <FootnotesPanel
+                                            footnotes={footnotes}
+                                            selectedFootnoteNumber={selectedFootnoteNum}
+                                            onFootnoteSelect={setSelectedFootnoteNum}
+                                            isOpen={true}
+                                            onToggle={() => {}}
+                                        />
+                                    </SheetContent>
+                                </Sheet>
+                            </div>
                         )}
 
                         {/* Research Audit Trail */}
@@ -434,6 +469,21 @@ export default function ResearchAgentPage() {
                             </>
                         )}
                     </div>
+
+                    {/* Desktop: Footnotes Side Panel */}
+                    {footnotes.length > 0 && !isRunning && (
+                        <div className="hidden lg:block">
+                            <div className="sticky top-20 h-[calc(100vh-6rem)] rounded-lg border overflow-hidden">
+                                <FootnotesPanel
+                                    footnotes={footnotes}
+                                    selectedFootnoteNumber={selectedFootnoteNum}
+                                    onFootnoteSelect={setSelectedFootnoteNum}
+                                    isOpen={footnotesPanelOpen}
+                                    onToggle={() => setFootnotesPanelOpen(!footnotesPanelOpen)}
+                                />
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
                 </div>
