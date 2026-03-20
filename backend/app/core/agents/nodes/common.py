@@ -16,6 +16,7 @@ from app.core.agents.nodes.citation_verifier import (
     extract_citations_from_text,
     verify_citations_against_db,
 )
+from app.core.legal.constants import IPC_TO_BNS_MAP, CRPC_TO_BNSS_MAP, EVIDENCE_TO_BSA_MAP
 from app.core.legal.extractor import extract_citations
 from app.core.interfaces import (
     EmbeddingProvider,
@@ -34,6 +35,164 @@ UUID_RE = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
     re.IGNORECASE,
 )
+
+# ---------------------------------------------------------------------------
+# [V3] Statute lookup helpers — old↔new code expansion + DB fetch
+# ---------------------------------------------------------------------------
+
+# Reverse maps: new-code section → (old_act, old_section)
+_NEW_TO_OLD: dict[tuple[str, str], tuple[str, str]] = {
+    **{("BNS", v): ("IPC", k) for k, v in IPC_TO_BNS_MAP.items()},
+    **{("BNSS", v): ("CrPC", k) for k, v in CRPC_TO_BNSS_MAP.items()},
+    **{("BSA", v): ("IEA", k) for k, v in EVIDENCE_TO_BSA_MAP.items()},
+}
+
+_OLD_TO_NEW: dict[str, tuple[str, dict[str, str]]] = {
+    "IPC": ("BNS", IPC_TO_BNS_MAP),
+    "CrPC": ("BNSS", CRPC_TO_BNSS_MAP),
+    "IEA": ("BSA", EVIDENCE_TO_BSA_MAP),
+}
+
+# Regex patterns for Indian statute references
+_STATUTE_RE = re.compile(
+    r"(?:Section|Sec\.?|S\.?)\s+(\d+[A-Z]?)"
+    r"\s+(?:of\s+)?(?:the\s+)?"
+    r"(IPC|BNS|CrPC|BNSS|IEA|BSA|CPC|COI)",
+    re.IGNORECASE,
+)
+_ARTICLE_RE = re.compile(
+    r"Article\s+(\d+[A-Z]?(?:\(\d+\))?)",
+    re.IGNORECASE,
+)
+
+
+def _extract_statute_refs(text_input: str) -> list[tuple[str, str]]:
+    """Extract (act_short_name, section_number) tuples from text."""
+    refs: list[tuple[str, str]] = []
+    for match in _STATUTE_RE.finditer(text_input):
+        sec_num = match.group(1)
+        act = match.group(2).upper()
+        refs.append((act, sec_num))
+    for match in _ARTICLE_RE.finditer(text_input):
+        art_num = match.group(1)
+        refs.append(("COI", art_num))
+    return refs
+
+
+def _expand_refs(refs: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Auto-expand old↔new code refs (IPC 302 → also BNS 103)."""
+    expanded = list(refs)
+    for act, sec in refs:
+        if act in _OLD_TO_NEW:
+            new_act, mapping = _OLD_TO_NEW[act]
+            new_sec = mapping.get(sec, "")
+            if new_sec:
+                expanded.append((new_act, new_sec))
+        elif (act, sec) in _NEW_TO_OLD:
+            expanded.append(_NEW_TO_OLD[(act, sec)])
+    return list(set(expanded))
+
+
+async def _fetch_statute_from_db(
+    db: AsyncSession,
+    refs: list[tuple[str, str]],
+) -> list[dict]:
+    """Fetch statute rows from PostgreSQL for given (act, section) pairs."""
+    from sqlalchemy import select
+    from app.models.statute import Statute
+
+    results: list[dict] = []
+    for act, sec in refs:
+        stmt = select(Statute).where(
+            Statute.act_short_name == act,
+            Statute.section_number == sec,
+        )
+        row_result = await db.execute(stmt)
+        row = row_result.scalars().first()
+        if row:
+            # Check if this is repealed and fetch new-code equivalent
+            new_code_text = ""
+            if row.replaced_by and row.is_repealed:
+                # Parse "BNS, Section 103" → (BNS, 103)
+                parts = row.replaced_by.split(", Section ")
+                if len(parts) == 2:
+                    new_act, new_sec = parts[0].strip(), parts[1].strip()
+                    new_stmt = select(Statute).where(
+                        Statute.act_short_name == new_act,
+                        Statute.section_number == new_sec,
+                    )
+                    new_result = await db.execute(new_stmt)
+                    new_row = new_result.scalars().first()
+                    if new_row:
+                        new_code_text = new_row.section_text or ""
+
+            results.append({
+                "act_short_name": row.act_short_name,
+                "section_number": row.section_number,
+                "section_title": row.section_title or "",
+                "section_text": row.section_text or "",
+                "is_repealed": row.is_repealed or False,
+                "replaced_by": row.replaced_by or "",
+                "new_code_text": new_code_text,
+            })
+    return results
+
+
+async def statute_lookup_node(
+    state: dict,
+    db: AsyncSession,
+    embedder: EmbeddingProvider,
+    vector_store: VectorStore,
+) -> dict:
+    """[V3 Stage 1] Read relevant statute text BEFORE planning.
+
+    Extracts statute references from the rewritten query and key entities,
+    auto-expands old↔new code mappings, and fetches text from PostgreSQL.
+    Also runs a semantic search in Pinecone for statute/constitution vectors.
+    """
+    query = state.get("rewritten_query", "") or state.get("query", "")
+    key_entities = state.get("key_entities", [])
+
+    # Extract refs from query + entities
+    all_text = query + " " + " ".join(str(e) for e in key_entities)
+    refs = _extract_statute_refs(all_text)
+    refs = _expand_refs(refs)
+
+    # Fetch from PostgreSQL
+    statute_context = await _fetch_statute_from_db(db, refs)
+
+    # Also try semantic search for statutes not caught by regex
+    try:
+        query_vector = await embedder.embed_text(query)
+        pinecone_results = await vector_store.search(
+            vector=query_vector,
+            top_k=5,
+            filter={"document_type": {"$in": ["statute", "constitution"]}},
+        )
+        # Add any semantic results not already in context
+        existing_keys = {
+            (s["act_short_name"], s["section_number"]) for s in statute_context
+        }
+        for result in pinecone_results:
+            meta = result.get("metadata", {})
+            act = meta.get("act_short_name", "")
+            sec = meta.get("section_number", "")
+            if act and sec and (act, sec) not in existing_keys:
+                statute_context.append({
+                    "act_short_name": act,
+                    "section_number": sec,
+                    "section_title": meta.get("section_title", ""),
+                    "section_text": meta.get("text", ""),
+                    "is_repealed": False,
+                    "replaced_by": "",
+                    "new_code_text": "",
+                })
+                existing_keys.add((act, sec))
+    except Exception:
+        logger.warning("Semantic statute search failed", exc_info=True)
+
+    return {"statute_context": statute_context}
+
 
 _BENCH_LABELS = {
     "single": "Single Judge",

@@ -1,7 +1,7 @@
 """Tests for agent node common utilities."""
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -198,3 +198,198 @@ class TestVerifyCaseIds:
 
         result = await verify_case_ids(["id-999"], db)
         assert result == set()
+
+
+# ---------------------------------------------------------------------------
+# [V3] _extract_statute_refs
+# ---------------------------------------------------------------------------
+
+
+class TestExtractStatuteRefs:
+    def test_extracts_section_ipc(self) -> None:
+        from app.core.agents.nodes.common import _extract_statute_refs
+
+        refs = _extract_statute_refs("punishment under Section 302 IPC")
+        assert ("IPC", "302") in refs
+
+    def test_extracts_section_bns(self) -> None:
+        from app.core.agents.nodes.common import _extract_statute_refs
+
+        refs = _extract_statute_refs("Section 103 BNS applies here")
+        assert ("BNS", "103") in refs
+
+    def test_extracts_article(self) -> None:
+        from app.core.agents.nodes.common import _extract_statute_refs
+
+        refs = _extract_statute_refs("violates Article 21 of the Constitution")
+        assert ("COI", "21") in refs
+
+    def test_extracts_multiple(self) -> None:
+        from app.core.agents.nodes.common import _extract_statute_refs
+
+        refs = _extract_statute_refs(
+            "Section 302 IPC read with Section 34 IPC and Article 21"
+        )
+        assert ("IPC", "302") in refs
+        assert ("IPC", "34") in refs
+        assert ("COI", "21") in refs
+
+    def test_no_refs_returns_empty(self) -> None:
+        from app.core.agents.nodes.common import _extract_statute_refs
+
+        refs = _extract_statute_refs("general principle of natural justice")
+        assert refs == []
+
+    def test_case_insensitive(self) -> None:
+        from app.core.agents.nodes.common import _extract_statute_refs
+
+        refs = _extract_statute_refs("section 302 ipc")
+        assert ("IPC", "302") in refs
+
+
+# ---------------------------------------------------------------------------
+# [V3] _expand_refs
+# ---------------------------------------------------------------------------
+
+
+class TestExpandRefs:
+    def test_expands_old_to_new(self) -> None:
+        from app.core.agents.nodes.common import _expand_refs
+
+        refs = [("IPC", "302")]
+        expanded = _expand_refs(refs)
+        assert ("IPC", "302") in expanded
+        assert ("BNS", "103") in expanded
+
+    def test_expands_new_to_old(self) -> None:
+        from app.core.agents.nodes.common import _expand_refs
+
+        refs = [("BNS", "103")]
+        expanded = _expand_refs(refs)
+        assert ("BNS", "103") in expanded
+        assert ("IPC", "302") in expanded
+
+    def test_no_mapping_returns_original(self) -> None:
+        from app.core.agents.nodes.common import _expand_refs
+
+        refs = [("COI", "21")]
+        expanded = _expand_refs(refs)
+        assert ("COI", "21") in expanded
+        assert len(expanded) == 1
+
+    def test_crpc_to_bnss(self) -> None:
+        from app.core.agents.nodes.common import _expand_refs
+
+        refs = [("CrPC", "41")]
+        expanded = _expand_refs(refs)
+        assert ("CrPC", "41") in expanded
+        # CrPC 41 maps to BNSS 35
+        assert ("BNSS", "35") in expanded
+
+
+# ---------------------------------------------------------------------------
+# [V3] statute_lookup_node
+# ---------------------------------------------------------------------------
+
+
+class TestStatuteLookupNode:
+    @pytest.mark.asyncio
+    async def test_extracts_and_fetches_statutes(self) -> None:
+        from app.core.agents.nodes.common import statute_lookup_node
+
+        mock_db = AsyncMock()
+        mock_embedder = AsyncMock()
+        mock_vector_store = AsyncMock()
+        mock_vector_store.search.return_value = []
+
+        state = {
+            "rewritten_query": "punishment for murder under Section 302 IPC",
+            "key_entities": ["Section 302 IPC"],
+        }
+
+        with patch(
+            "app.core.agents.nodes.common._fetch_statute_from_db",
+            new_callable=AsyncMock,
+            return_value=[{
+                "act_short_name": "IPC",
+                "section_number": "302",
+                "section_title": "Punishment for murder",
+                "section_text": "Whoever commits murder...",
+                "is_repealed": True,
+                "replaced_by": "BNS, Section 103",
+                "new_code_text": "Whoever commits murder...",
+            }],
+        ):
+            result = await statute_lookup_node(
+                state, mock_db, mock_embedder, mock_vector_store
+            )
+
+        assert "statute_context" in result
+        assert len(result["statute_context"]) >= 1
+        assert result["statute_context"][0]["act_short_name"] == "IPC"
+
+    @pytest.mark.asyncio
+    async def test_empty_query_no_refs(self) -> None:
+        from app.core.agents.nodes.common import statute_lookup_node
+
+        mock_db = AsyncMock()
+        mock_embedder = AsyncMock()
+        mock_vector_store = AsyncMock()
+        mock_vector_store.search.return_value = []
+
+        state = {
+            "rewritten_query": "general principle of natural justice",
+            "key_entities": ["natural justice"],
+        }
+
+        with patch(
+            "app.core.agents.nodes.common._fetch_statute_from_db",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            result = await statute_lookup_node(
+                state, mock_db, mock_embedder, mock_vector_store
+            )
+
+        assert "statute_context" in result
+        assert isinstance(result["statute_context"], list)
+
+    @pytest.mark.asyncio
+    async def test_semantic_results_merged(self) -> None:
+        """Pinecone semantic results should be merged if not already in DB results."""
+        from app.core.agents.nodes.common import statute_lookup_node
+
+        mock_db = AsyncMock()
+        mock_embedder = AsyncMock()
+        mock_embedder.embed_text.return_value = [0.1] * 1536
+        mock_vector_store = AsyncMock()
+        mock_vector_store.search.return_value = [
+            {
+                "metadata": {
+                    "act_short_name": "CPC",
+                    "section_number": "9",
+                    "section_title": "Courts to try all civil suits",
+                    "text": "The Courts shall...",
+                },
+                "score": 0.85,
+            }
+        ]
+
+        state = {
+            "rewritten_query": "jurisdiction of civil courts Section 9 CPC",
+            "key_entities": [],
+        }
+
+        with patch(
+            "app.core.agents.nodes.common._fetch_statute_from_db",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            result = await statute_lookup_node(
+                state, mock_db, mock_embedder, mock_vector_store
+            )
+
+        assert any(
+            s["act_short_name"] == "CPC" and s["section_number"] == "9"
+            for s in result["statute_context"]
+        )
