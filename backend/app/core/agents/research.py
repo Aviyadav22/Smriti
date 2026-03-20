@@ -1,19 +1,23 @@
-"""Research Agent V2 LangGraph graph.
+"""Research Agent V3 LangGraph graph — 5-stage sequential-reactive pipeline.
 
 Builds a compiled LangGraph state graph with orchestrated multi-agent
-research: classify → plan → dispatch workers (Send fan-out) → gather →
-evaluate → gap analysis → synthesis → verify → HITL checkpoints.
+research using a statute-first, element-aware approach.
 
-Graph flow (complex queries):
-  START → [rewrite_query ∥ classify] → route_by_complexity
+Graph flow (complex queries — 5 stages):
+  START → rewrite_query → classify
+    → statute_lookup → element_decomposition → route_by_complexity
     → plan_research → checkpoint_plan → dispatch_workers → [Send() fan-out]
     → gather_results → batch_cot_with_reflection → evaluate_and_extract
     → gap_analysis → [should_refine] → dispatch_workers | checkpoint_findings
-    → synthesize → verify → checkpoint_memo → END
+    → adversarial_search → temporal_validation
+    → speculative_synthesis → format_footnotes → verify_v2 → quality_check
+    → checkpoint_memo → END
 
 Fast path (simple queries):
-  START → [rewrite_query ∥ classify] → route_by_complexity
-    → fast_path_search → fast_path_synthesis → verify → checkpoint_memo → END
+  START → rewrite_query → classify
+    → statute_lookup → element_decomposition → route_by_complexity
+    → fast_path_search → fast_path_synthesis → format_footnotes → verify_v2
+    → quality_check → checkpoint_memo → END
 """
 from __future__ import annotations
 
@@ -23,13 +27,14 @@ import time
 from typing import Any
 
 from langgraph.graph import StateGraph, START, END
-from langgraph.types import Send, interrupt
+from langgraph.types import Command, Send, interrupt
 
+from app.core.agents.nodes.common import (
+    element_decomposition_node,
+    statute_lookup_node,
+)
 from app.core.agents.nodes.research_nodes import (
-    # V1 nodes (kept for backward compat in V2 pipeline)
     classify_query_node,
-    synthesize_memo_node,
-    verify_citations_node,
     # V2 nodes
     batch_worker_cot_with_reflection_node,
     evaluate_and_extract_node,
@@ -44,6 +49,9 @@ from app.core.agents.nodes.research_nodes import (
     rewrite_query_node,
     speculative_synthesis_with_contradictions_node,
     verify_citations_v2_node,
+    # V3 nodes
+    adversarial_search_node,
+    temporal_validation_node,
 )
 from app.core.agents.nodes.worker_nodes import (
     case_law_worker,
@@ -169,6 +177,25 @@ def build_research_graph(
     async def fast_path_synthesis(state: ResearchState) -> dict:
         return await fast_path_synthesis_node(state, flash_llm)
 
+    # [V3] Stage 1b: Statute lookup — read bare act text before planning
+    async def statute_lookup(state: ResearchState) -> dict:
+        async with async_session_factory() as session:
+            return await statute_lookup_node(state, session, embedder, vector_store)
+
+    # [V3] Stage 2: Element decomposition — break question into legal elements
+    async def element_decomposition(state: ResearchState) -> dict:
+        return await element_decomposition_node(state, flash_llm)
+
+    # [V3] Stage 4a: Adversarial search — find cases against conclusion
+    async def adversarial_search(state: ResearchState) -> dict:
+        return await adversarial_search_node(
+            state, llm, embedder, vector_store, reranker,
+        )
+
+    # [V3] Stage 4b: Temporal validation — old/new code comparison
+    async def temporal_validation(state: ResearchState) -> dict:
+        return await temporal_validation_node(state)
+
     # [S6] Pre-warm embeddings after plan approval, before dispatch
     async def pre_warm(state: ResearchState) -> dict:
         return await pre_warm_embeddings_node(state, embedder)
@@ -186,8 +213,14 @@ def build_research_graph(
         "graph_community": "graph_community_worker",
     }
 
-    def dispatch_workers(state: ResearchState) -> list[Send]:
-        """Fan out to appropriate worker for each research task."""
+    def dispatch_workers(state: ResearchState) -> Command:
+        """Fan out to appropriate worker for each research task.
+
+        Returns Command(goto=sends) instead of raw list[Send] because
+        LangGraph's node output handler (_get_updates) doesn't support
+        list[Send] — only dict, Command, or list[Command]. list[Send]
+        is only valid from conditional edge functions.
+        """
         sends: list[Send] = []
         plan = state.get("research_plan", [])
         precomputed = state.get("precomputed_embeddings", {})
@@ -233,7 +266,7 @@ def build_research_graph(
                 "precomputed_embeddings": {},
             }))
 
-        return sends
+        return Command(goto=sends)
 
     async def gather(state: ResearchState) -> dict:
         return await gather_worker_results_node(state)
@@ -247,13 +280,6 @@ def build_research_graph(
 
     async def gap_analysis(state: ResearchState) -> dict:
         return await gap_analysis_node(state, flash_llm)
-
-    async def synthesize(state: ResearchState) -> dict:
-        return await synthesize_memo_node(state, llm)
-
-    async def verify(state: ResearchState) -> dict:
-        async with async_session_factory() as session:
-            return await verify_citations_node(state, session)
 
     # Phase 4 nodes: speculative synthesis → format footnotes → verify v2 → quality check
     async def speculative_synthesis(state: ResearchState) -> dict:
@@ -388,12 +414,33 @@ def build_research_graph(
                 ),
                 None,
             ),
+            # [V3] Show statute context and element breakdown
+            "statute_context": [
+                {"act": s.get("act_short_name"), "section": s.get("section_number"),
+                 "title": s.get("section_title", ""), "repealed": s.get("is_repealed", False)}
+                for s in state.get("statute_context", [])
+            ],
+            "legal_elements": [
+                {"id": e.get("element_id"), "description": e.get("description"),
+                 "contested": e.get("is_contested", False)}
+                for e in state.get("legal_elements", [])
+            ],
+            # [V3] Adversarial research toggle
+            "include_adversarial": state.get("include_adversarial", False),
         })
-        return {
+
+        # Parse response for adversarial toggle
+        result_dict: dict = {
             "messages": [
                 {"type": "user_feedback", "step": "plan", "content": response}
             ],
         }
+
+        # If the response is a dict with include_adversarial, update the state
+        if isinstance(response, dict) and "include_adversarial" in response:
+            result_dict["include_adversarial"] = response["include_adversarial"]
+
+        return result_dict
 
     async def checkpoint_findings(state: ResearchState) -> dict:
         """Pause for user review of search findings."""
@@ -429,7 +476,12 @@ def build_research_graph(
     checkpoint_memo = make_checkpoint_node(
         "memo",
         "Here is the draft research memo. Any revisions?",
-        {"draft_memo": ("draft_memo", ""), "confidence": ("confidence", 0.0)},
+        {
+            "draft_memo": ("draft_memo", ""),
+            "confidence": ("confidence", 0.0),
+            "footnotes": ("footnotes", []),
+            "research_audit": ("research_audit", None),
+        },
     )
 
     # -- Routing functions --------------------------------------------------
@@ -458,11 +510,13 @@ def build_research_graph(
 
     # -- Register nodes -----------------------------------------------------
 
-    # Parallel entry nodes [S2]
+    # Stage 1: Understand
     graph.add_node("rewrite_query", rewrite)
     graph.add_node("classify", classify)
+    graph.add_node("statute_lookup", statute_lookup)
+    graph.add_node("element_decomposition", element_decomposition)
 
-    # Full pipeline nodes
+    # Stage 3: Investigate (full pipeline)
     graph.add_node("plan_research", plan)
     graph.add_node("checkpoint_plan", checkpoint_plan)
     graph.add_node("pre_warm_embeddings", pre_warm)
@@ -479,9 +533,10 @@ def build_research_graph(
     graph.add_node("evaluate_and_extract", evaluate_extract)
     graph.add_node("gap_analysis", gap_analysis)
     graph.add_node("checkpoint_findings", checkpoint_findings)
-    graph.add_node("synthesize", synthesize)
-    graph.add_node("verify", verify)
-    # Phase 4 nodes
+    # Stage 4: Challenge
+    graph.add_node("adversarial_search", adversarial_search)
+    graph.add_node("temporal_validation", temporal_validation)
+    # Stage 5: Synthesize
     graph.add_node("speculative_synthesis", speculative_synthesis)
     graph.add_node("format_footnotes", format_footnotes)
     graph.add_node("verify_v2", verify_v2)
@@ -494,29 +549,28 @@ def build_research_graph(
 
     # -- Edges --------------------------------------------------------------
 
-    # [S2] Parallel rewrite + classify from START
+    # Stage 1: Understand — rewrite → classify → statute_lookup → element_decomposition
     graph.add_edge(START, "rewrite_query")
-    graph.add_edge(START, "classify")
-
-    # Both rewrite and classify feed into route_by_complexity
-    # We need a join point — use classify as the routing node since
-    # rewrite_query writes to rewritten_query (independent state key)
     graph.add_edge("rewrite_query", "classify")
+    # [V3] classify → statute_lookup → element_decomposition → route
+    graph.add_edge("classify", "statute_lookup")
+    graph.add_edge("statute_lookup", "element_decomposition")
 
-    # [S9] Route by complexity
+    # [S9/V3] Route by complexity (after element decomposition)
     graph.add_conditional_edges(
-        "classify",
+        "element_decomposition",
         route_by_complexity,
         {"fast_path_search": "fast_path_search", "plan_research": "plan_research"},
     )
 
-    # Fast path [S9]
+    # Fast path [S9] — still runs statute_lookup + element_decomposition before this
     graph.add_conditional_edges(
         "fast_path_search",
         route_after_fast_path,
         {"fast_path_synthesis": "fast_path_synthesis", "plan_research": "plan_research"},
     )
-    graph.add_edge("fast_path_synthesis", "checkpoint_memo")
+    # Fast path also runs Phase 4 pipeline: footnotes → verify → quality → memo
+    graph.add_edge("fast_path_synthesis", "format_footnotes")
 
     # Full pipeline
     graph.add_edge("plan_research", "checkpoint_plan")
@@ -555,18 +609,22 @@ def build_research_graph(
         },
     )
 
-    # Post-findings — route to speculative synthesis (Phase 4) instead of old synthesize
+    # Post-findings — route to Stage 4 (Challenge) instead of direct synthesis
     graph.add_conditional_edges(
         "checkpoint_findings",
         route_after_findings,
         {
             "dispatch_workers": "dispatch_workers",
-            "synthesize": "speculative_synthesis",
+            "synthesize": "adversarial_search",  # [V3] Challenge before synthesis
             END: END,
         },
     )
 
-    # Phase 4 pipeline: speculative synthesis → format footnotes → verify → quality → memo
+    # Stage 4: Challenge — adversarial search → temporal validation → synthesis
+    graph.add_edge("adversarial_search", "temporal_validation")
+    graph.add_edge("temporal_validation", "speculative_synthesis")
+
+    # Stage 5: Synthesize — speculative synthesis → format footnotes → verify → quality → memo
     graph.add_edge("speculative_synthesis", "format_footnotes")
     graph.add_edge("format_footnotes", "verify_v2")
     graph.add_edge("verify_v2", "quality_check")

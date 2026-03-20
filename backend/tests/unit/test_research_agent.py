@@ -55,6 +55,8 @@ def _build_graph():
 EXPECTED_NODES = {
     "rewrite_query",
     "classify",
+    "statute_lookup",           # [V3]
+    "element_decomposition",    # [V3]
     "plan_research",
     "checkpoint_plan",
     "dispatch_workers",
@@ -65,6 +67,8 @@ EXPECTED_NODES = {
     "evaluate_and_extract",
     "gap_analysis",
     "checkpoint_findings",
+    "adversarial_search",       # [V3]
+    "temporal_validation",      # [V3]
     "speculative_synthesis",
     "format_footnotes",
     "verify_v2",
