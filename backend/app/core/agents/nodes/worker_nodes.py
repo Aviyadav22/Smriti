@@ -376,15 +376,26 @@ async def web_search_worker(
 ) -> dict:
     """Search the web for recent legal developments via Tavily.
 
+    Propagates filters (recency, domains) from the research plan.
+    Always sets country=IN and requests raw markdown content.
     Non-blocking — failure returns empty results rather than erroring the pipeline.
     """
     task = state["task"]
+    filters = task.get("filters", {})
+
+    # Map task filters to Tavily params
+    time_range = filters.get("recency")  # day|week|month|year
+    include_domains = filters.get("domains")  # Override default domains if specified
 
     try:
         search_results = await web_search.search(
             task["nl_query"],
             max_results=5,
             search_depth="advanced",
+            include_domains=include_domains,
+            time_range=time_range,
+            country="IN",
+            include_raw_content=True,
         )
 
         results: list[dict] = []
@@ -392,7 +403,7 @@ async def web_search_worker(
         for r in search_results:
             results.append({
                 "title": r.get("title", ""),
-                "snippet": r.get("content", "")[:1500],
+                "snippet": r.get("raw_content", r.get("content", ""))[:2000],
                 "url": r.get("url", ""),
                 "score": r.get("score", 0.0),
                 "source": "web",
@@ -413,7 +424,7 @@ async def web_search_worker(
         task_id=task["task_id"], task_type="web",
         query=task["nl_query"], results=results,
         source_urls=source_urls,
-        metadata={"source": "web"},
+        metadata={"source": "web", "country": "IN"},
         error=None, reasoning="",
     )]}
 
