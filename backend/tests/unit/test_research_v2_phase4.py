@@ -1136,3 +1136,90 @@ class TestInferSourceLabel:
         assert _infer_source_label("graph_community") == "Case"
         assert _infer_source_label("unknown") == "Source"
         assert _infer_source_label("") == "Source"
+
+
+# ---------------------------------------------------------------------------
+# Enriched Footnote Fields (Task 10)
+# ---------------------------------------------------------------------------
+
+
+class TestFootnoteEnrichedFields:
+    """Footnotes should include enriched case metadata for the preview panel."""
+
+    def test_footnote_accepts_all_enriched_fields(self):
+        """Footnote TypedDict accepts all enriched fields."""
+        from app.core.agents.state import Footnote
+        fn: Footnote = {
+            "number": 1,
+            "citation": "(2023) 5 SCC 1",
+            "source_type": "case_law",
+            "source_url": "/case/abc-123",
+            "case_id": "abc-123",
+            "excerpt": "The court held...",
+            "is_used": True,
+            "verification_status": "verified_pg",
+            "verified_against": "pg",
+            "title": "State v. People's Union",
+            "court": "Supreme Court of India",
+            "year": 2023,
+            "author": "D Y Chandrachud",
+            "bench": "Constitution Bench",
+            "ik_doc_id": "12345678",
+            "pdf_available": True,
+            "source_label": "Case",
+        }
+        assert fn["court"] == "Supreme Court of India"
+        assert fn["ik_doc_id"] == "12345678"
+        assert fn["pdf_available"] is True
+        assert fn["source_label"] == "Case"
+
+    def test_footnote_web_source(self):
+        """Web source footnote has correct enriched defaults."""
+        from app.core.agents.state import Footnote
+        fn: Footnote = {
+            "number": 5,
+            "citation": "Legal blog article",
+            "source_type": "web",
+            "source_url": "https://example.com/article",
+            "case_id": None,
+            "excerpt": "Article content...",
+            "is_used": False,
+            "verification_status": "unverified",
+            "verified_against": "none",
+            "title": "Understanding Section 498A",
+            "court": "",
+            "year": None,
+            "author": "",
+            "bench": "",
+            "ik_doc_id": "",
+            "pdf_available": False,
+            "source_label": "Web",
+        }
+        assert fn["source_label"] == "Web"
+        assert fn["pdf_available"] is False
+        assert fn["court"] == ""
+
+    def test_footnote_ik_source_no_pdf(self):
+        """IK sources should have pdf_available=False (IK cases don't have our PDFs)."""
+        from app.core.agents.state import Footnote
+        fn: Footnote = {
+            "number": 3,
+            "citation": "(2020) 10 SCC 1",
+            "source_type": "ik_search",
+            "source_url": "https://indiankanoon.org/doc/999/",
+            "case_id": "ik:999",
+            "excerpt": "The court observed...",
+            "is_used": True,
+            "verification_status": "verified_ik",
+            "verified_against": "ik",
+            "title": "Puttaswamy v. Union of India",
+            "court": "Supreme Court of India",
+            "year": 2020,
+            "author": "Chandrachud J.",
+            "bench": "9-Judge Bench",
+            "ik_doc_id": "999",
+            "pdf_available": False,
+            "source_label": "Case",
+        }
+        assert fn["pdf_available"] is False
+        assert fn["ik_doc_id"] == "999"
