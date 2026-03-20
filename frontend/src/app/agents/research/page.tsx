@@ -4,10 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { runResearchAgent, resumeAgentExecution } from "@/lib/api";
-import type { AgentStreamEvent, AgentStep } from "@/lib/types";
+import type { AgentStreamEvent, AgentStep, ProcessEvent, ResearchFootnote, ResearchAudit } from "@/lib/types";
 import { AgentStepTimeline } from "@/components/agent-step-timeline";
 import { AgentCheckpointPrompt } from "@/components/agent-checkpoint-prompt";
 import { AgentMemoViewer } from "@/components/agent-memo-viewer";
+import { ResearchProcessPanel } from "@/components/research-process-panel";
+import { ResearchFootnotes } from "@/components/research-footnotes";
+import { VerificationBanner } from "@/components/verification-banner";
+import { ResearchAuditTrail } from "@/components/research-audit-trail";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,21 +22,32 @@ import { Footer } from "@/components/footer";
 import Link from "next/link";
 
 // ---------------------------------------------------------------------------
-// Expected research agent steps for the timeline
+// Expected research agent steps for the timeline (V2 pipeline)
 // ---------------------------------------------------------------------------
 
 const RESEARCH_STEPS = [
+    "rewrite_query",
     "classify",
-    "decompose",
+    "plan_research",
     "checkpoint_plan",
-    "search",
-    "gather",
-    "contradictions",
+    "dispatch_workers",
+    "gather_results",
+    "batch_cot_with_reflection",
+    "evaluate_and_extract",
+    "gap_analysis",
     "checkpoint_findings",
-    "synthesize",
-    "verify",
+    "speculative_synthesis",
+    "format_footnotes",
+    "verify_v2",
+    "quality_check",
     "checkpoint_memo",
 ];
+
+// T1 process event types
+const PROCESS_EVENT_TYPES = new Set([
+    "plan", "searching", "found", "evaluating", "reflection",
+    "gap", "drafting", "verification", "quality",
+]);
 
 // ---------------------------------------------------------------------------
 // Research Agent Workspace
@@ -52,9 +67,18 @@ export default function ResearchAgentPage() {
         context: Record<string, unknown>;
     } | null>(null);
     const [memo, setMemo] = useState("");
+    const [streamingMemo, setStreamingMemo] = useState("");
     const [confidence, setConfidence] = useState<number | undefined>();
     const [error, setError] = useState<string | null>(null);
     const abortRef = useRef<AbortController | null>(null);
+
+    // Phase 4 state
+    const [processEvents, setProcessEvents] = useState<ProcessEvent[]>([]);
+    const [footnotes, setFootnotes] = useState<ResearchFootnote[]>([]);
+    const [researchAudit, setResearchAudit] = useState<ResearchAudit | null>(null);
+    const [verificationBanner, setVerificationBanner] = useState<string | null>(null);
+    const [citationsVerified, setCitationsVerified] = useState(0);
+    const [citationsRemoved, setCitationsRemoved] = useState(0);
 
     useEffect(() => {
         if (!authLoading && !isAuthenticated) router.push("/login");
@@ -72,6 +96,21 @@ export default function ResearchAgentPage() {
         // so it's available before "done" (e.g. at checkpoint time).
         if (event.execution_id) {
             setExecutionId(event.execution_id);
+        }
+
+        // [T1] Handle process visualization events
+        if (PROCESS_EVENT_TYPES.has(event.type)) {
+            setProcessEvents((prev) => [
+                ...prev,
+                { type: event.type, data: (event.data || {}) as Record<string, unknown>, timestamp: Date.now() },
+            ]);
+            return;
+        }
+
+        // [S5] Handle streaming memo chunks
+        if (event.type === "memo_stream" && event.chunk) {
+            setStreamingMemo((prev) => prev + event.chunk);
+            return;
         }
 
         switch (event.type) {
@@ -101,19 +140,28 @@ export default function ResearchAgentPage() {
                 });
                 setIsRunning(false);
                 break;
-            case "memo":
+            case "memo": {
                 setMemo(event.content || "");
-                if (
-                    event.data &&
-                    typeof event.data === "object" &&
-                    "confidence" in (event.data as Record<string, unknown>)
-                ) {
-                    setConfidence(
-                        (event.data as Record<string, unknown>)
-                            .confidence as number,
-                    );
+                setStreamingMemo(""); // Replace streaming content with final
+                const data = event.data as Record<string, unknown> | undefined;
+                if (data && "confidence" in data) {
+                    setConfidence(data.confidence as number);
+                }
+                // Extract Phase 4 structured data
+                if (data?.footnotes) {
+                    setFootnotes(data.footnotes as ResearchFootnote[]);
+                }
+                if (data?.research_audit) {
+                    const audit = data.research_audit as ResearchAudit;
+                    setResearchAudit(audit);
+                    if (audit.verification_banner) {
+                        setVerificationBanner(audit.verification_banner);
+                        setCitationsVerified(audit.citations_verified ?? 0);
+                        setCitationsRemoved(audit.citations_removed ?? 0);
+                    }
                 }
                 break;
+            }
             case "done":
                 setExecutionId(event.execution_id || null);
                 setIsRunning(false);
@@ -140,9 +188,16 @@ export default function ResearchAgentPage() {
         setIsRunning(true);
         setError(null);
         setMemo("");
+        setStreamingMemo("");
         setConfidence(undefined);
         setCheckpoint(null);
         setExecutionId(null);
+        setProcessEvents([]);
+        setFootnotes([]);
+        setResearchAudit(null);
+        setVerificationBanner(null);
+        setCitationsVerified(0);
+        setCitationsRemoved(0);
         setSteps(
             RESEARCH_STEPS.map((name, i) => ({
                 name,
@@ -196,8 +251,15 @@ export default function ResearchAgentPage() {
         setSteps([]);
         setCheckpoint(null);
         setMemo("");
+        setStreamingMemo("");
         setConfidence(undefined);
         setError(null);
+        setProcessEvents([]);
+        setFootnotes([]);
+        setResearchAudit(null);
+        setVerificationBanner(null);
+        setCitationsVerified(0);
+        setCitationsRemoved(0);
     }, []);
 
     if (authLoading || !isAuthenticated) {
@@ -213,6 +275,7 @@ export default function ResearchAgentPage() {
 
     const showInputForm = !isRunning && !memo && !checkpoint && steps.length === 0;
     const showWorkspace = isRunning || memo || checkpoint || steps.length > 0;
+    const displayMemo = memo || streamingMemo;
 
     return (
         <div className="min-h-screen flex flex-col">
@@ -266,13 +329,17 @@ export default function ResearchAgentPage() {
             {/* Running or completed state */}
             {showWorkspace && (
                 <div className="grid gap-6 md:grid-cols-[240px_1fr]">
-                    {/* Left: Step Timeline */}
+                    {/* Left: Step Timeline + Process Panel */}
                     <div className="hidden md:block">
-                        <div className="sticky top-20">
-                            <h3 className="text-xs uppercase tracking-wider font-medium text-muted-foreground mb-3">
-                                Progress
-                            </h3>
-                            <AgentStepTimeline steps={steps} />
+                        <div className="sticky top-20 space-y-4">
+                            <div>
+                                <h3 className="text-xs uppercase tracking-wider font-medium text-muted-foreground mb-3">
+                                    Progress
+                                </h3>
+                                <AgentStepTimeline steps={steps} />
+                            </div>
+                            {/* [T1] Process Visualization Panel */}
+                            <ResearchProcessPanel events={processEvents} isRunning={isRunning} />
                         </div>
                     </div>
 
@@ -288,9 +355,10 @@ export default function ResearchAgentPage() {
                             </CardContent>
                         </Card>
 
-                        {/* Mobile step timeline */}
-                        <div className="md:hidden">
+                        {/* Mobile step timeline + process panel */}
+                        <div className="md:hidden space-y-3">
                             <AgentStepTimeline steps={steps} />
+                            <ResearchProcessPanel events={processEvents} isRunning={isRunning} />
                         </div>
 
                         {/* Checkpoint prompt */}
@@ -305,16 +373,35 @@ export default function ResearchAgentPage() {
                             />
                         )}
 
-                        {/* Memo result */}
-                        {memo && (
+                        {/* [T4] Verification Banner */}
+                        {verificationBanner && !isRunning && (
+                            <VerificationBanner
+                                banner={verificationBanner}
+                                citationsVerified={citationsVerified}
+                                citationsRemoved={citationsRemoved}
+                            />
+                        )}
+
+                        {/* Memo result (final or streaming) */}
+                        {displayMemo && (
                             <Card>
                                 <CardContent className="pt-6">
                                     <AgentMemoViewer
-                                        content={memo}
+                                        content={displayMemo}
                                         confidence={confidence}
                                     />
                                 </CardContent>
                             </Card>
+                        )}
+
+                        {/* Footnotes & Sources */}
+                        {footnotes.length > 0 && !isRunning && (
+                            <ResearchFootnotes footnotes={footnotes} />
+                        )}
+
+                        {/* Research Audit Trail */}
+                        {researchAudit && !isRunning && (
+                            <ResearchAuditTrail audit={researchAudit} />
                         )}
 
                         {/* Error */}

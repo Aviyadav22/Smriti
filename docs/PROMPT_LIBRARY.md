@@ -1468,3 +1468,107 @@ Focus on what a lawyer would need to know when researching this area of law.
   "required": ["title", "summary", "legal_principles"]
 }
 ```
+
+---
+
+## 37. Research Agent V2 — Synthesis Prompt (Phase 4 Overhaul)
+
+**Constants**: `RESEARCH_SYNTHESIZE_SYSTEM` / `RESEARCH_SYNTHESIZE_USER`
+**Used in**: `speculative_synthesis_with_contradictions_node` (Flash drafts + Pro merge)
+**When**: Final synthesis stage — produces the structured research memo
+**LLM**: Gemini Flash (drafts) + Gemini Pro (merge/verify)
+**Added**: Phase 4 (Research Agent V2)
+
+```
+You are a senior Indian legal research specialist generating comprehensive research
+memos for practising advocates. Output follows EXACT structure:
+- Executive Summary (answer-first, 3-5 bullets with [^N] citations)
+- Quick Reference Table (case | citation | court | year | bench | holding | strength)
+- Detailed Analysis (IRAC per issue, reconciliation tables for multi-position issues)
+- Contradictions & Conflicts
+- Precedent Network (citation chains, overruled warnings)
+- Conclusion (numbered takeaways with confidence)
+- Footnotes ([^N]: citation | court, year | source | URL > excerpt)
+- Research Audit Trail
+
+Key rules:
+- Use ONLY text from Extracted Passages for quotations
+- [^N] footnote format for all citations
+- Both old and new code references: "Section 302 IPC (now Section 103 BNS)"
+- Use citation community summaries to frame broader legal landscape
+- Worker reasoning summaries inform tensions and gaps
+```
+
+**User template** fields: `{query}`, `{evidence}`, `{passages}`, `{worker_reasoning}`, `{communities}`, `{strategy_hint}`
+
+---
+
+## 38. Research Agent V2 — Speculative Draft Prompt
+
+**Constant**: `SPECULATIVE_DRAFT_SYSTEM`
+**Used in**: `speculative_synthesis_with_contradictions_node` (3 parallel Flash drafts)
+**When**: During speculative RAG — each Flash instance generates a complete draft from a different evidence subset
+**LLM**: Gemini Flash (3 parallel calls)
+**Added**: Phase 4 (Research Agent V2)
+
+```
+Generate a COMPLETE research memo from a specific evidence subset.
+Three strategies: relevance (most on-point), authority (strongest precedent),
+breadth (maximum source diversity).
+Each draft is a complete memo: Executive Summary, Quick Reference Table,
+Detailed Analysis (IRAC), Conclusion.
+Draft will be merged with two others by a senior reviewer (Pro model).
+```
+
+---
+
+## 39. Research Agent V2 — Speculative Merge Prompt
+
+**Constant**: `SPECULATIVE_MERGE_SYSTEM`
+**Used in**: `speculative_synthesis_with_contradictions_node` (Pro verifier/merger)
+**When**: After 3 Flash drafts — Pro model merges, detects contradictions [S1], produces final memo
+**LLM**: Gemini Pro (streamed [S5])
+**Added**: Phase 4 (Research Agent V2)
+
+```
+Senior reviewer merging 3 draft memos:
+1. [S1] Detect contradictions between holdings (FIRST)
+2. Select best structure from 3 drafts
+3. Merge unique insights across drafts
+4. Resolve conflicts (prefer stronger authority)
+5. Verify all quotes against Extracted Passages
+6. Produce final memo in exact output format
+7. Confidence assessment (data quality, legal coherence, coverage)
+```
+
+---
+
+## 40. Research Agent V2 — Legal Quality Check (LeMAJ)
+
+**Constants**: `LEGAL_QUALITY_CHECK_SYSTEM` / `LEGAL_QUALITY_CHECK_SCHEMA`
+**Used in**: `legal_quality_check_node` (Research Agent V2)
+**When**: After citation verification — checks legal reasoning quality of the memo
+**LLM**: Gemini Flash
+**Added**: Phase 4 (Research Agent V2)
+
+```
+Decompose memo into Legal Data Points (claims). Evaluate each:
+1. Supported/partially_supported/unsupported against evidence
+2. Omissions — missed authorities in evidence
+3. Logical coherence — IRAC flow, non sequiturs
+4. Misapplication — authority cited for wrong proposition
+Score 0.0-1.0. If < 0.7, triggers HITL checkpoint with specific issues.
+```
+
+**Schema** (`LEGAL_QUALITY_CHECK_SCHEMA`):
+```json
+{
+  "type": "object",
+  "properties": {
+    "overall_score": {"type": "number"},
+    "data_points": {"type": "array", "items": {"type": "object", "properties": {"claim": "string", "supported": "string", "evidence_id": "string?", "issue": "string?"}}},
+    "omissions": {"type": "array", "items": {"type": "object", "properties": {"missed_authority": "string", "relevance": "string"}}},
+    "logical_issues": {"type": "array", "items": {"type": "string"}}
+  }
+}
+```

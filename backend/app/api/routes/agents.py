@@ -150,6 +150,13 @@ async def _stream_agent_events(
                 initial_input, config=config, stream_mode="updates"
             ):
                 for node_name, node_output in event.items():
+                    # [T1] Forward process_events as rich SSE events
+                    if isinstance(node_output, dict):
+                        for pe in node_output.get("process_events", []):
+                            await queue.put(
+                                f"data: {json.dumps({**pe, 'execution_id': str(exec_id)})}\n\n"
+                            )
+
                     sse_event = {
                         "type": "status",
                         "execution_id": str(exec_id),
@@ -209,6 +216,17 @@ async def _stream_agent_events(
                     ),
                     "confidence": final_state.get("confidence", 0),
                 }
+                # [T1] Enrich with Phase 4 structured data
+                if final_state.get("footnotes"):
+                    result_data["footnotes"] = final_state["footnotes"]
+                if final_state.get("source_attribution"):
+                    result_data["source_attribution"] = final_state["source_attribution"]
+                if final_state.get("research_audit"):
+                    result_data["research_audit"] = final_state["research_audit"]
+                if final_state.get("legal_quality_result"):
+                    result_data["legal_quality_result"] = final_state["legal_quality_result"]
+                if final_state.get("contradictions"):
+                    result_data["contradictions"] = final_state["contradictions"]
                 async with async_session_factory() as db:
                     await db.execute(
                         text(

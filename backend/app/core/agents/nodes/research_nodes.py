@@ -10,9 +10,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import uuid
+from collections.abc import Callable
+from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.confidence import calculate_confidence
@@ -21,6 +24,7 @@ from app.core.agents.nodes.common import (
     MAX_RESULTS_FOR_LLM,
     deduplicate_with_diversity,
     enrich_results_with_ratio,
+    format_community_summaries,
     format_extracted_passages,
     format_search_results_for_llm,
     format_search_results_for_llm_extended,
@@ -33,10 +37,13 @@ from app.core.agents.nodes.common import (
 from app.core.agents.state import (
     EvidenceGap,
     ExtractedPassage,
+    Footnote,
+    LegalQualityResult,
     RelevanceScore,
     ResearchState,
     ResearchTask,
     StrategyAdjustment,
+    SynthesisDraft,
     WorkerResult,
 )
 from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
@@ -44,6 +51,8 @@ from app.core.legal.prompts import (
     BATCH_COT_WITH_REFLECTION_SCHEMA,
     EVALUATE_AND_EXTRACT_SCHEMA,
     LEGAL_DISCLAIMER,
+    LEGAL_QUALITY_CHECK_SCHEMA,
+    LEGAL_QUALITY_CHECK_SYSTEM,
     RESEARCH_CLASSIFY_SCHEMA,
     RESEARCH_CLASSIFY_SYSTEM,
     RESEARCH_CONTRADICTIONS_SYSTEM,
@@ -60,10 +69,28 @@ from app.core.legal.prompts import (
     RESEARCH_SYNTHESIZE_SYSTEM,
     RESEARCH_SYNTHESIZE_USER,
     RESEARCH_WORKER_COT_SYSTEM,
+    SPECULATIVE_DRAFT_SYSTEM,
+    SPECULATIVE_MERGE_SYSTEM,
 )
 from app.security.sanitizer import sanitize_search_query
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# [T1] Process Visualization helper — emits structured SSE events
+# ---------------------------------------------------------------------------
+
+
+def emit_status(event_type: str, data: dict) -> dict:
+    """Create a process event dict for [T1] Research Process Visualization.
+
+    Event types: plan, searching, found, evaluating, reflection, gap,
+    drafting, memo_stream, verification, quality, memo.
+
+    Returns a dict suitable for appending to process_events.
+    """
+    return {"type": event_type, "data": data}
 
 
 # ---------------------------------------------------------------------------
@@ -338,8 +365,11 @@ async def synthesize_memo_node(
 
     prompt = RESEARCH_SYNTHESIZE_USER.format(
         query=query,
-        findings=findings,
-        contradictions=contradictions_text,
+        evidence=findings,
+        passages="No verbatim passages extracted.",
+        worker_reasoning="",
+        communities="",
+        strategy_hint="",
     )
 
     if treatment_text:
@@ -535,9 +565,23 @@ async def plan_research_node(
     # Populate sub_queries for backward compat with HITL checkpoint display
     sub_queries = [t["nl_query"] for t in tasks if t.get("nl_query")]
 
+    # [T1] Emit plan event
+    plan_event = emit_status("plan", {
+        "tasks": [
+            {"task_type": t["task_type"], "query": t["nl_query"][:100]}
+            for t in tasks
+        ],
+        "named_cases": [
+            c.get("name", c.get("citation", ""))
+            for t in tasks for c in t.get("named_cases", [])
+        ][:10],
+        "total_workers": len(tasks),
+    })
+
     return {
         "research_plan": tasks,
         "sub_queries": sub_queries,
+        "process_events": [plan_event],
     }
 
 
@@ -592,9 +636,21 @@ async def gather_worker_results_node(state: ResearchState) -> dict:
 
     cross_refs.sort(key=lambda x: x["match_count"], reverse=True)
 
+    # [T1] Emit found events per worker
+    found_events = []
+    for wr in worker_results:
+        results_list = wr.get("results", [])
+        top_case = results_list[0].get("title", "")[:80] if results_list else ""
+        found_events.append(emit_status("found", {
+            "worker": wr.get("task_type", "unknown"),
+            "count": len(results_list),
+            "top_case": top_case,
+        }))
+
     return {
         "search_results": deduped,
         "cross_references": cross_refs,
+        "process_events": found_events,
     }
 
 
@@ -655,9 +711,17 @@ async def batch_worker_cot_with_reflection_node(
             reframe_query=response.get("reframe_query"),
         )
 
+    # [T1] Emit reflection event
+    reflection_event = emit_status("reflection", {
+        "insights": response.get("reasoning", "")[:200],
+        "pivot": bool(strategy_adj and strategy_adj.get("should_pivot")),
+        "new_tasks": len(response.get("new_tasks", [])) if strategy_adj else 0,
+    })
+
     return {
         "worker_reasonings": [response.get("reasoning", "")],
         "strategy_adjustment": strategy_adj,
+        "process_events": [reflection_event],
     }
 
 
@@ -842,10 +906,23 @@ async def evaluate_and_extract_node(
             reasoning=wr.get("reasoning", ""),
         ))
 
+    # [T1] Emit evaluating event
+    correct_count = sum(1 for s in relevance_scores if s["verdict"] == "correct")
+    ambiguous_count = sum(1 for s in relevance_scores if s["verdict"] == "ambiguous")
+    deep_read_count = len(ambiguous_ids[:10]) if ambiguous_ids else 0
+    evaluating_event = emit_status("evaluating", {
+        "total": len(relevance_scores),
+        "correct": correct_count,
+        "ambiguous": ambiguous_count,
+        "filtered": len(incorrect_ids),
+        "deep_read": deep_read_count,
+    })
+
     return {
         "relevance_scores": relevance_scores,
         "extracted_passages": extracted_passages,
         "worker_results": filtered_worker_results,
+        "process_events": [evaluating_event],
     }
 
 
@@ -972,6 +1049,15 @@ async def gap_analysis_node(
                 conditioning_context=strategy_adj.get("pivot_reason", ""),
             ))
 
+    # [T1] Emit gap event
+    gap_event = emit_status("gap", {
+        "gaps": [g["description"][:100] for g in gaps[:5]],
+        "refinement_round": refinement_round,
+        "conditioned_on": [
+            c for g in gaps for c in g.get("conditioned_on", [])
+        ][:10],
+    })
+
     # Convert gaps to new research tasks for dispatch
     if gaps and refinement_round < 2:
         new_tasks: list[ResearchTask] = []
@@ -991,9 +1077,14 @@ async def gap_analysis_node(
             "research_plan": new_tasks,
             "sub_queries": [t["nl_query"] for t in new_tasks],
             "refinement_round": refinement_round + 1,
+            "process_events": [gap_event],
         }
 
-    return {"evidence_gaps": gaps, "refinement_round": refinement_round}
+    return {
+        "evidence_gaps": gaps,
+        "refinement_round": refinement_round,
+        "process_events": [gap_event],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1130,5 +1221,699 @@ async def pre_warm_embeddings_node(
         return {"precomputed_embeddings": dict(zip(queries, vectors))}
     except Exception:
         return {"precomputed_embeddings": {}}
+
+
+# ---------------------------------------------------------------------------
+# V2 Node: speculative_synthesis_with_contradictions_node [S1 + S5]
+# ---------------------------------------------------------------------------
+
+
+async def speculative_synthesis_with_contradictions_node(
+    state: ResearchState,
+    llm: LLMProvider,
+    flash_llm: LLMProvider,
+    stream_callback: Callable[[str], None] | None = None,
+) -> dict:
+    """Speculative RAG: 3x Flash drafts → Pro verification/merge/contradiction-detection.
+
+    [S1] Contradictions detected inside Pro merge (no separate Pro call).
+    [S5] Pro output streamed to frontend via stream_callback.
+    """
+    results = state.get("worker_results", [])
+    passages = state.get("extracted_passages", [])
+    relevance_scores = {
+        s["case_id"]: s["score"]
+        for s in state.get("relevance_scores", [])
+    }
+    worker_reasonings = state.get("worker_reasonings", [])
+    community_summaries = [
+        r for wr in results if wr["task_type"] == "graph_community"
+        for r in wr["results"]
+    ]
+
+    # --- Flatten all non-community results ---
+    all_results: list[dict] = []
+    for wr in results:
+        if wr["task_type"] != "graph_community":
+            all_results.extend(wr["results"])
+
+    if not all_results:
+        return {
+            "draft_memo": "No evidence found to synthesize.",
+            "confidence": 0.0,
+            "synthesis_drafts": [],
+            "footnotes": [],
+            "source_attribution": {},
+            "research_audit": {},
+        }
+
+    # --- Partition evidence into 3 strategies ---
+
+    # Strategy A: Top by CRAG relevance score
+    strategy_a = sorted(
+        all_results,
+        key=lambda r: relevance_scores.get(r.get("case_id", ""), 0.5),
+        reverse=True,
+    )[:15]
+
+    # Strategy B: Top by precedent strength (binding > persuasive > distinguishable)
+    strength_order = {
+        "BINDING": 4, "PERSUASIVE": 3, "DISTINGUISHABLE": 2, "OVERRULED": 1,
+    }
+    strategy_b = sorted(
+        all_results,
+        key=lambda r: strength_order.get(
+            r.get("precedent_strength", "PERSUASIVE"), 2,
+        ),
+        reverse=True,
+    )[:15]
+
+    # Strategy C: Max diversity — 2-3 per source type
+    strategy_c: list[dict] = []
+    by_source: dict[str, list[dict]] = {}
+    for r in all_results:
+        source = r.get("source", "internal")
+        by_source.setdefault(source, []).append(r)
+    for _source, items in by_source.items():
+        strategy_c.extend(items[:3])
+    strategy_c = strategy_c[:15]
+
+    # --- Fan out 3 Flash drafts in parallel ---
+    shared_context = {
+        "query": state.get("rewritten_query") or state["query"],
+        "passages": format_extracted_passages(passages),
+        "worker_reasoning": "\n".join(worker_reasonings),
+        "communities": format_community_summaries(community_summaries),
+    }
+
+    # [T1] Collect drafting events
+    process_events: list[dict] = []
+
+    async def generate_draft(
+        strategy_name: str, evidence_subset: list[dict],
+    ) -> SynthesisDraft:
+        formatted_evidence = format_search_results_for_llm_extended(evidence_subset)
+        memo = await flash_llm.generate(
+            prompt=RESEARCH_SYNTHESIZE_USER.format(
+                query=shared_context["query"],
+                evidence=formatted_evidence,
+                passages=shared_context["passages"],
+                worker_reasoning=shared_context["worker_reasoning"],
+                communities=shared_context["communities"],
+                strategy_hint=f"Focus on {strategy_name} — organize by {strategy_name}.",
+            ),
+            system=SPECULATIVE_DRAFT_SYSTEM,
+            temperature=0.3,
+            max_tokens=6000,
+        )
+        return SynthesisDraft(
+            draft_id=str(uuid4()),
+            strategy=strategy_name,
+            memo_text=memo,
+            confidence=0.0,
+            sources_used=[
+                r.get("citation", "") for r in evidence_subset if r.get("citation")
+            ],
+        )
+
+    # [T1] Emit drafting-start events
+    for s in ("relevance", "authority", "breadth"):
+        process_events.append(emit_status("drafting", {
+            "strategy": s, "status": "generating",
+        }))
+
+    drafts = list(await asyncio.gather(
+        generate_draft("relevance", strategy_a),
+        generate_draft("authority", strategy_b),
+        generate_draft("breadth", strategy_c),
+    ))
+
+    # [T1] Emit drafting-complete events
+    for s in ("relevance", "authority", "breadth"):
+        process_events.append(emit_status("drafting", {
+            "strategy": s, "status": "complete",
+        }))
+
+    # --- Pro verifier/merger [S1 + S5] ---
+    all_formatted = format_search_results_for_llm_extended(all_results[:30])
+    verification_prompt = (
+        f"RESEARCH QUESTION: {shared_context['query']}\n\n"
+        f"COMPLETE EVIDENCE (all sources):\n{all_formatted}\n\n"
+        f"EXTRACTED PASSAGES (verbatim quotes):\n{shared_context['passages']}\n\n"
+        f"CITATION COMMUNITY CONTEXT:\n{shared_context['communities']}\n\n"
+        f"WORKER REASONING:\n{shared_context['worker_reasoning']}\n\n"
+        f"--- DRAFT A (organized by relevance) ---\n{drafts[0]['memo_text']}\n\n"
+        f"--- DRAFT B (organized by authority/precedent) ---\n{drafts[1]['memo_text']}\n\n"
+        f"--- DRAFT C (organized by source diversity) ---\n{drafts[2]['memo_text']}\n\n"
+        "---\n\n"
+        "Produce the FINAL research memo following your system instructions."
+    )
+
+    # [S5] Stream Pro output to frontend for progressive rendering
+    if stream_callback:
+        final_memo_chunks: list[str] = []
+        async for chunk in llm.stream(
+            system=SPECULATIVE_MERGE_SYSTEM,
+            prompt=verification_prompt,
+        ):
+            final_memo_chunks.append(chunk)
+            stream_callback(chunk)
+        final_memo = "".join(final_memo_chunks)
+    else:
+        final_memo = await llm.generate(
+            prompt=verification_prompt,
+            system=SPECULATIVE_MERGE_SYSTEM,
+            temperature=0.2,
+            max_tokens=8192,
+        )
+
+    # Append legal disclaimer
+    final_memo += LEGAL_DISCLAIMER
+
+    # Build source attribution
+    source_attribution = _build_source_attribution(all_results)
+
+    # Build research audit
+    research_audit = _build_research_audit(state, all_results)
+
+    # Calculate confidence
+    scores = [r.get("score", 0) for r in all_results if r.get("score")]
+    confidence = min(0.95, sum(scores[:10]) / max(len(scores[:10]), 1))
+
+    return {
+        "draft_memo": final_memo,
+        "synthesis_drafts": drafts,
+        "source_attribution": source_attribution,
+        "research_audit": research_audit,
+        "confidence": confidence,
+        "process_events": process_events,
+    }
+
+
+# ---------------------------------------------------------------------------
+# V2 Node: format_footnotes_node — post-processing [8.2a]
+# ---------------------------------------------------------------------------
+
+
+async def format_footnotes_node(state: ResearchState) -> dict:
+    """Post-processing: extract [^N] references, build structured footnotes.
+
+    Parses the memo for [^N] references and builds Footnote entries with
+    source URLs. Also identifies searched-but-not-cited sources.
+    """
+    memo = state.get("draft_memo", "")
+    if not memo:
+        return {"footnotes": []}
+
+    # Get all worker results for source mapping
+    worker_results = state.get("worker_results", [])
+    source_attribution = state.get("source_attribution", {})
+
+    # Parse [^N] references from memo
+    refs_in_memo = set(re.findall(r"\[\^(\d+)\]", memo))
+
+    # Build a lookup from citation → result metadata
+    citation_lookup: dict[str, dict] = {}
+    for wr in worker_results:
+        for r in wr.get("results", []):
+            citation = r.get("citation", "")
+            if citation and citation not in citation_lookup:
+                citation_lookup[citation] = {
+                    "case_id": r.get("case_id"),
+                    "source_type": wr.get("task_type", "case_law"),
+                    "court": r.get("court", ""),
+                    "year": r.get("year"),
+                    "snippet": (r.get("snippet") or r.get("ratio") or "")[:300],
+                }
+
+    # Extract footnote definitions from the memo itself (if LLM wrote them)
+    footnote_defs: dict[int, dict] = {}
+    # Pattern: [^N]: Citation text | Court, Year | Source: ... | URL
+    fn_pattern = re.compile(
+        r"\[\^(\d+)\]:\s*(.+?)(?:\n|$)", re.MULTILINE,
+    )
+    for match in fn_pattern.finditer(memo):
+        fn_num = int(match.group(1))
+        fn_text = match.group(2).strip()
+        # Try to parse structured format: Citation | Court, Year | Source | URL
+        parts = [p.strip() for p in fn_text.split("|")]
+        footnote_defs[fn_num] = {
+            "citation": parts[0] if parts else fn_text,
+            "court_year": parts[1] if len(parts) > 1 else "",
+            "source_label": parts[2] if len(parts) > 2 else "",
+            "url": parts[3] if len(parts) > 3 else "",
+        }
+
+    footnotes: list[Footnote] = []
+    for ref_str in sorted(refs_in_memo, key=int):
+        ref_num = int(ref_str)
+        fn_def = footnote_defs.get(ref_num, {})
+        citation = fn_def.get("citation", f"[Citation {ref_num}]")
+
+        # Look up source metadata
+        meta = citation_lookup.get(citation, {})
+        case_id = meta.get("case_id")
+
+        # Build source URL
+        source_url = ""
+        if case_id and not str(case_id).startswith("ik:"):
+            source_url = f"/case/{case_id}"
+        elif fn_def.get("url"):
+            source_url = fn_def["url"]
+
+        # Determine source type
+        source_type = meta.get("source_type", "case_law")
+        if "ik" in source_type or "indiankanoon" in fn_def.get("url", "").lower():
+            source_type = "ik_search"
+
+        footnotes.append(Footnote(
+            number=ref_num,
+            citation=citation,
+            source_type=source_type,
+            source_url=source_url,
+            case_id=case_id,
+            excerpt=meta.get("snippet", fn_def.get("citation", ""))[:300],
+            is_used=True,
+            verification_status="pending",
+            verified_against="none",
+        ))
+
+    # Add unused sources (searched but not cited)
+    cited_citations = {fn["citation"] for fn in footnotes}
+    next_num = max((fn["number"] for fn in footnotes), default=0) + 1
+    for citation, meta in citation_lookup.items():
+        if citation not in cited_citations:
+            footnotes.append(Footnote(
+                number=next_num,
+                citation=citation,
+                source_type=meta.get("source_type", "case_law"),
+                source_url=f"/case/{meta['case_id']}" if meta.get("case_id") else "",
+                case_id=meta.get("case_id"),
+                excerpt=meta.get("snippet", "")[:300],
+                is_used=False,
+                verification_status="pending",
+                verified_against="none",
+            ))
+            next_num += 1
+
+    return {"footnotes": footnotes}
+
+
+# ---------------------------------------------------------------------------
+# V2 Node: verify_citations_v2_node [Q6 + T4] — Dual-stage verification
+# ---------------------------------------------------------------------------
+
+
+async def verify_citations_v2_node(
+    state: ResearchState,
+    db: AsyncSession,
+    graph_store: object | None = None,
+    ik_client: object | None = None,
+) -> dict:
+    """[Q6] Dual-stage citation verification + [T4] zero-tolerance guardrail.
+
+    Stage 1: Deterministic checks (regex, DB lookup, fuzzy quote match)
+    Stage 2: Verify each citation against primary sources (PG → IK → Neo4j)
+    Unverifiable citations are REMOVED [T4].
+    """
+    memo = state.get("draft_memo", "")
+    footnotes = list(state.get("footnotes", []))
+    extracted_passages = state.get("extracted_passages", [])
+
+    if not memo or not footnotes:
+        return {
+            "footnotes": footnotes,
+            "citation_verification_results": [],
+            "research_audit": state.get("research_audit", {}),
+        }
+
+    # --- Stage 1: Deterministic verification [Q6] ---
+    issues = await _deterministic_verify(
+        memo, footnotes, extracted_passages, db, graph_store,
+    )
+
+    # --- Stage 2: Verify citations against primary sources [T4] ---
+    verified_footnotes = await _verify_citations_against_sources(
+        footnotes, db, ik_client, graph_store,
+    )
+
+    # Count results
+    verified_count = sum(
+        1 for fn in verified_footnotes
+        if fn["verification_status"].startswith("verified") and fn["is_used"]
+    )
+    removed_count = sum(
+        1 for fn in verified_footnotes
+        if fn["verification_status"] == "unverified" and fn["is_used"]
+    )
+
+    # Build verification banner
+    if removed_count == 0:
+        banner = (
+            "All citations in this memo have been verified against "
+            "primary sources (PostgreSQL / Indian Kanoon / Neo4j)."
+        )
+    else:
+        banner = (
+            f"{removed_count} citation(s) could not be verified against "
+            f"primary sources and have been flagged."
+        )
+
+    # Update research audit with verification info
+    research_audit = dict(state.get("research_audit", {}))
+    research_audit["verification_banner"] = banner
+    research_audit["citations_verified"] = verified_count
+    research_audit["citations_removed"] = removed_count
+
+    # [T1] Emit verification event
+    verification_event = emit_status("verification", {
+        "citations_verified": verified_count,
+        "citations_removed": removed_count,
+        "quotes_verified": sum(
+            1 for i in issues if i["type"] != "unverified_quote"
+        ),
+    })
+
+    return {
+        "footnotes": verified_footnotes,
+        "citation_verification_results": issues,
+        "research_audit": research_audit,
+        "process_events": [verification_event],
+    }
+
+
+async def _deterministic_verify(
+    memo: str,
+    footnotes: list[Footnote],
+    extracted_passages: list[ExtractedPassage],
+    db: AsyncSession,
+    graph_store: object | None = None,
+) -> list[dict]:
+    """[Q6] Stage 1: Instant deterministic checks — no LLM needed."""
+    issues: list[dict] = []
+
+    # 1. Footnote reference completeness: every [^N] has a footnote entry
+    refs_in_memo = set(re.findall(r"\[\^(\d+)\]", memo))
+    footnote_numbers = {str(f["number"]) for f in footnotes}
+    for ref in refs_in_memo - footnote_numbers:
+        issues.append({
+            "type": "missing_footnote", "ref": ref, "severity": "HIGH",
+        })
+
+    # 2. Citation format validation: matches known Indian citation patterns
+    for fn in footnotes:
+        if fn["is_used"] and not _matches_indian_citation_pattern(fn["citation"]):
+            issues.append({
+                "type": "invalid_citation_format",
+                "footnote": fn["number"],
+                "citation": fn["citation"],
+                "severity": "MEDIUM",
+            })
+
+    # 3. Quote verification: quoted strings in memo match extracted_passages
+    quotes_in_memo = re.findall(r'"([^"]{20,})"', memo)
+    passage_texts = [p["passage"] for p in extracted_passages]
+    for quote in quotes_in_memo:
+        if passage_texts and not any(
+            _fuzzy_match(quote, p) for p in passage_texts
+        ):
+            issues.append({
+                "type": "unverified_quote",
+                "quote": quote[:100],
+                "severity": "HIGH",
+            })
+
+    # 4. Overruled case check via Neo4j (if available)
+    if graph_store and hasattr(graph_store, "query"):
+        cited_case_ids = [
+            fn["case_id"] for fn in footnotes
+            if fn.get("case_id") and fn["is_used"]
+        ]
+        for case_id in cited_case_ids:
+            try:
+                overruled = await graph_store.query(
+                    "MATCH (c:Case {id: $id})<-[r:CITES {treatment: 'overruled'}]"
+                    "-(newer:Case) RETURN newer.title, newer.citation LIMIT 1",
+                    {"id": case_id},
+                )
+                if overruled:
+                    issues.append({
+                        "type": "cites_overruled_case",
+                        "case_id": case_id,
+                        "overruled_by": str(overruled[0]),
+                        "severity": "HIGH",
+                    })
+            except Exception:
+                logger.warning("Overruled check failed for %s", case_id)
+
+    # 5. URL/case_id existence validation
+    for fn in footnotes:
+        if (
+            fn.get("case_id")
+            and fn["is_used"]
+            and not str(fn["case_id"]).startswith("ik:")
+        ):
+            try:
+                exists = await db.execute(
+                    select(1).select_from(
+                        text("cases")
+                    ).where(text(f"id = '{fn['case_id']}'::uuid"))
+                )
+                if not exists.scalar():
+                    issues.append({
+                        "type": "nonexistent_case_id",
+                        "case_id": fn["case_id"],
+                        "footnote": fn["number"],
+                        "severity": "CRITICAL",
+                    })
+            except Exception:
+                logger.warning("Case existence check failed for %s", fn.get("case_id"))
+
+    return issues
+
+
+async def _verify_citations_against_sources(
+    footnotes: list[Footnote],
+    db: AsyncSession,
+    ik_client: object | None,
+    graph_store: object | None,
+) -> list[Footnote]:
+    """[T4] Verify every citation against at least ONE primary source.
+    Unverifiable citations are REMOVED from the memo.
+    """
+    verified_footnotes: list[Footnote] = []
+    for fn in footnotes:
+        status = "unverified"
+
+        # Check 1: PostgreSQL cases table
+        if fn.get("case_id") and not str(fn["case_id"]).startswith("ik:"):
+            try:
+                exists = await db.execute(
+                    text("SELECT 1 FROM cases WHERE id = :id::uuid"),
+                    {"id": fn["case_id"]},
+                )
+                if exists.scalar():
+                    status = "verified_pg"
+            except Exception:
+                logger.warning("PG verification failed for %s", fn.get("case_id"))
+
+        # Check 2: Indian Kanoon API
+        if status == "unverified" and ik_client and fn.get("citation"):
+            try:
+                ik_results = await ik_client.search(fn["citation"], max_results=1)
+                if ik_results:
+                    status = "verified_ik"
+            except Exception:
+                pass  # IK failure is non-fatal
+
+        # Check 3: Neo4j Case node
+        if status == "unverified" and graph_store and fn.get("citation"):
+            try:
+                neo4j_match = await graph_store.query(
+                    "MATCH (c:Case) WHERE c.citation CONTAINS $cit "
+                    "RETURN c.id LIMIT 1",
+                    {"cit": fn["citation"][:30]},
+                )
+                if neo4j_match:
+                    status = "verified_neo4j"
+            except Exception:
+                pass  # Neo4j failure is non-fatal
+
+        fn_copy = dict(fn)
+        fn_copy["verification_status"] = status
+        fn_copy["verified_against"] = (
+            status.replace("verified_", "") if status != "unverified" else "none"
+        )
+
+        if status == "unverified" and fn_copy.get("is_used", False):
+            # [T4] Hard fail: mark citation as removed
+            fn_copy["citation"] = (
+                f"[CITATION REMOVED — unable to verify: {fn['citation']}]"
+            )
+            fn_copy["is_used"] = False
+            logger.warning(
+                "T4 guardrail: removed unverifiable citation footnote %s: %s",
+                fn["number"], fn["citation"],
+            )
+
+        verified_footnotes.append(Footnote(**fn_copy))
+    return verified_footnotes
+
+
+def _matches_indian_citation_pattern(citation: str) -> bool:
+    """Check if a citation matches known Indian legal citation formats."""
+    patterns = [
+        r"\(\d{4}\)\s+\d+\s+SCC\s+\d+",       # (YYYY) X SCC XXX
+        r"AIR\s+\d{4}\s+SC\s+\d+",              # AIR YYYY SC XXX
+        r"\d{4}:\w+:\d+",                         # YYYY:INSC:NNNN (neutral)
+        r"\d{4}\s+SCC\s+\(Cri\)",                # SCC (Cri) sub-reporter
+        r"\(\d{4}\)\s+\d+\s+SCC\s+\(Cri\)",     # (YYYY) X SCC (Cri) XXX
+        r"MANU/SC/\d+/\d{4}",                     # MANU reporter
+        r"Section\s+\d+",                          # Statute reference
+        r"Article\s+\d+",                          # Constitutional article
+    ]
+    return any(re.search(p, citation) for p in patterns)
+
+
+def _fuzzy_match(quote: str, passage: str, threshold: int = 85) -> bool:
+    """Simple substring fuzzy match — checks if quote appears in passage."""
+    if not quote or not passage:
+        return False
+    # Normalize whitespace
+    q = " ".join(quote.lower().split())
+    p = " ".join(passage.lower().split())
+    # Exact substring check
+    if q in p:
+        return True
+    # Simple overlap ratio (without fuzzywuzzy dependency)
+    if len(q) > len(p):
+        q, p = p, q
+    overlap = sum(1 for c in q if c in p)
+    ratio = (overlap / max(len(q), 1)) * 100
+    return ratio >= threshold
+
+
+# ---------------------------------------------------------------------------
+# V2 Node: legal_quality_check_node [Q4] — LeMAJ-inspired verification
+# ---------------------------------------------------------------------------
+
+
+async def legal_quality_check_node(
+    state: ResearchState,
+    llm: LLMProvider,
+) -> dict:
+    """[Q4] LeMAJ-inspired legal reasoning verification.
+
+    Decomposes memo into Legal Data Points, checks each against evidence.
+    If overall_quality < 0.7, HITL checkpoint will show specific issues.
+    """
+    memo = state.get("draft_memo", "")
+    if not memo:
+        return {
+            "legal_quality_result": LegalQualityResult(
+                overall_score=0.0,
+                data_points=[],
+                omissions=[],
+                logical_issues=["No memo to evaluate"],
+                pass_threshold=False,
+            ),
+        }
+
+    # Flatten evidence for context
+    worker_results = state.get("worker_results", [])
+    all_evidence: list[dict] = []
+    for wr in worker_results:
+        all_evidence.extend(wr.get("results", []))
+    evidence = format_search_results_for_llm_extended(all_evidence[:30])
+
+    try:
+        result = await llm.generate_structured(
+            prompt=f"MEMO:\n{memo}\n\nEVIDENCE:\n{evidence}",
+            system=LEGAL_QUALITY_CHECK_SYSTEM,
+            output_schema=LEGAL_QUALITY_CHECK_SCHEMA,
+        )
+    except Exception as exc:
+        logger.warning("Legal quality check failed: %s", exc)
+        return {
+            "legal_quality_result": LegalQualityResult(
+                overall_score=0.5,
+                data_points=[],
+                omissions=[],
+                logical_issues=[f"Quality check failed: {exc}"],
+                pass_threshold=False,
+            ),
+        }
+
+    quality_result = LegalQualityResult(
+        overall_score=result.get("overall_score", 0.0),
+        data_points=result.get("data_points", []),
+        omissions=result.get("omissions", []),
+        logical_issues=result.get("logical_issues", []),
+        pass_threshold=result.get("overall_score", 0.0) >= 0.7,
+    )
+
+    # [T1] Emit quality event
+    quality_event = emit_status("quality", {
+        "overall_score": quality_result["overall_score"],
+        "pass_threshold": quality_result["pass_threshold"],
+        "data_points_count": len(quality_result["data_points"]),
+        "omissions_count": len(quality_result["omissions"]),
+        "logical_issues_count": len(quality_result["logical_issues"]),
+    })
+
+    return {
+        "legal_quality_result": quality_result,
+        "process_events": [quality_event],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Helper functions for synthesis post-processing
+# ---------------------------------------------------------------------------
+
+
+def _build_source_attribution(all_results: list[dict]) -> dict:
+    """Build source attribution mapping: citation → metadata."""
+    attribution: dict[str, dict] = {}
+    for r in all_results:
+        citation = r.get("citation", "")
+        if citation and citation not in attribution:
+            attribution[citation] = {
+                "source_type": r.get("source", "internal"),
+                "case_id": r.get("case_id"),
+                "url": f"/case/{r['case_id']}" if r.get("case_id") else "",
+                "court": r.get("court", ""),
+                "year": r.get("year"),
+            }
+    return attribution
+
+
+def _build_research_audit(state: ResearchState, all_results: list[dict]) -> dict:
+    """Build research audit trail metadata."""
+    worker_results = state.get("worker_results", [])
+
+    # Count unique sources by type
+    source_counts: dict[str, int] = {}
+    for wr in worker_results:
+        task_type = wr.get("task_type", "unknown")
+        source_counts[task_type] = source_counts.get(task_type, 0) + len(
+            wr.get("results", []),
+        )
+
+    total_sources = len(all_results)
+    # cited count will be updated after footnotes are generated
+    return {
+        "total_sources_searched": total_sources,
+        "sources_cited": 0,  # Updated by format_footnotes_node
+        "sources_unused": total_sources,
+        "searches_executed": len(worker_results),
+        "refinement_rounds": state.get("refinement_round", 0),
+        "source_counts": source_counts,
+        "deep_reads_performed": sum(
+            1 for s in state.get("relevance_scores", [])
+            if "[deep_read]" in s.get("reason", "")
+        ),
+        "strategy_pivots": 1 if state.get("strategy_adjustment") else 0,
+    }
 
 

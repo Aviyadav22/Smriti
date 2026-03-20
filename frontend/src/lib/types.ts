@@ -411,16 +411,50 @@ export interface AgentExecution {
 }
 
 export interface AgentStreamEvent {
-    type: "status" | "checkpoint" | "memo" | "done" | "error";
+    type: "status" | "checkpoint" | "memo" | "done" | "error"
+        | "plan" | "searching" | "found" | "evaluating" | "reflection"
+        | "gap" | "drafting" | "memo_stream" | "verification" | "quality";
     step?: string;
     message?: string;
     question?: string;
     context?: Record<string, unknown>;
     content?: string;
+    chunk?: string;
     execution_id?: string;
     status?: string;
     recoverable?: boolean;
     data?: Record<string, unknown>;
+}
+
+export interface ResearchFootnote {
+    number: number;
+    citation: string;
+    source_type: string;
+    source_url: string;
+    case_id: string | null;
+    excerpt: string;
+    is_used: boolean;
+    verification_status: string;
+    verified_against: string;
+}
+
+export interface ResearchAudit {
+    total_sources_searched?: number;
+    sources_cited?: number;
+    sources_unused?: number;
+    searches_executed?: number;
+    refinement_rounds?: number;
+    verification_banner?: string;
+    citations_verified?: number;
+    citations_removed?: number;
+    deep_reads_performed?: number;
+    strategy_pivots?: number;
+}
+
+export interface ProcessEvent {
+    type: string;
+    data: Record<string, unknown>;
+    timestamp?: number;
 }
 
 export interface AgentStep {

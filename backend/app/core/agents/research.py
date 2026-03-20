@@ -33,11 +33,15 @@ from app.core.agents.nodes.research_nodes import (
     evaluate_and_extract_node,
     fast_path_search_node,
     fast_path_synthesis_node,
+    format_footnotes_node,
     gap_analysis_node,
     gather_worker_results_node,
+    legal_quality_check_node,
     plan_research_node,
     pre_warm_embeddings_node,
     rewrite_query_node,
+    speculative_synthesis_with_contradictions_node,
+    verify_citations_v2_node,
 )
 from app.core.agents.nodes.worker_nodes import (
     case_law_worker,
@@ -232,6 +236,27 @@ def build_research_graph(
         async with async_session_factory() as session:
             return await verify_citations_node(state, session)
 
+    # Phase 4 nodes: speculative synthesis → format footnotes → verify v2 → quality check
+    async def speculative_synthesis(state: ResearchState) -> dict:
+        return await speculative_synthesis_with_contradictions_node(
+            state, llm, flash_llm,
+            stream_callback=None,  # Stream callback set by SSE layer
+        )
+
+    async def format_footnotes(state: ResearchState) -> dict:
+        return await format_footnotes_node(state)
+
+    async def verify_v2(state: ResearchState) -> dict:
+        async with async_session_factory() as session:
+            return await verify_citations_v2_node(
+                state, session,
+                graph_store=graph_store,
+                ik_client=ik_client,
+            )
+
+    async def quality_check(state: ResearchState) -> dict:
+        return await legal_quality_check_node(state, flash_llm)
+
     # -- Worker node wrappers (closures for Send) ---------------------------
 
     async def _case_law_worker(state: dict) -> dict:
@@ -377,6 +402,11 @@ def build_research_graph(
     graph.add_node("checkpoint_findings", checkpoint_findings)
     graph.add_node("synthesize", synthesize)
     graph.add_node("verify", verify)
+    # Phase 4 nodes
+    graph.add_node("speculative_synthesis", speculative_synthesis)
+    graph.add_node("format_footnotes", format_footnotes)
+    graph.add_node("verify_v2", verify_v2)
+    graph.add_node("quality_check", quality_check)
     graph.add_node("checkpoint_memo", checkpoint_memo)
 
     # Fast path nodes [S9]
@@ -407,7 +437,7 @@ def build_research_graph(
         route_after_fast_path,
         {"fast_path_synthesis": "fast_path_synthesis", "plan_research": "plan_research"},
     )
-    graph.add_edge("fast_path_synthesis", "verify")
+    graph.add_edge("fast_path_synthesis", "checkpoint_memo")
 
     # Full pipeline
     graph.add_edge("plan_research", "checkpoint_plan")
@@ -445,24 +475,27 @@ def build_research_graph(
         },
     )
 
-    # Post-findings
+    # Post-findings — route to speculative synthesis (Phase 4) instead of old synthesize
     graph.add_conditional_edges(
         "checkpoint_findings",
         route_after_findings,
         {
             "dispatch_workers": "dispatch_workers",
-            "synthesize": "synthesize",
+            "synthesize": "speculative_synthesis",
             END: END,
         },
     )
 
-    graph.add_edge("synthesize", "verify")
-    graph.add_edge("verify", "checkpoint_memo")
+    # Phase 4 pipeline: speculative synthesis → format footnotes → verify → quality → memo
+    graph.add_edge("speculative_synthesis", "format_footnotes")
+    graph.add_edge("format_footnotes", "verify_v2")
+    graph.add_edge("verify_v2", "quality_check")
+    graph.add_edge("quality_check", "checkpoint_memo")
 
     graph.add_conditional_edges(
         "checkpoint_memo",
         route_after_memo,
-        {"synthesize": "synthesize", END: END},
+        {"synthesize": "speculative_synthesis", END: END},
     )
 
     # -- Compile ------------------------------------------------------------

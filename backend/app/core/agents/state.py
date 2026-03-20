@@ -152,7 +152,7 @@ class ResearchState(TypedDict):
     strategy_adjustment: StrategyAdjustment | None  # [Q5] Reflection output
     legal_quality_result: LegalQualityResult | None  # [Q4] LeMAJ check
     citation_verification_results: list[dict]  # [T4] Per-citation verification
-    process_events: list[dict]  # [T1] Accumulated SSE events
+    process_events: Annotated[list[dict], operator.add]  # [T1] Accumulated SSE events
 
 
 class CasePrepState(TypedDict):

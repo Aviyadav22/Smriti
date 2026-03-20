@@ -5,7 +5,7 @@ import type { AgentStep } from "@/lib/types";
 
 /** Map internal node names to human-readable labels for the step timeline. */
 const STEP_LABELS: Record<string, string> = {
-    // Research agent steps
+    // Research agent V1 steps (backward compat)
     classify: "Understanding your question",
     decompose: "Breaking into sub-questions",
     checkpoint_plan: "Review research plan",
@@ -17,6 +17,21 @@ const STEP_LABELS: Record<string, string> = {
     synthesize: "Drafting research memo",
     verify: "Verifying citations",
     checkpoint_memo: "Final review",
+    // Research agent V2 steps
+    rewrite_query: "Refining your question",
+    plan_research: "Planning research strategy",
+    dispatch_workers: "Dispatching search workers",
+    gather_results: "Collecting search results",
+    batch_cot_with_reflection: "Analyzing & reflecting",
+    evaluate_and_extract: "Evaluating relevance",
+    gap_analysis: "Identifying evidence gaps",
+    speculative_synthesis: "Synthesizing research memo",
+    format_footnotes: "Building footnotes",
+    verify_v2: "Verifying citations",
+    quality_check: "Legal quality check",
+    // Fast path
+    fast_path_search: "Quick search",
+    fast_path_synthesis: "Quick synthesis",
     // Case prep agent steps
     load_analysis: "Loading document analysis",
     prioritize: "Prioritizing legal issues",

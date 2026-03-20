@@ -69,8 +69,11 @@ class TestResearchAgentPrompts:
 
     def test_synthesize_user_has_placeholders(self) -> None:
         assert "{query}" in RESEARCH_SYNTHESIZE_USER
-        assert "{findings}" in RESEARCH_SYNTHESIZE_USER
-        assert "{contradictions}" in RESEARCH_SYNTHESIZE_USER
+        assert "{evidence}" in RESEARCH_SYNTHESIZE_USER
+        assert "{passages}" in RESEARCH_SYNTHESIZE_USER
+        assert "{worker_reasoning}" in RESEARCH_SYNTHESIZE_USER
+        assert "{communities}" in RESEARCH_SYNTHESIZE_USER
+        assert "{strategy_hint}" in RESEARCH_SYNTHESIZE_USER
 
 
 # ---------------------------------------------------------------------------
