@@ -92,6 +92,27 @@ class TestIKWorkerFilterPropagation:
         assert call_kwargs["sort_by"] == "mostrecent"
 
     @pytest.mark.asyncio
+    async def test_extracts_rich_fields(self, mock_ik_client) -> None:
+        """Worker should extract docsource, author, publishdate, numcites from search results."""
+        from app.core.agents.nodes.worker_nodes import ik_search_worker
+
+        mock_ik_client.search = AsyncMock(return_value=[{
+            "tid": 123, "title": "Test Case", "citation": "(2020) 5 SCC 1",
+            "docsource": "Supreme Court of India", "author": "D Y Chandrachud",
+            "publishdate": "2020-03-15", "numcites": 12, "numcitedby": 45,
+            "headline": "A" * 60,  # long enough to skip fragment call
+        }])
+        state = {"task": _make_task()}
+        result = await ik_search_worker(state, mock_ik_client)
+
+        r = result["worker_results"][0]["results"][0]
+        assert r["court"] == "Supreme Court of India"
+        assert r["author"] == "D Y Chandrachud"
+        assert r["date"] == "2020-03-15"
+        assert r["num_cited_by"] == 45
+        assert r["num_cites"] == 12
+
+    @pytest.mark.asyncio
     async def test_no_filters_still_works(self, mock_ik_client) -> None:
         """Empty filters should result in None/default params."""
         from app.core.agents.nodes.worker_nodes import ik_search_worker
@@ -153,3 +174,37 @@ class TestIKWorkerCostControl:
         assert len(all_results) == 8  # All included
         # Last 3 should have empty snippet (beyond fragment limit)
         assert all_results[7]["snippet"] == ""
+
+    @pytest.mark.asyncio
+    async def test_uses_search_headline_skips_fragment(self) -> None:
+        """When search result has long headline, skip fragment API call."""
+        from app.core.agents.nodes.worker_nodes import ik_search_worker
+
+        mock_ik = AsyncMock()
+        mock_ik.search = AsyncMock(return_value=[
+            {"tid": 1, "title": "Case 1", "headline": "A" * 60},  # 60 chars > 50 threshold
+        ])
+        mock_ik.get_fragment = AsyncMock(return_value={"headline": ["frag"]})
+
+        state = {"task": _make_task()}
+        result = await ik_search_worker(state, mock_ik)
+
+        assert mock_ik.get_fragment.call_count == 0
+        assert "A" * 60 == result["worker_results"][0]["results"][0]["snippet"]
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_fragment_when_headline_short(self) -> None:
+        """When search headline is too short, call fragment API."""
+        from app.core.agents.nodes.worker_nodes import ik_search_worker
+
+        mock_ik = AsyncMock()
+        mock_ik.search = AsyncMock(return_value=[
+            {"tid": 1, "title": "Case 1", "headline": "short"},
+        ])
+        mock_ik.get_fragment = AsyncMock(return_value={"headline": ["Detailed fragment passage about the case"]})
+
+        state = {"task": _make_task()}
+        result = await ik_search_worker(state, mock_ik)
+
+        assert mock_ik.get_fragment.call_count == 1
+        assert "Detailed fragment passage" in result["worker_results"][0]["results"][0]["snippet"]

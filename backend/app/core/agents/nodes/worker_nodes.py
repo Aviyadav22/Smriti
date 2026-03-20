@@ -293,6 +293,7 @@ def func_websearch_to_tsquery(query: str):
 
 
 _MAX_IK_FRAGMENT_CALLS = 5  # Cost control: Rs 0.05/fragment
+_MIN_HEADLINE_LEN = 50  # Use search headline if >= this many chars (free)
 
 
 async def ik_search_worker(
@@ -354,27 +355,42 @@ async def ik_search_worker(
             if not doc_id:
                 continue
 
-            # Only fetch fragments for top N results (cost control)
-            fragment: dict = {}
-            if idx < _MAX_IK_FRAGMENT_CALLS:
+            # Use search headline if long enough; otherwise fetch fragment
+            search_headline = doc.get("headline", "")
+            snippet = ""
+            if len(search_headline) >= _MIN_HEADLINE_LEN:
+                # Free: headline already in search results
+                snippet = search_headline
+            elif idx < _MAX_IK_FRAGMENT_CALLS:
+                # Paid: Rs 0.05/call — only for short/missing headlines
                 try:
-                    # [S8-L3] Check fragment cache
                     cached_frag = await get_cached_ik_fragment(redis, doc_id, task["nl_query"])
                     if cached_frag is not None:
                         fragment = cached_frag
                     else:
                         fragment = await ik_client.get_fragment(doc_id, task["nl_query"])
                         await set_cached_ik_fragment(redis, doc_id, task["nl_query"], fragment)
+                    frag_headline = fragment.get("headline", fragment.get("fragment", ""))
+                    if isinstance(frag_headline, list):
+                        snippet = " ".join(frag_headline)
+                    else:
+                        snippet = frag_headline
                 except Exception:
-                    fragment = {}
+                    snippet = search_headline  # fallback to short headline
+            else:
+                snippet = search_headline  # beyond fragment limit, use whatever we have
 
             results.append({
                 "case_id": f"ik:{doc_id}",
                 "title": doc.get("title", ""),
                 "citation": doc.get("citation", ""),
-                "court": doc.get("court", ""),
+                "court": doc.get("docsource", doc.get("court", "")),
+                "author": doc.get("author", ""),
+                "date": doc.get("publishdate", ""),
                 "year": doc.get("year"),
-                "snippet": fragment.get("headline", fragment.get("fragment", "")),
+                "num_cites": doc.get("numcites", 0),
+                "num_cited_by": doc.get("numcitedby", 0),
+                "snippet": snippet,
                 "source": "indian_kanoon",
                 "ik_doc_id": doc_id,
             })
