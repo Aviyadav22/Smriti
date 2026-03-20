@@ -1102,10 +1102,19 @@ native operators for maximum precision:
 - Wrap exact phrases in quotes: "right to life"
 
 For filters dict on "ik_search" tasks, include when relevant:
-- court: "supreme_court" | "delhi" | "bombay" | "madras" | "calcutta" | etc.
+- court: "supreme_court" | "delhi" | "bombay" | "madras" | "calcutta" | "highcourts" | "tribunals" | etc.
 - from_year: integer (e.g., 2015)
 - to_year: integer (e.g., 2024)
 - sort_by: "mostrecent" for recency-sensitive queries
+- title: case name keyword (e.g., "Puttaswamy") — restricts to docs with this in title
+- cite: specific citation (e.g., "1993 AIR 264") — restricts to docs with this citation
+- author: judge name (e.g., "chandrachud") — restricts to judgments authored by this judge
+- bench: judge name (e.g., "nariman") — restricts to judgments where this judge was on bench
+
+IK results include court_copy_url linking to court-certified copies — use these as \
+trusted footnote references for maximum credibility.
+Use "highcourts" to search all high courts, "tribunals" for all tribunals, \
+"judgments" for SC+HC+District Courts, "laws" for Central Acts and Rules.
 
 For "web" search tasks, include in filters:
 - recency: "day" | "week" | "month" | "year" — how recent the results should be
@@ -1160,7 +1169,12 @@ RESEARCH_PLAN_SCHEMA: Final[dict] = {
                             "from_year": {"type": "integer", "nullable": True},
                             "to_year": {"type": "integer", "nullable": True},
                             "sort_by": {"type": "string", "nullable": True},
+                            "title": {"type": "string", "nullable": True},
+                            "cite": {"type": "string", "nullable": True},
+                            "author": {"type": "string", "nullable": True},
+                            "bench": {"type": "string", "nullable": True},
                             "recency": {"type": "string", "nullable": True},
+                            "domains": {"type": "array", "items": {"type": "string"}, "nullable": True},
                         },
                     },
                     "priority": {"type": "integer"},

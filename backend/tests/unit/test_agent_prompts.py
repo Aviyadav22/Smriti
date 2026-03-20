@@ -222,3 +222,26 @@ class TestPromptHardening:
         """Case prep prompt must flag time-barred arguments."""
         from app.core.legal.prompts import CASE_PREP_PRIORITIZE_SYSTEM
         assert "time-bar" in CASE_PREP_PRIORITIZE_SYSTEM.lower() or "limitation" in CASE_PREP_PRIORITIZE_SYSTEM.lower()
+
+
+class TestResearchPlanPromptIKFilters:
+    """Research plan prompt must mention all IK filter capabilities."""
+
+    def test_has_ik_inline_filters(self):
+        from app.core.legal.prompts import RESEARCH_PLAN_SYSTEM
+        for keyword in ["title", "cite", "author", "bench", "court_copy"]:
+            assert keyword in RESEARCH_PLAN_SYSTEM, f"Missing IK filter: {keyword}"
+
+    def test_has_aggregator_doctypes(self):
+        from app.core.legal.prompts import RESEARCH_PLAN_SYSTEM
+        for agg in ["highcourts", "tribunals"]:
+            assert agg in RESEARCH_PLAN_SYSTEM, f"Missing aggregator: {agg}"
+
+    def test_schema_has_new_filter_properties(self):
+        from app.core.legal.prompts import RESEARCH_PLAN_SCHEMA
+        filters_props = (
+            RESEARCH_PLAN_SCHEMA["properties"]["research_tasks"]["items"]
+            ["properties"]["filters"]["properties"]
+        )
+        for key in ["title", "cite", "author", "bench", "domains"]:
+            assert key in filters_props, f"Missing schema filter: {key}"
