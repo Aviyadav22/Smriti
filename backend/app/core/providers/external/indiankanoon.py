@@ -46,24 +46,63 @@ _ik_retry = retry(
 
 # IK court codes for inline doctype filter syntax
 IK_COURT_CODES: dict[str, str] = {
+    # Supreme Court
     "supreme_court": "supremecourt",
     "sc": "supremecourt",
-    "delhi": "delhihighcourt",
-    "bombay": "bombayhighcourt",
-    "madras": "madrashighcourt",
-    "calcutta": "calcuttahighcourt",
-    "karnataka": "karnatakahighcourt",
-    "allahabad": "allabadhighcourt",
-    "kerala": "keralahighcourt",
-    "punjab": "punjabharayanahighcourt",
-    "gauhati": "gauhatihighcourt",
-    "gujarat": "gujarathighcourt",
-    "rajasthan": "rajasthanhighcourt",
-    "patna": "patnahighcourt",
-    "telangana": "teabordhighcourt",
-    "chhattisgarh": "cabordhighcourt",
-    "jharkhand": "jabordhighcourt",
-    "uttarakhand": "utabordhighcourt",
+    # High Courts (from IK API docs)
+    "delhi": "delhi",
+    "bombay": "bombay",
+    "madras": "chennai",
+    "chennai": "chennai",
+    "calcutta": "kolkata",
+    "kolkata": "kolkata",
+    "allahabad": "allahabad",
+    "lucknow": "lucknow",
+    "karnataka": "karnataka",
+    "kerala": "kerala",
+    "punjab": "punjab",
+    "punjab_haryana": "punjab",
+    "gauhati": "gauhati",
+    "gujarat": "gujarat",
+    "rajasthan": "rajasthan",
+    "jodhpur": "jodhpur",
+    "patna": "patna",
+    "andhra": "andhra",
+    "telangana": "andhra",
+    "chhattisgarh": "chattisgarh",
+    "jharkhand": "jharkhand",
+    "uttarakhand": "uttaranchal",
+    "orissa": "orissa",
+    "odisha": "orissa",
+    "himachal_pradesh": "himachal_pradesh",
+    "madhya_pradesh": "madhyapradesh",
+    "sikkim": "sikkim",
+    "meghalaya": "meghalaya",
+    "jammu": "jammu",
+    "srinagar": "srinagar",
+    # District Courts
+    "delhi_district": "delhidc",
+    # Tribunals
+    "itat": "itat",
+    "cat": "cat",
+    "cci": "cci",
+    "ngt": "greentribunal",
+    "green_tribunal": "greentribunal",
+    "consumer": "consumer",
+    "tdsat": "tdsat",
+    "drat": "drat",
+    "aptel": "aptel",
+    "sebi_sat": "sebisat",
+    "cerc": "cerc",
+    "cic": "cic",
+    "ipab": "ipab",
+    "trademark": "trademark",
+    "copyright": "copyrightboard",
+    # Aggregators (search across groups)
+    "highcourts": "highcourts",
+    "tribunals": "tribunals",
+    "judgments": "judgments",
+    "laws": "laws",
 }
 
 
@@ -184,28 +223,24 @@ class IndianKanoonClient:
         if bench_filter:
             search_query += f" bench: {bench_filter}"
 
-        all_docs: list[dict] = []
-        for page in range(max_pages):
-            params: dict[str, str] = {
-                "formInput": search_query,
-                "pagenum": str(page),
-            }
-            if from_date:
-                params["fromdate"] = from_date
-            if to_date:
-                params["todate"] = to_date
-            if sort_by:
-                params["sortby"] = sort_by
-            if max_cites is not None:
-                params["maxcites"] = str(max_cites)
+        params: dict[str, str] = {
+            "formInput": search_query,
+            "pagenum": "0",
+        }
+        if from_date:
+            params["fromdate"] = from_date
+        if to_date:
+            params["todate"] = to_date
+        if sort_by:
+            params["sortby"] = sort_by
+        if max_cites is not None:
+            params["maxcites"] = str(max_cites)
+        if max_pages > 1:
+            params["maxpages"] = str(max_pages)
 
-            url = f"{self.BASE_URL}/search/"
-            result = await self._rate_limited_post(url, data=params)
-            docs = result.get("docs", [])
-            all_docs.extend(docs)
-
-            if len(docs) < 10:  # Last page
-                break
+        url = f"{self.BASE_URL}/search/"
+        result = await self._rate_limited_post(url, data=params)
+        all_docs = result.get("docs", [])
 
         return all_docs[:max_results]
 
@@ -225,6 +260,16 @@ class IndianKanoonClient:
     async def get_metadata(self, doc_id: str) -> dict:
         """Get document metadata. POST /docmeta/<doc_id>/ (Rs 0.02/req)."""
         url = f"{self.BASE_URL}/docmeta/{doc_id}/"
+        return await self._rate_limited_post(url)
+
+    @_ik_retry
+    async def get_court_copy(self, doc_id: str) -> dict:
+        """Get court-certified copy. POST /origdoc/<doc_id>/ (Rs 0.20/req).
+
+        Returns dict with 'doc' (base64-encoded HTML) and 'Content-Type'.
+        Use for trusted footnote references.
+        """
+        url = f"{self.BASE_URL}/origdoc/{doc_id}/"
         return await self._rate_limited_post(url)
 
     async def close(self) -> None:

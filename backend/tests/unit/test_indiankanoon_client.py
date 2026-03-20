@@ -106,22 +106,24 @@ class TestSearchEnhancements:
             assert call_data["sortby"] == "mostrecent"
 
     @pytest.mark.asyncio
-    async def test_search_paginates(self, ik_client) -> None:
-        """max_pages > 1 should fetch multiple pages."""
-        page0 = _mock_response({"docs": [{"tid": i} for i in range(10)]})
-        page1 = _mock_response({"docs": [{"tid": i} for i in range(10, 15)]})
+    async def test_search_uses_maxpages_param(self, ik_client) -> None:
+        """When max_pages > 1, should use maxpages param in single call."""
+        resp = _mock_response({"docs": [{"tid": i} for i in range(15)]})
+        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+            await ik_client.search("test", max_results=15, max_pages=2)
+            # Should make exactly ONE API call with maxpages=2
+            assert mock_post.call_count == 1
+            data = mock_post.call_args[1]["data"]
+            assert data["maxpages"] == "2"
 
-        call_count = 0
-
-        async def mock_post(url, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            return page0 if call_count == 1 else page1
-
-        with patch.object(ik_client._client, "post", side_effect=mock_post):
-            results = await ik_client.search("test", max_results=15, max_pages=2)
-            assert len(results) == 15
-            assert call_count == 2
+    @pytest.mark.asyncio
+    async def test_search_single_page_no_maxpages(self, ik_client) -> None:
+        """When max_pages=1 (default), should NOT include maxpages param."""
+        resp = _mock_response({"docs": [{"tid": 1}]})
+        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+            await ik_client.search("test")
+            data = mock_post.call_args[1]["data"]
+            assert "maxpages" not in data
 
     @pytest.mark.asyncio
     async def test_search_appends_title_filter(self, ik_client) -> None:
@@ -163,12 +165,48 @@ class TestSearchEnhancements:
             data = mock_post.call_args[1]["data"]
             assert data["maxcites"] == "10"
 
+class TestCourtCopy:
+    @pytest.mark.asyncio
+    async def test_get_court_copy_calls_origdoc(self, ik_client) -> None:
+        """get_court_copy should POST to /origdoc/<docid>/."""
+        resp = _mock_response({"doc": "base64content", "Content-Type": "text/html"})
+        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+            result = await ik_client.get_court_copy("12345")
+            mock_post.assert_called_once()
+            assert "/origdoc/12345/" in str(mock_post.call_args)
+            assert result["doc"] == "base64content"
+
+
+class TestCourtCodes:
     def test_court_codes_mapping(self) -> None:
         """IK_COURT_CODES should have key Indian courts."""
         from app.core.providers.external.indiankanoon import IK_COURT_CODES
 
         assert IK_COURT_CODES["supreme_court"] == "supremecourt"
         assert IK_COURT_CODES["sc"] == "supremecourt"
-        assert IK_COURT_CODES["delhi"] == "delhihighcourt"
-        assert IK_COURT_CODES["bombay"] == "bombayhighcourt"
+        assert IK_COURT_CODES["delhi"] == "delhi"
+        assert IK_COURT_CODES["bombay"] == "bombay"
         assert len(IK_COURT_CODES) >= 10
+
+    def test_court_codes_includes_all_courts(self) -> None:
+        """Court codes should include all documented IK courts, tribunals, and aggregators."""
+        from app.core.providers.external.indiankanoon import IK_COURT_CODES
+
+        # Key courts that must exist
+        required = [
+            "supreme_court", "delhi", "bombay", "calcutta", "madras",
+            "andhra", "orissa", "himachal_pradesh", "madhya_pradesh", "sikkim",
+            "meghalaya", "jammu",
+        ]
+        for court in required:
+            assert court in IK_COURT_CODES, f"Missing court: {court}"
+
+        # Key tribunals
+        required_tribunals = ["itat", "cci", "ngt", "cat", "consumer", "tdsat"]
+        for tribunal in required_tribunals:
+            assert tribunal in IK_COURT_CODES, f"Missing tribunal: {tribunal}"
+
+        # Aggregators
+        required_agg = ["highcourts", "tribunals", "judgments", "laws"]
+        for agg in required_agg:
+            assert agg in IK_COURT_CODES, f"Missing aggregator: {agg}"
