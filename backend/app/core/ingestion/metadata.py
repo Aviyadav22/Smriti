@@ -116,6 +116,37 @@ class CaseMetadata:
     is_anonymized: bool = False
     anonymization_flags: list[str] | None = None
 
+    # --- Ingestion V2 fields ---
+    # Group A: Judge Behavior Modeling
+    arguments_raised: list[dict] | None = None
+    relief_granted: str | None = None
+    relief_sought: str | None = None
+    sentence_details: dict | None = None
+    damages_awarded: dict | None = None
+    judicial_tone: str | None = None
+    key_observations: list[str] | None = None
+    hearing_count: int | None = None
+    # Group B: Citation Intelligence
+    citation_treatments: list[dict] | None = None
+    distinguished_cases: list[str] | None = None
+    overruled_cases: list[str] | None = None
+    legal_principles_applied: list[str] | None = None
+    # Group C: Procedural Intelligence
+    procedural_history: list[dict] | None = None
+    interim_orders: list[str] | None = None
+    filing_date: str | None = None
+    urgency_indicators: list[str] | None = None
+    # Group D: Party & Case Intelligence
+    party_counsel: list[dict] | None = None
+    issue_classification: list[str] | None = None
+    fact_pattern_tags: list[str] | None = None
+    # Group E: Output Quality
+    operative_order: str | None = None
+    conditions_imposed: list[str] | None = None
+    costs_awarded: dict | None = None
+    # Enrichment tracking
+    enrichment_status: str = "flash_only"
+
 
 # ---------------------------------------------------------------------------
 # LLM extraction
@@ -658,6 +689,13 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> tuple[CaseMeta
         "coram_size", "lower_court", "lower_court_case_number", "appeal_from",
         "opinion_type", "dissenting_judges", "concurring_judges", "split_ratio",
         "petitioner_type", "respondent_type", "is_pil", "companion_cases",
+        # V2 fields
+        "arguments_raised", "relief_granted", "relief_sought", "sentence_details",
+        "damages_awarded", "judicial_tone", "key_observations", "hearing_count",
+        "citation_treatments", "distinguished_cases", "overruled_cases",
+        "legal_principles_applied", "procedural_history", "interim_orders",
+        "filing_date", "urgency_indicators", "party_counsel", "issue_classification",
+        "fact_pattern_tags", "operative_order", "conditions_imposed", "costs_awarded",
     )
     for field in llm_only_fields:
         llm_val = getattr(llm_meta, field, None)

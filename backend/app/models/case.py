@@ -113,6 +113,45 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ARRAY(String), nullable=True
     )
 
+    # --- Migration 023 columns (Ingestion V2) ---
+    # Group A: Judge Behavior Modeling
+    arguments_raised: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    relief_granted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    relief_sought: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sentence_details: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    damages_awarded: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    judicial_tone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    key_observations: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    hearing_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Group B: Citation Intelligence
+    citation_treatments: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    distinguished_cases: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    overruled_cases: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    legal_principles_applied: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+
+    # Group C: Procedural Intelligence
+    procedural_history: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    interim_orders: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    filing_date: Mapped[date | None] = mapped_column(sa.Date, nullable=True)
+    urgency_indicators: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+
+    # Group D: Party & Case Intelligence
+    party_counsel: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    issue_classification: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    fact_pattern_tags: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+
+    # Group E: Output Quality
+    operative_order: Mapped[str | None] = mapped_column(Text, nullable=True)
+    conditions_imposed: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    costs_awarded: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # PDF Deep-Linking
+    page_map: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # Enrichment Tracking
+    enrichment_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="flash_only")
+
     __table_args__ = (
         CheckConstraint("year >= 1800 AND year <= 2200", name="ck_cases_year_range"),
         # Single-column indexes
