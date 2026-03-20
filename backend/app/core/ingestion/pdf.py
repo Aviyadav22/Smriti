@@ -12,7 +12,7 @@ import logging
 import re
 import unicodedata
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pdfplumber
 from pdfminer.psparser import PSException
@@ -76,6 +76,7 @@ class TextQuality:
     ocr_used: bool
     legal_keyword_count: int
     page_count: int
+    page_map: list[dict] = field(default_factory=list)
 
 
 LEGAL_KEYWORDS = {
@@ -366,7 +367,48 @@ def _ocr_single_page(file_path: str, page_num: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _extract_pdf_text_sync(file_path: str) -> tuple[str, int]:
+def _build_page_map(page_texts: list[str], joined_text: str) -> list[dict]:
+    """Build a page-number-to-character-offset map.
+
+    Uses fuzzy matching: finds each page's first 50 chars in the joined text
+    to handle join transformations (smart_page_join, clean_extracted_text).
+    Falls back to sequential estimation if exact match fails.
+    """
+    page_map: list[dict] = []
+    search_start = 0
+
+    for i, page_text in enumerate(page_texts):
+        page_num = i + 1
+        # Find the start of this page's content in the joined text
+        anchor = page_text.strip()[:50]
+        if not anchor:
+            continue
+
+        pos = joined_text.find(anchor, search_start)
+        if pos == -1:
+            # Fallback: estimate from previous page's end
+            pos = page_map[-1]["char_end"] if page_map else 0
+
+        # Find where this page's content ends
+        end_anchor = page_text.strip()[-50:]
+        end_pos = joined_text.find(end_anchor, pos)
+        if end_pos != -1:
+            end_pos += len(end_anchor)
+        else:
+            # Estimate: pos + original page length (rough)
+            end_pos = min(pos + len(page_text), len(joined_text))
+
+        page_map.append({
+            "page_number": page_num,
+            "char_start": pos,
+            "char_end": end_pos,
+        })
+        search_start = pos + 1
+
+    return page_map
+
+
+def _extract_pdf_text_sync(file_path: str) -> tuple[str, int, list[dict]]:
     """Synchronous per-page hybrid PDF text extraction.
 
     For each page, extracts text with pdfplumber. If a page yields fewer
@@ -376,7 +418,7 @@ def _extract_pdf_text_sync(file_path: str) -> tuple[str, int]:
         file_path: Absolute path to the PDF file.
 
     Returns:
-        Tuple of (cleaned joined text, page count).
+        Tuple of (cleaned joined text, page count, page_map).
     """
     page_texts: list[str] = []
     total_pages = 0
@@ -387,7 +429,7 @@ def _extract_pdf_text_sync(file_path: str) -> tuple[str, int]:
                     "PDF %s has %d pages, exceeds MAX_PAGES=%d",
                     file_path, len(pdf.pages), MAX_PAGES,
                 )
-                return "", 0
+                return "", 0, []
             total_pages = len(pdf.pages)
             for page_num, page in enumerate(pdf.pages, start=1):
                 page_text = ""
@@ -414,25 +456,26 @@ def _extract_pdf_text_sync(file_path: str) -> tuple[str, int]:
 
     except (OSError, PSException, ValueError) as exc:
         logger.error("Failed to open PDF %s: %s", file_path, exc)
-        return "", 0
+        return "", 0, []
     except Exception as exc:
         # Catch PDFPasswordIncorrect (and guard against missing import)
         if PDFPasswordIncorrect is not None and isinstance(exc, PDFPasswordIncorrect):
             logger.warning("Skipping password-protected PDF: %s", file_path)
-            return "", 0
+            return "", 0, []
         # Catch any other PDF corruption / parsing errors gracefully
         logger.error("Corrupt or unreadable PDF %s: %s", file_path, exc)
-        return "", 0
+        return "", 0, []
 
     # Remove repeated headers/footers on per-page list (before joining)
     page_texts = _remove_repeated_headers_footers_pages(page_texts)
     # Smart join and clean
     result = _smart_page_join(page_texts)
     result = clean_extracted_text(result)
-    return result, total_pages
+    page_map = _build_page_map(page_texts, result)
+    return result, total_pages, page_map
 
 
-async def extract_pdf_text(file_path: str) -> tuple[str, int]:
+async def extract_pdf_text(file_path: str) -> tuple[str, int, list[dict]]:
     """Extract text from a PDF using pdfplumber with per-page OCR fallback.
 
     For each page, attempts pdfplumber extraction first. If a page yields
@@ -446,7 +489,7 @@ async def extract_pdf_text(file_path: str) -> tuple[str, int]:
         file_path: Absolute path to the PDF file.
 
     Returns:
-        Tuple of (cleaned text, page count). Returns ("", 0) on failure.
+        Tuple of (cleaned text, page count, page_map). Returns ("", 0, []) on failure.
     """
     return await asyncio.to_thread(_extract_pdf_text_sync, file_path)
 
@@ -601,18 +644,20 @@ async def extract_and_score(file_path: str) -> TextQuality:
 
     Tries pdfplumber first, falls back to OCR if insufficient text.
     """
-    text, page_count = await extract_pdf_text(file_path)
+    text, page_count, page_map = await extract_pdf_text(file_path)
     ocr_used = False
 
     if not text or len(text) < 100:
         logger.warning("pdfplumber extraction insufficient, trying OCR: %s", file_path)
         text = await extract_with_ocr(file_path)
         ocr_used = True
+        page_map = []  # OCR fallback doesn't produce page_map
 
     if not text:
         text = ""
 
     quality = score_text_quality(text, ocr_used=ocr_used, page_count=page_count)
+    quality.page_map = page_map
 
     if quality.tier == "low":
         logger.warning(

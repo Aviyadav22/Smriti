@@ -70,6 +70,44 @@ government_central, government_state, PSU, company, NGO, statutory_body, other. 
 Also determine if this is a PIL (Public Interest Litigation).
 21. COMPANION CASES: If the judgment disposes of multiple cases together (e.g., \
 "With Civil Appeal Nos. 1234-1236 of 2022"), extract all companion case numbers.
+22. ARGUMENTS RAISED: Extract each distinct legal argument raised by each party. \
+Classify argument_type from: constitutional, statutory_interpretation, procedural, \
+factual, precedent_based, policy, equity, jurisdictional, limitation, evidence. \
+Mark accepted=true if the court upheld it, false if rejected, null if unclear. \
+Include statutory_basis (e.g., "Section 302 IPC") where applicable.
+23. RELIEF: Extract relief_sought (what petitioner asked for) and relief_granted \
+(what court actually ordered) as separate fields. For criminal cases, extract \
+sentence_details with offense, sentence_type (imprisonment/fine/death/life), \
+quantum (e.g., "7 years"), fine_amount, conditions. For civil monetary awards, \
+extract damages_awarded with amount, currency ("INR"), type (compensatory/punitive/nominal/costs).
+24. OPERATIVE ORDER: Extract the exact operative portion of the judgment verbatim. \
+This usually starts with phrases like "In view of the above", "The appeal is hereby", \
+"In the result", "For the reasons stated above". Copy the text exactly as written.
+25. CITATION TREATMENTS: For EACH cited case, identify HOW it was used: followed, \
+applied, referred_to, distinguished, overruled, approved, doubted, explained, \
+not_followed. Include 1-2 sentence context of HOW it was used and the paragraph \
+number where the citation appears.
+26. COUNSEL: Extract names of advocates appearing for each party. Identify Senior \
+Advocates (marked "Sr. Adv." or preceded by "Mr./Ms."), AG/SG/ASG, Amicus Curiae, \
+and Advocate-on-Record. Use designation enum: senior_advocate, advocate, aag, ag, \
+sg, asg, amicus, advocate_on_record.
+27. JUDICIAL TONE: Classify the overall tone from language used. neutral = standard \
+judicial language. stern = harsh language, admonishments. sympathetic = expressions \
+of concern for parties. critical = criticism of lower courts/government. academic = \
+extensive doctrinal analysis. reformist = policy recommendations, law reform suggestions.
+28. LEGAL PRINCIPLES & FACT PATTERNS: Extract named legal doctrines applied (e.g., \
+"doctrine of basic structure", "Wednesbury unreasonableness", "last seen doctrine"). \
+Tag the case with 1-5 factual pattern categories (e.g., "land_dispute", "dowry_death", \
+"bail_application", "service_matter", "corporate_fraud", "environmental_clearance", \
+"motor_accident", "medical_negligence", "property_partition", "tax_evasion").
+29. PROCEDURAL HISTORY & MISC: Extract the chain of courts the case passed through as \
+procedural_history (court, case_number, date, outcome, judge). Extract filing_date \
+(when case was filed, NOT decided). Extract interim_orders (stay orders, interim relief). \
+Extract hearing_count (number of hearings mentioned). Extract urgency_indicators \
+("urgent hearing", "suo motu", "expedited", "day-to-day hearing"). Extract \
+conditions_imposed (bail conditions, compliance timelines). Extract costs_awarded \
+(amount, to_whom, reason). Extract key_observations (max 5 notable obiter dicta). \
+Extract issue_classification as hierarchical tags (e.g., "fundamental_rights.article_21").
 """
 
 METADATA_EXTRACTION_USER: Final[str] = """\
@@ -114,6 +152,28 @@ Withdrawn, Remanded, Disposed Of, Settled, Transferred, Modified, Other)
 - concurring_judges: List of judges who wrote concurring but separate opinions
 - split_ratio: Vote split ratio (e.g., "3:2", "4:1"), null if unanimous
 - companion_cases: Case numbers disposed of together in the same judgment
+- arguments_raised: Array of arguments by each party (party, argument_type, argument_summary, statutory_basis, accepted)
+- relief_sought: What the petitioner asked for
+- relief_granted: What the court actually ordered
+- sentence_details: For criminal cases: offense, sentence_type, quantum, fine_amount, conditions
+- damages_awarded: For civil monetary awards: amount, currency, type
+- judicial_tone: Overall tone (neutral, stern, sympathetic, critical, academic, reformist)
+- key_observations: Max 5 notable obiter dicta or observations
+- hearing_count: Number of hearings mentioned (integer)
+- citation_treatments: Array showing how each cited case was treated (cited_case, treatment, context, paragraph)
+- distinguished_cases: Cases explicitly distinguished
+- overruled_cases: Cases explicitly overruled
+- legal_principles_applied: Named legal doctrines applied
+- procedural_history: Chain of courts (court, case_number, date, outcome, judge)
+- interim_orders: Stay orders, interim relief during pendency
+- filing_date: When case was filed (ISO date, NOT decision date)
+- urgency_indicators: "urgent hearing", "suo motu", "expedited" mentions
+- party_counsel: Advocates per party (party, counsel_name, designation)
+- issue_classification: Hierarchical legal issue tags (e.g., "fundamental_rights.article_21")
+- fact_pattern_tags: 1-5 factual pattern tags (e.g., "land_dispute", "bail_application")
+- operative_order: Verbatim text of court's operative order
+- conditions_imposed: Conditions attached to relief (bail conditions, compliance timelines)
+- costs_awarded: Costs details (amount, to_whom, reason)
 
 EXAMPLE 1 (Criminal Appeal, Division Bench, Unanimous):
 {{
@@ -613,6 +673,189 @@ METADATA_OUTPUT_SCHEMA: Final[dict] = {
             "nullable": True,
             "description": "Case numbers disposed of together in the same judgment",
         },
+        # --- V2 fields ---
+        "arguments_raised": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "party": {"type": "string", "enum": ["petitioner", "respondent", "intervenor", "amicus"]},
+                    "argument_type": {"type": "string", "enum": [
+                        "constitutional", "statutory_interpretation", "procedural",
+                        "factual", "precedent_based", "policy", "equity",
+                        "jurisdictional", "limitation", "evidence",
+                    ]},
+                    "argument_summary": {"type": "string"},
+                    "statutory_basis": {"type": "string", "nullable": True},
+                    "accepted": {"type": "boolean", "nullable": True},
+                },
+            },
+            "description": "Distinct legal arguments raised by each party",
+        },
+        "relief_sought": {
+            "type": "string",
+            "nullable": True,
+            "description": "What the petitioner asked for",
+        },
+        "relief_granted": {
+            "type": "string",
+            "nullable": True,
+            "description": "What the court actually ordered",
+        },
+        "sentence_details": {
+            "type": "object",
+            "nullable": True,
+            "properties": {
+                "offense": {"type": "string"},
+                "sentence_type": {"type": "string", "enum": [
+                    "imprisonment", "fine", "death", "life", "acquittal", "compensation",
+                ]},
+                "quantum": {"type": "string", "nullable": True},
+                "fine_amount": {"type": "string", "nullable": True},
+                "conditions": {"type": "string", "nullable": True},
+            },
+            "description": "Criminal sentencing details",
+        },
+        "damages_awarded": {
+            "type": "object",
+            "nullable": True,
+            "properties": {
+                "amount": {"type": "string"},
+                "currency": {"type": "string"},
+                "type": {"type": "string", "enum": ["compensatory", "punitive", "nominal", "costs"]},
+            },
+            "description": "Civil monetary award details",
+        },
+        "judicial_tone": {
+            "type": "string",
+            "enum": ["neutral", "stern", "sympathetic", "critical", "academic", "reformist"],
+            "nullable": True,
+            "description": "Overall tone of the judgment",
+        },
+        "key_observations": {
+            "type": "array",
+            "items": {"type": "string"},
+            "nullable": True,
+            "description": "Max 5 notable obiter dicta or observations by the judge",
+        },
+        "hearing_count": {
+            "type": "integer",
+            "nullable": True,
+            "description": "Number of hearings mentioned in the judgment",
+        },
+        "citation_treatments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "cited_case": {"type": "string"},
+                    "treatment": {"type": "string", "enum": [
+                        "followed", "applied", "referred_to", "distinguished",
+                        "overruled", "approved", "doubted", "explained", "not_followed",
+                    ]},
+                    "context": {"type": "string"},
+                    "paragraph": {"type": "integer", "nullable": True},
+                },
+            },
+            "description": "How each cited case was treated",
+        },
+        "distinguished_cases": {
+            "type": "array",
+            "items": {"type": "string"},
+            "nullable": True,
+            "description": "Cases explicitly distinguished",
+        },
+        "overruled_cases": {
+            "type": "array",
+            "items": {"type": "string"},
+            "nullable": True,
+            "description": "Cases explicitly overruled",
+        },
+        "legal_principles_applied": {
+            "type": "array",
+            "items": {"type": "string"},
+            "nullable": True,
+            "description": "Named legal doctrines applied (e.g., 'doctrine of basic structure')",
+        },
+        "procedural_history": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "court": {"type": "string"},
+                    "case_number": {"type": "string", "nullable": True},
+                    "date": {"type": "string", "nullable": True},
+                    "outcome": {"type": "string", "nullable": True},
+                    "judge": {"type": "string", "nullable": True},
+                },
+            },
+            "description": "Chain of courts the case passed through",
+        },
+        "interim_orders": {
+            "type": "array",
+            "items": {"type": "string"},
+            "nullable": True,
+            "description": "Stay orders, interim relief during pendency",
+        },
+        "filing_date": {
+            "type": "string",
+            "nullable": True,
+            "description": "ISO 8601 date when case was filed (NOT decided)",
+        },
+        "urgency_indicators": {
+            "type": "array",
+            "items": {"type": "string"},
+            "nullable": True,
+            "description": "Urgency indicators like 'urgent hearing', 'suo motu', 'expedited'",
+        },
+        "party_counsel": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "party": {"type": "string"},
+                    "counsel_name": {"type": "string"},
+                    "designation": {"type": "string", "enum": [
+                        "senior_advocate", "advocate", "aag", "ag", "sg",
+                        "asg", "amicus", "advocate_on_record",
+                    ]},
+                },
+            },
+            "description": "Advocates appearing for each party",
+        },
+        "issue_classification": {
+            "type": "array",
+            "items": {"type": "string"},
+            "nullable": True,
+            "description": "Hierarchical legal issue tags (e.g., 'fundamental_rights.article_21')",
+        },
+        "fact_pattern_tags": {
+            "type": "array",
+            "items": {"type": "string"},
+            "nullable": True,
+            "description": "1-5 factual pattern tags from standard taxonomy",
+        },
+        "operative_order": {
+            "type": "string",
+            "nullable": True,
+            "description": "Verbatim text of court's operative order",
+        },
+        "conditions_imposed": {
+            "type": "array",
+            "items": {"type": "string"},
+            "nullable": True,
+            "description": "Conditions attached to relief (bail conditions, compliance timelines)",
+        },
+        "costs_awarded": {
+            "type": "object",
+            "nullable": True,
+            "properties": {
+                "amount": {"type": "string", "nullable": True},
+                "to_whom": {"type": "string", "nullable": True},
+                "reason": {"type": "string", "nullable": True},
+            },
+            "description": "Costs awarded details",
+        },
     },
     "required": [
         "title", "citation", "court", "judge", "author_judge", "year",
@@ -624,6 +867,15 @@ METADATA_OUTPUT_SCHEMA: Final[dict] = {
         "lower_court", "lower_court_case_number", "appeal_from",
         "opinion_type", "dissenting_judges", "concurring_judges",
         "split_ratio", "companion_cases",
+        # V2 fields
+        "arguments_raised", "relief_sought", "relief_granted",
+        "sentence_details", "damages_awarded", "judicial_tone",
+        "key_observations", "hearing_count", "citation_treatments",
+        "distinguished_cases", "overruled_cases", "legal_principles_applied",
+        "procedural_history", "interim_orders", "filing_date",
+        "urgency_indicators", "party_counsel", "issue_classification",
+        "fact_pattern_tags", "operative_order", "conditions_imposed",
+        "costs_awarded",
     ],
 }
 

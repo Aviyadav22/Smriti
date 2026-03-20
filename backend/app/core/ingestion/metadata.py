@@ -157,8 +157,8 @@ async def extract_metadata_llm(
 ) -> CaseMetadata:
     """Use an LLM with structured output to extract metadata from judgment text.
 
-    Uses head+tail truncation to preserve both the header (parties, court info)
-    and the disposition/order at the end.
+    V2: Sends full text to LLM (Gemini 1M context supports this).
+    Average SC judgment = ~60K chars = ~20K tokens, well within limits.
 
     Retries up to max_retries times with exponential backoff on transient failures.
     """
@@ -168,26 +168,9 @@ async def extract_metadata_llm(
         METADATA_OUTPUT_SCHEMA,
     )
 
-    # Truncation strategy for long judgments
-    if len(text) <= _MAX_INPUT_CHARS:
-        truncated = text
-    else:
-        # For very long texts (>50K chars), use 3-segment strategy:
-        # head (20K) + middle sample (15K from 40-60% position) + tail (15K)
-        # This preserves: parties/header (head), analysis/reasoning (middle),
-        # and order/disposition (tail).
-        head = text[:20_000]
-        mid_start = int(len(text) * 0.4)
-        mid_end = mid_start + 15_000
-        middle = text[mid_start:mid_end]
-        tail = text[-15_000:]
-        truncated = (
-            head
-            + "\n\n[...EARLY MIDDLE OMITTED...]\n\n"
-            + middle
-            + "\n\n[...LATE MIDDLE OMITTED...]\n\n"
-            + tail
-        )
+    # V2: Send full text to LLM (no truncation).
+    # Gemini 1M context window handles even the longest judgments.
+    truncated = text
 
     prompt = METADATA_EXTRACTION_USER.format(judgment_text=truncated)
 
