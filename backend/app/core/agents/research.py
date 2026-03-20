@@ -17,7 +17,9 @@ Fast path (simple queries):
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from typing import Any
 
 from langgraph.graph import StateGraph, START, END
@@ -57,10 +59,23 @@ from app.core.agents.routing_utils import (
     make_checkpoint_node,
     make_feedback_router,
 )
-from app.core.agents.state import ResearchState
+from app.core.agents.state import ResearchState, WorkerResult
 from app.db.postgres import async_session_factory
 
 logger = logging.getLogger(__name__)
+
+
+# -- Per-worker timeouts (seconds) [5E.1] -----------------------------------
+
+WORKER_TIMEOUTS: dict[str, int] = {
+    "web_search_worker": 10,
+    "ik_search_worker": 15,
+    "case_law_worker": 30,
+    "named_case_worker": 30,
+    "graph_worker": 15,
+    "graph_community_worker": 10,
+    "statute_worker": 20,
+}
 
 
 # -- HITL feedback routers --------------------------------------------------
@@ -153,6 +168,10 @@ def build_research_graph(
 
     async def fast_path_synthesis(state: ResearchState) -> dict:
         return await fast_path_synthesis_node(state, flash_llm)
+
+    # [S6] Pre-warm embeddings after plan approval, before dispatch
+    async def pre_warm(state: ResearchState) -> dict:
+        return await pre_warm_embeddings_node(state, embedder)
 
     # Worker dispatch via Send()
     # Map task_type → worker node name
@@ -257,28 +276,87 @@ def build_research_graph(
     async def quality_check(state: ResearchState) -> dict:
         return await legal_quality_check_node(state, flash_llm)
 
-    # -- Worker node wrappers (closures for Send) ---------------------------
+    # -- Worker node wrappers (closures for Send + timeouts [5E.1]) ----------
+
+    async def _timed_worker(name: str, coro, state: dict) -> dict:
+        """Wrap a worker coroutine with timeout and structured logging."""
+        timeout = WORKER_TIMEOUTS.get(name, 30)
+        task_data = state.get("task", {})
+        task_id = task_data.get("task_id", "unknown")
+        start = time.monotonic()
+        try:
+            result = await asyncio.wait_for(coro, timeout=timeout)
+            elapsed_ms = (time.monotonic() - start) * 1000
+            result_count = 0
+            for wr in result.get("worker_results", []):
+                result_count += len(wr.get("results", []) if isinstance(wr, dict) else wr.results)
+            logger.info(
+                "worker_complete worker_type=%s task_id=%s duration_ms=%.1f result_count=%d",
+                name, task_id, elapsed_ms, result_count,
+            )
+            return result
+        except asyncio.TimeoutError:
+            elapsed_ms = (time.monotonic() - start) * 1000
+            logger.warning(
+                "worker_timeout worker_type=%s task_id=%s timeout=%ds duration_ms=%.1f",
+                name, task_id, timeout, elapsed_ms,
+            )
+            return {"worker_results": [WorkerResult(
+                task_id=task_data.get("task_id", "unknown"),
+                task_type=task_data.get("task_type", name),
+                query=task_data.get("nl_query", ""),
+                results=[], source_urls=[], metadata={},
+                error=f"Timeout after {timeout}s", reasoning="",
+            )]}
 
     async def _case_law_worker(state: dict) -> dict:
-        return await case_law_worker(state, llm, embedder, vector_store, reranker)
+        return await _timed_worker(
+            "case_law_worker",
+            case_law_worker(state, llm, embedder, vector_store, reranker),
+            state,
+        )
 
     async def _named_case_worker(state: dict) -> dict:
-        return await named_case_worker(state, llm, embedder, vector_store, reranker)
+        return await _timed_worker(
+            "named_case_worker",
+            named_case_worker(state, llm, embedder, vector_store, reranker),
+            state,
+        )
 
     async def _statute_worker(state: dict) -> dict:
-        return await statute_worker(state, embedder, vector_store)
+        return await _timed_worker(
+            "statute_worker",
+            statute_worker(state, embedder, vector_store),
+            state,
+        )
 
     async def _ik_search_worker(state: dict) -> dict:
-        return await ik_search_worker(state, ik_client)
+        return await _timed_worker(
+            "ik_search_worker",
+            ik_search_worker(state, ik_client),
+            state,
+        )
 
     async def _web_search_worker(state: dict) -> dict:
-        return await web_search_worker(state, web_search)
+        return await _timed_worker(
+            "web_search_worker",
+            web_search_worker(state, web_search),
+            state,
+        )
 
     async def _graph_worker(state: dict) -> dict:
-        return await graph_worker(state, graph_store)
+        return await _timed_worker(
+            "graph_worker",
+            graph_worker(state, graph_store),
+            state,
+        )
 
     async def _graph_community_worker(state: dict) -> dict:
-        return await graph_community_worker(state, embedder, vector_store, graph_store)
+        return await _timed_worker(
+            "graph_community_worker",
+            graph_community_worker(state, embedder, vector_store, graph_store),
+            state,
+        )
 
     # -- Checkpoint nodes (HITL via interrupt) ------------------------------
 
@@ -387,6 +465,7 @@ def build_research_graph(
     # Full pipeline nodes
     graph.add_node("plan_research", plan)
     graph.add_node("checkpoint_plan", checkpoint_plan)
+    graph.add_node("pre_warm_embeddings", pre_warm)
     graph.add_node("dispatch_workers", dispatch_workers)
     graph.add_node("case_law_worker", _case_law_worker)
     graph.add_node("named_case_worker", _named_case_worker)
@@ -446,10 +525,11 @@ def build_research_graph(
         route_after_plan,
         {
             "plan_research": "plan_research",
-            "dispatch_workers": "dispatch_workers",
+            "dispatch_workers": "pre_warm_embeddings",  # [S6] Pre-warm before dispatch
             END: END,
         },
     )
+    graph.add_edge("pre_warm_embeddings", "dispatch_workers")
 
     # Workers fan out via Send(), results merge at gather_results
     graph.add_edge("case_law_worker", "gather_results")

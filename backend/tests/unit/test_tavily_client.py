@@ -40,7 +40,7 @@ class TestTavilyEnhancements:
         with patch.object(tavily_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
             await tavily_client.search("test", country="IN")
             payload = mock_post.call_args[1]["json"]
-            assert payload["country"] == "IN"
+            assert payload["country"] == "india"  # ISO "IN" mapped to full name
 
     @pytest.mark.asyncio
     async def test_search_sends_time_range(self, tavily_client) -> None:

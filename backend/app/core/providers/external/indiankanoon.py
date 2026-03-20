@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 import httpx
 from tenacity import (
@@ -24,6 +25,8 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _IK_TIMEOUT = 15  # seconds per request
+_CIRCUIT_BREAKER_THRESHOLD = 3   # [5E.5] consecutive 429s to trip open
+_CIRCUIT_BREAKER_COOLDOWN = 60   # [5E.5] seconds before half-open retry
 
 _ik_retry = retry(
     stop=stop_after_attempt(3),
@@ -64,6 +67,10 @@ IK_COURT_CODES: dict[str, str] = {
 }
 
 
+class IKCircuitBreakerOpen(Exception):
+    """Raised when the IK API circuit breaker is open [5E.5]."""
+
+
 class IndianKanoonClient:
     """Indian Kanoon API client implementing ExternalDocProvider protocol."""
 
@@ -82,9 +89,25 @@ class IndianKanoonClient:
         self._rate_limit = settings.ik_rate_limit
         self._last_request_time: float = 0.0
         self._lock = asyncio.Lock()
+        # [5E.5] Circuit breaker state
+        self._consecutive_429s: int = 0
+        self._circuit_open_until: float = 0.0
+
+    def _check_circuit_breaker(self) -> None:
+        """[5E.5] Raise if circuit breaker is open."""
+        if self._consecutive_429s >= _CIRCUIT_BREAKER_THRESHOLD:
+            if time.monotonic() < self._circuit_open_until:
+                raise IKCircuitBreakerOpen(
+                    f"IK API circuit breaker open — {self._consecutive_429s} consecutive 429s"
+                )
+            # Cooldown expired — half-open: reset and allow one request
+            self._consecutive_429s = 0
+            logger.info("IK circuit breaker half-open — allowing request")
 
     async def _rate_limited_post(self, url: str, data: dict | None = None) -> dict:
-        """POST with rate limiting (2 req/sec default), protected by asyncio.Lock."""
+        """POST with token bucket rate limiting + circuit breaker [5E.5]."""
+        self._check_circuit_breaker()
+
         async with self._lock:
             loop = asyncio.get_running_loop()
             now = loop.time()
@@ -95,6 +118,19 @@ class IndianKanoonClient:
 
             response = await self._client.post(url, data=data or {})
             self._last_request_time = asyncio.get_running_loop().time()
+
+            # [5E.5] Track 429s for circuit breaker
+            if response.status_code == 429:
+                self._consecutive_429s += 1
+                self._circuit_open_until = time.monotonic() + _CIRCUIT_BREAKER_COOLDOWN
+                logger.warning(
+                    "IK API 429 rate limited (consecutive=%d/%d)",
+                    self._consecutive_429s, _CIRCUIT_BREAKER_THRESHOLD,
+                )
+                response.raise_for_status()
+
+            # Success — reset circuit breaker
+            self._consecutive_429s = 0
             response.raise_for_status()
             return response.json()
 

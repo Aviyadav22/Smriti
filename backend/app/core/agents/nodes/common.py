@@ -711,3 +711,22 @@ def apply_language_suffix(system: str, language: str) -> str:
     if language == "hi":
         return system + HINDI_SYSTEM_SUFFIX
     return system
+
+
+async def cached_embed_text(embedder: EmbeddingProvider, text_input: str) -> list[float]:
+    """[S8-L4] Embed text with Redis cache. Falls through on cache failure."""
+    from app.core.agents.research_cache import get_cached_embedding, set_cached_embedding
+    from app.db.redis_client import get_redis
+
+    try:
+        redis = await get_redis()
+    except Exception:
+        redis = None
+
+    cached = await get_cached_embedding(redis, text_input)
+    if cached is not None:
+        return cached
+
+    vector = await embedder.embed_text(text_input)
+    await set_cached_embedding(redis, text_input, vector)
+    return vector

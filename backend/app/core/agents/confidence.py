@@ -2,7 +2,7 @@
 
 Uses a weighted formula considering result relevance (reranker scores),
 coverage (cross-reference ratio), source authority (precedent strength),
-and contradiction penalty.
+contradiction penalty, source diversity [5E.4], and evidence gap coverage [5E.4].
 """
 from __future__ import annotations
 
@@ -25,10 +25,41 @@ class ConfidenceBreakdown(TypedDict):
     consistency_confidence: float
 
 # Component weights (must sum to 1.0)
-_W_RELEVANCE = 0.40
-_W_COVERAGE = 0.20
-_W_AUTHORITY = 0.20
-_W_CONTRADICTION = 0.20
+_W_RELEVANCE = 0.30
+_W_COVERAGE = 0.15
+_W_AUTHORITY = 0.15
+_W_CONTRADICTION = 0.15
+_W_SOURCE_DIVERSITY = 0.15
+_W_GAP_COVERAGE = 0.10
+
+
+def _compute_source_diversity(worker_types: list[str]) -> float:
+    """[5E.4] Bonus for multi-tier results (own DB, IK API, web, graph).
+
+    Returns 0-1 based on how many distinct data tiers contributed results.
+    """
+    tier_groups = {
+        "case_law": "db", "named_case": "db", "statute": "db",
+        "ik_search": "ik", "web": "web",
+        "graph": "graph", "graph_community": "graph",
+    }
+    unique_tiers = {tier_groups.get(wt, wt) for wt in worker_types if wt in tier_groups}
+    # 4 possible tiers: db, ik, web, graph
+    return min(len(unique_tiers) / 4.0, 1.0)
+
+
+def _compute_gap_coverage(
+    initial_gap_count: int,
+    remaining_gap_count: int,
+) -> float:
+    """[5E.4] How well evidence gaps were filled during refinement rounds.
+
+    Returns 1.0 if all gaps filled, 0.0 if none were.
+    """
+    if initial_gap_count == 0:
+        return 1.0  # No gaps = full coverage
+    filled = initial_gap_count - remaining_gap_count
+    return max(0.0, min(filled / initial_gap_count, 1.0))
 
 
 def calculate_confidence(
@@ -37,6 +68,10 @@ def calculate_confidence(
     precedent_strengths: list[str],
     contradiction_count: int,
     total_results: int,
+    *,
+    worker_types: list[str] | None = None,
+    initial_gap_count: int = 0,
+    remaining_gap_count: int = 0,
 ) -> float:
     """Calculate a quality-weighted confidence score.
 
@@ -46,6 +81,9 @@ def calculate_confidence(
         precedent_strengths: List of strength labels for cited precedents.
         contradiction_count: Number of contradictions found.
         total_results: Total search results found.
+        worker_types: List of worker types that contributed results [5E.4].
+        initial_gap_count: Number of evidence gaps before refinement [5E.4].
+        remaining_gap_count: Number of evidence gaps remaining [5E.4].
 
     Returns:
         Confidence score between 0.0 and 1.0.
@@ -76,11 +114,19 @@ def calculate_confidence(
     else:
         contradiction_factor = 1.0
 
+    # 5. [5E.4] Source diversity — bonus for multi-tier results
+    source_diversity = _compute_source_diversity(worker_types or [])
+
+    # 6. [5E.4] Evidence gap coverage
+    gap_coverage = _compute_gap_coverage(initial_gap_count, remaining_gap_count)
+
     confidence = (
         _W_RELEVANCE * relevance
         + _W_COVERAGE * coverage
         + _W_AUTHORITY * authority
         + _W_CONTRADICTION * contradiction_factor
+        + _W_SOURCE_DIVERSITY * source_diversity
+        + _W_GAP_COVERAGE * gap_coverage
     )
 
     return min(1.0, max(0.0, confidence))

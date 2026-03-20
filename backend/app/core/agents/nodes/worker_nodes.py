@@ -22,6 +22,14 @@ from app.core.agents.nodes.common import (
     enrich_results_with_ratio,
     parallel_hybrid_search,
 )
+from app.core.agents.research_cache import (
+    get_cached_community,
+    get_cached_ik_fragment,
+    get_cached_ik_search,
+    set_cached_community,
+    set_cached_ik_fragment,
+    set_cached_ik_search,
+)
 from app.core.agents.state import WorkerResult
 from app.core.interfaces import (
     EmbeddingProvider,
@@ -35,6 +43,7 @@ from app.core.interfaces import (
 from app.core.search.hybrid import _exact_citation_search
 from app.core.search.query import expand_statute_references
 from app.db.postgres import async_session_factory
+from app.db.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -299,6 +308,12 @@ async def ik_search_worker(
     task = state["task"]
     filters = task.get("filters", {})
 
+    # [S8-L3] Best-effort Redis cache — failures fall through
+    try:
+        redis = await get_redis()
+    except Exception:
+        redis = None
+
     # Build IK-specific search params from research plan filters
     court_filter = filters.get("court")
     from_year = filters.get("from_year")
@@ -310,6 +325,18 @@ async def ik_search_worker(
     sort_by = filters.get("sort_by")  # "mostrecent" for recency queries
 
     try:
+        # [S8-L3] Check IK search cache
+        cached_results = await get_cached_ik_search(redis, task["nl_query"])
+        if cached_results is not None:
+            logger.debug("IK search cache hit for: %s", task["nl_query"][:60])
+            return {"worker_results": [WorkerResult(
+                task_id=task["task_id"], task_type="ik_search",
+                query=task["nl_query"], results=cached_results,
+                source_urls=[f"https://indiankanoon.org/doc/{r.get('ik_doc_id', '')}/" for r in cached_results],
+                metadata={"source": "indian_kanoon", "cached": True},
+                error=None, reasoning="",
+            )]}
+
         search_results = await ik_client.search(
             task["nl_query"],
             max_results=10,
@@ -331,7 +358,13 @@ async def ik_search_worker(
             fragment: dict = {}
             if idx < _MAX_IK_FRAGMENT_CALLS:
                 try:
-                    fragment = await ik_client.get_fragment(doc_id, task["nl_query"])
+                    # [S8-L3] Check fragment cache
+                    cached_frag = await get_cached_ik_fragment(redis, doc_id, task["nl_query"])
+                    if cached_frag is not None:
+                        fragment = cached_frag
+                    else:
+                        fragment = await ik_client.get_fragment(doc_id, task["nl_query"])
+                        await set_cached_ik_fragment(redis, doc_id, task["nl_query"], fragment)
                 except Exception:
                     fragment = {}
 
@@ -341,11 +374,14 @@ async def ik_search_worker(
                 "citation": doc.get("citation", ""),
                 "court": doc.get("court", ""),
                 "year": doc.get("year"),
-                "snippet": fragment.get("fragment", ""),
+                "snippet": fragment.get("headline", fragment.get("fragment", "")),
                 "source": "indian_kanoon",
                 "ik_doc_id": doc_id,
             })
             source_urls.append(f"https://indiankanoon.org/doc/{doc_id}/")
+
+        # [S8-L3] Cache IK search results
+        await set_cached_ik_search(redis, task["nl_query"], results)
 
     except Exception as exc:
         logger.warning("ik_search_worker failed: %s", exc)
@@ -563,6 +599,11 @@ async def graph_community_worker(
     parent = state.get("parent_state", {})
 
     community_results: list[dict] = []
+    # [S8-L5] Best-effort Redis cache
+    try:
+        redis = await get_redis()
+    except Exception:
+        redis = None
 
     try:
         # Strategy 1: Semantic search for relevant communities
@@ -574,15 +615,28 @@ async def graph_community_worker(
         )
         for r in pinecone_results:
             meta = r.metadata if hasattr(r, "metadata") else {}
-            community_results.append({
-                "community_id": meta.get("community_id"),
+            comm_id = meta.get("community_id")
+            # [S8-L5] Check community cache
+            if comm_id:
+                cached_comm = await get_cached_community(redis, str(comm_id))
+                if cached_comm is not None:
+                    cached_comm["retrieval_method"] = "semantic"
+                    cached_comm["score"] = r.score
+                    community_results.append(cached_comm)
+                    continue
+            comm_data = {
+                "community_id": comm_id,
                 "title": meta.get("title"),
                 "summary": meta.get("text", ""),
                 "legal_principles": (meta.get("legal_principles", "") or "").split("; "),
                 "size": meta.get("size", 0),
                 "retrieval_method": "semantic",
                 "score": r.score,
-            })
+            }
+            community_results.append(comm_data)
+            # [S8-L5] Cache community summary
+            if comm_id:
+                await set_cached_community(redis, str(comm_id), comm_data)
 
         # Strategy 2: Graph lookup from already-found case IDs
         existing_case_ids: list[str] = []
@@ -609,15 +663,25 @@ async def graph_community_worker(
             for gc in graph_communities:
                 # Avoid duplicates from semantic search
                 if not any(cr["community_id"] == gc["id"] for cr in community_results):
-                    community_results.append({
-                        "community_id": gc["id"],
-                        "title": gc["title"],
-                        "summary": gc["summary"],
-                        "legal_principles": gc["principles"] or [],
-                        "size": gc["size"],
-                        "retrieval_method": "graph_overlap",
-                        "overlap_count": gc["overlap"],
-                    })
+                    # [S8-L5] Check community cache
+                    cached_gc = await get_cached_community(redis, str(gc["id"])) if gc.get("id") else None
+                    if cached_gc is not None:
+                        cached_gc["retrieval_method"] = "graph_overlap"
+                        cached_gc["overlap_count"] = gc["overlap"]
+                        community_results.append(cached_gc)
+                    else:
+                        comm_data = {
+                            "community_id": gc["id"],
+                            "title": gc["title"],
+                            "summary": gc["summary"],
+                            "legal_principles": gc["principles"] or [],
+                            "size": gc["size"],
+                            "retrieval_method": "graph_overlap",
+                            "overlap_count": gc["overlap"],
+                        }
+                        community_results.append(comm_data)
+                        if gc.get("id"):
+                            await set_cached_community(redis, str(gc["id"]), comm_data)
 
     except Exception as exc:
         logger.warning("graph_community_worker failed: %s", exc)

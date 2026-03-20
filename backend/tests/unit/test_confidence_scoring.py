@@ -19,6 +19,7 @@ class TestConfidenceScoring:
             precedent_strengths=["BINDING", "BINDING", "PERSUASIVE"],
             contradiction_count=0,
             total_results=15,
+            worker_types=["case_law", "ik_search", "graph", "web"],
         )
         assert result >= 0.8
 

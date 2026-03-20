@@ -1,7 +1,7 @@
 """Tests for IK search worker — filter propagation and cost control."""
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -28,8 +28,19 @@ def mock_ik_client():
     client.search = AsyncMock(return_value=[
         {"tid": 123, "title": "Test Case", "citation": "(2020) 5 SCC 1", "court": "Supreme Court"}
     ])
-    client.get_fragment = AsyncMock(return_value={"fragment": "Relevant passage"})
+    client.get_fragment = AsyncMock(return_value={"headline": ["Relevant passage"]})
     return client
+
+
+@pytest.fixture(autouse=True)
+def _mock_redis():
+    """Mock get_redis() so cache calls don't fail in tests."""
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(return_value=None)
+    mock_redis.set = AsyncMock(return_value=True)
+    mock_redis.setex = AsyncMock(return_value=True)
+    with patch("app.core.agents.nodes.worker_nodes.get_redis", new_callable=AsyncMock, return_value=mock_redis):
+        yield mock_redis
 
 
 class TestIKWorkerFilterPropagation:
@@ -117,7 +128,7 @@ class TestIKWorkerCostControl:
             {"tid": i, "title": f"Case {i}", "citation": f"(2020) {i} SCC 1"}
             for i in range(10)
         ])
-        mock_ik.get_fragment = AsyncMock(return_value={"fragment": "test"})
+        mock_ik.get_fragment = AsyncMock(return_value={"headline": ["test passage"]})
 
         state = {"task": _make_task()}
         await ik_search_worker(state, mock_ik)
@@ -133,7 +144,7 @@ class TestIKWorkerCostControl:
         mock_ik.search = AsyncMock(return_value=[
             {"tid": i, "title": f"Case {i}"} for i in range(8)
         ])
-        mock_ik.get_fragment = AsyncMock(return_value={"fragment": "frag"})
+        mock_ik.get_fragment = AsyncMock(return_value={"headline": ["frag"]})
 
         state = {"task": _make_task()}
         result = await ik_search_worker(state, mock_ik)

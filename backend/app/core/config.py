@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     gemini_flash_model: str = "gemini-2.5-flash"
     gemini_embedding_model: str = "gemini-embedding-001"
     gemini_embedding_dimension: int = 1536
+    gemini_context_cache_enabled: bool = True  # [S10]
+    gemini_context_cache_ttl: int = 3600  # [S10] seconds
 
     # Pinecone
     vector_provider: str = "pinecone"

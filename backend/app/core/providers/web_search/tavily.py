@@ -35,6 +35,16 @@ _tavily_retry = retry(
     reraise=True,
 )
 
+# Map ISO 3166-1 alpha-2 codes to Tavily-expected country names.
+# Tavily requires lowercase full country names, not ISO codes.
+_ISO_TO_COUNTRY: dict[str, str] = {
+    "IN": "india",
+    "US": "united states",
+    "GB": "united kingdom",
+    "AU": "australia",
+    "CA": "canada",
+}
+
 # Default domains for Indian legal web search
 _DEFAULT_LEGAL_DOMAINS = [
     "indiankanoon.org",
@@ -84,7 +94,8 @@ class TavilySearchClient:
             search_depth: "basic" or "advanced" (deeper crawl).
             include_domains: Override default legal domain list.
             time_range: Recency filter — "day"|"week"|"month"|"year".
-            country: ISO country code for geo-targeted results (e.g. "IN").
+            country: Country name for geo-targeted results (e.g. "india").
+                Also accepts ISO codes which are auto-mapped.
             include_raw_content: If True, request full markdown content.
 
         Returns:
@@ -102,7 +113,8 @@ class TavilySearchClient:
         if time_range:
             payload["time_range"] = time_range
         if country:
-            payload["country"] = country
+            # Map ISO codes to full names if needed
+            payload["country"] = _ISO_TO_COUNTRY.get(country.upper(), country.lower())
         if include_raw_content:
             payload["include_raw_content"] = "markdown"
 

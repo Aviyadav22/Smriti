@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.agents.case_prep import build_case_prep_graph
 from app.core.agents.drafting import build_drafting_graph
 from app.core.agents.research import build_research_graph
+from app.core.agents.research_cache import get_cached_memo, get_memo_cache_hash, set_cached_memo
 from app.core.agents.strategy import build_strategy_graph
 from app.core.dependencies import (
     get_checkpointer,
@@ -34,6 +35,7 @@ from app.core.dependencies import (
 from app.core.drafting.export import export_to_docx, export_to_pdf
 from app.core.drafting.templates import TEMPLATES, get_template
 from app.db.postgres import async_session_factory, get_db
+from app.db.redis_client import get_redis
 from app.models.agent_execution import AgentExecution, AgentStatus, AgentType
 from app.security.audit import create_audit_log
 from app.security.auth import TokenPayload
@@ -419,6 +421,43 @@ async def run_agent(
             _web_search = get_web_search()
         except (ValueError, Exception):
             _web_search = None
+
+        # [S8-L1 + S11] Check memo cache before running graph
+        try:
+            _redis = await get_redis()
+        except Exception:
+            _redis = None
+
+        # [S11] Semantic cache check (before hash cache)
+        try:
+            from app.core.search.semantic_cache import SemanticCache
+            _sem_cache = SemanticCache(_redis, embedder) if _redis else None
+            if _sem_cache:
+                cached_semantic = await _sem_cache.get(request_body.query)
+                if cached_semantic:
+                    cached_semantic["cache_type"] = "semantic"
+                    async def _cached_stream_semantic():
+                        yield f"data: {json.dumps({'type': 'memo', 'data': cached_semantic})}\n\n"
+                        yield "data: [DONE]\n\n"
+                    return StreamingResponse(
+                        _cached_stream_semantic(),
+                        media_type="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+                    )
+        except Exception:
+            pass  # Best-effort — fall through
+
+        # [S8-L1] Hash cache check
+        cached_memo = await get_cached_memo(_redis, request_body.query)
+        if cached_memo:
+            async def _cached_stream():
+                yield f"data: {json.dumps({'type': 'memo', 'data': cached_memo})}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(
+                _cached_stream(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+            )
 
         graph = build_research_graph(
             llm=llm,
