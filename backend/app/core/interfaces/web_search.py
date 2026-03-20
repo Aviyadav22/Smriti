@@ -16,4 +16,7 @@ class WebSearchProvider(Protocol):
         max_results: int = 5,
         search_depth: str = "advanced",
         include_domains: list[str] | None = None,
+        time_range: str | None = None,
+        country: str | None = None,
+        include_raw_content: bool = False,
     ) -> list[dict]: ...
