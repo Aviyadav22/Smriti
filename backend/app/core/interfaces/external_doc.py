@@ -20,6 +20,11 @@ class ExternalDocProvider(Protocol):
         to_date: str | None = None,
         sort_by: str | None = None,
         max_pages: int = 1,
+        title_filter: str | None = None,
+        cite_filter: str | None = None,
+        author_filter: str | None = None,
+        bench_filter: str | None = None,
+        max_cites: int | None = None,
     ) -> list[dict]: ...
 
     async def get_document(self, doc_id: str) -> dict: ...

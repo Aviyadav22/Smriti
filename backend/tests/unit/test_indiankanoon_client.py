@@ -123,6 +123,46 @@ class TestSearchEnhancements:
             assert len(results) == 15
             assert call_count == 2
 
+    @pytest.mark.asyncio
+    async def test_search_appends_title_filter(self, ik_client) -> None:
+        resp = _mock_response({"docs": []})
+        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+            await ik_client.search("privacy", title_filter="Puttaswamy")
+            data = mock_post.call_args[1]["data"]
+            assert "title: Puttaswamy" in data["formInput"]
+
+    @pytest.mark.asyncio
+    async def test_search_appends_cite_filter(self, ik_client) -> None:
+        resp = _mock_response({"docs": []})
+        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+            await ik_client.search("privacy", cite_filter="1993 AIR")
+            data = mock_post.call_args[1]["data"]
+            assert "cite: 1993 AIR" in data["formInput"]
+
+    @pytest.mark.asyncio
+    async def test_search_appends_author_filter(self, ik_client) -> None:
+        resp = _mock_response({"docs": []})
+        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+            await ik_client.search("privacy", author_filter="chandrachud")
+            data = mock_post.call_args[1]["data"]
+            assert "author: chandrachud" in data["formInput"]
+
+    @pytest.mark.asyncio
+    async def test_search_appends_bench_filter(self, ik_client) -> None:
+        resp = _mock_response({"docs": []})
+        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+            await ik_client.search("privacy", bench_filter="chandrachud")
+            data = mock_post.call_args[1]["data"]
+            assert "bench: chandrachud" in data["formInput"]
+
+    @pytest.mark.asyncio
+    async def test_search_passes_maxcites(self, ik_client) -> None:
+        resp = _mock_response({"docs": []})
+        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+            await ik_client.search("privacy", max_cites=10)
+            data = mock_post.call_args[1]["data"]
+            assert data["maxcites"] == "10"
+
     def test_court_codes_mapping(self) -> None:
         """IK_COURT_CODES should have key Indian courts."""
         from app.core.providers.external.indiankanoon import IK_COURT_CODES

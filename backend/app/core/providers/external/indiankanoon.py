@@ -146,6 +146,11 @@ class IndianKanoonClient:
         to_date: str | None = None,
         sort_by: str | None = None,
         max_pages: int = 1,
+        title_filter: str | None = None,
+        cite_filter: str | None = None,
+        author_filter: str | None = None,
+        bench_filter: str | None = None,
+        max_cites: int | None = None,
     ) -> list[dict]:
         """Search Indian Kanoon with boolean operators, court filter, dates, sort.
 
@@ -170,6 +175,15 @@ class IndianKanoonClient:
             )
             search_query += f" doctypes: {normalized}"
 
+        if title_filter:
+            search_query += f" title: {title_filter}"
+        if cite_filter:
+            search_query += f" cite: {cite_filter}"
+        if author_filter:
+            search_query += f" author: {author_filter}"
+        if bench_filter:
+            search_query += f" bench: {bench_filter}"
+
         all_docs: list[dict] = []
         for page in range(max_pages):
             params: dict[str, str] = {
@@ -182,6 +196,8 @@ class IndianKanoonClient:
                 params["todate"] = to_date
             if sort_by:
                 params["sortby"] = sort_by
+            if max_cites is not None:
+                params["maxcites"] = str(max_cites)
 
             url = f"{self.BASE_URL}/search/"
             result = await self._rate_limited_post(url, data=params)
