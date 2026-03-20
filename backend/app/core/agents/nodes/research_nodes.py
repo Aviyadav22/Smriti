@@ -1206,13 +1206,27 @@ async def fast_path_synthesis_node(
         sorted(results, key=lambda r: r.get("score", 0), reverse=True)[:15],
     )
 
+    # [V3] Format statute context for grounded answers
+    statute_context = state.get("statute_context", [])
+    statute_text = ""
+    if statute_context:
+        parts = []
+        for s in statute_context:
+            entry = f"{s['act_short_name']} Section {s['section_number']}: {s['section_text'][:500]}"
+            if s.get("is_repealed"):
+                entry += f" [REPEALED → {s.get('replaced_by', '')}]"
+            parts.append(entry)
+        statute_text = "\n".join(parts)
+
+    prompt_parts = []
+    if statute_text:
+        prompt_parts.append(f"## Relevant Statute Text\n{statute_text}\n")
+    prompt_parts.append(f"Research Question: {query}\n\nSearch Results:\n{findings}\n\n"
+                        "Write a concise research response with footnotes.")
+
     try:
         memo = await llm.generate(
-            prompt=(
-                f"Research Question: {query}\n\n"
-                f"Search Results:\n{findings}\n\n"
-                "Write a concise research response with footnotes."
-            ),
+            prompt="\n".join(prompt_parts),
             system=RESEARCH_FAST_PATH_SYNTHESIS_SYSTEM,
             temperature=0.2,
             max_tokens=4096,
@@ -1393,12 +1407,41 @@ async def speculative_synthesis_with_contradictions_node(
 
     # --- Pro verifier/merger [S1 + S5] ---
     all_formatted = format_search_results_for_llm_extended(all_results[:30])
+
+    # [V3] Include temporal warnings in evidence context
+    temporal_section = ""
+    temporal_warnings = state.get("temporal_warnings", [])
+    if temporal_warnings:
+        tw_parts = [f"- {w['warning']}" for w in temporal_warnings]
+        temporal_section = f"\n\nTEMPORAL VALIDITY WARNINGS:\n" + "\n".join(tw_parts) + "\n"
+
+    # [V3] Mark adversarial results separately
+    adversarial_section = ""
+    adv_results = [
+        wr for wr in results
+        if isinstance(wr, dict) and wr.get("metadata", {}).get("adversarial")
+    ]
+    if adv_results:
+        adv_formatted_parts = []
+        for wr in adv_results:
+            for r in wr.get("results", [])[:3]:
+                adv_formatted_parts.append(
+                    f"- {r.get('title', 'Unknown')}: {r.get('snippet', '')[:200]}"
+                )
+        if adv_formatted_parts:
+            adversarial_section = (
+                "\n\nCOUNTER-ARGUMENT EVIDENCE (opposing counsel perspective):\n"
+                + "\n".join(adv_formatted_parts) + "\n"
+            )
+
     verification_prompt = (
         f"RESEARCH QUESTION: {shared_context['query']}\n\n"
         f"COMPLETE EVIDENCE (all sources):\n{all_formatted}\n\n"
         f"EXTRACTED PASSAGES (verbatim quotes):\n{shared_context['passages']}\n\n"
         f"CITATION COMMUNITY CONTEXT:\n{shared_context['communities']}\n\n"
-        f"WORKER REASONING:\n{shared_context['worker_reasoning']}\n\n"
+        f"WORKER REASONING:\n{shared_context['worker_reasoning']}\n"
+        f"{temporal_section}"
+        f"{adversarial_section}\n"
         f"--- DRAFT A (organized by relevance) ---\n{drafts[0]['memo_text']}\n\n"
         f"--- DRAFT B (organized by authority/precedent) ---\n{drafts[1]['memo_text']}\n\n"
         f"--- DRAFT C (organized by source diversity) ---\n{drafts[2]['memo_text']}\n\n"

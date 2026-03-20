@@ -553,6 +553,36 @@ class TestCaseLawWorkerV3:
             assert filters.bench_type == "constitutional"
 
 
+class TestFastPathSynthesisV3:
+    @pytest.mark.asyncio
+    async def test_includes_statute_context_in_prompt(self) -> None:
+        from app.core.agents.nodes.research_nodes import fast_path_synthesis_node
+
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = "Research memo text"
+
+        state = _base_state(
+            rewritten_query="What is Section 302 IPC?",
+            search_results=[{"title": "Test", "score": 0.9, "snippet": "text"}],
+            statute_context=[{
+                "act_short_name": "IPC",
+                "section_number": "302",
+                "section_text": "Whoever commits murder...",
+                "section_title": "Punishment for murder",
+                "is_repealed": True,
+                "replaced_by": "BNS Section 103",
+                "new_code_text": "",
+            }],
+        )
+
+        await fast_path_synthesis_node(state, mock_llm)
+
+        call_args = mock_llm.generate.call_args
+        prompt = call_args.kwargs.get("prompt", "")
+        assert "IPC Section 302" in prompt
+        assert "Whoever commits murder" in prompt
+
+
 class TestPlanResearchV3:
     @pytest.mark.asyncio
     async def test_plan_receives_statute_and_elements(self) -> None:
