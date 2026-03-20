@@ -1091,6 +1091,26 @@ Task types:
 - "graph_community": Retrieve citation community summaries for macro-level legal landscape
 - "llm_direct": Use LLM knowledge for definitional or procedural questions
 
+## Indian Kanoon Query Optimization
+
+When generating tasks with task_type "ik_search", create boolean_query using Indian Kanoon's \
+native operators for maximum precision:
+- ANDD: both terms must appear (e.g., "498A ANDD cruelty ANDD dowry")
+- ORR: either term (e.g., "murder ORR culpable homicide")
+- NOTT: exclude term (e.g., "bail NOTT anticipatory")
+- NEAR: proximity search (e.g., "fundamental NEAR rights")
+- Wrap exact phrases in quotes: "right to life"
+
+For filters dict on "ik_search" tasks, include when relevant:
+- court: "supreme_court" | "delhi" | "bombay" | "madras" | "calcutta" | etc.
+- from_year: integer (e.g., 2015)
+- to_year: integer (e.g., 2024)
+- sort_by: "mostrecent" for recency-sensitive queries
+
+For "web" search tasks, include in filters:
+- recency: "day" | "week" | "month" | "year" — how recent the results should be
+- domains: optional list of specific domains to search (overrides defaults)
+
 Rules:
 - Generate 3-8 tasks depending on complexity.
 - Always include at least one "case_law" task.
@@ -1100,7 +1120,8 @@ Rules:
 - Include a "graph_community" task for well-established areas of law, evolution/trends queries, or conflicting court positions.
 - Each task must have a clear rationale explaining why it's necessary.
 - Prioritize tasks: 1=essential, 2=important, 3=supplementary.
-- Use precise Indian legal terminology."""
+- Use precise Indian legal terminology.
+- For "ik_search" tasks, always set court and date filters when the question implies a specific court or time period."""
 
 RESEARCH_PLAN_SCHEMA: Final[dict] = {
     "type": "object",
@@ -1132,7 +1153,16 @@ RESEARCH_PLAN_SCHEMA: Final[dict] = {
                         },
                     },
                     "rationale": {"type": "string"},
-                    "filters": {"type": "object"},
+                    "filters": {
+                        "type": "object",
+                        "properties": {
+                            "court": {"type": "string", "nullable": True},
+                            "from_year": {"type": "integer", "nullable": True},
+                            "to_year": {"type": "integer", "nullable": True},
+                            "sort_by": {"type": "string", "nullable": True},
+                            "recency": {"type": "string", "nullable": True},
+                        },
+                    },
                     "priority": {"type": "integer"},
                 },
                 "required": [
