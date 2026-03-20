@@ -431,6 +431,16 @@ class TestDualStageVerification:
             assert "case_id" not in query_text or ":case_id" in query_text
 
     @pytest.mark.asyncio
+    async def test_verify_citations_uses_gather(self) -> None:
+        """Citation verification must use asyncio.gather for parallelism."""
+        import inspect
+        from app.core.agents.nodes.research_nodes import _verify_citations_against_sources
+
+        source = inspect.getsource(_verify_citations_against_sources)
+        assert "gather" in source, "Must use asyncio.gather for parallel verification"
+        assert "Semaphore" in source, "Must use semaphore to limit concurrency"
+
+    @pytest.mark.asyncio
     async def test_t4_guardrail_removes_unverifiable_citations(self) -> None:
         """Test 52: [T4] Unverifiable citations are REMOVED, not just flagged."""
         from app.core.agents.nodes.research_nodes import _verify_citations_against_sources

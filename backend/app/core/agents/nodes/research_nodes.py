@@ -1698,65 +1698,69 @@ async def _verify_citations_against_sources(
     graph_store: object | None,
 ) -> list[Footnote]:
     """[T4] Verify every citation against at least ONE primary source.
+
+    Uses asyncio.gather for parallel verification with a concurrency limit.
     Unverifiable citations are REMOVED from the memo.
     """
-    verified_footnotes: list[Footnote] = []
-    for fn in footnotes:
-        status = "unverified"
+    sem = asyncio.Semaphore(5)  # Max 5 concurrent verifications
 
-        # Check 1: PostgreSQL cases table
-        if fn.get("case_id") and not str(fn["case_id"]).startswith("ik:"):
-            try:
-                exists = await db.execute(
-                    text("SELECT 1 FROM cases WHERE id = :id::uuid"),
-                    {"id": fn["case_id"]},
-                )
-                if exists.scalar():
-                    status = "verified_pg"
-            except Exception:
-                logger.warning("PG verification failed for %s", fn.get("case_id"))
+    async def _verify_one(fn: Footnote) -> Footnote:
+        async with sem:
+            status = "unverified"
 
-        # Check 2: Indian Kanoon API
-        if status == "unverified" and ik_client and fn.get("citation"):
-            try:
-                ik_results = await ik_client.search(fn["citation"], max_results=1)
-                if ik_results:
-                    status = "verified_ik"
-            except Exception:
-                pass  # IK failure is non-fatal
+            # Check 1: PostgreSQL cases table
+            if fn.get("case_id") and not str(fn["case_id"]).startswith("ik:"):
+                try:
+                    exists = await db.execute(
+                        text("SELECT 1 FROM cases WHERE id = :id::uuid"),
+                        {"id": fn["case_id"]},
+                    )
+                    if exists.scalar():
+                        status = "verified_pg"
+                except Exception:
+                    logger.warning("PG verification failed for %s", fn.get("case_id"))
 
-        # Check 3: Neo4j Case node
-        if status == "unverified" and graph_store and fn.get("citation"):
-            try:
-                neo4j_match = await graph_store.query(
-                    "MATCH (c:Case) WHERE c.citation CONTAINS $cit "
-                    "RETURN c.id LIMIT 1",
-                    {"cit": fn["citation"][:30]},
-                )
-                if neo4j_match:
-                    status = "verified_neo4j"
-            except Exception:
-                pass  # Neo4j failure is non-fatal
+            # Check 2: Indian Kanoon API
+            if status == "unverified" and ik_client and fn.get("citation"):
+                try:
+                    ik_results = await ik_client.search(fn["citation"], max_results=1)
+                    if ik_results:
+                        status = "verified_ik"
+                except Exception:
+                    pass  # IK failure is non-fatal
 
-        fn_copy = dict(fn)
-        fn_copy["verification_status"] = status
-        fn_copy["verified_against"] = (
-            status.replace("verified_", "") if status != "unverified" else "none"
-        )
+            # Check 3: Neo4j Case node
+            if status == "unverified" and graph_store and fn.get("citation"):
+                try:
+                    neo4j_match = await graph_store.query(
+                        "MATCH (c:Case) WHERE c.citation CONTAINS $cit "
+                        "RETURN c.id LIMIT 1",
+                        {"cit": fn["citation"][:30]},
+                    )
+                    if neo4j_match:
+                        status = "verified_neo4j"
+                except Exception:
+                    pass  # Neo4j failure is non-fatal
 
-        if status == "unverified" and fn_copy.get("is_used", False):
-            # [T4] Hard fail: mark citation as removed
-            fn_copy["citation"] = (
-                f"[CITATION REMOVED — unable to verify: {fn['citation']}]"
-            )
-            fn_copy["is_used"] = False
-            logger.warning(
-                "T4 guardrail: removed unverifiable citation footnote %s: %s",
-                fn["number"], fn["citation"],
+            fn_copy = dict(fn)
+            fn_copy["verification_status"] = status
+            fn_copy["verified_against"] = (
+                status.replace("verified_", "") if status != "unverified" else "none"
             )
 
-        verified_footnotes.append(Footnote(**fn_copy))
-    return verified_footnotes
+            if status == "unverified" and fn_copy.get("is_used", False):
+                fn_copy["citation"] = (
+                    f"[CITATION REMOVED — unable to verify: {fn['citation']}]"
+                )
+                fn_copy["is_used"] = False
+                logger.warning(
+                    "T4 guardrail: removed unverifiable citation footnote %s: %s",
+                    fn["number"], fn["citation"],
+                )
+
+            return Footnote(**fn_copy)
+
+    return list(await asyncio.gather(*(_verify_one(fn) for fn in footnotes)))
 
 
 def _matches_indian_citation_pattern(citation: str) -> bool:
