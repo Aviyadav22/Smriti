@@ -41,6 +41,29 @@ _ik_retry = retry(
 )
 
 
+# IK court codes for inline doctype filter syntax
+IK_COURT_CODES: dict[str, str] = {
+    "supreme_court": "supremecourt",
+    "sc": "supremecourt",
+    "delhi": "delhihighcourt",
+    "bombay": "bombayhighcourt",
+    "madras": "madrashighcourt",
+    "calcutta": "calcuttahighcourt",
+    "karnataka": "karnatakahighcourt",
+    "allahabad": "allabadhighcourt",
+    "kerala": "keralahighcourt",
+    "punjab": "punjabharayanahighcourt",
+    "gauhati": "gauhatihighcourt",
+    "gujarat": "gujarathighcourt",
+    "rajasthan": "rajasthanhighcourt",
+    "patna": "patnahighcourt",
+    "telangana": "teabordhighcourt",
+    "chhattisgarh": "cabordhighcourt",
+    "jharkhand": "jabordhighcourt",
+    "uttarakhand": "utabordhighcourt",
+}
+
+
 class IndianKanoonClient:
     """Indian Kanoon API client implementing ExternalDocProvider protocol."""
 
@@ -81,23 +104,58 @@ class IndianKanoonClient:
         query: str,
         *,
         max_results: int = 10,
+        boolean_query: str | None = None,
         court_filter: str | None = None,
         from_date: str | None = None,
         to_date: str | None = None,
+        sort_by: str | None = None,
+        max_pages: int = 1,
     ) -> list[dict]:
-        """Search Indian Kanoon. POST /search/?formInput=<query>&pagenum=0."""
-        params: dict[str, str] = {"formInput": query, "pagenum": "0"}
-        if court_filter:
-            params["formInput"] += f" doctypes: {court_filter}"
-        if from_date:
-            params["fromdate"] = from_date
-        if to_date:
-            params["todate"] = to_date
+        """Search Indian Kanoon with boolean operators, court filter, dates, sort.
 
-        url = f"{self.BASE_URL}/search/"
-        result = await self._rate_limited_post(url, data=params)
-        docs = result.get("docs", [])
-        return docs[:max_results]
+        Args:
+            query: Natural language search query.
+            boolean_query: IK boolean syntax (ANDD, ORR, NOTT, NEAR operators).
+                If provided, used instead of query for the search.
+            court_filter: Court name key (e.g. "supreme_court", "delhi").
+                Mapped to IK doctype codes via IK_COURT_CODES.
+            from_date: Start date in DD-MM-YYYY format.
+            to_date: End date in DD-MM-YYYY format.
+            sort_by: "mostrecent" for recency sort, None for relevance.
+            max_pages: Number of result pages to fetch (10 results/page).
+        """
+        # Use boolean_query if provided (IK's ANDD/ORR/NOTT/NEAR operators)
+        search_query = boolean_query if boolean_query else query
+
+        # Append inline doctype filter if court specified
+        if court_filter:
+            normalized = IK_COURT_CODES.get(
+                court_filter.lower().replace(" ", "_"), court_filter,
+            )
+            search_query += f" doctypes: {normalized}"
+
+        all_docs: list[dict] = []
+        for page in range(max_pages):
+            params: dict[str, str] = {
+                "formInput": search_query,
+                "pagenum": str(page),
+            }
+            if from_date:
+                params["fromdate"] = from_date
+            if to_date:
+                params["todate"] = to_date
+            if sort_by:
+                params["sortby"] = sort_by
+
+            url = f"{self.BASE_URL}/search/"
+            result = await self._rate_limited_post(url, data=params)
+            docs = result.get("docs", [])
+            all_docs.extend(docs)
+
+            if len(docs) < 10:  # Last page
+                break
+
+        return all_docs[:max_results]
 
     @_ik_retry
     async def get_document(self, doc_id: str) -> dict:

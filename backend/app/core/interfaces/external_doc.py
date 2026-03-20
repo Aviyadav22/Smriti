@@ -14,9 +14,12 @@ class ExternalDocProvider(Protocol):
         query: str,
         *,
         max_results: int = 10,
+        boolean_query: str | None = None,
         court_filter: str | None = None,
         from_date: str | None = None,
         to_date: str | None = None,
+        sort_by: str | None = None,
+        max_pages: int = 1,
     ) -> list[dict]: ...
 
     async def get_document(self, doc_id: str) -> dict: ...
