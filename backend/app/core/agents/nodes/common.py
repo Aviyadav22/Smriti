@@ -17,7 +17,7 @@ from app.core.agents.nodes.citation_verifier import (
     verify_citations_against_db,
 )
 from app.core.legal.constants import IPC_TO_BNS_MAP, CRPC_TO_BNSS_MAP, EVIDENCE_TO_BSA_MAP
-from app.core.legal.extractor import extract_citations
+from app.core.legal.extractor import extract_acts_cited, extract_citations, normalize_act_name
 from app.core.legal.prompts import (
     ELEMENT_DECOMPOSITION_SYSTEM,
     ELEMENT_DECOMPOSITION_SCHEMA,
@@ -57,29 +57,25 @@ _OLD_TO_NEW: dict[str, tuple[str, dict[str, str]]] = {
     "IEA": ("BSA", EVIDENCE_TO_BSA_MAP),
 }
 
-# Regex patterns for Indian statute references
-_STATUTE_RE = re.compile(
-    r"(?:Section|Sec\.?|S\.?)\s+(\d+[A-Z]?)"
-    r"\s+(?:of\s+)?(?:the\s+)?"
-    r"(IPC|BNS|CrPC|BNSS|IEA|BSA|CPC|COI)",
-    re.IGNORECASE,
-)
-_ARTICLE_RE = re.compile(
-    r"Article\s+(\d+[A-Z]?(?:\(\d+\))?)",
-    re.IGNORECASE,
-)
-
-
 def _extract_statute_refs(text_input: str) -> list[tuple[str, str]]:
-    """Extract (act_short_name, section_number) tuples from text."""
+    """Extract (act_short_name, section_number) tuples from text.
+
+    [A1] Delegates to extractor.extract_acts_cited() which recognizes 62+
+    acts (via _SHORT_ACT_NAMES) instead of the previous 8-act regex.
+    """
+    act_refs = extract_acts_cited(text_input)
     refs: list[tuple[str, str]] = []
-    for match in _STATUTE_RE.finditer(text_input):
-        sec_num = match.group(1)
-        act = match.group(2).upper()
-        refs.append((act, sec_num))
-    for match in _ARTICLE_RE.finditer(text_input):
-        art_num = match.group(1)
-        refs.append(("COI", art_num))
+    for ref in act_refs:
+        short_name = normalize_act_name(ref.act_name)
+        section = ref.section.strip()
+        # Handle Article references → (COI, N) — strip "Article " prefix for DB lookup
+        if section.startswith("Article "):
+            refs.append(("COI", section[len("Article "):]))
+        # Handle Order/Rule references → keep as-is
+        elif section.startswith("Order "):
+            refs.append((short_name, section))
+        else:
+            refs.append((short_name, section))
     return refs
 
 
@@ -101,44 +97,67 @@ async def _fetch_statute_from_db(
     db: AsyncSession,
     refs: list[tuple[str, str]],
 ) -> list[dict]:
-    """Fetch statute rows from PostgreSQL for given (act, section) pairs."""
-    from sqlalchemy import select
+    """[A4] Batch fetch statute rows from PostgreSQL for given (act, section) pairs.
+
+    Uses a single query with OR conditions instead of N+1 individual queries.
+    Also batch-fetches new-code equivalents for repealed sections.
+    """
+    from sqlalchemy import select, or_, and_
     from app.models.statute import Statute
 
-    results: list[dict] = []
-    for act, sec in refs:
-        stmt = select(Statute).where(
-            Statute.act_short_name == act,
-            Statute.section_number == sec,
-        )
-        row_result = await db.execute(stmt)
-        row = row_result.scalars().first()
-        if row:
-            # Check if this is repealed and fetch new-code equivalent
-            new_code_text = ""
-            if row.replaced_by and row.is_repealed:
-                # Parse "BNS, Section 103" → (BNS, 103)
-                parts = row.replaced_by.split(", Section ")
-                if len(parts) == 2:
-                    new_act, new_sec = parts[0].strip(), parts[1].strip()
-                    new_stmt = select(Statute).where(
-                        Statute.act_short_name == new_act,
-                        Statute.section_number == new_sec,
-                    )
-                    new_result = await db.execute(new_stmt)
-                    new_row = new_result.scalars().first()
-                    if new_row:
-                        new_code_text = new_row.section_text or ""
+    if not refs:
+        return []
 
-            results.append({
-                "act_short_name": row.act_short_name,
-                "section_number": row.section_number,
-                "section_title": row.section_title or "",
-                "section_text": row.section_text or "",
-                "is_repealed": row.is_repealed or False,
-                "replaced_by": row.replaced_by or "",
-                "new_code_text": new_code_text,
-            })
+    # Batch query: fetch all matching statutes in one round-trip
+    conditions = [
+        and_(Statute.act_short_name == act, Statute.section_number == sec)
+        for act, sec in refs
+    ]
+    stmt = select(Statute).where(or_(*conditions))
+    row_result = await db.execute(stmt)
+    rows = row_result.scalars().all()
+
+    # Build lookup for new-code equivalent fetches
+    new_code_refs: list[tuple[str, str]] = []
+    for row in rows:
+        if row.replaced_by and row.is_repealed:
+            parts = row.replaced_by.split(", Section ")
+            if len(parts) == 2:
+                new_code_refs.append((parts[0].strip(), parts[1].strip()))
+
+    # Batch fetch new-code equivalents
+    new_code_map: dict[tuple[str, str], str] = {}
+    if new_code_refs:
+        new_conditions = [
+            and_(Statute.act_short_name == act, Statute.section_number == sec)
+            for act, sec in new_code_refs
+        ]
+        new_stmt = select(Statute).where(or_(*new_conditions))
+        new_result = await db.execute(new_stmt)
+        for new_row in new_result.scalars().all():
+            new_code_map[(new_row.act_short_name, new_row.section_number)] = (
+                new_row.section_text or ""
+            )
+
+    results: list[dict] = []
+    for row in rows:
+        new_code_text = ""
+        if row.replaced_by and row.is_repealed:
+            parts = row.replaced_by.split(", Section ")
+            if len(parts) == 2:
+                new_code_text = new_code_map.get(
+                    (parts[0].strip(), parts[1].strip()), ""
+                )
+
+        results.append({
+            "act_short_name": row.act_short_name,
+            "section_number": row.section_number,
+            "section_title": row.section_title or "",
+            "section_text": row.section_text or "",
+            "is_repealed": row.is_repealed or False,
+            "replaced_by": row.replaced_by or "",
+            "new_code_text": new_code_text,
+        })
     return results
 
 
@@ -169,16 +188,17 @@ async def statute_lookup_node(
     try:
         query_vector = await embedder.embed_text(query)
         pinecone_results = await vector_store.search(
-            vector=query_vector,
+            query_vector=query_vector,
             top_k=5,
-            filter={"document_type": {"$in": ["statute", "constitution"]}},
+            filters={"document_type": {"$in": ["statute", "constitution"]}},
         )
         # Add any semantic results not already in context
         existing_keys = {
             (s["act_short_name"], s["section_number"]) for s in statute_context
         }
         for result in pinecone_results:
-            meta = result.get("metadata", {})
+            # SearchResult is a dataclass with .metadata, not a dict
+            meta = result.metadata if hasattr(result, "metadata") else result.get("metadata", {})
             act = meta.get("act_short_name", "")
             sec = meta.get("section_number", "")
             if act and sec and (act, sec) not in existing_keys:
@@ -233,9 +253,9 @@ async def element_decomposition_node(
 
     try:
         result = await llm.generate_structured(
-            system_prompt=ELEMENT_DECOMPOSITION_SYSTEM,
-            user_prompt=user_prompt,
-            schema=ELEMENT_DECOMPOSITION_SCHEMA,
+            user_prompt,
+            system=ELEMENT_DECOMPOSITION_SYSTEM,
+            output_schema=ELEMENT_DECOMPOSITION_SCHEMA,
         )
         elements = result.get("elements", [])
     except Exception as exc:
@@ -285,6 +305,10 @@ def format_search_results_for_llm(
             f"[{i}] {r.get('title', 'Untitled')} ({r.get('citation', 'No citation')})\n"
             f"    Court: {court_str} | Year: {r.get('year', 'Unknown')}"
         )
+        # Include citation count as authority signal (IK provides num_cited_by)
+        num_cited_by = r.get("num_cited_by", 0)
+        if num_cited_by:
+            block += f" | Cited by: {num_cited_by} cases"
         if ratio:
             block += f"\n    Ratio Decidendi: {ratio}"
         if snippet:
@@ -307,6 +331,32 @@ def format_search_results_for_llm_extended(
     return format_search_results_for_llm(results, max_snippet_len, max_ratio_len)
 
 
+def _normalize_title_for_dedup(t: str) -> str:
+    """Normalize case title for fuzzy cross-source matching."""
+    t = t.lower().strip()
+    t = re.sub(r'\bv\.?\s*', 'v ', t)
+    t = re.sub(r'[^a-z0-9\s]', '', t)
+    return re.sub(r'\s+', ' ', t).strip()
+
+
+def _normalize_score(result: dict) -> float:
+    """[H7] Normalize scores to 0-1 range by source type."""
+    raw = result.get("score", 0)
+    if not isinstance(raw, (int, float)):
+        return 0.0
+    source = result.get("source", "internal")
+    if source == "indian_kanoon":
+        return raw  # Already 0-1 from position-based scoring (H8)
+    elif source == "citation_graph":
+        return min(1.0, raw / 10.0)  # Graph BM25 scores ~0.5-10
+    elif source == "web":
+        return raw  # Tavily scores are 0-1
+    elif source == "statute_pinecone":
+        return raw  # Pinecone cosine similarity 0-1
+    else:
+        return raw  # Cohere reranker scores already 0-1
+
+
 def deduplicate_with_diversity(
     results: list[dict],
     max_chunks_per_case: int = 4,
@@ -315,7 +365,12 @@ def deduplicate_with_diversity(
 
     Prevents one case from dominating results while still allowing
     multiple relevant chunks from the same judgment.
+    Also performs cross-source dedup by title (H9) and score normalization (H7).
     """
+    # [H7] Normalize scores before grouping
+    for r in results:
+        r["score"] = _normalize_score(r)
+
     case_chunks: dict[str, list[dict]] = {}
     for r in results:
         cid = r.get("case_id", "")
@@ -323,8 +378,29 @@ def deduplicate_with_diversity(
             continue
         case_chunks.setdefault(cid, []).append(r)
 
+    # [H9] Cross-source dedup: match IK results against internal by title similarity
+    seen_titles: dict[str, str] = {}  # normalized_title → case_id
+    to_remove: set[str] = set()
+    for cid, chunks in case_chunks.items():
+        title = chunks[0].get("title", "")
+        norm = _normalize_title_for_dedup(title)
+        if not norm or len(norm) < 10:
+            continue
+        if norm in seen_titles:
+            existing_cid = seen_titles[norm]
+            # Prefer internal (UUID) over IK (ik:xxx) over web (web:xxx)
+            if cid.startswith(("ik:", "web:")) and not existing_cid.startswith(("ik:", "web:")):
+                to_remove.add(cid)
+            elif existing_cid.startswith(("ik:", "web:")) and not cid.startswith(("ik:", "web:")):
+                to_remove.add(existing_cid)
+                seen_titles[norm] = cid
+        else:
+            seen_titles[norm] = cid
+
     deduped: list[dict] = []
     for cid, chunks in case_chunks.items():
+        if cid in to_remove:
+            continue
         chunks.sort(key=lambda x: x.get("score", 0), reverse=True)
         deduped.extend(chunks[:max_chunks_per_case])
 
@@ -333,17 +409,19 @@ def deduplicate_with_diversity(
 
 
 async def _search_by_title(title: str, db: AsyncSession) -> list[dict]:
-    """ILIKE search on cases.title for named case retrieval.
+    """Fuzzy + ILIKE search on cases.title for named case retrieval.
 
-    Returns results in the same dict format as other search functions
-    so they can be merged with hybrid search results.
+    First tries ILIKE for exact substring matches, then falls back to
+    pg_trgm similarity() for fuzzy matching (handles misspellings).
+    Returns results in the same dict format as other search functions.
     """
     if not title or not title.strip():
         return []
 
-    # Sanitize and prepare search pattern
     sanitized = title.strip()[:200]
-    query = text(
+
+    # Try ILIKE first (fast, exact substring)
+    ilike_query = text(
         "SELECT id::text AS case_id, title, citation, court, "
         "EXTRACT(YEAR FROM decision_date)::int AS year, "
         "bench_type, LEFT(ratio_decidendi, 3000) AS ratio "
@@ -351,11 +429,32 @@ async def _search_by_title(title: str, db: AsyncSession) -> list[dict]:
         "ORDER BY decision_date DESC NULLS LAST LIMIT 5"
     )
     try:
-        result = await db.execute(query, {"pattern": f"%{sanitized}%"})
+        result = await db.execute(ilike_query, {"pattern": f"%{sanitized}%"})
         rows = result.fetchall()
     except Exception:
-        logger.warning("Title search failed for: %s", sanitized, exc_info=True)
-        return []
+        logger.warning("Title ILIKE search failed for: %s", sanitized, exc_info=True)
+        rows = []
+
+    # Fallback: pg_trgm fuzzy search if ILIKE found nothing
+    if not rows:
+        fuzzy_query = text(
+            "SELECT id::text AS case_id, title, citation, court, "
+            "EXTRACT(YEAR FROM decision_date)::int AS year, "
+            "bench_type, LEFT(ratio_decidendi, 3000) AS ratio, "
+            "similarity(title, :name) AS sim "
+            "FROM cases WHERE similarity(title, :name) > :threshold "
+            "ORDER BY sim DESC LIMIT 5"
+        )
+        try:
+            # Try 0.3 threshold first, then 0.2 if no results
+            result = await db.execute(fuzzy_query, {"name": sanitized, "threshold": 0.3})
+            rows = result.fetchall()
+            if not rows:
+                result = await db.execute(fuzzy_query, {"name": sanitized, "threshold": 0.2})
+                rows = result.fetchall()
+        except Exception:
+            logger.warning("Title fuzzy search failed for: %s", sanitized, exc_info=True)
+            rows = []
 
     return [
         {
@@ -592,6 +691,7 @@ async def verify_memo_citations(
     memo: str,
     db: AsyncSession,
     grounding_citations: list[str],
+    embedder: EmbeddingProvider | None = None,
 ) -> str:
     """Run 3-layer citation verification and append warnings to memo.
 
@@ -666,7 +766,7 @@ async def verify_memo_citations(
     # holding is consistent with the actual ratio_decidendi stored in DB.
     if memo_citations:
         try:
-            unverified_holdings = await _check_holding_accuracy(memo, memo_citations, db)
+            unverified_holdings = await _check_holding_accuracy(memo, memo_citations, db, embedder)
         except Exception:
             logger.warning("Holding accuracy check failed", exc_info=True)
             unverified_holdings = []
@@ -693,16 +793,17 @@ async def _check_holding_accuracy(
     memo: str,
     citations: list[str],
     db: AsyncSession,
+    embedder: EmbeddingProvider | None = None,
 ) -> list[str]:
-    """Check if cited cases have a ratio_decidendi in DB that we can compare.
+    """Check citation accuracy: missing ratios + semantic holding verification.
 
-    Returns a list of citation strings whose holdings could NOT be verified
-    because they have no stored ratio_decidendi (meaning the memo's description
-    of their holding is entirely unverifiable).
+    Returns a list of warning strings for:
+    - Citations with no stored ratio_decidendi (unverifiable)
+    - [B16] Citations where memo's claim semantically diverges from actual ratio
+      (misrepresented holdings, cosine similarity < 0.75)
 
-    This is a lightweight check — we flag cases with no stored ratio rather
-    than doing a full LLM comparison, to avoid adding latency and cost.
-    A future enhancement could use LLM-based semantic comparison.
+    Uses batch embedding for efficiency. Falls back to ratio-only check
+    if embedder is unavailable.
     """
     if not citations:
         return []
@@ -726,20 +827,61 @@ async def _check_holding_accuracy(
         logger.warning("Failed to check holding accuracy", exc_info=True)
         return []
 
-    verified_set: set[str] = set()
-    no_ratio: list[str] = []
+    warnings: list[str] = []
+    cite_to_ratio: dict[str, str] = {}
 
     for row in rows:
         cite_text = row[0]
         ratio = row[1]
-        verified_set.add(cite_text)
         if not ratio or len(ratio.strip()) < 20:
-            no_ratio.append(f"{cite_text} [no ratio decidendi on record]")
+            warnings.append(f"{cite_text} [no ratio decidendi on record]")
+        else:
+            cite_to_ratio[cite_text] = ratio.strip()
 
-    # Citations that couldn't be found in DB at all are already flagged
-    # by Layer 2 (unverified citations). We only flag those that ARE in DB
-    # but have no ratio.
-    return no_ratio
+    # [B16] Semantic holding verification via embedding similarity
+    if embedder and cite_to_ratio:
+        try:
+            # Extract memo's claim about each citation (sentence containing citation)
+            claims: dict[str, str] = {}
+            for cite in cite_to_ratio:
+                # Find sentences mentioning this citation in the memo
+                for sentence in memo.split(". "):
+                    if cite in sentence:
+                        claims[cite] = sentence.strip()[:500]
+                        break
+
+            if claims:
+                # Batch embed: claims + ratios
+                cite_keys = list(claims.keys())
+                claim_texts = [claims[k] for k in cite_keys]
+                ratio_texts = [cite_to_ratio[k][:500] for k in cite_keys]
+
+                all_texts = claim_texts + ratio_texts
+                all_vectors = await embedder.embed_batch(all_texts)
+
+                # Compare claim vs ratio embeddings
+                n = len(cite_keys)
+                for i, cite in enumerate(cite_keys):
+                    claim_vec = all_vectors[i]
+                    ratio_vec = all_vectors[n + i]
+                    # Cosine similarity
+                    dot = sum(a * b for a, b in zip(claim_vec, ratio_vec))
+                    mag_a = sum(a * a for a in claim_vec) ** 0.5
+                    mag_b = sum(b * b for b in ratio_vec) ** 0.5
+                    if mag_a > 0 and mag_b > 0:
+                        sim = dot / (mag_a * mag_b)
+                    else:
+                        sim = 0.0
+
+                    if sim < 0.75:
+                        label = "misrepresented" if sim < 0.5 else "partially_accurate"
+                        warnings.append(
+                            f"{cite} [holding {label}: similarity={sim:.2f}]"
+                        )
+        except Exception:
+            logger.warning("Semantic holding verification failed", exc_info=True)
+
+    return warnings
 
 
 def collect_grounding_citations(results: list[dict]) -> list[str]:
@@ -767,26 +909,40 @@ async def parallel_hybrid_search(
     vector_store: VectorStore,
     reranker: Reranker,
     db: AsyncSession,
+    precomputed_embeddings: dict[str, list[float]] | None = None,
     **search_kwargs: Any,
 ) -> list[dict]:
     """Run hybrid_search for each query in parallel, return combined results.
 
     Failed individual searches are logged and skipped (not propagated).
     Each result dict gets a 'source_query' field added.
+
+    Each parallel search opens its **own** ``AsyncSession`` to avoid
+    SQLAlchemy's "concurrent operations are not permitted" error when
+    multiple FTS queries hit the same session concurrently.  The caller's
+    *db* is intentionally unused here — callers that need a session for
+    post-search work (e.g. ``enrich_results_with_ratio``) should keep
+    their own.
     """
+    from app.db.postgres import async_session_factory
+
     if not queries:
         return []
 
+    _embeddings = precomputed_embeddings or {}
+
     async def _search_one(sq: str) -> list[dict]:
-        response = await hybrid_search(
-            sq,
-            llm=llm,
-            embedder=embedder,
-            vector_store=vector_store,
-            reranker=reranker,
-            db=db,
-            **search_kwargs,
-        )
+        async with async_session_factory() as session:
+            response = await hybrid_search(
+                sq,
+                llm=llm,
+                embedder=embedder,
+                vector_store=vector_store,
+                reranker=reranker,
+                db=session,
+                pre_embedded=_embeddings.get(sq),
+                **search_kwargs,
+            )
         results: list[dict] = []
         for item in response.results:
             d = asdict(item)

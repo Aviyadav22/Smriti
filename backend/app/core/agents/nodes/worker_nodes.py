@@ -77,10 +77,17 @@ async def case_law_worker(
 
     queries = [nl_query]
     if task.get("boolean_query"):
-        queries.append(task["boolean_query"])
+        # [M2] Convert IK boolean operators to PostgreSQL websearch_to_tsquery format
+        fts_query = task["boolean_query"]
+        fts_query = re.sub(r'\bANDD\b', 'AND', fts_query)
+        fts_query = re.sub(r'\bORR\b', 'OR', fts_query)
+        fts_query = re.sub(r'\bNOTT\b', 'NOT', fts_query)
+        fts_query = re.sub(r'\bNEAR\b', 'AND', fts_query)  # NEAR → AND (closest FTS equivalent)
+        queries.append(fts_query)
 
+    # [B8] Skip understand_query — agent has already rewritten the query
+    search_kwargs: dict = {"pre_understood": True}
     # [V3] Bench-strength filtering
-    search_kwargs: dict = {}
     target_bench = task_filters.get("target_bench")
     if target_bench:
         bench_map = {
@@ -94,10 +101,31 @@ async def case_law_worker(
             from app.core.search.query import SearchFilters
             search_kwargs["filters"] = SearchFilters(bench_type=bench_value)
 
+    # [H10] Propagate court and date range filters from research plan
+    court_filter = task_filters.get("court")
+    from_year = task_filters.get("from_year")
+    to_year = task_filters.get("to_year")
+    if court_filter or from_year or to_year:
+        from app.core.search.query import SearchFilters
+        existing = search_kwargs.get("filters")
+        if not existing:
+            existing = SearchFilters()
+            search_kwargs["filters"] = existing
+        if court_filter:
+            existing.court = [court_filter] if isinstance(court_filter, str) else court_filter
+        if from_year:
+            existing.year_from = int(from_year)
+        if to_year:
+            existing.year_to = int(to_year)
+
+    # [B13] Pass precomputed embeddings to skip redundant embed_text() calls
+    precomputed = state.get("precomputed_embeddings") or {}
+
     try:
         async with async_session_factory() as db:
             results = await parallel_hybrid_search(
                 queries, llm, embedder, vector_store, reranker, db,
+                precomputed_embeddings=precomputed,
                 **search_kwargs,
             )
             results = await enrich_results_with_ratio(results, db, max_ratio_len=3000)
@@ -176,6 +204,7 @@ async def named_case_worker(
             async with async_session_factory() as db:
                 supplemental = await parallel_hybrid_search(
                     [task["nl_query"]], llm, embedder, vector_store, reranker, db,
+                    pre_understood=True,
                 )
                 supplemental = await enrich_results_with_ratio(
                     supplemental, db, max_ratio_len=3000,
@@ -316,6 +345,16 @@ def func_websearch_to_tsquery(query: str):
 
 _MAX_IK_FRAGMENT_CALLS = 5  # Cost control: Rs 0.05/fragment
 _MIN_HEADLINE_LEN = 50  # Use search headline if >= this many chars (free)
+_IK_ALWAYS_FRAGMENT_TOP_N = 3  # Always fetch fragment for top N (richer evidence)
+_IK_MAX_PAGES = 2  # Fetch 2 pages (20 results) to avoid missing good cases
+
+
+def _strip_html_tags(text: str) -> str:
+    """Strip HTML tags from IK API responses (headlines contain <b>, <em>, etc.)."""
+    import re
+    if not text:
+        return text
+    return re.sub(r"<[^>]+>", "", text).strip()
 
 
 async def ik_search_worker(
@@ -350,9 +389,20 @@ async def ik_search_worker(
     author_filter = filters.get("author")
     bench_filter = filters.get("bench")
 
+    # Build cache key that includes ALL search parameters (not just nl_query)
+    cache_filters = {
+        k: v for k, v in {
+            "court": court_filter, "from_date": from_date, "to_date": to_date,
+            "boolean_query": boolean_query, "sort_by": sort_by,
+            "title": title_filter, "author": author_filter, "bench": bench_filter,
+        }.items() if v is not None
+    }
+
     try:
-        # [S8-L3] Check IK search cache
-        cached_results = await get_cached_ik_search(redis, task["nl_query"])
+        # [S8-L3] Check IK search cache (with filter-aware key)
+        cached_results = await get_cached_ik_search(
+            redis, task["nl_query"], **cache_filters,
+        )
         if cached_results is not None:
             logger.debug("IK search cache hit for: %s", task["nl_query"][:60])
             return {"worker_results": [WorkerResult(
@@ -362,6 +412,12 @@ async def ik_search_worker(
                 metadata={"source": "indian_kanoon", "cached": True},
                 error=None, reasoning="",
             )]}
+
+        logger.info(
+            "IK search: nl_query=%s, boolean_query=%s, court=%s, dates=%s-%s",
+            task["nl_query"][:80], boolean_query[:80] if boolean_query else None,
+            court_filter, from_date, to_date,
+        )
 
         search_results = await ik_client.search(
             task["nl_query"],
@@ -375,7 +431,43 @@ async def ik_search_worker(
             author_filter=author_filter,
             bench_filter=bench_filter,
             max_cites=5,  # Get citation list for free
+            max_pages=_IK_MAX_PAGES,  # Fetch 2 pages for broader coverage
         )
+
+        # Fallback 1: if boolean_query returned 0 results, retry with NL query
+        if not search_results and boolean_query:
+            logger.info(
+                "IK boolean query returned 0 results, retrying with NL query: %s",
+                task["nl_query"][:80],
+            )
+            search_results = await ik_client.search(
+                task["nl_query"],
+                max_results=10,
+                court_filter=court_filter,
+                from_date=from_date,
+                to_date=to_date,
+                sort_by=sort_by,
+                title_filter=title_filter,
+                author_filter=author_filter,
+                bench_filter=bench_filter,
+                max_cites=5,
+                max_pages=_IK_MAX_PAGES,
+            )
+
+        # Fallback 2: if court filter is too restrictive, broaden it
+        if not search_results and court_filter:
+            logger.info(
+                "IK court-filtered query returned 0 results, retrying without court filter",
+            )
+            search_results = await ik_client.search(
+                task["nl_query"],
+                max_results=10,
+                from_date=from_date,
+                to_date=to_date,
+                sort_by=sort_by,
+                max_cites=5,
+                max_pages=_IK_MAX_PAGES,
+            )
 
         results: list[dict] = []
         source_urls: list[str] = []
@@ -384,11 +476,29 @@ async def ik_search_worker(
             if not doc_id:
                 continue
 
-            # Use search headline if long enough; otherwise fetch fragment
-            search_headline = doc.get("headline", "")
+            # Use search headline or fetch fragment for richer evidence.
+            # Always fetch fragment for top N results (even if headline is long)
+            # because fragment is query-specific and provides better context.
+            search_headline = _strip_html_tags(doc.get("headline", ""))
             snippet = ""
-            if len(search_headline) >= _MIN_HEADLINE_LEN:
-                # Free: headline already in search results
+            if idx < _IK_ALWAYS_FRAGMENT_TOP_N:
+                # Always fetch fragment for top results — richer, query-specific
+                try:
+                    cached_frag = await get_cached_ik_fragment(redis, doc_id, task["nl_query"])
+                    if cached_frag is not None:
+                        fragment = cached_frag
+                    else:
+                        fragment = await ik_client.get_fragment(doc_id, task["nl_query"])
+                        await set_cached_ik_fragment(redis, doc_id, task["nl_query"], fragment)
+                    frag_headline = fragment.get("headline", fragment.get("fragment", ""))
+                    if isinstance(frag_headline, list):
+                        snippet = _strip_html_tags(" ".join(frag_headline))
+                    else:
+                        snippet = _strip_html_tags(frag_headline)
+                except Exception:
+                    snippet = search_headline  # fallback to search headline
+            elif len(search_headline) >= _MIN_HEADLINE_LEN:
+                # Free: headline already in search results, long enough
                 snippet = search_headline
             elif idx < _MAX_IK_FRAGMENT_CALLS:
                 # Paid: Rs 0.05/call — only for short/missing headlines
@@ -401,18 +511,33 @@ async def ik_search_worker(
                         await set_cached_ik_fragment(redis, doc_id, task["nl_query"], fragment)
                     frag_headline = fragment.get("headline", fragment.get("fragment", ""))
                     if isinstance(frag_headline, list):
-                        snippet = " ".join(frag_headline)
+                        snippet = _strip_html_tags(" ".join(frag_headline))
                     else:
-                        snippet = frag_headline
+                        snippet = _strip_html_tags(frag_headline)
                 except Exception:
                     snippet = search_headline  # fallback to short headline
             else:
                 snippet = search_headline  # beyond fragment limit, use whatever we have
 
+            # Build citation — IK API often returns empty citation field,
+            # so synthesize one from title + court + date for footnote matching
+            ik_citation = doc.get("citation", "")
+            if not ik_citation:
+                title = doc.get("title", "")
+                court = doc.get("docsource", doc.get("court", ""))
+                date = doc.get("publishdate", "")
+                # Format: "Title (Court, Date)" or just "Title"
+                if court and date:
+                    ik_citation = f"{title} ({court}, {date})"
+                elif court:
+                    ik_citation = f"{title} ({court})"
+                else:
+                    ik_citation = title
+
             results.append({
                 "case_id": f"ik:{doc_id}",
                 "title": doc.get("title", ""),
-                "citation": doc.get("citation", ""),
+                "citation": ik_citation,
                 "court": doc.get("docsource", doc.get("court", "")),
                 "author": doc.get("author", ""),
                 "date": doc.get("publishdate", ""),
@@ -420,14 +545,15 @@ async def ik_search_worker(
                 "num_cites": doc.get("numcites", 0),
                 "num_cited_by": doc.get("numcitedby", 0),
                 "snippet": snippet,
+                "score": max(0.3, 1.0 - (idx * 0.05)),  # [H8] Position-based score
                 "source": "indian_kanoon",
                 "ik_doc_id": doc_id,
                 "court_copy_url": f"https://indiankanoon.org/origdoc/{doc_id}/",
             })
             source_urls.append(f"https://indiankanoon.org/doc/{doc_id}/")
 
-        # [S8-L3] Cache IK search results
-        await set_cached_ik_search(redis, task["nl_query"], results)
+        # [S8-L3] Cache IK search results (with filter-aware key)
+        await set_cached_ik_search(redis, task["nl_query"], results, **cache_filters)
 
     except Exception as exc:
         logger.warning("ik_search_worker failed: %s", exc)
@@ -483,10 +609,12 @@ async def web_search_worker(
         results: list[dict] = []
         source_urls: list[str] = []
         for r in search_results:
+            url = r.get("url", "")
             results.append({
+                "case_id": f"web:{hash(url) & 0xFFFFFFFF}",  # [H29] Unique ID for dedup
                 "title": r.get("title", ""),
                 "snippet": r.get("raw_content", r.get("content", ""))[:2000],
-                "url": r.get("url", ""),
+                "url": url,
                 "score": r.get("score", 0.0),
                 "source": "web",
             })
@@ -531,21 +659,36 @@ async def graph_worker(
         # First, try to find seed cases from the query entities
         query = task["nl_query"]
 
-        # Query Neo4j for cases matching the topic + their citation chains
+        # [B11] 2-hop bidirectional query: seeds → cited → cited-by
+        # Traverses CITES, OVERRULES, and APPLIES edges for richer graph results
         graph_results = await graph_store.query(
             """
             CALL db.index.fulltext.queryNodes('case_search', $query)
             YIELD node, score
             WITH node AS seed, score
             WHERE score > 0.5
-            LIMIT 5
-            OPTIONAL MATCH (seed)-[r:CITES]->(cited:Case)
-            RETURN seed.id AS id, seed.title AS title, seed.citation AS citation,
-                   r.treatment AS treatment, cited.id AS cited_id,
-                   cited.title AS cited_title, cited.citation AS cited_citation,
-                   score
             ORDER BY score DESC
-            LIMIT 20
+            LIMIT 5
+            // Hop 1: seed cites/overrules → target
+            OPTIONAL MATCH (seed)-[r1:CITES|OVERRULES|APPLIES]->(hop1:Case)
+            // Hop 2: target cites → hop2
+            OPTIONAL MATCH (hop1)-[r2:CITES|OVERRULES]->(hop2:Case)
+            WHERE hop2 <> seed
+            // Also get cited_by count for authority ranking
+            WITH seed, score, hop1, r1, hop2
+            OPTIONAL MATCH (hop1)<-[:CITES]-(citer:Case)
+            WITH seed, score, hop1, r1, hop2,
+                 count(DISTINCT citer) AS cited_by_count
+            RETURN seed.id AS seed_id, seed.title AS seed_title,
+                   seed.citation AS seed_citation, score AS seed_score,
+                   hop1.id AS hop1_id, hop1.title AS hop1_title,
+                   hop1.citation AS hop1_citation,
+                   type(r1) AS rel_type, r1.treatment AS treatment,
+                   cited_by_count,
+                   hop2.id AS hop2_id, hop2.title AS hop2_title,
+                   hop2.citation AS hop2_citation
+            ORDER BY seed_score DESC, cited_by_count DESC
+            LIMIT 40
             """,
             params={"query": query},
         )
@@ -554,28 +697,74 @@ async def graph_worker(
         seen_ids: set[str] = set()
         for r in graph_results:
             # Add seed case
-            case_id = r.get("id", "")
+            case_id = r.get("seed_id", "")
             if case_id and case_id not in seen_ids:
                 seen_ids.add(case_id)
                 results.append({
                     "case_id": case_id,
-                    "title": r.get("title", ""),
-                    "citation": r.get("citation", ""),
-                    "treatment": r.get("treatment"),
+                    "title": r.get("seed_title", ""),
+                    "citation": r.get("seed_citation", ""),
                     "source": "citation_graph",
-                    "graph_score": r.get("score", 0.0),
+                    "graph_score": r.get("seed_score", 0.0),
                 })
-            # Add cited case
-            cited_id = r.get("cited_id", "")
-            if cited_id and cited_id not in seen_ids:
-                seen_ids.add(cited_id)
+            # Add hop-1 case
+            hop1_id = r.get("hop1_id", "")
+            if hop1_id and hop1_id not in seen_ids:
+                seen_ids.add(hop1_id)
                 results.append({
-                    "case_id": cited_id,
-                    "title": r.get("cited_title", ""),
-                    "citation": r.get("cited_citation", ""),
+                    "case_id": hop1_id,
+                    "title": r.get("hop1_title", ""),
+                    "citation": r.get("hop1_citation", ""),
                     "treatment": r.get("treatment"),
+                    "rel_type": r.get("rel_type"),
+                    "cited_by_count": r.get("cited_by_count", 0),
                     "source": "citation_graph",
                 })
+            # Add hop-2 case (if exists)
+            hop2_id = r.get("hop2_id", "")
+            if hop2_id and hop2_id not in seen_ids:
+                seen_ids.add(hop2_id)
+                results.append({
+                    "case_id": hop2_id,
+                    "title": r.get("hop2_title", ""),
+                    "citation": r.get("hop2_citation", ""),
+                    "source": "citation_graph_hop2",
+                })
+
+        # [E1] Also query doctrine nodes if the query mentions a doctrine
+        try:
+            doctrine_results = await graph_store.query(
+                """
+                CALL db.index.fulltext.queryNodes('case_search', $query)
+                YIELD node, score
+                WITH node AS seed, score
+                WHERE score > 0.5 AND 'Doctrine' IN labels(seed)
+                LIMIT 3
+                OPTIONAL MATCH (case:Case)-[:APPLIES_DOCTRINE]->(seed)
+                RETURN seed.name AS doctrine_name, seed.description AS doctrine_desc,
+                       case.id AS case_id, case.title AS case_title,
+                       case.citation AS case_citation
+                LIMIT 10
+                """,
+                params={"query": query},
+            )
+            for dr in doctrine_results:
+                cid = dr.get("case_id", "")
+                if cid and cid not in seen_ids:
+                    seen_ids.add(cid)
+                    results.append({
+                        "case_id": cid,
+                        "title": dr.get("case_title", ""),
+                        "citation": dr.get("case_citation", ""),
+                        "doctrine": dr.get("doctrine_name", ""),
+                        "source": "doctrine_graph",
+                    })
+        except Exception:
+            pass  # Best-effort — doctrine search is supplementary
+
+        # Cap at 20 results, sorted by cited_by_count for authority
+        results.sort(key=lambda x: x.get("cited_by_count", 0), reverse=True)
+        results = results[:20]
 
     except Exception as exc:
         logger.warning("graph_worker failed: %s", exc)
