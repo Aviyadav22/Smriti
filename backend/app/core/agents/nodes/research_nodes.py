@@ -2026,6 +2026,40 @@ async def verify_citations_v2_node(
         footnotes, db, ik_client, graph_store,
     )
 
+    # [H25] Grounding enforcement — check if citation was in search results
+    search_results = state.get("search_results", [])
+    grounding_citations = {
+        r.get("citation", ""): r.get("case_id", "")
+        for r in search_results if r.get("citation")
+    }
+    grounding_case_ids = {r.get("case_id", "") for r in search_results if r.get("case_id")}
+    grounding_ik_ids = {
+        r.get("ik_doc_id", ""): r.get("case_id", "")
+        for r in search_results if r.get("ik_doc_id")
+    }
+    for fn in verified_footnotes:
+        if fn.get("verification_status", "").startswith("verified"):
+            is_grounded = (
+                fn.get("citation", "") in grounding_citations
+                or fn.get("ik_doc_id", "") in grounding_ik_ids
+                or fn.get("case_id", "") in grounding_case_ids
+            )
+            if not is_grounded:
+                fn["verification_status"] = "ungrounded"
+                fn["is_used"] = False
+
+    # [H20/M52] Clean orphan [^N] markers from memo text
+    removed_numbers = {
+        fn["number"] for fn in verified_footnotes
+        if not fn.get("is_used") and fn.get("verification_status") in ("unverified", "ungrounded")
+    }
+    cleaned_memo = memo
+    for num in removed_numbers:
+        cleaned_memo = re.sub(rf'\[\^{num}\](?!:)', '', cleaned_memo)
+        cleaned_memo = re.sub(rf'^\[\^{num}\]:.*$', '', cleaned_memo, flags=re.MULTILINE)
+    # Clean up double spaces / blank lines from removals
+    cleaned_memo = re.sub(r'\n{3,}', '\n\n', cleaned_memo)
+
     # Count results
     verified_count = sum(
         1 for fn in verified_footnotes
@@ -2033,7 +2067,7 @@ async def verify_citations_v2_node(
     )
     removed_count = sum(
         1 for fn in verified_footnotes
-        if fn["verification_status"] == "unverified" and fn["is_used"]
+        if fn["verification_status"] in ("unverified", "ungrounded") and not fn["is_used"]
     )
 
     # Build verification banner
@@ -2063,12 +2097,16 @@ async def verify_citations_v2_node(
         ),
     })
 
-    return {
+    result_dict: dict = {
         "footnotes": verified_footnotes,
         "citation_verification_results": issues,
         "research_audit": research_audit,
         "process_events": [verification_event],
     }
+    # [H20] Update memo if orphan markers were cleaned
+    if cleaned_memo != memo:
+        result_dict["draft_memo"] = cleaned_memo
+    return result_dict
 
 
 async def _deterministic_verify(
@@ -2112,7 +2150,7 @@ async def _deterministic_verify(
                 "severity": "HIGH",
             })
 
-    # 4. Overruled case check via Neo4j (if available)
+    # 4. Subsequent history check via Neo4j (if available) [H28]
     if graph_store and hasattr(graph_store, "query"):
         cited_case_ids = [
             fn["case_id"] for fn in footnotes
@@ -2120,20 +2158,37 @@ async def _deterministic_verify(
         ]
         for case_id in cited_case_ids:
             try:
-                overruled = await graph_store.query(
-                    "MATCH (c:Case {id: $id})<-[r:CITES {treatment: 'overruled'}]"
-                    "-(newer:Case) RETURN newer.title, newer.citation LIMIT 1",
+                # [H28] Check ALL treatment types, not just overruled
+                treatments = await graph_store.query(
+                    "MATCH (c:Case {id: $id})<-[r:CITES]-(newer:Case) "
+                    "WHERE r.treatment IS NOT NULL AND r.treatment <> 'cited' "
+                    "RETURN r.treatment AS treatment, newer.title AS newer_title, "
+                    "newer.citation AS newer_citation "
+                    "ORDER BY newer.date DESC LIMIT 5",
                     {"id": case_id},
                 )
-                if overruled:
-                    issues.append({
-                        "type": "cites_overruled_case",
-                        "case_id": case_id,
-                        "overruled_by": str(overruled[0]),
-                        "severity": "HIGH",
-                    })
+                if treatments:
+                    for t in treatments:
+                        treatment_type = t.get("treatment", "unknown") if isinstance(t, dict) else str(t)
+                        if treatment_type == "overruled" or (isinstance(t, dict) and t.get("treatment") == "overruled"):
+                            issues.append({
+                                "type": "cites_overruled_case",
+                                "case_id": case_id,
+                                "overruled_by": str(t),
+                                "severity": "HIGH",
+                            })
+                    # Attach subsequent_history to the footnote
+                    fn_match = next(
+                        (fn for fn in footnotes if fn.get("case_id") == case_id), None
+                    )
+                    if fn_match:
+                        fn_match["subsequent_history"] = [
+                            {"treatment": (t.get("treatment") if isinstance(t, dict) else str(t)),
+                             "by": (t.get("newer_citation", "") if isinstance(t, dict) else "")}
+                            for t in treatments
+                        ]
             except Exception:
-                logger.warning("Overruled check failed for %s", case_id)
+                logger.warning("Subsequent history check failed for %s", case_id)
 
     # 5. URL/case_id existence validation
     for fn in footnotes:

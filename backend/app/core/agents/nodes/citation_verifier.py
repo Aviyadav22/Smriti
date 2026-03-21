@@ -22,12 +22,17 @@ from app.core.legal.extractor import (
     BLR_PATTERN,
     CRLJ_PATTERN,
     GLR_PATTERN,
+    HC_REPORTER_PATTERN,
     INSC_PATTERN,
     JT_PATTERN,
     KLT_PATTERN,
+    MANU_PATTERN,
+    NEUTRAL_HC_PATTERN,
+    NEUTRAL_SC_PATTERN,
     SCALE_PATTERN,
     SCC_ONLINE_PATTERN,
     SCC_PATTERN,
+    SCC_SUB_PATTERN,
     SCR_PATTERN,
     extract_citations,
     normalize_citation,
@@ -38,12 +43,17 @@ logger = logging.getLogger(__name__)
 # All citation patterns we scan for, in order
 _CITATION_PATTERNS = [
     SCC_ONLINE_PATTERN,  # must come before SCC_PATTERN to avoid partial match
+    SCC_SUB_PATTERN,     # [H24] SCC (Cri), SCC (S), etc. — before SCC_PATTERN
     SCC_PATTERN,
     AIR_PATTERN,
+    NEUTRAL_SC_PATTERN,  # [H24] 2024:INSC:123 neutral citation
+    NEUTRAL_HC_PATTERN,  # [H24] 2024:DHC:1234:DB neutral HC citation
     INSC_PATTERN,
     SCR_PATTERN,
     CRLJ_PATTERN,
     SCALE_PATTERN,
+    MANU_PATTERN,        # [H24] MANU/SC/1234/2024
+    HC_REPORTER_PATTERN, # [H24] ILR, DLT, BomLR, MLJ, etc.
     BLR_PATTERN,
     KLT_PATTERN,
     GLR_PATTERN,
