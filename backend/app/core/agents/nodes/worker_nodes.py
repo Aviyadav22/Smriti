@@ -130,7 +130,7 @@ async def case_law_worker(
             )
             results = await enrich_results_with_ratio(results, db, max_ratio_len=3000)
     except Exception as exc:
-        logger.warning("case_law_worker failed: %s", exc)
+        logger.exception("case_law_worker failed: %s", exc)
         return {"worker_results": [WorkerResult(
             task_id=task["task_id"], task_type="case_law",
             query=task["nl_query"], results=[],
@@ -190,7 +190,7 @@ async def named_case_worker(
                     results, db, max_ratio_len=3000,
                 )
     except Exception as exc:
-        logger.warning("named_case_worker failed: %s", exc)
+        logger.exception("named_case_worker failed: %s", exc)
         return {"worker_results": [WorkerResult(
             task_id=task["task_id"], task_type="named_case",
             query=str(task.get("named_cases", [])),
@@ -775,7 +775,7 @@ async def graph_worker(
                 logger.warning("Graph result DB enrichment failed", exc_info=True)
 
     except Exception as exc:
-        logger.warning("graph_worker failed: %s", exc)
+        logger.exception("graph_worker failed: %s", exc)
         return {"worker_results": [WorkerResult(
             task_id=task["task_id"], task_type="graph",
             query=task["nl_query"], results=[],
