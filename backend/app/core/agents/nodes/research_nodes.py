@@ -1493,9 +1493,28 @@ async def speculative_synthesis_with_contradictions_node(
     # [T1] Collect drafting events
     process_events: list[dict] = []
 
+    # [H18] Differentiated strategy hints for genuinely different drafts
+    _STRATEGY_HINTS = {
+        "relevance": (
+            "Focus ONLY on the most directly relevant cases to the user's specific question. "
+            "Prioritize depth over breadth. Apply each case's ratio to the user's facts."
+        ),
+        "authority": (
+            "Focus on BINDING authority: Constitution Bench > Division Bench > Single Judge. "
+            "Lead with the highest court, largest bench decisions. Distinguish ratio from obiter. "
+            "Present the precedent hierarchy clearly."
+        ),
+        "breadth": (
+            "Provide COMPREHENSIVE coverage across all source types. Include statute text, "
+            "IK cases, graph-connected cases, and web sources. Cover multiple perspectives "
+            "and counter-arguments. Ensure no source type is underrepresented."
+        ),
+    }
+
     async def generate_draft(
         strategy_name: str, evidence_subset: list[dict],
     ) -> SynthesisDraft:
+        strategy_hint = _STRATEGY_HINTS.get(strategy_name, f"Focus on {strategy_name}.")
         formatted_evidence = format_search_results_for_llm_extended(evidence_subset)
         memo = await flash_llm.generate(
             prompt=RESEARCH_SYNTHESIZE_USER.format(
@@ -1504,7 +1523,7 @@ async def speculative_synthesis_with_contradictions_node(
                 passages=shared_context["passages"],
                 worker_reasoning=shared_context["worker_reasoning"],
                 communities=shared_context["communities"],
-                strategy_hint=f"Focus on {strategy_name} — organize by {strategy_name}.",
+                strategy_hint=strategy_hint,
             ),
             system=SPECULATIVE_DRAFT_SYSTEM,
             temperature=0.3,
@@ -1523,7 +1542,7 @@ async def speculative_synthesis_with_contradictions_node(
                     passages=shared_context["passages"],
                     worker_reasoning=shared_context["worker_reasoning"],
                     communities=shared_context["communities"],
-                    strategy_hint=f"Focus on {strategy_name} — organize by {strategy_name}.",
+                    strategy_hint=strategy_hint,
                 ),
                 system=SPECULATIVE_DRAFT_SYSTEM,
                 temperature=0.7,
@@ -2406,7 +2425,7 @@ async def legal_quality_check_node(
         data_points=result.get("data_points", []),
         omissions=result.get("omissions", []),
         logical_issues=result.get("logical_issues", []),
-        pass_threshold=result.get("overall_score", 0.0) >= 0.7,
+        pass_threshold=bool(result.get("overall_score", 0.0) >= 0.7),  # [H21] Ensure boolean
     )
 
     # [B3] Increment quality attempts counter
