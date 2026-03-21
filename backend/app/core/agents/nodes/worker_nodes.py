@@ -766,6 +766,14 @@ async def graph_worker(
         results.sort(key=lambda x: x.get("cited_by_count", 0), reverse=True)
         results = results[:20]
 
+        # [M24] Enrich graph results with ratio from PostgreSQL
+        if results:
+            try:
+                async with async_session_factory() as db:
+                    results = await enrich_results_with_ratio(results, db, max_ratio_len=3000)
+            except Exception:
+                logger.warning("Graph result DB enrichment failed", exc_info=True)
+
     except Exception as exc:
         logger.warning("graph_worker failed: %s", exc)
         return {"worker_results": [WorkerResult(

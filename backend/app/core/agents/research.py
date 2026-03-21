@@ -277,10 +277,11 @@ def build_research_graph(
 
             sends.append(Send(worker_name, payload))
 
-        # Safety cap — truncate if too many tasks
+        # [H31] Safety cap — sort by priority first, then truncate
         if len(sends) > _MAX_WORKERS_PER_DISPATCH:
+            sends.sort(key=lambda s: s.value.get("task", {}).get("priority", 99))
             logger.warning(
-                "Dispatch capped at %d workers (plan had %d tasks)",
+                "Dispatch capped at %d workers (plan had %d tasks), keeping highest priority",
                 _MAX_WORKERS_PER_DISPATCH, len(sends),
             )
             sends = sends[:_MAX_WORKERS_PER_DISPATCH]

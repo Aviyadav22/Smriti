@@ -446,11 +446,11 @@ async def _search_by_title(title: str, db: AsyncSession) -> list[dict]:
             "ORDER BY sim DESC LIMIT 5"
         )
         try:
-            # Try 0.3 threshold first, then 0.2 if no results
-            result = await db.execute(fuzzy_query, {"name": sanitized, "threshold": 0.3})
+            # [M26] Try 0.4 threshold first, then 0.3 if no results (raised from 0.2 to reduce false matches)
+            result = await db.execute(fuzzy_query, {"name": sanitized, "threshold": 0.4})
             rows = result.fetchall()
             if not rows:
-                result = await db.execute(fuzzy_query, {"name": sanitized, "threshold": 0.2})
+                result = await db.execute(fuzzy_query, {"name": sanitized, "threshold": 0.3})
                 rows = result.fetchall()
         except Exception:
             logger.warning("Title fuzzy search failed for: %s", sanitized, exc_info=True)
