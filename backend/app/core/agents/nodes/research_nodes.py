@@ -777,12 +777,18 @@ async def batch_worker_cot_with_reflection_node(
     worker_summaries = []
     for wr in worker_results:
         n_results = len(wr.get("results", []))
+        # [H30] Include snippets (not just titles) for richer CoT reasoning
+        top_snippets = []
+        for r in wr.get("results", [])[:3]:
+            title = r.get("title", "?")[:80]
+            citation = r.get("citation", "?")[:60]
+            snippet = r.get("snippet", r.get("ratio", ""))[:200]
+            top_snippets.append(f"  * {title} ({citation}): {snippet}")
         top_titles = [r.get("title", "?")[:80] for r in wr.get("results", [])[:3]]
         top_citations = [r.get("citation", "?")[:60] for r in wr.get("results", [])[:3]]
         worker_summaries.append(
             f"[{wr['task_type']}] Query: {wr['query'][:100]} | "
-            f"{n_results} results. Top: {', '.join(top_titles)} "
-            f"({', '.join(top_citations)})"
+            f"{n_results} results.\n" + "\n".join(top_snippets)
         )
 
     query = state.get("rewritten_query") or state["query"]
@@ -942,6 +948,8 @@ async def evaluate_and_extract_node(
                 verdict=ev["verdict"],
                 reason=ev["reason"],
                 action=ev["action"],
+                adjusted_score=ev.get("adjusted_score", ev["score"]),  # [H13]
+                ratio_or_obiter=ev.get("ratio_or_obiter", "unknown"),  # [H14]
             ))
             if ev["verdict"] == "ambiguous":
                 ambiguous_ids.append((ev["case_id"], batch))
@@ -2555,7 +2563,55 @@ async def adversarial_search_node(
     adv_results = await _run_adversarial_search(
         counter_args, llm, embedder, vector_store, reranker,
     )
-    return {"worker_results": adv_results} if adv_results else {}
+    if not adv_results:
+        return {}
+
+    # [H3] Mini-CRAG: verify adversarial results are actually relevant counter-arguments
+    # Collect all result snippets for a single verification call
+    adv_snippets: list[str] = []
+    for wr in adv_results:
+        for r in wr.get("results", [])[:3]:
+            adv_snippets.append(
+                f"- [{r.get('title', '')}] {r.get('snippet', '')[:200]}"
+            )
+    if adv_snippets:
+        try:
+            verification = await llm.generate_structured(
+                prompt=(
+                    f"Research question: {query}\n\n"
+                    f"Potential counter-argument cases:\n"
+                    + "\n".join(adv_snippets[:15]) + "\n\n"
+                    "For each case, is it a genuine counter-argument to the research "
+                    "position, or is it irrelevant? Return only relevant ones."
+                ),
+                system=(
+                    "You are a legal relevance evaluator. Return a JSON object "
+                    "with key 'relevant_indices' containing a list of 0-based "
+                    "indices of cases that are genuine counter-arguments."
+                ),
+                output_schema={
+                    "type": "object",
+                    "properties": {
+                        "relevant_indices": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                        },
+                    },
+                    "required": ["relevant_indices"],
+                },
+            )
+            relevant_set = set(verification.get("relevant_indices", []))
+            if relevant_set:
+                # Filter results — keep only workers with relevant results
+                for wr in adv_results:
+                    wr["results"] = [
+                        r for i, r in enumerate(wr.get("results", []))
+                        if i in relevant_set
+                    ]
+        except Exception as exc:
+            logger.warning("Adversarial mini-CRAG failed (keeping all): %s", exc)
+
+    return {"worker_results": adv_results}
 
 
 # ---------------------------------------------------------------------------

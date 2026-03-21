@@ -61,6 +61,8 @@ class RelevanceScore(TypedDict):
     verdict: str          # "correct" | "ambiguous" | "incorrect"
     reason: str           # Why this document is/isn't relevant
     action: str           # "keep" | "filter" | "needs_web_fallback"
+    adjusted_score: float  # [H13] Bench-strength-adjusted score
+    ratio_or_obiter: str   # [H14] "ratio" | "obiter" | "uncertain" | "unknown"
 
 
 class CommunitySummary(TypedDict):
@@ -174,7 +176,7 @@ class ResearchState(TypedDict):
     error: str
     # --- V2 fields ---
     rewritten_query: str
-    complexity: str  # [S9] "simple"|"complex"|"multi_issue" from classify
+    complexity: str  # [S9/B10] "simple"|"moderate"|"complex"|"multi_issue" from classify
     research_plan: list[ResearchTask]
     worker_results: Annotated[list[WorkerResult], operator.add]  # REDUCER for Send()
     worker_reasonings: list[str]  # [S4] Batched CoT reasoning
@@ -199,6 +201,9 @@ class ResearchState(TypedDict):
     client_position: str                      # [V3] "petitioner"|"respondent"|"accused"|""
     include_adversarial: bool                 # [V3] User toggle from HITL
     temporal_warnings: list[TemporalWarning]  # [V3] Old-code vs new-code warnings
+    confidence_breakdown: dict               # [C5] {data_confidence, legal_confidence, consistency_confidence}
+    quality_attempts: int                    # [B3] Quality retry counter (0, 1, 2)
+    auto_approve: bool                       # [D10] Skip HITL checkpoints when True
 
 
 class CasePrepState(TypedDict):
