@@ -179,11 +179,13 @@ class TestResearchAgentSchemas:
     def test_classify_schema_complexity_enum(self) -> None:
         complexity = RESEARCH_CLASSIFY_SCHEMA["properties"]["complexity"]
         assert "enum" in complexity
-        assert set(complexity["enum"]) == {"simple", "complex", "multi_issue"}
+        assert set(complexity["enum"]) == {"simple", "moderate", "complex", "multi_issue"}
 
     def test_classify_schema_jurisdiction_nullable(self) -> None:
         jurisdiction = RESEARCH_CLASSIFY_SCHEMA["properties"]["jurisdiction"]
-        assert "null" in jurisdiction["type"]
+        # [C7] Gemini requires "nullable": True, not "type": ["string", "null"]
+        assert jurisdiction.get("nullable") is True
+        assert jurisdiction["type"] == "string"
 
     def test_decompose_schema_has_sub_queries(self) -> None:
         props = RESEARCH_DECOMPOSE_SCHEMA["properties"]

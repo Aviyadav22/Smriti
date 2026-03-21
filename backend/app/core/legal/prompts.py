@@ -52,7 +52,9 @@ Use contextual understanding to interpret the correct text. Do not include OCR n
 14. HEADNOTES: Extract 2-4 structured legal propositions (headnotes) summarizing the key \
 holdings, in the style used by SCC or AIR reporters. Return as an array of objects, each \
 with a "proposition" field (a distinct legal holding) and an optional "acts_sections" \
-field (relevant statute sections for that proposition).
+field (relevant statute sections for that proposition). EXCLUDE editorial metadata such as \
+"Headnotes prepared by: [Name]", reporter bylines, and "Result of the case:" summaries — \
+extract only the legal propositions themselves.
 15. OUTCOME SUMMARY: A 1-2 sentence description of the specific outcome, e.g., \
 "Conviction under Section 302 IPC upheld; sentence reduced from death to life imprisonment."
 16. IS REPORTABLE: Check if the judgment header contains "REPORTABLE" or "NON-REPORTABLE" \
@@ -82,7 +84,9 @@ quantum (e.g., "7 years"), fine_amount, conditions. For civil monetary awards, \
 extract damages_awarded with amount, currency ("INR"), type (compensatory/punitive/nominal/costs).
 24. OPERATIVE ORDER: Extract the exact operative portion of the judgment verbatim. \
 This usually starts with phrases like "In view of the above", "The appeal is hereby", \
-"In the result", "For the reasons stated above". Copy the text exactly as written.
+"In the result", "For the reasons stated above". Copy the text exactly as written. \
+EXCLUDE reporter-added summaries like "Result of the case: Appeals allowed" and \
+editorial annotations like "†Headnotes prepared by: [Name]".
 25. CITATION TREATMENTS: For EACH cited case, identify HOW it was used: followed, \
 applied, referred_to, distinguished, overruled, approved, doubted, explained, \
 not_followed. Include 1-2 sentence context of HOW it was used and the paragraph \
@@ -108,6 +112,11 @@ Extract hearing_count (number of hearings mentioned). Extract urgency_indicators
 conditions_imposed (bail conditions, compliance timelines). Extract costs_awarded \
 (amount, to_whom, reason). Extract key_observations (max 5 notable obiter dicta). \
 Extract issue_classification as hierarchical tags (e.g., "fundamental_rights.article_21").
+30. EDITORIAL CONTENT: The text may contain reporter-added content NOT part of the \
+judgment: page markers like "[2026] 1 S.C.R. 63", "Headnotes prepared by: [Name]", \
+"Result of the case: ...", digest summaries. These are editorial additions by law \
+reporters (SCC, AIR, SCR). Ignore all such content — extract only from the judge's \
+actual text.
 """
 
 METADATA_EXTRACTION_USER: Final[str] = """\
@@ -937,17 +946,17 @@ DOCUMENT_ISSUE_EXTRACTION_SCHEMA: Final[dict] = {
         "parties": {
             "type": "object",
             "properties": {
-                "petitioner": {"type": ["string", "null"]},
-                "respondent": {"type": ["string", "null"]},
+                "petitioner": {"type": "string", "nullable": True},
+                "respondent": {"type": "string", "nullable": True},
             },
         },
         "key_facts": {
             "type": "array",
             "items": {"type": "string"},
         },
-        "relief_sought": {"type": ["string", "null"]},
+        "relief_sought": {"type": "string", "nullable": True},
         "jurisdiction": {
-            "type": ["string", "null"],
+            "type": "string", "nullable": True,
             "enum": [
                 "civil", "criminal", "constitutional",
                 "tax", "labor", "company", "other",
@@ -1061,7 +1070,9 @@ classify it by topic, complexity, and extract key entities. Your classification 
 guides downstream search strategy across Indian Supreme Court and High Court judgments.
 
 Rules:
-- topic must reflect the primary area of Indian law involved.
+- topic must reflect the primary area of Indian law involved. Use specific topics when \
+applicable (banking_finance for SEBI/RBI matters, intellectual_property for patents/trademarks, \
+cyber for IT Act matters, arbitration for dispute resolution, consumer for CPA matters).
 - complexity is "simple" for straightforward lookups (single statute or well-known precedent), \
 "moderate" for multi-issue queries or those requiring cross-referencing, and "complex" for \
 novel questions, constitutional challenges, or conflicts between precedents.
@@ -1083,8 +1094,19 @@ commonly paired legal concepts).
 Look for phrases like "filing in", "appeal against", "SLP", "writ petition", \
 "under Article 226/32". Return null if not determinable.
 - client_position: identify the client's role (petitioner, respondent, accused, complainant, \
-appellant, advisory). Look for phrases like "my client is accused", "we represent", \
-"defending against", "advise on". Return null if not determinable.
+appellant, defendant, intervenor, amicus, advisory). Look for phrases like "my client is accused", \
+"we represent", "defending against", "advise on", "intervening in". Return null if not determinable.
+- jurisdiction_level: identify the court tier (supreme_court, high_court, district_court, \
+tribunal, commission). Return null if not determinable.
+- urgency: classify as "urgent" for bail/stay/injunction needing immediate response, \
+"standard" for regular litigation, "academic" for scholarly/exploratory. Return null if not determinable.
+- jurisdiction_analysis: [C9] identify which court has original/appellate jurisdiction and why. \
+Consider territorial jurisdiction, subject-matter jurisdiction, and pecuniary jurisdiction. \
+Return null if not determinable.
+- available_remedies: [C9] list available procedural remedies (bail, stay, injunction, writ, \
+appeal, SLP, review, curative petition). Base this on the procedural stage and jurisdiction.
+- limitation_concern: [C9] flag true if limitation period may be an issue based on the facts \
+(e.g., delayed filing, stale FIR, time-barred appeal). Return null if not determinable.
 """
 
 RESEARCH_CLASSIFY_SCHEMA: Final[dict] = {
@@ -1094,18 +1116,22 @@ RESEARCH_CLASSIFY_SCHEMA: Final[dict] = {
             "type": "string",
             "enum": [
                 "constitutional", "criminal", "civil", "tax", "labor",
-                "company", "property", "family", "environmental", "other",
+                "company", "property", "family", "environmental",
+                "banking_finance", "intellectual_property", "arbitration",
+                "consumer", "media_telecom", "cyber", "education",
+                "election", "human_rights", "immigration", "insurance",
+                "maritime", "military", "public_interest", "other",
             ],
         },
         "complexity": {
             "type": "string",
-            "enum": ["simple", "complex", "multi_issue"],
-            "description": "simple = definitional/single statute/single citation lookup. complex = multi-faceted legal question. multi_issue = requires analysis of multiple intersecting legal issues.",
+            "enum": ["simple", "moderate", "complex", "multi_issue"],
+            "description": "simple = definitional/single statute/single citation lookup. moderate = multi-issue queries or those requiring cross-referencing, but not novel. complex = multi-faceted legal question or novel question. multi_issue = requires analysis of multiple intersecting legal issues.",
         },
-        "jurisdiction": {"type": ["string", "null"]},
-        "target_court": {"type": ["string", "null"]},
+        "jurisdiction": {"type": "string", "nullable": True},
+        "target_court": {"type": "string", "nullable": True},
         "target_bench": {
-            "type": ["string", "null"],
+            "type": "string", "nullable": True,
             "enum": ["single", "division", "full", "constitutional"],
         },
         "key_entities": {
@@ -1119,20 +1145,65 @@ RESEARCH_CLASSIFY_SCHEMA: Final[dict] = {
         "procedural_context": {
             "type": "string",
             "nullable": True,
-            "enum": ["pre_trial", "trial", "appeal", "slp", "writ", "advisory"],
+            "enum": [
+                "pre_trial", "trial", "appeal", "slp", "writ",
+                "review", "curative", "execution", "bail", "anticipatory_bail",
+                "arbitration", "mediation", "advisory",
+            ],
             "description": (
                 "Stage of the legal matter. Look for: 'filing in', 'appeal against', "
-                "'SLP', 'writ petition', 'under Article 226/32'. Null if not determinable."
+                "'SLP', 'writ petition', 'under Article 226/32', 'bail application', "
+                "'review petition', 'curative petition'. Null if not determinable."
             ),
         },
         "client_position": {
             "type": "string",
             "nullable": True,
-            "enum": ["petitioner", "respondent", "accused", "complainant", "appellant", "advisory"],
+            "enum": [
+                "petitioner", "respondent", "accused", "complainant",
+                "appellant", "defendant", "intervenor", "amicus", "advisory",
+            ],
             "description": (
                 "Client's role. Look for: 'my client is accused', 'we represent the petitioner', "
-                "'defending against', 'advise on'. Null if not determinable."
+                "'defending against', 'advise on', 'intervening in'. Null if not determinable."
             ),
+        },
+        "jurisdiction_level": {
+            "type": "string",
+            "nullable": True,
+            "enum": ["supreme_court", "high_court", "district_court", "tribunal", "commission"],
+            "description": "Court tier involved. Null if not determinable.",
+        },
+        "urgency": {
+            "type": "string",
+            "nullable": True,
+            "enum": ["urgent", "standard", "academic"],
+            "description": (
+                "urgent = bail/stay/injunction matters needing immediate response. "
+                "standard = regular litigation research. "
+                "academic = scholarly/exploratory with no pending deadline."
+            ),
+        },
+        "jurisdiction_analysis": {
+            "type": "string",
+            "nullable": True,
+            "description": (
+                "[C9] Which court(s) have jurisdiction and why. "
+                "Include original vs appellate jurisdiction analysis."
+            ),
+        },
+        "available_remedies": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "[C9] Available procedural remedies "
+                "(e.g., bail, stay, injunction, writ, appeal, SLP, review)."
+            ),
+        },
+        "limitation_concern": {
+            "type": "boolean",
+            "nullable": True,
+            "description": "[C9] Whether limitation period may be an issue based on facts.",
         },
     },
     "required": ["topic", "complexity", "key_entities", "search_hints"],
@@ -1399,6 +1470,11 @@ For "web" search tasks, include in filters:
 Rules:
 - Generate 3-8 tasks depending on complexity.
 - Always include at least one "case_law" task.
+- Always include at least one "ik_search" task for broader case law coverage. Indian Kanoon \
+has millions of cases including High Court and Tribunal decisions that our local database \
+does not have. IK is essential for comprehensive research — never skip it.
+- For queries involving recent legislation (BNS, BNSS, BSA — post July 2024), always include \
+an "ik_search" task with from_year filter set to 2024, since our local database may lack recent cases.
 - Include a "named_case" task if you know specific landmark cases.
 - Include a "statute" task if statutes are central to the question.
 - Include a "graph" task if citation chains or overruling history matter.
@@ -1406,13 +1482,18 @@ Rules:
 - Each task must have a clear rationale explaining why it's necessary.
 - Prioritize tasks: 1=essential, 2=important, 3=supplementary.
 - Use precise Indian legal terminology.
-- For "ik_search" tasks, always set court and date filters when the question implies a specific court or time period.
+- For "ik_search" tasks, prefer broad court filters: use "judgments" (SC+HC+District) \
+rather than "supreme_court" alone, since many important precedents come from High Courts. \
+Only restrict to "supreme_court" when the query specifically asks for SC judgments.
+- For "ik_search" tasks, set date filters when the question implies a specific time period.
 
 ADDITIONAL CONTEXT (V3):
 You will receive statute text for relevant provisions and legal elements decomposed \
 from the query. Use these to generate TARGETED tasks.
 
 - Generate at least ONE case_law task per legal element.
+- For each contested element, also generate an "ik_search" task to find broader case law \
+from Indian Kanoon beyond our local database.
 - Reference the specific statute section in each task's nl_query \
 (e.g., "cases interpreting Section 300 Exception 1 IPC on sudden provocation").
 - If an element is_contested, generate BOTH a supporting and a probing task.
@@ -1494,6 +1575,17 @@ For each retrieved document, do TWO things:
 
 Be strict — a document about a different section of the same act is \
 "ambiguous", not "correct".
+
+FACTUAL SIMILARITY: When scoring relevance, consider how closely the cited case's \
+FACTS match the user's scenario. A case with identical legal principles but completely \
+different facts is less useful than one with analogous facts. Score factual similarity \
+as part of your overall relevance assessment.
+
+CASE VALIDITY CHECK: For each case, consider:
+1. Has it been OVERRULED by a later larger bench?
+2. Has it been DISTINGUISHED on material facts?
+3. Has the underlying statute been AMENDED or REPEALED since the decision?
+4. Flag any case where the law may have changed since the decision date.
 
 3. PRECEDENT WEIGHT (mandatory for case_law results):
    Score adjustment based on authority hierarchy for the target court:
@@ -1724,7 +1816,21 @@ authoritative research memo by:
    - Document ALL contradictions — this section MUST be present even if empty \
 ("No contradictions detected")
 
-2. **SELECT STRUCTURE**: Choose the best structural organization from the 3 drafts \
+2. **INDIAN PRECEDENT HIERARCHY** (apply these rules when resolving conflicts):
+   Rule 1: Supreme Court decisions bind ALL courts. High Court decisions bind only \
+courts within their jurisdiction.
+   Rule 2: Larger bench > smaller bench. Constitution Bench (5+) > Division Bench (2-3) > \
+Single Judge on the SAME point of law.
+   Rule 3: Ratio decidendi is BINDING; obiter dicta is PERSUASIVE only. Always identify which.
+   Rule 4: A decision declared PER INCURIAM (decided in ignorance of a binding authority or \
+statute) has NO precedential value — flag and exclude it.
+   Rule 5: Recent decisions prevail over older ones ONLY if from the same or higher bench. \
+A 2024 Division Bench cannot override a 1973 Constitution Bench.
+   Rule 6: Reported decisions (SCC, AIR) carry more weight than unreported ones.
+   Rule 7: When multiple benches of equal strength disagree, the matter should be referred \
+to a larger bench — note this explicitly if detected.
+
+3. **SELECT STRUCTURE**: Choose the best structural organization from the 3 drafts \
 (the one with the clearest IRAC analysis and most logical flow).
 
 3. **MERGE INSIGHTS**: Incorporate unique insights that appear in one draft but not \
@@ -1751,13 +1857,18 @@ provided. Remove any quotes not found in the source material.
    - Legal coherence: Do the holdings consistently support the conclusion?
    - Coverage: Were all aspects of the question addressed?
 
-8. **RISK ASSESSMENT** (add after Conclusion section):
-   For each legal issue analyzed, provide:
+8. **RISK ASSESSMENT MATRIX** (add after Conclusion section):
+   For each legal issue analyzed, present as a structured table:
+   | Issue | Strength | Likely Outcome | Probability | Key Risks | Mitigation |
+   Where:
+   - Strength: STRONG / MODERATE / WEAK (based on binding authority support)
    - Likely outcome: what will the court probably decide?
    - Probability: HIGH (>70%) / MEDIUM (40-70%) / LOW (<40%)
-   - Best case: if the court follows the strongest authority
-   - Worst case: if the court distinguishes on specific grounds
-   - Key swing factor: what fact or argument could tip the balance
+   - Key Risks: what could go wrong (distinguishing facts, conflicting authority, \
+legislative change, jurisdictional issues)
+   - Mitigation: how to address each risk (alternative arguments, additional evidence, \
+procedural strategies)
+   Also include: Best case scenario, Worst case scenario, Key swing factor
 
 9. **COUNTER-ARGUMENTS** (include ONLY if adversarial results are provided):
    For each counter-argument found:
@@ -1770,7 +1881,60 @@ provided. Remove any quotes not found in the source material.
 (binding) or obiter dicta (persuasive only). Use [ratio] or [obiter] tags after quotes.
 
 11. **TEMPORAL WARNINGS**: In the Precedent Network section, flag any old-code case \
-where the new-code wording materially differs. Use a warning marker.
+where the new-code wording materially differs. Use ⚠️ warning marker for amended provisions.
+
+12. **DISSENTING VIEWS**: If any cited case has a notable dissent:
+   - Note the dissenting judge and their reasoning
+   - Flag dissents that were later adopted by a larger bench (these signal evolving law)
+   - In the Quick Reference Table, add a "Dissent" column if any case has one
+   - In Detailed Analysis, discuss influential dissents under a "Minority View" sub-heading
+
+13. **APPLICATION TO FACTS** [C5]:
+   After stating each legal principle, you MUST apply it to the user's specific facts:
+   - "In the present case, [principle] applies because [specific fact from query]..."
+   - "The facts here [satisfy/do not satisfy] the test laid down in [Case] because..."
+   - If the user hasn't provided enough facts, state what additional facts would be needed.
+   Do NOT merely state abstract legal principles — always connect them to the user's situation.
+
+14. **ANALOGICAL REASONING** [C3]:
+   For each key case cited, explain WHY the facts are analogous (or distinguishable):
+   - "The facts in [Case] are similar because both involve [shared element]..."
+   - "However, [Case] can be distinguished because [factual difference]..."
+
+15. **DOCTRINAL EVOLUTION** [C4]:
+   When multiple cases address the same legal issue across different time periods:
+   1. Present cases CHRONOLOGICALLY showing how the law developed
+   2. Use transition phrases: "Initially... → Subsequently expanded... → Most recently settled..."
+   3. Identify the CURRENT authoritative position (latest larger bench decision)
+   4. If there's a shift from old to new codes (IPC→BNS, CrPC→BNSS), explain the transition
+
+16. **SUBSEQUENT HISTORY** [C11]:
+   When citing a case, note if it has been:
+   - Affirmed/followed by later courts (strengthens authority)
+   - Distinguished (still good law but narrower scope)
+   - Doubted/questioned (weakened authority)
+   - Overruled (no longer good law — MUST flag prominently)
+
+17. **MEMO STRUCTURE** (follow IRAC format) [M18]:
+   Organize your analysis for each legal issue using:
+   1. **Issue**: State the legal question precisely
+   2. **Rule**: State the applicable legal principle with statutory basis
+   3. **Application**: Apply the rule to the user's specific facts
+   4. **Conclusion**: State the likely outcome with confidence level
+   If multiple issues exist, address each separately in IRAC format.
+
+18. **REMEDIES & RELIEF** [H37]:
+   Always conclude with a practical "Available Remedies" section:
+   - What specific relief can the client seek?
+   - In which forum/court should they file?
+   - What are the procedural steps?
+   - What is the likely timeline?
+   - What are the costs/risks?
+   If the user's query implies a specific remedy (bail, injunction, appeal), prioritize it.
+
+PRECEDENT HIERARCHY: Always cite binding authority (ratio decidendi of larger benches) \
+before persuasive authority (obiter, smaller benches, different jurisdictions). Flag any \
+conflict between a larger bench and smaller bench holding.
 """
 
 
@@ -1883,6 +2047,60 @@ For constitutional questions:
 - Doctrine of basic structure (if applicable)
 - State action requirement (whether challenged action is state action)
 
+For tax law questions:
+- Charging section (which provision creates the tax liability)
+- Exemption/deduction eligibility (conditions for exemptions)
+- Assessment procedure (relevant procedural provisions)
+- Limitation for assessment/reassessment (time limits under statute)
+- Penalty/prosecution provisions (mens rea for penalty, Section 271/276C etc.)
+- Constitutional validity (if challenge to taxing provision, Article 265/246/14)
+
+For labor/industrial law questions:
+- Definition of workman/employee (threshold applicability)
+- Standing order/contract terms (rights and obligations)
+- Industrial dispute classification (individual/collective)
+- Procedural compliance (notice, conciliation, reference, standing orders)
+- Relief (reinstatement, back wages, compensation)
+- Constitutional dimensions (Articles 14, 19(1)(g), 21, 43 DPSP)
+
+For intellectual property questions:
+- Registration/prior use (whether rights exist)
+- Scope of protection (what exactly is protected)
+- Infringement test (deceptive similarity, substantial reproduction)
+- Defenses (fair use, prior user, genericide, de minimis)
+- Remedies (injunction, damages, account of profits, delivery up)
+
+For family law questions:
+- Personal law applicability (which personal law governs)
+- Jurisdictional requirements (domicile, residence, where petition can be filed)
+- Grounds for relief (cruelty, desertion, adultery, irretrievable breakdown)
+- Maintenance/alimony (Section 125 CrPC/BNSS, personal law provisions)
+- Child custody (welfare principle, Section 13/26 of HMA/GWA)
+- Property rights (Stridhan, partition, inheritance)
+
+For environmental law questions:
+- Polluter pays principle applicability
+- Precautionary principle (burden of proof shift)
+- Environmental clearance requirements (EIA, CRZ)
+- Public trust doctrine (state as trustee of natural resources)
+- Sustainable development balance
+- NGT jurisdiction vs High Court (Section 14-18 NGT Act)
+
+For company/corporate law questions:
+- Corporate personality and limited liability
+- Director duties and liabilities (Sections 166-167 CA 2013)
+- Oppression and mismanagement (Sections 241-244 CA 2013)
+- Winding up/insolvency (IBC provisions, NCLT jurisdiction)
+- Shareholder rights and protections
+- Regulatory compliance (SEBI, RBI, CCI)
+
+For arbitration questions:
+- Arbitrability of the dispute (categories excluded)
+- Validity of arbitration agreement (Section 7 ACA)
+- Court intervention scope (Section 9/34/37 ACA)
+- Challenge/setting aside grounds (Section 34 — patent illegality, public policy)
+- Enforcement of foreign awards (Part II ACA, NYC)
+
 For each element, provide:
 - element_id: short snake_case identifier (e.g., "mens_rea", "limitation_period")
 - description: what needs to be established (1-2 sentences)
@@ -1916,6 +2134,21 @@ ELEMENT_DECOMPOSITION_SCHEMA: Final[dict] = {
     },
     "required": ["elements"],
 }
+
+
+# ---------------------------------------------------------------------------
+# [C8] Research Distinguish System — extracted from inline prompt
+# ---------------------------------------------------------------------------
+
+RESEARCH_DISTINGUISH_SYSTEM: Final[str] = """\
+You are a senior Indian legal analyst specializing in precedent analysis. \
+For each case flagged as potentially contradicting the research position, classify it as:
+- "contradicts": Directly opposes the research position on the same point of law
+- "distinguishable": Can be distinguished on facts, jurisdiction, or legal context
+- "limited": Limited applicability (different jurisdiction, obiter dictum, minority opinion)
+
+Consider bench strength, recency, and whether the case is still good law. \
+Return a JSON array: [{\"citation\": \"...\", \"category\": \"...\", \"reasoning\": \"...\"}]"""
 
 
 # ---------------------------------------------------------------------------

@@ -74,6 +74,7 @@ from app.core.legal.prompts import (
     SPECULATIVE_MERGE_SYSTEM,
     ADVERSARIAL_SEARCH_SYSTEM,
     ADVERSARIAL_SEARCH_SCHEMA,
+    RESEARCH_DISTINGUISH_SYSTEM,
 )
 from app.security.sanitizer import sanitize_search_query
 
@@ -1071,7 +1072,7 @@ async def evaluate_and_extract_node(
                 )
                 raw = await llm.generate(
                     prompt=distinguish_prompt,
-                    system="You are a legal analyst. Classify each contradicting case. Return JSON only.",
+                    system=RESEARCH_DISTINGUISH_SYSTEM,
                 )
                 contradictions = safe_json_parse_list(raw)
         except Exception:
