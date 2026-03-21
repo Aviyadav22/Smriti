@@ -74,26 +74,36 @@ describe("AgentCheckpointPrompt", () => {
   it("renders suggestion chips", () => {
     const onSubmit = vi.fn();
     render(<AgentCheckpointPrompt question="Review?" onSubmit={onSubmit} />);
+    // Default chips when no context provided
     expect(screen.getByText("Looks good, proceed")).toBeDefined();
-    expect(screen.getByText("Focus more on constitutional aspects")).toBeDefined();
-    expect(screen.getByText("Add cases from the last 5 years")).toBeDefined();
   });
 
-  it("clicking a suggestion chip submits immediately", () => {
+  it("clicking a suggestion chip submits structured JSON", () => {
     const onSubmit = vi.fn();
     render(<AgentCheckpointPrompt question="Review?" onSubmit={onSubmit} />);
     fireEvent.click(screen.getByText("Looks good, proceed"));
-    expect(onSubmit).toHaveBeenCalledWith("Looks good, proceed");
+    // Proceed chips send structured JSON with action: "approve"
+    expect(onSubmit).toHaveBeenCalledWith(JSON.stringify({ action: "approve" }));
   });
 
-  it("submits user input and clears the textarea", () => {
+  it("submits user input as structured JSON and clears the textarea", () => {
     const onSubmit = vi.fn();
     render(<AgentCheckpointPrompt question="Review?" onSubmit={onSubmit} />);
     const textarea = screen.getByPlaceholderText("Type your response...");
     fireEvent.change(textarea, { target: { value: "Proceed with analysis" } });
     fireEvent.click(screen.getByText("Submit"));
-    expect(onSubmit).toHaveBeenCalledWith("Proceed with analysis");
+    // [M50] "Proceed with analysis" is feedback (not bare "proceed"), treated as feedback
+    expect(onSubmit).toHaveBeenCalledWith(JSON.stringify({ action: "feedback", text: "Proceed with analysis" }));
     expect((textarea as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("bare 'proceed' is treated as approve", () => {
+    const onSubmit = vi.fn();
+    render(<AgentCheckpointPrompt question="Review?" onSubmit={onSubmit} />);
+    const textarea = screen.getByPlaceholderText("Type your response...");
+    fireEvent.change(textarea, { target: { value: "proceed" } });
+    fireEvent.click(screen.getByText("Submit"));
+    expect(onSubmit).toHaveBeenCalledWith(JSON.stringify({ action: "approve" }));
   });
 
   it("does not submit empty input", () => {
@@ -129,7 +139,7 @@ describe("AgentMemoViewer", () => {
 
   it("renders confidence badge when provided", () => {
     render(<AgentMemoViewer content="Memo content" confidence={0.85} />);
-    expect(screen.getByText("Confidence: 85%")).toBeDefined();
+    expect(screen.getByText("High Confidence: 85%")).toBeDefined();
   });
 
   it("does not render confidence badge when not provided", () => {

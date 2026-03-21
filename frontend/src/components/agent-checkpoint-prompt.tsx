@@ -15,6 +15,40 @@ interface AgentCheckpointPromptProps {
     error?: string | null;
     /** Called to clear the error state before retrying. */
     onClearError?: () => void;
+    /** Custom suggestion chips. If not provided, inferred from context. */
+    suggestions?: string[];
+}
+
+/** Infer context-aware chip suggestions from checkpoint data. */
+function inferSuggestions(context?: Record<string, unknown>): string[] {
+    if (!context) return ["Looks good, proceed"];
+    // Findings checkpoint — has top_cases, evidence_gaps
+    if (context.top_cases || context.evidence_gaps) {
+        const chips = ["Looks good, proceed to synthesis"];
+        if (Array.isArray(context.evidence_gaps) && context.evidence_gaps.length > 0) {
+            chips.push("Fill the evidence gaps first");
+        }
+        if (context.contradictions && Array.isArray(context.contradictions) && context.contradictions.length > 0) {
+            chips.push("Investigate contradictions further");
+        }
+        chips.push("Search for more recent cases");
+        return chips;
+    }
+    // Memo checkpoint — has draft_memo
+    if (context.draft_memo) {
+        return [
+            "Looks good, finalize",
+            "Make it more concise",
+            "Add more case citations",
+            "Strengthen the analysis",
+        ];
+    }
+    // Default
+    return [
+        "Looks good, proceed",
+        "Focus more on constitutional aspects",
+        "Add cases from the last 5 years",
+    ];
 }
 
 function renderValue(v: unknown): React.ReactNode {
@@ -45,7 +79,7 @@ function renderValue(v: unknown): React.ReactNode {
     return String(v);
 }
 
-export function AgentCheckpointPrompt({ question, context, onSubmit, disabled, error, onClearError }: AgentCheckpointPromptProps) {
+export function AgentCheckpointPrompt({ question, context, onSubmit, disabled, error, onClearError, suggestions }: AgentCheckpointPromptProps) {
     const [input, setInput] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [lastInput, setLastInput] = useState("");
@@ -59,9 +93,19 @@ export function AgentCheckpointPrompt({ question, context, onSubmit, disabled, e
         e.preventDefault();
         if (input.trim() && !submitting) {
             setSubmitting(true);
-            setLastInput(input.trim());
+            const text = input.trim();
+            setLastInput(text);
             onClearError?.();
-            onSubmit(input.trim());
+            // Send structured JSON for free-text input too
+            const trimmedFirst = text.split(",")[0].trim();
+            const isProceed = /^(looks good|proceed|approve|lgtm|ok|yes)$/i.test(text.trim()) ||
+                /^(looks good|proceed|approve|lgtm)$/i.test(trimmedFirst);
+            const structured = JSON.stringify(
+                isProceed
+                    ? { action: "approve" }
+                    : { action: "feedback", text }
+            );
+            onSubmit(structured);
             setInput("");
         }
     }
@@ -71,7 +115,17 @@ export function AgentCheckpointPrompt({ question, context, onSubmit, disabled, e
         setSubmitting(true);
         setLastInput(suggestion);
         onClearError?.();
-        onSubmit(suggestion);
+        // Send structured JSON — "proceed" chips send {action: "approve"},
+        // feedback chips send {action: "feedback", text: "..."}
+        const chipFirst = suggestion.split(",")[0].trim();
+        const isProceed = /^(looks good|proceed|approve|lgtm|ok|yes)$/i.test(suggestion.trim()) ||
+            /^(looks good|proceed|approve|lgtm)$/i.test(chipFirst);
+        const structured = JSON.stringify(
+            isProceed
+                ? { action: "approve" }
+                : { action: "feedback", text: suggestion }
+        );
+        onSubmit(structured);
     }
 
     function handleRetry() {
@@ -110,13 +164,9 @@ export function AgentCheckpointPrompt({ question, context, onSubmit, disabled, e
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-3">
-                    {/* Quick suggestion chips */}
+                    {/* Quick suggestion chips — context-aware */}
                     <div className="flex flex-wrap gap-2">
-                        {[
-                            "Looks good, proceed",
-                            "Focus more on constitutional aspects",
-                            "Add cases from the last 5 years",
-                        ].map((suggestion) => (
+                        {(suggestions || inferSuggestions(context)).map((suggestion) => (
                             <button
                                 key={suggestion}
                                 type="button"

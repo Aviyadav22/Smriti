@@ -19,7 +19,7 @@ from uuid import uuid4
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.agents.confidence import calculate_confidence
+from app.core.agents.confidence import calculate_confidence, calculate_confidence_detailed
 from app.core.legal.precedent_strength import classify_precedent_strength
 from app.core.agents.nodes.common import (
     MAX_RESULTS_FOR_LLM,
@@ -94,6 +94,38 @@ def emit_status(event_type: str, data: dict) -> dict:
     Returns a dict suitable for appending to process_events.
     """
     return {"type": event_type, "data": data}
+
+
+# Patterns that indicate a degenerate/looping LLM refusal
+_REFUSAL_PATTERNS = re.compile(
+    r"(I am unable to provide|I cannot provide|I'm sorry.*unable|"
+    r"I can provide a comprehensive|cannot fulfill|I am not able to)",
+    re.IGNORECASE,
+)
+
+
+def _is_degenerate_output(text: str, min_useful_length: int = 200) -> bool:
+    """Detect degenerate LLM output: refusal loops, extreme repetition, or too short.
+
+    Returns True if the output appears broken and should be retried or replaced.
+    """
+    if not text or len(text.strip()) < min_useful_length:
+        return True
+    # Check for refusal pattern density — if >30% of sentences are refusals, it's broken
+    sentences = [s.strip() for s in text.split(".") if s.strip()]
+    if not sentences:
+        return True
+    refusal_count = sum(1 for s in sentences if _REFUSAL_PATTERNS.search(s))
+    if refusal_count > 3 and refusal_count / len(sentences) > 0.3:
+        return True
+    # Check for extreme repetition — same 50-char substring repeated 5+ times
+    if len(text) > 500:
+        sample = text[:2000]
+        for window_size in (50, 100):
+            chunk = sample[:window_size]
+            if sample.count(chunk) >= 5:
+                return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +248,8 @@ async def parallel_search_node(
         return {"search_results": []}
 
     combined = await parallel_hybrid_search(
-        sub_queries, llm, embedder, vector_store, reranker, db
+        sub_queries, llm, embedder, vector_store, reranker, db,
+        pre_understood=True,
     )
     combined = await enrich_results_with_ratio(combined, db)
     return {"search_results": combined}
@@ -637,6 +670,16 @@ async def gather_worker_results_node(state: ResearchState) -> dict:
     if not worker_results:
         return {"search_results": [], "cross_references": []}
 
+    # [C2] Deduplicate by task_id — keep latest (last dispatch cycle wins)
+    seen_task_ids: dict[str, dict] = {}
+    for wr in worker_results:
+        tid = wr.get("task_id", "")
+        if tid:
+            seen_task_ids[tid] = wr  # Later entry overwrites earlier
+        else:
+            seen_task_ids[id(wr)] = wr  # Fallback for results without task_id
+    worker_results = list(seen_task_ids.values())
+
     # Flatten all results from all workers
     all_results: list[dict] = []
     for wr in worker_results:
@@ -684,11 +727,32 @@ async def gather_worker_results_node(state: ResearchState) -> dict:
             "top_case": top_case,
         }))
 
-    return {
+    # [C6] No-results check — set abort flag + caveat
+    result: dict = {
         "search_results": deduped,
         "cross_references": cross_refs,
         "process_events": found_events,
     }
+    if not deduped:
+        result["draft_memo"] = (
+            "**No Results Found**\n\n"
+            "The research query did not return any relevant cases or statutes. "
+            "This may be because:\n"
+            "- The query uses terminology not present in our database\n"
+            "- The legal issue is very niche or recent\n"
+            "- The case law is primarily from lower courts not yet indexed\n\n"
+            "**Suggestions:**\n"
+            "1. Try rephrasing the query with broader legal terms\n"
+            "2. Include specific statute sections or case citations\n"
+            "3. Search for related constitutional provisions\n"
+        )
+        result["confidence"] = 0.0
+    elif len(deduped) < 3:
+        # Few results — downstream synthesis will include caveat
+        # [H6] Don't overload error field — use a message instead
+        result["messages"] = [{"type": "caveat", "content": "Few results found — memo may be less comprehensive"}]
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -776,12 +840,15 @@ async def evaluate_and_extract_node(
     state: ResearchState,
     llm: LLMProvider,
     db: AsyncSession,
+    *,
+    ik_client: Any | None = None,
 ) -> dict:
     """Merged CRAG relevance scoring + passage extraction + deep read.
 
     [S3] Combines CRAG and extract into ONE Flash call per batch.
     [Q2] For "ambiguous" results, fetches full HOLDINGS/RATIO sections
     from case_sections table before final verdict.
+    For IK results, fetches query-specific fragment via IK API as deep-read.
     [S12] All batches processed in PARALLEL via asyncio.gather().
     """
     worker_results = state.get("worker_results", [])
@@ -804,11 +871,23 @@ async def evaluate_and_extract_node(
 
     query = state.get("rewritten_query") or state["query"]
 
-    # [Q2] Deep read helper
+    # [Q2] Deep read helper — local DB for our cases, IK fragment API for IK cases
     async def deep_read_sections(case_id: str) -> str:
-        """Fetch HOLDINGS + RATIO from case_sections for deeper evaluation."""
+        """Fetch HOLDINGS + RATIO from case_sections, or IK fragment for IK cases."""
         if case_id.startswith("ik:"):
-            return ""
+            # IK deep-read: fetch query-specific fragment via IK API
+            if ik_client is None:
+                return ""
+            try:
+                ik_doc_id = case_id.removeprefix("ik:")
+                fragment = await ik_client.get_fragment(ik_doc_id, query)
+                frag_text = fragment.get("headline", fragment.get("fragment", ""))
+                if isinstance(frag_text, list):
+                    frag_text = " ".join(frag_text)
+                import re
+                return re.sub(r"<[^>]+>", "", frag_text).strip()[:5000]
+            except Exception:
+                return ""
         try:
             from app.models.case_section import CaseSection
             result = await db.execute(
@@ -955,10 +1034,54 @@ async def evaluate_and_extract_node(
         "deep_read": deep_read_count,
     })
 
+    # [B17] Distinguish vs contradict classification for ambiguous/incorrect results
+    contradictions: list[dict] = []
+    if incorrect_ids and llm:
+        try:
+            # Build pairs of conflicting holdings
+            incorrect_results = []
+            for wr in worker_results:
+                for r in wr.get("results", []):
+                    if r.get("case_id") in incorrect_ids:
+                        incorrect_results.append(r)
+
+            if incorrect_results and len(incorrect_results) <= 10:
+                conflict_text = "\n".join(
+                    f"- {r.get('citation', '?')}: {r.get('title', '?')[:80]} "
+                    f"— {r.get('ratio', r.get('snippet', ''))[:200]}"
+                    for r in incorrect_results[:5]
+                )
+                distinguish_prompt = (
+                    f"Research question: {state.get('query', '')}\n\n"
+                    f"These cases were flagged as potentially contradicting the research question:\n"
+                    f"{conflict_text}\n\n"
+                    "For each case, classify as ONE of:\n"
+                    '- "contradicts": directly opposes the research position\n'
+                    '- "distinguishable": can be distinguished on facts/law\n'
+                    '- "limited": limited applicability (different jurisdiction, obiter)\n\n'
+                    "Return a JSON array: [{\"citation\": \"...\", \"category\": \"...\", \"reasoning\": \"...\"}]"
+                )
+                raw = await llm.generate(
+                    prompt=distinguish_prompt,
+                    system="You are a legal analyst. Classify each contradicting case. Return JSON only.",
+                )
+                contradictions = safe_json_parse_list(raw)
+        except Exception:
+            logger.warning("Distinguish classification failed", exc_info=True)
+
+    # IMPORTANT: Do NOT write filtered results back to worker_results!
+    # worker_results uses operator.add reducer (needed for Send() fan-out),
+    # so writing here would APPEND duplicates instead of replacing.
+    # Instead, flatten filtered results into search_results (simple replace).
+    filtered_search_results: list[dict] = []
+    for wr in filtered_worker_results:
+        filtered_search_results.extend(wr.get("results", []))
+
     return {
         "relevance_scores": relevance_scores,
         "extracted_passages": extracted_passages,
-        "worker_results": filtered_worker_results,
+        "search_results": filtered_search_results,
+        "contradictions": contradictions,
         "process_events": [evaluating_event],
     }
 
@@ -1117,8 +1240,9 @@ async def gap_analysis_node(
             "process_events": [gap_event],
         }
 
+    # Clear gaps when max refinement rounds reached to prevent infinite loops
     return {
-        "evidence_gaps": gaps,
+        "evidence_gaps": [],
         "refinement_round": refinement_round,
         "process_events": [gap_event],
     }
@@ -1158,6 +1282,7 @@ async def fast_path_search_node(
     try:
         results = await parallel_hybrid_search(
             [query], llm, embedder, vector_store, reranker, db,
+            pre_understood=True,
         )
         results = await enrich_results_with_ratio(results, db, max_ratio_len=3000)
     except Exception as exc:
@@ -1290,23 +1415,22 @@ async def speculative_synthesis_with_contradictions_node(
     [S1] Contradictions detected inside Pro merge (no separate Pro call).
     [S5] Pro output streamed to frontend via stream_callback.
     """
-    results = state.get("worker_results", [])
+    # Use search_results (post-evaluation, filtered & deduplicated) instead of
+    # raw worker_results (which accumulates via operator.add across dispatch cycles).
+    all_results: list[dict] = state.get("search_results", [])
     passages = state.get("extracted_passages", [])
     relevance_scores = {
         s["case_id"]: s["score"]
         for s in state.get("relevance_scores", [])
     }
     worker_reasonings = state.get("worker_reasonings", [])
-    community_summaries = [
-        r for wr in results if wr["task_type"] == "graph_community"
-        for r in wr["results"]
-    ]
 
-    # --- Flatten all non-community results ---
-    all_results: list[dict] = []
-    for wr in results:
-        if wr["task_type"] != "graph_community":
-            all_results.extend(wr["results"])
+    # Extract community summaries from raw worker_results (these aren't in search_results)
+    raw_worker_results = state.get("worker_results", [])
+    community_summaries = [
+        r for wr in raw_worker_results if wr.get("task_type") == "graph_community"
+        for r in wr.get("results", [])
+    ]
 
     if not all_results:
         return {
@@ -1377,6 +1501,32 @@ async def speculative_synthesis_with_contradictions_node(
             temperature=0.3,
             max_tokens=6000,
         )
+        # Validate draft — retry once with higher temperature if degenerate
+        if _is_degenerate_output(memo, min_useful_length=200):
+            logger.warning(
+                "Draft '%s' produced degenerate output (%d chars), retrying...",
+                strategy_name, len(memo or ""),
+            )
+            memo = await flash_llm.generate(
+                prompt=RESEARCH_SYNTHESIZE_USER.format(
+                    query=shared_context["query"],
+                    evidence=formatted_evidence,
+                    passages=shared_context["passages"],
+                    worker_reasoning=shared_context["worker_reasoning"],
+                    communities=shared_context["communities"],
+                    strategy_hint=f"Focus on {strategy_name} — organize by {strategy_name}.",
+                ),
+                system=SPECULATIVE_DRAFT_SYSTEM,
+                temperature=0.7,
+                max_tokens=6000,
+            )
+            if _is_degenerate_output(memo, min_useful_length=200):
+                logger.error("Draft '%s' still degenerate after retry", strategy_name)
+                memo = (
+                    f"[Draft {strategy_name} unavailable — LLM generation failed. "
+                    f"Evidence contained {len(evidence_subset)} results but the model "
+                    f"was unable to synthesize them into a coherent draft.]"
+                )
         return SynthesisDraft(
             draft_id=str(uuid4()),
             strategy=strategy_name,
@@ -1393,11 +1543,25 @@ async def speculative_synthesis_with_contradictions_node(
             "strategy": s, "status": "generating",
         }))
 
-    drafts = list(await asyncio.gather(
+    # [H22] Use return_exceptions=True to prevent one draft failure from killing all
+    _strategy_names = ["relevance", "authority", "breadth"]
+    raw_drafts = await asyncio.gather(
         generate_draft("relevance", strategy_a),
         generate_draft("authority", strategy_b),
         generate_draft("breadth", strategy_c),
-    ))
+        return_exceptions=True,
+    )
+    drafts = []
+    for i, d in enumerate(raw_drafts):
+        if isinstance(d, BaseException):
+            logger.warning("Draft %d (%s) failed: %s", i, _strategy_names[i], d)
+            drafts.append(SynthesisDraft(
+                draft_id=str(uuid4()), strategy=_strategy_names[i],
+                memo_text=f"[Draft unavailable — generation failed: {d}]",
+                confidence=0.0, sources_used=[],
+            ))
+        else:
+            drafts.append(d)
 
     # [T1] Emit drafting-complete events
     for s in ("relevance", "authority", "breadth"):
@@ -1418,7 +1582,7 @@ async def speculative_synthesis_with_contradictions_node(
     # [V3] Mark adversarial results separately
     adversarial_section = ""
     adv_results = [
-        wr for wr in results
+        wr for wr in raw_worker_results
         if isinstance(wr, dict) and wr.get("metadata", {}).get("adversarial")
     ]
     if adv_results:
@@ -1449,6 +1613,22 @@ async def speculative_synthesis_with_contradictions_node(
         "Produce the FINAL research memo following your system instructions."
     )
 
+    # Check if all drafts are broken — skip Pro merge and use direct generation
+    valid_drafts = [d for d in drafts if not _is_degenerate_output(d["memo_text"], 100)]
+    if not valid_drafts:
+        logger.warning("All 3 Flash drafts are degenerate — falling back to direct Pro generation")
+        # Direct Pro generation without speculative drafts
+        direct_prompt = (
+            f"RESEARCH QUESTION: {shared_context['query']}\n\n"
+            f"COMPLETE EVIDENCE (all sources):\n{all_formatted}\n\n"
+            f"EXTRACTED PASSAGES (verbatim quotes):\n{shared_context['passages']}\n\n"
+            f"CITATION COMMUNITY CONTEXT:\n{shared_context['communities']}\n\n"
+            f"WORKER REASONING:\n{shared_context['worker_reasoning']}\n"
+            f"{temporal_section}{adversarial_section}\n"
+            "Produce a comprehensive legal research memo following your system instructions."
+        )
+        verification_prompt = direct_prompt
+
     # [S5] Stream Pro output to frontend for progressive rendering
     if stream_callback:
         final_memo_chunks: list[str] = []
@@ -1467,6 +1647,35 @@ async def speculative_synthesis_with_contradictions_node(
             max_tokens=8192,
         )
 
+    # Validate final output — retry once if degenerate
+    if _is_degenerate_output(final_memo, min_useful_length=300):
+        logger.warning("Final memo is degenerate (%d chars), retrying with simplified prompt...", len(final_memo or ""))
+        simplified_prompt = (
+            f"Write a legal research memo answering: {shared_context['query']}\n\n"
+            f"Available evidence:\n{all_formatted}\n\n"
+            f"Passages:\n{shared_context['passages']}\n\n"
+            "Structure: Executive Summary, Quick Reference Table, Detailed Analysis (IRAC), "
+            "Contradictions, Conclusion, Footnotes."
+        )
+        final_memo = await llm.generate(
+            prompt=simplified_prompt,
+            system=SPECULATIVE_MERGE_SYSTEM,
+            temperature=0.4,
+            max_tokens=8192,
+        )
+        if _is_degenerate_output(final_memo, min_useful_length=300):
+            logger.error("Final memo still degenerate after retry")
+            final_memo = (
+                "## Synthesis Failed\n\n"
+                "The AI model was unable to produce a coherent research memo from the "
+                "available evidence. This may be due to:\n"
+                "- Insufficient relevant evidence for the specific legal question\n"
+                "- Evidence quality issues (low relevance scores)\n\n"
+                "**Recommendation:** Try refining your query to be more specific, "
+                "or try again with different search parameters.\n\n"
+                f"*{len(all_results)} results were found but could not be synthesized.*"
+            )
+
     # Append legal disclaimer
     final_memo += LEGAL_DISCLAIMER
 
@@ -1476,9 +1685,18 @@ async def speculative_synthesis_with_contradictions_node(
     # Build research audit
     research_audit = _build_research_audit(state, all_results)
 
-    # Calculate confidence
+    # [C5] Calculate confidence with 3-dimensional breakdown
     scores = [r.get("score", 0) for r in all_results if r.get("score")]
-    confidence = min(0.95, sum(scores[:10]) / max(len(scores[:10]), 1))
+    contradictions = state.get("contradictions", [])
+    precedent_strs = [r.get("bench_type", "PERSUASIVE") for r in all_results if r.get("bench_type")]
+    breakdown = calculate_confidence_detailed(
+        reranker_scores=scores[:10],
+        cross_ref_ratio=min(1.0, len(all_results) / max(len(state.get("research_plan", [])), 1)),
+        precedent_strengths=[s.upper() for s in precedent_strs] if precedent_strs else [],
+        contradiction_count=len(contradictions),
+        total_results=len(all_results),
+    )
+    confidence = breakdown["overall"]
 
     return {
         "draft_memo": final_memo,
@@ -1486,6 +1704,7 @@ async def speculative_synthesis_with_contradictions_node(
         "source_attribution": source_attribution,
         "research_audit": research_audit,
         "confidence": confidence,
+        "confidence_breakdown": dict(breakdown),
         "process_events": process_events,
     }
 
@@ -1594,7 +1813,9 @@ async def format_footnotes_node(state: ResearchState) -> dict:
     if not memo:
         return {"footnotes": []}
 
-    # Get all worker results for source mapping
+    # Use search_results (filtered, deduplicated) as primary source for footnotes,
+    # with fallback to raw worker_results for citation lookup coverage
+    search_results = state.get("search_results", [])
     worker_results = state.get("worker_results", [])
 
     # Parse [^N] references from memo
@@ -1603,6 +1824,12 @@ async def format_footnotes_node(state: ResearchState) -> dict:
     # Build a lookup from citation → result metadata
     # Task 2: Include ALL source types (statute, web, community), not just case law
     citation_lookup: dict[str, dict] = {}
+    # First populate from filtered search_results
+    for r in search_results:
+        citation = r.get("citation", "")
+        if citation and citation not in citation_lookup:
+            citation_lookup[citation] = r
+    # Then fill gaps from raw worker_results (for citations that might have been filtered)
     for wr in worker_results:
         task_type = wr.get("task_type", "case_law")
         for r in wr.get("results", []):
@@ -1616,6 +1843,16 @@ async def format_footnotes_node(state: ResearchState) -> dict:
                     act = r.get("act_name", r.get("title", ""))
                     section = r.get("section", "")
                     citation = f"{act} Section {section}".strip() if section else act
+                elif task_type == "ik_search":
+                    # Indian Kanoon: synthesize citation from title + court
+                    court = r.get("court", r.get("docsource", ""))
+                    date = r.get("date", "")
+                    if court and date:
+                        citation = f"{title} ({court}, {date})"
+                    elif court:
+                        citation = f"{title} ({court})"
+                    else:
+                        citation = title
                 elif task_type == "web":
                     # Use title or URL as key
                     citation = title or r.get("url", "")
@@ -1734,7 +1971,7 @@ async def format_footnotes_node(state: ResearchState) -> dict:
             author=meta.get("author", ""),
             bench=meta.get("bench", ""),
             ik_doc_id=unused_ik_doc_id,
-            pdf_available=bool(unused_case_id and not str(unused_case_id).startswith("ik:")),
+            pdf_available=bool(meta.get("pdf_storage_path")),
             source_label=_infer_source_label(unused_source_type),
         ))
         next_num += 1
@@ -1922,26 +2159,34 @@ async def _verify_citations_against_sources(
 ) -> list[Footnote]:
     """[T4] Verify every citation against at least ONE primary source.
 
-    Uses asyncio.gather for parallel verification with a concurrency limit.
-    Unverifiable citations are REMOVED from the memo.
+    [B9] Uses batch DB query for PostgreSQL verification instead of N+1.
+    Falls back to IK/Neo4j for footnotes not found in PG.
     """
-    sem = asyncio.Semaphore(5)  # Max 5 concurrent verifications
+    # [B9] Batch PostgreSQL verification — single query for all case_ids
+    pg_case_ids: list[str] = []
+    for fn in footnotes:
+        cid = fn.get("case_id")
+        if cid and not str(cid).startswith("ik:"):
+            pg_case_ids.append(str(cid))
+
+    valid_pg_ids: set[str] = set()
+    if pg_case_ids:
+        try:
+            from app.core.agents.nodes.common import verify_case_ids
+            valid_pg_ids = await verify_case_ids(pg_case_ids, db)
+        except Exception:
+            logger.warning("Batch PG verification failed", exc_info=True)
+
+    sem = asyncio.Semaphore(5)  # Max 5 concurrent IK/Neo4j verifications
 
     async def _verify_one(fn: Footnote) -> Footnote:
         async with sem:
             status = "unverified"
 
-            # Check 1: PostgreSQL cases table
-            if fn.get("case_id") and not str(fn["case_id"]).startswith("ik:"):
-                try:
-                    exists = await db.execute(
-                        text("SELECT 1 FROM cases WHERE id = :id::uuid"),
-                        {"id": fn["case_id"]},
-                    )
-                    if exists.scalar():
-                        status = "verified_pg"
-                except Exception:
-                    logger.warning("PG verification failed for %s", fn.get("case_id"))
+            # Check 1: PostgreSQL — use batch result
+            cid = fn.get("case_id")
+            if cid and str(cid) in valid_pg_ids:
+                status = "verified_pg"
 
             # Check 2: Indian Kanoon API — use cite: filter for precision
             if status == "unverified" and ik_client and fn.get("citation"):
@@ -2100,6 +2345,9 @@ async def legal_quality_check_node(
         pass_threshold=result.get("overall_score", 0.0) >= 0.7,
     )
 
+    # [B3] Increment quality attempts counter
+    attempts = state.get("quality_attempts", 0) + 1
+
     # [T1] Emit quality event
     quality_event = emit_status("quality", {
         "overall_score": quality_result["overall_score"],
@@ -2107,12 +2355,37 @@ async def legal_quality_check_node(
         "data_points_count": len(quality_result["data_points"]),
         "omissions_count": len(quality_result["omissions"]),
         "logical_issues_count": len(quality_result["logical_issues"]),
+        "attempt": attempts,
     })
 
-    return {
+    result: dict = {
         "legal_quality_result": quality_result,
+        "quality_attempts": attempts,
         "process_events": [quality_event],
     }
+
+    # [B3] On failure, append quality feedback for retry synthesis
+    if not quality_result["pass_threshold"] and attempts < 2:
+        feedback_parts: list[str] = []
+        if quality_result["logical_issues"]:
+            feedback_parts.append(
+                "Logical issues: " + "; ".join(quality_result["logical_issues"])
+            )
+        if quality_result["omissions"]:
+            omission_strs = [
+                o.get("missed_authority", "unknown") for o in quality_result["omissions"]
+            ]
+            feedback_parts.append("Omitted authorities: " + ", ".join(omission_strs))
+        unsupported = [
+            dp.get("claim", "?") for dp in quality_result["data_points"]
+            if not dp.get("supported", True)
+        ]
+        if unsupported:
+            feedback_parts.append("Unsupported claims: " + "; ".join(unsupported[:5]))
+        if feedback_parts:
+            result["error"] = "[QUALITY_RETRY] " + " | ".join(feedback_parts)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -2126,10 +2399,19 @@ def _build_source_attribution(all_results: list[dict]) -> dict:
     for r in all_results:
         citation = r.get("citation", "")
         if citation and citation not in attribution:
+            # Build correct URL based on source type
+            case_id = r.get("case_id", "")
+            if case_id and str(case_id).startswith("ik:"):
+                ik_doc_id = r.get("ik_doc_id", str(case_id).removeprefix("ik:"))
+                url = f"https://indiankanoon.org/doc/{ik_doc_id}/"
+            elif case_id:
+                url = f"/case/{case_id}"
+            else:
+                url = r.get("url", r.get("source_url", ""))
             attribution[citation] = {
                 "source_type": r.get("source", "internal"),
-                "case_id": r.get("case_id"),
-                "url": f"/case/{r['case_id']}" if r.get("case_id") else "",
+                "case_id": case_id,
+                "url": url,
                 "court": r.get("court", ""),
                 "year": r.get("year"),
             }
@@ -2177,11 +2459,14 @@ async def _run_adversarial_search(
     vector_store: VectorStore,
     reranker: Reranker,
 ) -> list[dict]:
-    """Execute searches for each counter-argument query."""
+    """Execute searches for each counter-argument query in parallel.
+
+    [B5] Uses asyncio.gather() instead of sequential loop — saves ~16s
+    (3 searches × ~8s each → ~8s total).
+    """
     from app.core.agents.nodes.worker_nodes import case_law_worker
 
-    results: list[dict] = []
-    for ca in counter_args[:3]:  # Max 3 counter-arguments
+    async def _search_one(ca: dict) -> list[dict]:
         task = {
             "task_id": f"adversarial_{ca.get('priority', 0)}",
             "task_type": ca.get("target_source", "case_law"),
@@ -2197,16 +2482,23 @@ async def _run_adversarial_search(
                 {"task": task, "precomputed_embeddings": {}},
                 llm, embedder, vector_store, reranker,
             )
+            one_results: list[dict] = []
             for wr in worker_result.get("worker_results", []):
                 wr["metadata"] = {**wr.get("metadata", {}), "adversarial": True}
                 wr["reasoning"] = f"Counter-argument: {ca['counter_thesis']}"
-                results.append(wr)
+                one_results.append(wr)
+            return one_results
         except Exception as exc:
             logger.warning(
                 "Adversarial search failed for %s: %s",
                 ca["counter_thesis"][:50], exc,
             )
-    return results
+            return []
+
+    all_results = await asyncio.gather(
+        *[_search_one(ca) for ca in counter_args[:3]],
+    )
+    return [wr for batch in all_results for wr in batch]
 
 
 async def adversarial_search_node(
@@ -2248,9 +2540,9 @@ async def adversarial_search_node(
 
     try:
         result = await llm.generate_structured(
-            system_prompt=ADVERSARIAL_SEARCH_SYSTEM,
-            user_prompt=user_prompt,
-            schema=ADVERSARIAL_SEARCH_SCHEMA,
+            user_prompt,
+            system=ADVERSARIAL_SEARCH_SYSTEM,
+            output_schema=ADVERSARIAL_SEARCH_SCHEMA,
         )
         counter_args = result.get("counter_arguments", [])
     except Exception as exc:

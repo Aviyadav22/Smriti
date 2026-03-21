@@ -22,6 +22,7 @@ Fast path (simple queries):
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from typing import Any
@@ -77,7 +78,7 @@ logger = logging.getLogger(__name__)
 
 WORKER_TIMEOUTS: dict[str, int] = {
     "web_search_worker": 10,
-    "ik_search_worker": 15,
+    "ik_search_worker": 45,
     "case_law_worker": 30,
     "named_case_worker": 30,
     "graph_worker": 15,
@@ -141,9 +142,17 @@ def build_research_graph(
 
     # -- Node wrappers (closures capturing dependencies) --------------------
 
+    # [D8] Progress event helper — 5 stages with weighted percentages
+    def _progress_event(stage: str, progress: float, detail: str = "") -> dict:
+        return {"type": "progress", "data": {"stage": stage, "progress": progress, "detail": detail}}
+
     # [S2] Parallel: rewrite + classify both read original query
     async def rewrite(state: ResearchState) -> dict:
-        return await rewrite_query_node(state, flash_llm)
+        result = await rewrite_query_node(state, flash_llm)
+        result.setdefault("process_events", []).append(
+            _progress_event("understand", 0.05, "Rewriting query")
+        )
+        return result
 
     async def classify(state: ResearchState) -> dict:
         result = await classify_query_node(state, flash_llm)
@@ -152,8 +161,10 @@ def build_research_graph(
             if isinstance(msg, dict) and msg.get("type") == "classification":
                 data = msg.get("data", {})
                 complexity = data.get("complexity", "complex")
-                # Map V2 complexity to routing values
                 result["complexity"] = complexity
+        result.setdefault("process_events", []).append(
+            _progress_event("understand", 0.10, "Classifying query")
+        )
         return result
 
     async def plan(state: ResearchState) -> dict:
@@ -184,13 +195,22 @@ def build_research_graph(
 
     # [V3] Stage 2: Element decomposition — break question into legal elements
     async def element_decomposition(state: ResearchState) -> dict:
-        return await element_decomposition_node(state, flash_llm)
+        result = await element_decomposition_node(state, flash_llm)
+        result.setdefault("process_events", []).append(
+            _progress_event("decompose", 0.20, "Decomposing into legal elements")
+        )
+        return result
 
     # [V3] Stage 4a: Adversarial search — find cases against conclusion
+    # [B1] Use flash_llm — adversarial generates simpler queries, Flash is sufficient
     async def adversarial_search(state: ResearchState) -> dict:
-        return await adversarial_search_node(
-            state, llm, embedder, vector_store, reranker,
+        result = await adversarial_search_node(
+            state, flash_llm, embedder, vector_store, reranker,
         )
+        result.setdefault("process_events", []).append(
+            _progress_event("challenge", 0.80, "Adversarial analysis")
+        )
+        return result
 
     # [V3] Stage 4b: Temporal validation — old/new code comparison
     async def temporal_validation(state: ResearchState) -> dict:
@@ -213,6 +233,8 @@ def build_research_graph(
         "graph_community": "graph_community_worker",
     }
 
+    _MAX_WORKERS_PER_DISPATCH = 30  # Safety cap to prevent runaway fan-out
+
     def dispatch_workers(state: ResearchState) -> Command:
         """Fan out to appropriate worker for each research task.
 
@@ -231,6 +253,11 @@ def build_research_graph(
 
             # Check if required provider is available
             if worker_name == "ik_search_worker" and ik_client is None:
+                logger.warning(
+                    "IK client is None — falling back task '%s' to case_law_worker. "
+                    "Set IK_API_TOKEN env var to enable Indian Kanoon searches.",
+                    task.get("task_id", "?"),
+                )
                 worker_name = "case_law_worker"  # Fallback
             elif worker_name == "web_search_worker" and web_search is None:
                 continue  # Skip web search if no provider
@@ -249,6 +276,14 @@ def build_research_graph(
                 }
 
             sends.append(Send(worker_name, payload))
+
+        # Safety cap — truncate if too many tasks
+        if len(sends) > _MAX_WORKERS_PER_DISPATCH:
+            logger.warning(
+                "Dispatch capped at %d workers (plan had %d tasks)",
+                _MAX_WORKERS_PER_DISPATCH, len(sends),
+            )
+            sends = sends[:_MAX_WORKERS_PER_DISPATCH]
 
         if not sends:
             # Fallback: at least one search with the original query
@@ -269,14 +304,20 @@ def build_research_graph(
         return Command(goto=sends)
 
     async def gather(state: ResearchState) -> dict:
-        return await gather_worker_results_node(state)
+        result = await gather_worker_results_node(state)
+        result.setdefault("process_events", []).append(
+            _progress_event("investigate", 0.60, "Gathering worker results")
+        )
+        return result
 
     async def batch_cot(state: ResearchState) -> dict:
         return await batch_worker_cot_with_reflection_node(state, flash_llm)
 
     async def evaluate_extract(state: ResearchState) -> dict:
         async with async_session_factory() as session:
-            return await evaluate_and_extract_node(state, flash_llm, session)
+            return await evaluate_and_extract_node(
+                state, flash_llm, session, ik_client=ik_client,
+            )
 
     async def gap_analysis(state: ResearchState) -> dict:
         return await gap_analysis_node(state, flash_llm)
@@ -286,6 +327,13 @@ def build_research_graph(
         return await speculative_synthesis_with_contradictions_node(
             state, llm, flash_llm,
             stream_callback=None,  # Stream callback set by SSE layer
+        )
+
+    # [B10] Moderate complexity synthesis — uses Flash for speed
+    async def moderate_synthesis(state: ResearchState) -> dict:
+        return await speculative_synthesis_with_contradictions_node(
+            state, flash_llm, flash_llm,
+            stream_callback=None,
         )
 
     async def format_footnotes(state: ResearchState) -> dict:
@@ -300,7 +348,12 @@ def build_research_graph(
             )
 
     async def quality_check(state: ResearchState) -> dict:
-        return await legal_quality_check_node(state, flash_llm)
+        # [B2] Use Pro for quality check — higher accuracy for legal reasoning assessment
+        result = await legal_quality_check_node(state, llm)
+        result.setdefault("process_events", []).append(
+            _progress_event("synthesize", 0.95, "Quality check")
+        )
+        return result
 
     # -- Worker node wrappers (closures for Send + timeouts [5E.1]) ----------
 
@@ -389,6 +442,22 @@ def build_research_graph(
     async def checkpoint_plan(state: ResearchState) -> dict:
         """Pause for user review of research plan."""
         research_plan = state.get("research_plan", [])
+
+        # [D10] Auto-approve — skip interrupt, still emit plan data as process event
+        if state.get("auto_approve"):
+            plan_data = {
+                "research_plan": [
+                    {"task_type": t.get("task_type"), "nl_query": t.get("nl_query")}
+                    for t in research_plan
+                ],
+            }
+            return {
+                "messages": [
+                    {"type": "user_feedback", "step": "plan", "content": "Looks good, proceed"}
+                ],
+                "process_events": [{"type": "plan", "data": {"auto_approved": True, **plan_data}}],
+            }
+
         response = interrupt({
             "question": (
                 "I've created a research plan with "
@@ -426,28 +495,73 @@ def build_research_graph(
                 for e in state.get("legal_elements", [])
             ],
             # [V3] Adversarial research toggle
-            "include_adversarial": state.get("include_adversarial", False),
+            "include_adversarial": state.get("include_adversarial", True),
         })
 
-        # Parse response for adversarial toggle
+        # Parse response — may be a dict or a JSON string from frontend
+        parsed = response
+        if isinstance(response, str):
+            try:
+                parsed = json.loads(response)
+            except (json.JSONDecodeError, TypeError):
+                parsed = response  # plain text feedback
+
         result_dict: dict = {
             "messages": [
-                {"type": "user_feedback", "step": "plan", "content": response}
+                {"type": "user_feedback", "step": "plan", "content": parsed}
             ],
         }
 
-        # If the response is a dict with include_adversarial, update the state
-        if isinstance(response, dict) and "include_adversarial" in response:
-            result_dict["include_adversarial"] = response["include_adversarial"]
+        # Extract adversarial toggle from structured response
+        if isinstance(parsed, dict) and "include_adversarial" in parsed:
+            result_dict["include_adversarial"] = parsed["include_adversarial"]
 
         return result_dict
 
     async def checkpoint_findings(state: ResearchState) -> dict:
         """Pause for user review of search findings."""
-        result_count = len(state.get("search_results", []))
+        # [D10] Auto-approve findings
+        if state.get("auto_approve"):
+            return {
+                "messages": [
+                    {"type": "user_feedback", "step": "findings", "content": "Looks good, proceed to synthesis"}
+                ],
+                "process_events": [{"type": "found", "data": {"auto_approved": True}}],
+            }
+
+        # Use search_results (post-evaluation, filtered) for accurate counts
+        filtered_results = state.get("search_results", [])
+        result_count = len(filtered_results)
         cross_ref_count = len(state.get("cross_references", []))
-        worker_count = len(state.get("worker_results", []))
+        # Show unique worker count from research_plan, not accumulated worker_results
+        worker_count = len(state.get("research_plan", []))
         gaps = state.get("evidence_gaps", [])
+
+        # [D2] Build top-10 case previews from filtered search results
+        # Deduplicate by case_id, take top 10 by relevance_score
+        seen_ids: set[str] = set()
+        top_cases: list[dict] = []
+        # Enrich with CRAG scores
+        crag_scores = {
+            s.get("case_id", ""): s.get("score", 0)
+            for s in state.get("relevance_scores", [])
+        }
+        for r in sorted(filtered_results, key=lambda x: crag_scores.get(x.get("case_id", ""), x.get("relevance_score", 0)), reverse=True):
+            cid = r.get("case_id", "")
+            if cid and cid in seen_ids:
+                continue
+            if cid:
+                seen_ids.add(cid)
+            top_cases.append({
+                "case_id": cid,
+                "title": r.get("title", ""),
+                "citation": r.get("citation", ""),
+                "court": r.get("court", ""),
+                "year": r.get("year"),
+                "relevance_score": crag_scores.get(cid, r.get("relevance_score", 0)),
+            })
+            if len(top_cases) >= 10:
+                break
 
         response = interrupt({
             "question": (
@@ -456,14 +570,15 @@ def build_research_graph(
             ),
             "result_count": result_count,
             "worker_count": worker_count,
-            "cross_references": state.get("cross_references", []),
+            "top_cases": top_cases,
+            "contradictions": state.get("contradictions", [])[:5],
             "evidence_gaps": [
                 {"description": g.get("description"), "priority": g.get("priority")}
                 for g in gaps
             ],
             "refinement_round": state.get("refinement_round", 0),
             "summary": (
-                f"Found {result_count} results from {worker_count} workers, "
+                f"Found {result_count} relevant results from {worker_count} research tasks, "
                 f"{cross_ref_count} cross-references."
             ),
         })
@@ -487,11 +602,20 @@ def build_research_graph(
     # -- Routing functions --------------------------------------------------
 
     def route_by_complexity(state: ResearchState) -> str:
-        """[S9] Route simple queries to fast path, complex to full pipeline."""
+        """[S9/B10] Route simple → fast path, moderate/complex → plan_research."""
         complexity = state.get("complexity", "complex")
         if complexity == "simple":
             return "fast_path_search"
+        # Both moderate and complex go through plan_research;
+        # they diverge after evaluate_and_extract
         return "plan_research"
+
+    def route_after_evaluate(state: ResearchState) -> str:
+        """[B10] Route after evaluate: moderate → straight to synthesis, complex → gap analysis."""
+        complexity = state.get("complexity", "complex")
+        if complexity == "moderate":
+            return "moderate_synthesis"
+        return "gap_analysis"
 
     def should_refine(state: ResearchState) -> str:
         """Route after gap analysis: refine or proceed to findings."""
@@ -507,6 +631,18 @@ def build_research_graph(
         if state.get("complexity") == "complex":
             return "plan_research"  # Fallback triggered
         return "fast_path_synthesis"
+
+    def route_after_quality(state: ResearchState) -> str:
+        """[B3] Route after quality check: pass → memo, fail + retry → synthesis, max → memo with warning."""
+        qr = state.get("legal_quality_result")
+        attempts = state.get("quality_attempts", 0)
+        if qr and qr.get("pass_threshold"):
+            return "checkpoint_memo"
+        if attempts < 2:
+            # Retry — re-run synthesis with quality feedback
+            return "speculative_synthesis"
+        # Max attempts reached — proceed with warning
+        return "checkpoint_memo"
 
     # -- Register nodes -----------------------------------------------------
 
@@ -538,6 +674,7 @@ def build_research_graph(
     graph.add_node("temporal_validation", temporal_validation)
     # Stage 5: Synthesize
     graph.add_node("speculative_synthesis", speculative_synthesis)
+    graph.add_node("moderate_synthesis", moderate_synthesis)  # [B10]
     graph.add_node("format_footnotes", format_footnotes)
     graph.add_node("verify_v2", verify_v2)
     graph.add_node("quality_check", quality_check)
@@ -549,10 +686,12 @@ def build_research_graph(
 
     # -- Edges --------------------------------------------------------------
 
-    # Stage 1: Understand — rewrite → classify → statute_lookup → element_decomposition
+    # Stage 1: Understand — [B4] rewrite + classify in parallel → statute_lookup → element_decomposition
+    # Both rewrite_query and classify read original state["query"] independently
     graph.add_edge(START, "rewrite_query")
-    graph.add_edge("rewrite_query", "classify")
-    # [V3] classify → statute_lookup → element_decomposition → route
+    graph.add_edge(START, "classify")
+    # Both must complete before statute_lookup (LangGraph waits for all incoming edges)
+    graph.add_edge("rewrite_query", "statute_lookup")
     graph.add_edge("classify", "statute_lookup")
     graph.add_edge("statute_lookup", "element_decomposition")
 
@@ -597,7 +736,15 @@ def build_research_graph(
     # Post-gather pipeline
     graph.add_edge("gather_results", "batch_cot_with_reflection")
     graph.add_edge("batch_cot_with_reflection", "evaluate_and_extract")
-    graph.add_edge("evaluate_and_extract", "gap_analysis")
+    # [B10] Moderate skips gap analysis + adversarial, goes straight to Flash synthesis
+    graph.add_conditional_edges(
+        "evaluate_and_extract",
+        route_after_evaluate,
+        {
+            "gap_analysis": "gap_analysis",
+            "moderate_synthesis": "moderate_synthesis",
+        },
+    )
 
     # Gap analysis loop (max 2 rounds)
     graph.add_conditional_edges(
@@ -626,9 +773,18 @@ def build_research_graph(
 
     # Stage 5: Synthesize — speculative synthesis → format footnotes → verify → quality → memo
     graph.add_edge("speculative_synthesis", "format_footnotes")
+    graph.add_edge("moderate_synthesis", "format_footnotes")  # [B10] Moderate joins main path
     graph.add_edge("format_footnotes", "verify_v2")
     graph.add_edge("verify_v2", "quality_check")
-    graph.add_edge("quality_check", "checkpoint_memo")
+    # [B3] Quality retry loop — conditional routing after quality check
+    graph.add_conditional_edges(
+        "quality_check",
+        route_after_quality,
+        {
+            "checkpoint_memo": "checkpoint_memo",
+            "speculative_synthesis": "speculative_synthesis",  # Retry path
+        },
+    )
 
     graph.add_conditional_edges(
         "checkpoint_memo",

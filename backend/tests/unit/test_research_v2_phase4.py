@@ -31,9 +31,23 @@ from app.core.agents.state import (
 # ---------------------------------------------------------------------------
 
 
+_MOCK_MEMO = (
+    "## Executive Summary\n\n"
+    "This memorandum analyzes the applicability of Section 302 IPC "
+    "(now Section 103 BNS) to cases of culpable homicide not amounting to murder. "
+    "The analysis examines key precedents from the Supreme Court and High Courts, "
+    "including landmark decisions on the distinction between murder and culpable homicide. "
+    "The court has consistently held that the intention and knowledge of the accused are "
+    "critical factors in determining the applicable provision. The distinction between "
+    "Section 300 (murder) and Section 304 (culpable homicide) depends on the degree of "
+    "intention and whether the act falls within any of the exceptions to Section 300."
+)
+
+
 def _make_mock_llm(**overrides: object) -> AsyncMock:
     llm = AsyncMock()
-    llm.generate = AsyncMock(return_value="## Executive Summary\n\nTest memo content")
+    # Must be >= 300 chars to pass final memo degenerate output check
+    llm.generate = AsyncMock(return_value=_MOCK_MEMO)
     llm.generate_structured = AsyncMock(return_value={})
     for k, v in overrides.items():
         setattr(llm, k, v)
@@ -42,8 +56,17 @@ def _make_mock_llm(**overrides: object) -> AsyncMock:
 
 def _make_mock_flash_llm() -> AsyncMock:
     llm = AsyncMock()
+    # Must be >= 200 chars to pass degenerate output check
     llm.generate = AsyncMock(
-        return_value="## Executive Summary\n\nDraft memo from Flash"
+        return_value=(
+            "## Executive Summary\n\n"
+            "This memorandum analyzes the applicability of Section 302 IPC "
+            "(now Section 103 BNS) to cases of culpable homicide not amounting to murder. "
+            "The analysis examines key precedents from the Supreme Court and High Courts, "
+            "including landmark decisions on the distinction between murder and culpable homicide. "
+            "The court has consistently held that the intention and knowledge of the accused are "
+            "critical factors in determining the applicable provision."
+        )
     )
     llm.generate_structured = AsyncMock(return_value={
         "overall_score": 0.85,
@@ -127,10 +150,16 @@ def _make_extracted_passages() -> list[ExtractedPassage]:
 
 def _make_base_state(**overrides: object) -> dict:
     """Create a minimal ResearchState dict for testing."""
+    wr = _make_worker_results()
+    # Flatten worker results into search_results (matches evaluate_and_extract output)
+    flat_results: list[dict] = []
+    for w in wr:
+        flat_results.extend(w.get("results", []))
     state: dict = {
         "query": "Is Section 302 IPC applicable to cases of culpable homicide?",
         "rewritten_query": "Legal analysis of Section 302 IPC (now Section 103 BNS) applicability to culpable homicide",
-        "worker_results": _make_worker_results(),
+        "worker_results": wr,
+        "search_results": flat_results,
         "relevance_scores": _make_relevance_scores(),
         "extracted_passages": _make_extracted_passages(),
         "worker_reasonings": ["Worker analysis: found key cases on Section 302."],
@@ -181,7 +210,14 @@ class TestSpeculativeSynthesisNode:
 
         flash_llm = _make_mock_flash_llm()
         flash_llm.generate = AsyncMock(
-            return_value="## Executive Summary\n\nKey finding.\n\n## Quick Reference Table\n\n| Case | Citation |\n"
+            return_value=(
+                "## Executive Summary\n\n"
+                "Key finding on Section 302 IPC and its applicability. The court has held that "
+                "the distinction between murder and culpable homicide depends on the degree of "
+                "intention. Multiple precedents establish the test for determining intent.\n\n"
+                "## Quick Reference Table\n\n| Case | Citation | Holding |\n"
+                "| State v. A | (2024) 1 SCC 100 | Intent must be established |\n"
+            )
         )
         llm = _make_mock_llm()
         state = _make_base_state()
@@ -204,7 +240,15 @@ class TestSpeculativeSynthesisNode:
 
         llm = _make_mock_llm()
         llm.generate = AsyncMock(
-            return_value="## Executive Summary\n\nFinal merged memo with [^1] citations.\n\n## Contradictions & Conflicts\n\nNo contradictions detected."
+            return_value=(
+                "## Executive Summary\n\n"
+                "Final merged memo analyzing the applicability of Section 302 IPC with [^1] citations. "
+                "The Supreme Court has consistently distinguished between murder under Section 300 and "
+                "culpable homicide under Section 304 based on the degree of intention. The key precedents "
+                "establish that the distinction depends on whether the accused had the specific intent to "
+                "cause death or merely the knowledge that their act was likely to cause death.\n\n"
+                "## Contradictions & Conflicts\n\nNo contradictions detected in the cited authorities."
+            )
         )
         flash_llm = _make_mock_flash_llm()
         state = _make_base_state()
@@ -227,12 +271,15 @@ class TestSpeculativeSynthesisNode:
 
         llm = _make_mock_llm()
         flash_llm = _make_mock_flash_llm()
-        state = _make_base_state(worker_results=[
-            WorkerResult(
-                task_id="empty", task_type="case_law", query="q",
-                results=[], source_urls=[], metadata={}, error=None, reasoning="",
-            )
-        ])
+        state = _make_base_state(
+            worker_results=[
+                WorkerResult(
+                    task_id="empty", task_type="case_law", query="q",
+                    results=[], source_urls=[], metadata={}, error=None, reasoning="",
+                )
+            ],
+            search_results=[],
+        )
 
         result = await speculative_synthesis_with_contradictions_node(
             state, llm, flash_llm,
@@ -489,13 +536,11 @@ class TestDualStageVerification:
                      ik_doc_id="", pdf_available=False, source_label="Case"),
         ]
 
-        # DB returns exists for case-1
-        # The function calls: await db.execute(text("SELECT 1..."), {"id": case_id})
-        # then exists.scalar() must return truthy
+        # DB returns case-1 as existing via batch verify_case_ids query
+        # [B9] verify_case_ids uses: SELECT id::text FROM cases WHERE id::text = ANY(:ids)
         mock_result = MagicMock()
-        mock_result.scalar = MagicMock(return_value=1)
+        mock_result.fetchall = MagicMock(return_value=[("case-1",)])
         db = AsyncMock()
-        # Make execute always return the mock result (accepts any args)
         async def _fake_execute(*args, **kwargs):
             return mock_result
         db.execute = _fake_execute
@@ -526,8 +571,10 @@ class TestDualStageVerification:
             draft_memo="Test memo [^1] citation.\n\n[^1]: (2024) 1 SCC 100",
         )
 
+        # [B9] Mock returns case-0 as existing in batch query and scalar for other queries
         mock_result = MagicMock()
         mock_result.scalar = MagicMock(return_value=1)
+        mock_result.fetchall = MagicMock(return_value=[("case-0",)])
         async def _fake_execute(*args, **kwargs):
             return mock_result
         db = MagicMock()
@@ -651,7 +698,14 @@ class TestMergedContradictions:
 
         llm = _make_mock_llm()
         llm.generate = AsyncMock(
-            return_value="## Executive Summary\n\nTest.\n\n## Contradictions & Conflicts\n\nNo contradictions detected."
+            return_value=(
+                "## Executive Summary\n\n"
+                "This memorandum examines the legal position regarding Section 302 IPC. "
+                "The analysis covers multiple precedents and highlights key distinctions "
+                "between murder and culpable homicide based on judicial interpretation. "
+                "The authorities consistently emphasize intent as the differentiating factor.\n\n"
+                "## Contradictions & Conflicts\n\nNo contradictions detected."
+            )
         )
         flash_llm = _make_mock_flash_llm()
         state = _make_base_state()
@@ -960,10 +1014,15 @@ class TestProcessEventsInNodes:
         llm = _make_mock_llm()
         flash_llm = _make_mock_flash_llm()
 
+        wr = _make_worker_results(3)
+        flat_results: list[dict] = []
+        for w in wr:
+            flat_results.extend(w.get("results", []))
         state: dict = {
             "query": "Section 302 IPC",
             "rewritten_query": "Section 302 IPC",
-            "worker_results": _make_worker_results(3),
+            "worker_results": wr,
+            "search_results": flat_results,
             "extracted_passages": _make_extracted_passages(),
             "relevance_scores": _make_relevance_scores(),
             "worker_reasonings": ["Test reasoning"],
@@ -1223,3 +1282,57 @@ class TestFootnoteEnrichedFields:
         }
         assert fn["pdf_available"] is False
         assert fn["ik_doc_id"] == "999"
+
+
+class TestGatherWorkerDedup:
+    """C2: worker_results dedup by task_id in gather."""
+
+    @pytest.mark.asyncio
+    async def test_worker_results_deduped_by_task_id(self) -> None:
+        """Duplicate task_ids from refinement loops keep only latest."""
+        from app.core.agents.nodes.research_nodes import gather_worker_results_node
+
+        # Simulate: first dispatch + refinement dispatch with same task_id
+        state: dict = {
+            "worker_results": [
+                WorkerResult(
+                    task_id="task-1", task_type="case_law", query="old query",
+                    results=[{"case_id": "old-case", "title": "Old", "score": 0.5}],
+                    source_urls=[], metadata={}, error=None, reasoning="",
+                ),
+                WorkerResult(
+                    task_id="task-1", task_type="case_law", query="new query",
+                    results=[{"case_id": "new-case", "title": "New", "score": 0.9}],
+                    source_urls=[], metadata={}, error=None, reasoning="",
+                ),
+            ],
+        }
+        result = await gather_worker_results_node(state)
+        # Should keep only the latest (new-case), not accumulate both
+        case_ids = [r.get("case_id") for r in result["search_results"]]
+        assert "new-case" in case_ids
+        assert "old-case" not in case_ids
+
+    @pytest.mark.asyncio
+    async def test_different_task_ids_both_kept(self) -> None:
+        """Different task_ids are all kept."""
+        from app.core.agents.nodes.research_nodes import gather_worker_results_node
+
+        state: dict = {
+            "worker_results": [
+                WorkerResult(
+                    task_id="task-1", task_type="case_law", query="q1",
+                    results=[{"case_id": "case-1", "title": "C1", "score": 0.9}],
+                    source_urls=[], metadata={}, error=None, reasoning="",
+                ),
+                WorkerResult(
+                    task_id="task-2", task_type="statute", query="q2",
+                    results=[{"case_id": "case-2", "title": "C2", "score": 0.8}],
+                    source_urls=[], metadata={}, error=None, reasoning="",
+                ),
+            ],
+        }
+        result = await gather_worker_results_node(state)
+        case_ids = [r.get("case_id") for r in result["search_results"]]
+        assert "case-1" in case_ids
+        assert "case-2" in case_ids
