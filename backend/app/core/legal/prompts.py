@@ -963,7 +963,7 @@ DOCUMENT_ISSUE_EXTRACTION_SCHEMA: Final[dict] = {
             ],
         },
         "acts_referenced": {
-            "type": ["array", "null"],
+            "type": "array", "nullable": True,
             "items": {"type": "string"},
         },
     },
@@ -2262,7 +2262,7 @@ CASE_PREP_PRIORITIZE_SCHEMA: Final[dict] = {
                     "composite_score": {"type": "number"},
                     "reasoning": {"type": "string"},
                     "risk_factors": {
-                        "type": ["array", "null"],
+                        "type": "array", "nullable": True,
                         "items": {"type": "string"},
                     },
                 },
