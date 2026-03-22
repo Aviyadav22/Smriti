@@ -452,3 +452,23 @@
 | Auth/security | ~5 |
 
 **Total: ~245 public functions across all `backend/app/core/` modules.**
+
+---
+
+## AUDIT-2: Interface → Provider Mapping
+
+All 11 Protocol interfaces have concrete provider implementations. No orphaned interfaces or providers.
+
+| Interface (Protocol) | Provider Implementation(s) | Wired via |
+|---|---|---|
+| `LLMProvider` | `GeminiLLM` (llm/gemini.py) | `get_llm()`, `get_flash_llm()` |
+| `EmbeddingProvider` | `GeminiEmbedder` (embeddings/gemini.py) | `get_embedder()` |
+| `DocumentParser` | `PDFParser` (document_parsers/pdf_parser.py) | Direct import in ingestion |
+| `GraphStore` | `Neo4jGraph` (graph/neo4j_store.py), `PgGraphStore` (graph/pg_graph_store.py) | `get_graph_store()` |
+| `VectorStore` | `PineconeStore` (vector/pinecone_store.py), `PgvectorStore` (vector/pgvector_store.py) | `get_vector_store()` |
+| `Reranker` | `CohereReranker` (rerankers/cohere_reranker.py) | `get_reranker()` |
+| `FileStorage` | `GCSStorage` (storage/gcs_storage.py), `LocalStorage` (storage/local_storage.py) | `get_storage()` |
+| `TTSProvider` | `SarvamTTS` (tts/sarvam.py), `MockTTS` (tts/mock_tts.py) | `get_tts()` |
+| `TranslationProvider` | `GeminiTranslator` (translation/gemini_translator.py) | `get_translator()` |
+| `WebSearchProvider` | `TavilySearchClient` (web_search/tavily.py) | `get_web_search()` |
+| `ExternalDocProvider` | `IndianKanoonClient` (external/indiankanoon.py) | `get_ik_client()` |
