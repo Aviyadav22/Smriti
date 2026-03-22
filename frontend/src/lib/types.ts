@@ -413,17 +413,36 @@ export interface AgentExecution {
 export interface AgentStreamEvent {
     type: "status" | "checkpoint" | "memo" | "done" | "error"
         | "plan" | "searching" | "found" | "evaluating" | "reflection"
-        | "gap" | "drafting" | "memo_stream" | "verification" | "quality";
+        | "gap" | "drafting" | "memo_stream" | "verification" | "quality"
+        | "progress";
     step?: string;
     message?: string;
     question?: string;
-    context?: Record<string, unknown>;
+    context?: {
+        question?: string;
+        draft_memo?: string;
+        confidence?: number;
+        footnotes?: ResearchFootnote[];
+        research_audit?: ResearchAudit;
+        sub_queries?: string[];
+        research_plan?: Record<string, unknown>[];
+        classification?: Record<string, unknown>;
+        [key: string]: unknown;
+    };
     content?: string;
     chunk?: string;
     execution_id?: string;
     status?: string;
     recoverable?: boolean;
-    data?: Record<string, unknown>;
+    data?: {
+        confidence?: number;
+        footnotes?: ResearchFootnote[];
+        research_audit?: ResearchAudit;
+        source_attribution?: Record<string, unknown>;
+        legal_quality_result?: Record<string, unknown>;
+        contradictions?: Record<string, unknown>[];
+        [key: string]: unknown;
+    };
 }
 
 export interface ResearchFootnote {
@@ -455,9 +474,11 @@ export interface ResearchAudit {
     refinement_rounds?: number;
     verification_banner?: string;
     citations_verified?: number;
-    citations_removed?: number;
+    citations_removed?: number;  // legacy field
+    citations_unverified?: number;
     deep_reads_performed?: number;
     strategy_pivots?: number;
+    source_counts?: Record<string, number>;
 }
 
 export interface ProcessEvent {
