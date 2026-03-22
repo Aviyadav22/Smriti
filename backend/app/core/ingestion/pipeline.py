@@ -21,7 +21,10 @@ from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.postgres import async_session_factory
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 from app.core.ingestion.chunker import Chunk, chunk_judgment, detect_judgment_sections
@@ -35,7 +38,7 @@ from app.core.ingestion.metadata import (
     validate_parquet_data,
     validate_with_regex,
 )
-from app.core.ingestion.pdf import extract_and_score, extract_pdf_text, extract_with_ocr
+from app.core.ingestion.pdf import MAX_OCR_PAGES, extract_and_score, extract_pdf_text, extract_with_ocr
 from app.core.ingestion.rate_limiter import AsyncRateLimiter
 from app.core.interfaces.embedder import EmbeddingProvider
 from app.core.interfaces.graph_store import GraphStore
@@ -43,14 +46,15 @@ from app.core.interfaces.llm import LLMProvider
 from app.core.interfaces.storage import FileStorage
 from app.core.interfaces.vector_store import VectorStore
 from app.core.ingestion.anonymizer import anonymize_text, detect_sensitive_case
-from app.core.legal.extractor import extract_acts_cited, extract_citations
+from app.core.legal.extractor import extract_acts_cited, extract_citations, normalize_acts_cited_list
 from app.core.legal.statute_enrichment import enrich_statute_cross_references
 from app.core.legal.treatment import detect_treatment_in_text
 
 logger = logging.getLogger(__name__)
 
-# Batch size for embedding calls to avoid overloading the API.
-_EMBED_BATCH_SIZE: int = 20
+# Batch size for embedding calls. Gemini embedding API supports up to 2048
+# texts/batch; 100 balances throughput vs. memory for ~2000-char chunks.
+_EMBED_BATCH_SIZE: int = 100
 
 
 async def get_cited_by_count(case_id: str, graph_store: GraphStore) -> int:
@@ -81,6 +85,7 @@ async def ingest_judgment(
     llm_rate_limiter: AsyncRateLimiter | None = None,
     embed_rate_limiter: AsyncRateLimiter | None = None,
     fast_llm: LLMProvider | None = None,
+    warnings_out: list[str] | None = None,
 ) -> str | None:
     """Full ingestion pipeline for a single Indian court judgment.
 
@@ -123,8 +128,13 @@ async def ingest_judgment(
 
     if not full_text or quality.char_count < 50:
         logger.error("No text extracted from PDF: %s", pdf_path)
-        await _record_ingestion_failure(db, case_id, pdf_path, "No text extracted")
+        await _record_ingestion_failure(case_id, pdf_path, "No text extracted")
         return None
+
+    if quality.ocr_truncated and warnings_out is not None:
+        warnings_out.append(
+            f"ocr_truncated:{MAX_OCR_PAGES}/{quality.ocr_total_pages}"
+        )
 
     if quality.tier == "low":
         logger.warning(
@@ -161,7 +171,7 @@ async def ingest_judgment(
         )
 
     # ------------------------------------------------------------------
-    # 2. MERGE METADATA (Parquet + LLM)
+    # 2. MERGE METADATA (Parquet + LLM) || 4. STORE PDF (parallel)
     # ------------------------------------------------------------------
     _llm_limiter = llm_rate_limiter or rate_limiter
 
@@ -175,11 +185,29 @@ async def ingest_judgment(
         if _llm_limiter:
             await _llm_limiter.acquire()
         return await asyncio.wait_for(
-            extract_metadata_llm(full_text, llm), timeout=120.0
+            extract_metadata_llm(full_text, llm, pdf_path=pdf_path),
+            timeout=200.0,  # Longer timeout for PDF multimodal
         )
 
+    # PDF storage is independent of LLM — run in parallel
+    storage_dest = f"cases/{case_id}/{_safe_filename(parquet_metadata)}"
+
+    async def _store_pdf() -> str:
+        try:
+            return await storage.store(pdf_path, storage_dest)
+        except (OSError, PermissionError, FileNotFoundError) as exc:
+            logger.error("Failed to store PDF %s: %s", pdf_path, exc)
+            return pdf_path  # fallback: keep original path
+
+    llm_task = asyncio.create_task(_llm_extract_with_retry())
+    storage_task = asyncio.create_task(_store_pdf())
+
+    # Await storage (fast) — won't block LLM
+    storage_path = await storage_task
+
+    # Await LLM (slow) — ran concurrently with storage
     try:
-        llm_meta = await _llm_extract_with_retry()
+        llm_meta = await llm_task
     except ValueError:
         logger.warning("LLM returned invalid metadata structure for %s, using empty", pdf_path)
         llm_meta = CaseMetadata()
@@ -204,6 +232,11 @@ async def ingest_judgment(
             llm_acts.add(act_str)
         metadata.acts_cited = sorted(llm_acts)
         provenance["acts_cited"] = "llm+regex"
+
+    # Normalize acts_cited to canonical short codes
+    if metadata.acts_cited:
+        metadata.acts_cited = normalize_acts_cited_list(metadata.acts_cited)
+        provenance["acts_cited"] = provenance.get("acts_cited", "llm") + "+normalized"
 
     # Enrich acts_cited with old<->new statute cross-references (U3)
     if metadata.acts_cited:
@@ -235,16 +268,6 @@ async def ingest_judgment(
     extraction_confidence = compute_extraction_confidence(metadata)
 
     # ------------------------------------------------------------------
-    # 4. STORE PDF
-    # ------------------------------------------------------------------
-    storage_dest = f"cases/{case_id}/{_safe_filename(parquet_metadata)}"
-    try:
-        storage_path = await storage.store(pdf_path, storage_dest)
-    except (OSError, PermissionError, FileNotFoundError) as exc:
-        logger.error("Failed to store PDF %s: %s", pdf_path, exc)
-        storage_path = pdf_path  # fallback: keep original path
-
-    # ------------------------------------------------------------------
     # 5. INSERT CASE INTO POSTGRESQL (upsert on citation conflict)
     # ------------------------------------------------------------------
     original_case_id = case_id
@@ -265,13 +288,13 @@ async def ingest_judgment(
     # ------------------------------------------------------------------
     # 6–9: Remaining pipeline steps wrapped for failure handling
     # ------------------------------------------------------------------
-    # Mark ingestion as in-progress. Uses db.begin() to create a savepoint
+    # Mark ingestion as in-progress. Uses begin_nested() to create a savepoint
     # so this write is flushed before the bulk pipeline work begins. Note:
     # full isolation (surviving a session-level abort) would need a separate
     # session — this covers code-logic failures between here and line ~314.
-    async with db.begin():
+    async with db.begin_nested():
         await db.execute(
-            text("UPDATE cases SET ingestion_status = 'processing' WHERE id = :id"),
+            text("UPDATE cases SET ingestion_status = 'processing', updated_at = NOW() WHERE id = :id"),
             {"id": case_id},
         )
 
@@ -298,7 +321,7 @@ async def ingest_judgment(
         await _persist_sections(str(case_id), sections, db)
         citation_equivalents = _extract_citation_equivalents(full_text, str(case_id))
         await db.execute(
-            text("DELETE FROM citation_equivalents WHERE case_id = :case_id"),
+            text("DELETE FROM case_citation_equivalents WHERE case_id = :case_id"),
             {"case_id": str(case_id)},
         )
         if citation_equivalents:
@@ -317,7 +340,8 @@ async def ingest_judgment(
                 "year": metadata.year or 0,
             }
             contextualized = await batch_contextualize_chunks(
-                chunk_dicts, doc_meta, fast_llm, document_type="case_law"
+                chunk_dicts, doc_meta, fast_llm, document_type="case_law",
+                rate_limiter=llm_rate_limiter,
             )
             # Update chunk texts for embedding (original text preserved in chunk.text for display)
             _contextualized_texts = [c["contextualized_text"] for c in contextualized]
@@ -366,17 +390,22 @@ async def ingest_judgment(
         except Exception:
             raise
 
-        try:
-            await vector_store.delete_by_metadata(
-                {"case_id": case_id},
-                exclude_ids=new_vector_ids,
-            )
-        except Exception:
-            logger.warning(
-                "Failed to clean stale vectors for case_id=%s (new vectors "
-                "are safe)",
-                case_id,
-            )
+        # Fire stale-vector cleanup as a background task — it's independent
+        # of RAPTOR and chunk_count update, so run concurrently.
+        async def _cleanup_stale_vectors():
+            try:
+                await vector_store.delete_by_metadata(
+                    {"case_id": case_id},
+                    exclude_ids=new_vector_ids,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to clean stale vectors for case_id=%s (new vectors "
+                    "are safe)",
+                    case_id,
+                )
+
+        stale_cleanup_task = asyncio.create_task(_cleanup_stale_vectors())
 
         # --------------------------------------------------------------
         # 8b. RAPTOR SECTION SUMMARIES (optional, requires fast_llm)
@@ -420,6 +449,9 @@ async def ingest_judgment(
                     case_id, raptor_exc,
                 )
 
+        # Ensure stale-vector cleanup finished before commit
+        await stale_cleanup_task
+
         # Update chunk_count and mark ingestion status
         # Low confidence extractions are flagged for human review
         _REVIEW_THRESHOLD = 0.5
@@ -429,8 +461,8 @@ async def ingest_judgment(
         )
         await db.execute(
             text(
-                "UPDATE cases SET chunk_count = :count, ingestion_status = :status "
-                "WHERE id = :id"
+                "UPDATE cases SET chunk_count = :count, ingestion_status = :status, "
+                "updated_at = NOW() WHERE id = :id"
             ),
             {"count": len(chunks), "status": final_status, "id": case_id},
         )
@@ -495,8 +527,8 @@ async def ingest_judgment(
             try:
                 await db.execute(
                     text(
-                        "UPDATE cases SET ingestion_status = 'failed' "
-                        "WHERE id = :id"
+                        "UPDATE cases SET ingestion_status = 'failed', "
+                        "updated_at = NOW() WHERE id = :id"
                     ),
                     {"id": case_id},
                 )
@@ -506,7 +538,7 @@ async def ingest_judgment(
                     "Failed to update ingestion_status for case_id=%s", case_id,
                 )
         await _record_ingestion_failure(
-            db, case_id, pdf_path, str(pipeline_exc),
+            case_id, pdf_path, str(pipeline_exc),
         )
         raise
 
@@ -523,6 +555,23 @@ def _compute_text_hash(text: str) -> str:
     """Compute SHA-256 hash of whitespace-normalized text for dedup."""
     normalized = re.sub(r'\s+', ' ', text.strip().lower())
     return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+
+
+def _parse_date_str(val: str | None) -> date | None:
+    """Parse a date string (ISO 8601 or common formats) to a date object."""
+    if not val:
+        return None
+    try:
+        return datetime.fromisoformat(val).date()
+    except (ValueError, TypeError):
+        pass
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(val, fmt).date()
+        except ValueError:
+            continue
+    logger.warning("Unable to parse filing_date '%s', ignoring", val)
+    return None
 
 
 def _safe_filename(parquet_meta: dict) -> str:
@@ -628,7 +677,7 @@ async def _insert_case(
         "legal_principles_applied": metadata.legal_principles_applied,
         "procedural_history": json.dumps(metadata.procedural_history) if metadata.procedural_history else None,
         "interim_orders": metadata.interim_orders,
-        "filing_date": metadata.filing_date,
+        "filing_date": _parse_date_str(metadata.filing_date),
         "urgency_indicators": metadata.urgency_indicators,
         "party_counsel": json.dumps(metadata.party_counsel) if metadata.party_counsel else None,
         "issue_classification": metadata.issue_classification,
@@ -640,20 +689,9 @@ async def _insert_case(
         "enrichment_status": metadata.enrichment_status,
     }
 
-    # Check for content-based duplicate via text_hash
-    if text_hash:
-        existing_hash = await db.execute(
-            text("SELECT id, chunk_count FROM cases WHERE text_hash = :hash FOR UPDATE SKIP LOCKED"),
-            {"hash": text_hash},
-        )
-        hash_row = existing_hash.fetchone()
-        if hash_row:
-            existing_id = str(hash_row[0])
-            if hash_row[1] and hash_row[1] > 0:
-                logger.info("Duplicate content detected via text_hash (case_id=%s)", existing_id)
-                return existing_id, True
-            logger.info("Duplicate content but missing vectors, re-ingesting (case_id=%s)", existing_id)
-            return existing_id, False
+    # text_hash dedup is already done in ingest_judgment() step 1b (before
+    # the costly LLM call). The IntegrityError handler below catches any
+    # concurrent race on the text_hash unique index.
 
     # Check if a case with this citation already exists
     if metadata.citation:
@@ -677,8 +715,9 @@ async def _insert_case(
             return existing_id, False  # reuse existing ID, let pipeline continue
 
     # Use INSERT ... ON CONFLICT to handle duplicate citation race condition
-    result = await db.execute(
-        text(
+    try:
+        result = await db.execute(
+            text(
             """
             INSERT INTO cases (
                 id, title, citation, case_id, cnr, court, year, case_type,
@@ -781,54 +820,73 @@ async def _insert_case(
                 conditions_imposed = COALESCE(EXCLUDED.conditions_imposed, cases.conditions_imposed),
                 costs_awarded = COALESCE(EXCLUDED.costs_awarded, cases.costs_awarded),
                 page_map = COALESCE(EXCLUDED.page_map, cases.page_map),
-                enrichment_status = COALESCE(EXCLUDED.enrichment_status, cases.enrichment_status)
+                enrichment_status = COALESCE(EXCLUDED.enrichment_status, cases.enrichment_status),
+                updated_at = NOW()
             RETURNING id
             """
-        ),
-        params,
-    )
-    row = result.fetchone()
-
-    if row is None and metadata.citation:
-        # Citation already existed -- fetch the existing case ID
-        existing = await db.execute(
-            text("SELECT id FROM cases WHERE citation = :citation"),
-            {"citation": metadata.citation},
+            ),
+            params,
         )
-        existing_row = existing.fetchone()
-        if existing_row:
-            logger.info(
-                "Case with citation %s already exists (id=%s), skipping insert",
-                metadata.citation, existing_row[0],
-            )
-            return str(existing_row[0]), False
+        row = result.fetchone()
 
-    return case_id, False
+        if row is None and metadata.citation:
+            # Citation already existed -- fetch the existing case ID
+            existing = await db.execute(
+                text("SELECT id FROM cases WHERE citation = :citation"),
+                {"citation": metadata.citation},
+            )
+            existing_row = existing.fetchone()
+            if existing_row:
+                logger.info(
+                    "Case with citation %s already exists (id=%s), skipping insert",
+                    metadata.citation, existing_row[0],
+                )
+                return str(existing_row[0]), False
+
+        return case_id, False
+
+    except IntegrityError:
+        # text_hash unique index violation — concurrent duplicate insert
+        await db.rollback()
+        if text_hash:
+            existing = await db.execute(
+                text("SELECT id FROM cases WHERE text_hash = :hash"),
+                {"hash": text_hash},
+            )
+            existing_row = existing.fetchone()
+            if existing_row:
+                logger.info(
+                    "Duplicate text_hash detected, returning existing case_id=%s",
+                    existing_row[0],
+                )
+                return str(existing_row[0]), True
+        # Re-raise if not a text_hash conflict
+        raise
 
 
 async def _record_ingestion_failure(
-    db: AsyncSession,
     case_id: str,
     pdf_path: str,
     error_message: str,
 ) -> None:
-    """Record an ingestion failure in the audit_logs table for tracking."""
+    """Record an ingestion failure using a fresh session (broken pipeline session may be unusable)."""
     try:
-        await db.execute(
-            text(
-                "INSERT INTO audit_logs (action, resource_type, resource_id, metadata, created_at) "
-                "VALUES (:action, :resource_type, :resource_id, :metadata, NOW())"
-            ),
-            {
-                "action": "ingestion.failed",
-                "resource_type": "case",
-                "resource_id": case_id,
-                "metadata": json.dumps({"pdf_path": pdf_path, "error": error_message}),
-            },
-        )
-        await db.commit()
+        async with async_session_factory() as fresh_db:
+            await fresh_db.execute(
+                text(
+                    "INSERT INTO audit_logs (action, resource_type, resource_id, metadata, created_at) "
+                    "VALUES (:action, :resource_type, :resource_id, :metadata, NOW())"
+                ),
+                {
+                    "action": "ingestion.failed",
+                    "resource_type": "case",
+                    "resource_id": case_id,
+                    "metadata": json.dumps({"pdf_path": pdf_path, "error": error_message[:500]}),
+                },
+            )
+            await fresh_db.commit()
     except Exception as exc:
-        logger.error("Failed to record ingestion failure: %s", exc)
+        logger.error("Failed to record ingestion failure for %s: %s", case_id, exc)
 
 
 async def _embed_chunks(
@@ -1021,71 +1079,76 @@ async def _build_citation_graph(
     except (OSError, ConnectionError, RuntimeError) as exc:
         logger.warning("Failed to batch-create citation edges for %s: %s", case_id, exc)
 
-    # --- V2: Enriched CITES edges with treatment context ---
+    # --- V2: Enriched CITES edges with treatment context (UNWIND batch) ---
     if metadata.citation_treatments:
-        for ct in metadata.citation_treatments:
-            cited = ct.get("cited_case", "")
-            if not cited:
-                continue
-            context = ct.get("context", "")
-            paragraph = ct.get("paragraph")
+        ct_data = [
+            {"fragment": ct.get("cited_case", "")[:50], "context": ct.get("context", "")[:500], "paragraph": ct.get("paragraph", "")}
+            for ct in metadata.citation_treatments if ct.get("cited_case")
+        ]
+        if ct_data:
             try:
                 await graph_store.query(
+                    "UNWIND $treatments AS t "
                     "MATCH (a:Case {id: $case_id})-[r:CITES]->(b:Case) "
-                    "WHERE b.citation CONTAINS $cited_fragment "
-                    "SET r.context = $context, r.paragraph = $paragraph",
-                    params={"case_id": case_id, "cited_fragment": cited[:50],
-                            "context": context[:500], "paragraph": paragraph},
+                    "WHERE b.citation CONTAINS t.fragment "
+                    "SET r.context = t.context, r.paragraph = t.paragraph",
+                    params={"case_id": case_id, "treatments": ct_data},
                 )
             except Exception:
-                logger.debug("Could not enrich CITES edge for %s", cited)
+                logger.debug("Could not enrich CITES edges for %s", case_id)
 
-    # --- V2: Counsel nodes ---
+    # --- V2: Counsel nodes (UNWIND batch) ---
     if metadata.party_counsel:
-        for pc in metadata.party_counsel:
-            name = pc.get("counsel_name", "").strip() if isinstance(pc, dict) else ""
-            if not name:
-                continue
+        counsel_data = [
+            {"name": pc.get("name", "").strip(), "designation": pc.get("designation", "advocate"), "party": pc.get("party", "")}
+            for pc in metadata.party_counsel
+            if isinstance(pc, dict) and pc.get("name", "").strip()
+        ]
+        if counsel_data:
             try:
                 await graph_store.query(
-                    "MERGE (c:Counsel {name: $name}) "
-                    "SET c.designation = $designation "
-                    "WITH c "
+                    "UNWIND $counsel AS c "
+                    "MERGE (cn:Counsel {name: c.name}) "
+                    "SET cn.designation = c.designation "
+                    "WITH cn, c "
                     "MATCH (case:Case {id: $case_id}) "
-                    "MERGE (case)-[:REPRESENTED_BY {party: $party}]->(c)",
-                    params={"name": name, "designation": pc.get("designation", "advocate"),
-                            "party": pc.get("party", ""), "case_id": case_id},
+                    "MERGE (case)-[:REPRESENTED_BY {party: c.party}]->(cn)",
+                    params={"case_id": case_id, "counsel": counsel_data},
                 )
             except Exception:
-                logger.debug("Could not create Counsel node for %s", name)
+                logger.debug("Could not create Counsel nodes for %s", case_id)
 
-    # --- V2: LegalPrinciple nodes ---
+    # --- V2: LegalPrinciple nodes (UNWIND batch) ---
     if metadata.legal_principles_applied:
-        for principle in metadata.legal_principles_applied[:10]:
+        principles = [p.strip() for p in metadata.legal_principles_applied[:10] if p.strip()]
+        if principles:
             try:
                 await graph_store.query(
-                    "MERGE (p:LegalPrinciple {name: $name}) "
-                    "WITH p "
+                    "UNWIND $principles AS p "
+                    "MERGE (lp:LegalPrinciple {name: p}) "
+                    "WITH lp "
                     "MATCH (case:Case {id: $case_id}) "
-                    "MERGE (case)-[:APPLIES_PRINCIPLE]->(p)",
-                    params={"name": principle.strip(), "case_id": case_id},
+                    "MERGE (case)-[:APPLIES_PRINCIPLE]->(lp)",
+                    params={"case_id": case_id, "principles": principles},
                 )
             except Exception:
-                logger.debug("Could not create LegalPrinciple node for %s", principle)
+                logger.debug("Could not create LegalPrinciple nodes for %s", case_id)
 
-    # --- V2: Issue nodes ---
+    # --- V2: Issue nodes (UNWIND batch) ---
     if metadata.issue_classification:
-        for tag in metadata.issue_classification[:10]:
+        issues = [t.strip() for t in metadata.issue_classification[:10] if t.strip()]
+        if issues:
             try:
                 await graph_store.query(
-                    "MERGE (i:Issue {tag: $tag}) "
-                    "WITH i "
+                    "UNWIND $issues AS i "
+                    "MERGE (issue:Issue {tag: i}) "
+                    "WITH issue "
                     "MATCH (case:Case {id: $case_id}) "
-                    "MERGE (case)-[:ADDRESSES]->(i)",
-                    params={"tag": tag.strip(), "case_id": case_id},
+                    "MERGE (case)-[:ADDRESSES]->(issue)",
+                    params={"case_id": case_id, "issues": issues},
                 )
             except Exception:
-                logger.debug("Could not create Issue node for %s", tag)
+                logger.debug("Could not create Issue nodes for %s", case_id)
 
 
 async def _link_citation_equivalents(
@@ -1155,21 +1218,24 @@ async def _persist_sections(
     """Persist detected judgment sections to the case_sections table."""
     if not sections:
         return
-    for idx, section in enumerate(sections):
-        await db.execute(
-            text(
-                "INSERT INTO case_sections (id, case_id, section_type, content, section_index) "
-                "VALUES (:id, :case_id, :section_type, :content, :section_index) "
-                "ON CONFLICT DO NOTHING"
-            ),
-            {
-                "id": str(uuid.uuid4()),
-                "case_id": str(case_id),
-                "section_type": section.type,
-                "content": section.text,
-                "section_index": idx,
-            },
-        )
+    params = [
+        {
+            "id": str(uuid.uuid4()),
+            "case_id": str(case_id),
+            "section_type": section.type,
+            "content": section.text,
+            "section_index": idx,
+        }
+        for idx, section in enumerate(sections)
+    ]
+    await db.execute(
+        text(
+            "INSERT INTO case_sections (id, case_id, section_type, content, section_index) "
+            "VALUES (:id, :case_id, :section_type, :content, :section_index) "
+            "ON CONFLICT DO NOTHING"
+        ),
+        params,
+    )
 
 
 async def _persist_citation_equivalents(
@@ -1179,21 +1245,24 @@ async def _persist_citation_equivalents(
     """Persist citation equivalents to the database."""
     if not equivalents:
         return
-    for eq in equivalents:
-        await db.execute(
-            text(
-                "INSERT INTO case_citation_equivalents (id, case_id, reporter, citation_text, year) "
-                "VALUES (:id, :case_id, :reporter, :citation_text, :year) "
-                "ON CONFLICT DO NOTHING"
-            ),
-            {
-                "id": str(uuid.uuid4()),
-                "case_id": str(eq["case_id"]),
-                "reporter": eq["reporter"],
-                "citation_text": eq["citation_text"],
-                "year": eq["year"],
-            },
-        )
+    params = [
+        {
+            "id": str(uuid.uuid4()),
+            "case_id": str(eq["case_id"]),
+            "reporter": eq["reporter"],
+            "citation_text": eq["citation_text"],
+            "year": eq["year"],
+        }
+        for eq in equivalents
+    ]
+    await db.execute(
+        text(
+            "INSERT INTO case_citation_equivalents (id, case_id, reporter, citation_text, year) "
+            "VALUES (:id, :case_id, :reporter, :citation_text, :year) "
+            "ON CONFLICT DO NOTHING"
+        ),
+        params,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1342,7 +1411,8 @@ async def bulk_upsert_cases(
             conditions_imposed = COALESCE(EXCLUDED.conditions_imposed, cases.conditions_imposed),
             costs_awarded = COALESCE(EXCLUDED.costs_awarded, cases.costs_awarded),
             page_map = COALESCE(EXCLUDED.page_map, cases.page_map),
-            enrichment_status = COALESCE(EXCLUDED.enrichment_status, cases.enrichment_status)
+            enrichment_status = COALESCE(EXCLUDED.enrichment_status, cases.enrichment_status),
+            updated_at = NOW()
         RETURNING id
         """
     )

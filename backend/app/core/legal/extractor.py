@@ -290,7 +290,264 @@ _SHORT_ACT_NAMES: dict[str, str] = {
     "MW ACT": "Minimum Wages Act",
     "RENT ACT": "Rent Control Act",
     "IT ACT 2000": "Information Technology Act",
+    # --- [A3] Criminal (added) ---
+    "NIA ACT": "National Investigation Agency Act",
+    "EXPLOSIVES ACT": "Explosives Act",
+    "NSA": "National Security Act",
+    # --- [A3] Commercial ---
+    "PARTNERSHIP ACT": "Indian Partnership Act",
+    "LLP ACT": "Limited Liability Partnership Act",
+    "MSMED ACT": "Micro, Small and Medium Enterprises Development Act",
+    "INSURANCE ACT": "Insurance Act",
+    "SGST ACT": "State Goods and Services Tax Act",
+    "CENTRAL EXCISE ACT": "Central Excise Act",
+    "NEGOTIABLE INSTRUMENTS ACT": "Negotiable Instruments Act",
+    "SARFAESI ACT": "Securitisation and Reconstruction of Financial Assets "
+                    "and Enforcement of Security Interest Act",
+    # --- [A3] Family ---
+    "HSA": "Hindu Succession Act",
+    "SMA": "Special Marriage Act",
+    "GWA": "Guardians and Wards Act",
+    "HINDU ADOPTION ACT": "Hindu Adoptions and Maintenance Act",
+    "MUSLIM PERSONAL LAW ACT": "Muslim Personal Law (Shariat) Application Act",
+    # --- [A3] Labor ---
+    "FACTORIES ACT": "Factories Act",
+    "EPF ACT": "Employees' Provident Funds and Miscellaneous Provisions Act",
+    "PW ACT": "Payment of Wages Act",
+    "TU ACT": "Trade Unions Act",
+    "WC ACT": "Workmen's Compensation Act",
+    "CODE ON WAGES": "Code on Wages",
+    "CODE ON SOCIAL SECURITY": "Code on Social Security",
+    "CODE ON INDUSTRIAL RELATIONS": "Code on Industrial Relations",
+    "OSH CODE": "Occupational Safety, Health and Working Conditions Code",
+    # --- [A3] Tax ---
+    "INCOME TAX ACT": "Income Tax Act",
+    "STAMP ACT": "Indian Stamp Act",
+    "BENAMI ACT": "Prohibition of Benami Property Transactions Act",
+    "BLACK MONEY ACT": "Black Money (Undisclosed Foreign Income and Assets) Act",
+    # --- [A3] Constitutional/Admin ---
+    "LOKPAL ACT": "Lokpal and Lokayuktas Act",
+    "CONTEMPT ACT": "Contempt of Courts Act",
+    "CAT ACT": "Administrative Tribunals Act",
+    # --- [A3] Property ---
+    "EASEMENTS ACT": "Indian Easements Act",
+    "RFCTLARR ACT": "Right to Fair Compensation and Transparency in Land Acquisition Act",
+    # --- [A3] Environmental ---
+    "FOREST ACT": "Indian Forest Act",
+    "FC ACT": "Forest Conservation Act",
+    "WATER ACT": "Water (Prevention and Control of Pollution) Act",
+    "AIR ACT": "Air (Prevention and Control of Pollution) Act",
+    "NGT ACT": "National Green Tribunal Act",
+    # --- [A3] Technology ---
+    "DPDP ACT": "Digital Personal Data Protection Act",
+    "AADHAAR ACT": "Aadhaar (Targeted Delivery of Financial Assistance and Other Subsidies, Benefits and Services) Act",
+    # --- [SA3] High-frequency act aliases ---
+    "LA": "Limitation Act",
+    "PCA": "Prevention of Corruption Act",
+    "PC ACT": "Prevention of Corruption Act",
+    "GCA": "General Clauses Act",
+    "LARR": "Right to Fair Compensation and Transparency in Land Acquisition, "
+            "Rehabilitation and Resettlement Act",
+    "LAA": "Land Acquisition Act",
+    "MVA": "Motor Vehicles Act",
+    "CPA": "Consumer Protection Act",
+    "CONSUMER ACT": "Consumer Protection Act",
+    "DPA": "Dowry Prohibition Act",
+    "NHA": "National Highways Act",
+    "POCSO": "Protection of Children from Sexual Offences Act",
+    "LSA": "Legal Services Authorities Act",
+    "POTA": "Prevention of Terrorism Act",
+    "RPA": "Representation of the People Act",
+    "MMDRA": "Mines and Minerals (Development and Regulation) Act",
 }
+
+# Reverse mapping: full act name → preferred short code (for DB lookups).
+# Built from _SHORT_ACT_NAMES — uses the SHORTEST key that maps to each
+# full name, preferring keys without dots (e.g. "IPC" over "I.P.C.").
+_FULL_TO_SHORT: dict[str, str] = {}
+for _short, _full in _SHORT_ACT_NAMES.items():
+    _full_lower = _full.lower()
+    existing = _FULL_TO_SHORT.get(_full_lower)
+    if existing is None or (len(_short) < len(existing)) or ("." in existing and "." not in _short):
+        _FULL_TO_SHORT[_full_lower] = _short
+# Add "Constitution of India" → "COI" for Article references
+_FULL_TO_SHORT["constitution of india"] = "COI"
+
+
+def normalize_act_name(raw: str) -> str:
+    """Map an act name (full or short) to the canonical short code used in the statute DB.
+
+    Examples:
+        "Indian Penal Code" → "IPC"
+        "IPC" → "IPC"
+        "Constitution of India" → "COI"
+        "Narcotic Drugs and Psychotropic Substances Act" → "NDPS ACT"
+    """
+    stripped = raw.strip()
+    upper = stripped.upper()
+    # Direct short-code match
+    if upper in _SHORT_ACT_NAMES:
+        return upper
+    # Full-name reverse lookup (case-insensitive)
+    short = _FULL_TO_SHORT.get(stripped.lower())
+    if short:
+        return short
+    # Partial match: try stripping ", YYYY" year suffix
+    no_year = re.sub(r",?\s*\d{4}\s*$", "", stripped)
+    short = _FULL_TO_SHORT.get(no_year.lower())
+    if short:
+        return short
+    return stripped
+
+
+# ---------------------------------------------------------------------------
+# Acts-cited normalization & garbage filter
+# ---------------------------------------------------------------------------
+
+_ACTS_CITED_BLOCKLIST: frozenset[str] = frozenset({
+    "unknown act", "act", "code", "the act", "said act", "that act",
+    "same act", "this act", "the code", "india", "protocols",
+    # Single letters/fragments
+    "cr", "m", "s", "p", "r", "a",
+    # State names
+    "maharashtra", "rajasthan", "gujarat", "uttar pradesh", "karnataka",
+    "punjab", "haryana", "bihar", "kerala", "tamil nadu", "andhra pradesh",
+    "telangana", "madhya pradesh", "west bengal", "odisha", "assam",
+    "nct of delhi", "delhi", "goa", "jharkhand", "chhattisgarh",
+    "uttarakhand", "himachal pradesh", "jammu and kashmir",
+})
+
+# Patterns to strip "Section X of " or "Article X of " prefix
+_SECTION_OF_PATTERN: re.Pattern[str] = re.compile(
+    r"^(?:Sections?|Sec\.?|Ss\.|S\.)\s+[\d\w]+(?:\s*\([^)]+\))*"
+    r"(?:\s+(?:read\s+with|r/w|r\.w\.)\s+(?:Sections?|Sec\.?|Ss\.|S\.)\s+[\d\w]+(?:\s*\([^)]+\))*)?"
+    r"\s+(?:of\s+(?:the\s+)?)?",
+    re.IGNORECASE,
+)
+
+_ARTICLE_OF_PATTERN: re.Pattern[str] = re.compile(
+    r"^(?:Article|Art\.?)\s+[\d]+[A-Za-z]?(?:\s*\(\d+\))?(?:\s*\([a-z]\))?"
+    r"\s+(?:of\s+(?:the\s+)?)?",
+    re.IGNORECASE,
+)
+
+# "Section 302 r/w Section 34 IPC" — extract act at end
+_SECTION_RW_SHORT_PATTERN: re.Pattern[str] = re.compile(
+    r"^(?:Sections?|Sec\.?|Ss\.|S\.)\s+[\d\w]+(?:\s*\([^)]+\))*"
+    r"\s+(?:read\s+with|r/w|r\.w\.)\s+"
+    r"(?:Sections?|Sec\.?|Ss\.|S\.)?\s*[\d\w]+(?:\s*\([^)]+\))*"
+    r"\s+(.+)$",
+    re.IGNORECASE,
+)
+
+# "Section 302 IPC" — extract act code after section number
+_SECTION_SHORT_EXTRACT: re.Pattern[str] = re.compile(
+    r"^(?:Sections?|Sec\.?|Ss\.|S\.)\s+[\d\w]+(?:\s*\([^)]+\))*"
+    r"(?:\s*[,/]\s*[\d\w]+(?:\s*\([^)]+\))*)*"
+    r"(?:\s+(?:and|&)\s+[\d\w]+(?:\s*\([^)]+\))*)?"
+    r"\s+(.+)$",
+    re.IGNORECASE,
+)
+
+
+def _is_valid_act_citation(name: str) -> bool:
+    """Return True if name looks like a real act citation, not garbage."""
+    stripped = name.strip()
+    # Known short codes are always valid regardless of length
+    if stripped.upper() in _SHORT_ACT_NAMES:
+        return True
+    if len(stripped) < 3:
+        return False
+    lower = stripped.lower()
+    if lower in _ACTS_CITED_BLOCKLIST:
+        return False
+    # Year-only: "2013"
+    if re.match(r"^\d{4}$", stripped):
+        return False
+    # "1996 Act" pattern
+    if re.match(r"^\d{4}\s*Act$", stripped, re.IGNORECASE):
+        return False
+    # Contains newlines (should have been cleaned)
+    if "\n" in stripped or "\r" in stripped:
+        return False
+    return True
+
+
+def normalize_acts_cited_list(raw_acts: list[str]) -> list[str]:
+    """Normalize a list of raw acts_cited strings to canonical short codes.
+
+    Handles:
+    - "Section 302 of Indian Penal Code, 1860" -> "IPC"
+    - "Article 21 of Constitution of India" -> "COI"
+    - "Indian Penal Code" -> "IPC"
+    - "IPC" -> "IPC" (already normalized)
+    - "Code of Criminal\\nProcedure" -> "CrPC" (newline-broken)
+    - Filters garbage: "Unknown Act", "M", state names, etc.
+
+    Returns sorted, deduplicated list of canonical short codes.
+    """
+    result: set[str] = set()
+
+    for raw in raw_acts:
+        if not raw or not isinstance(raw, str):
+            continue
+
+        # Step 1: Replace newlines with spaces, strip
+        cleaned = re.sub(r"[\r\n]+", " ", raw).strip()
+        if not cleaned:
+            continue
+
+        # Step 2: Try to extract act name from various patterns
+        act_name: str | None = None
+
+        # Try "Section X r/w Section Y ActCode" first
+        rw_match = _SECTION_RW_SHORT_PATTERN.match(cleaned)
+        if rw_match:
+            act_name = rw_match.group(1).strip()
+        else:
+            # Try "Section X of [Act Name]"
+            sec_match = _SECTION_OF_PATTERN.match(cleaned)
+            if sec_match:
+                act_name = cleaned[sec_match.end():].strip()
+            else:
+                # Try "Article X of [Act Name]"
+                art_match = _ARTICLE_OF_PATTERN.match(cleaned)
+                if art_match:
+                    act_name = cleaned[art_match.end():].strip()
+                else:
+                    # Try "Section 302 IPC" (section + short code)
+                    short_match = _SECTION_SHORT_EXTRACT.match(cleaned)
+                    if short_match:
+                        act_name = short_match.group(1).strip()
+                    else:
+                        # No pattern match — use entire string
+                        act_name = cleaned
+
+        if not act_name:
+            continue
+
+        # Step 3: Strip trailing ", YYYY" year suffix before normalization
+        act_name = re.sub(r",?\s*\d{4}\s*$", "", act_name).strip()
+        if not act_name:
+            continue
+
+        # Step 4: Normalize via existing function
+        normalized = normalize_act_name(act_name)
+
+        # Step 4b: If the result is itself a long short-code that has a
+        # shorter alias (e.g. "LIMITATION ACT" -> "LA"), prefer the shorter.
+        if normalized.upper() in _SHORT_ACT_NAMES:
+            full_name = _SHORT_ACT_NAMES[normalized.upper()]
+            shorter = _FULL_TO_SHORT.get(full_name.lower())
+            if shorter and len(shorter) < len(normalized):
+                normalized = shorter
+
+        # Step 5: Garbage filter
+        if _is_valid_act_citation(normalized):
+            result.add(normalized)
+
+    return sorted(result)
+
 
 # Build alternation dynamically from dict keys -- longest first to avoid
 # partial matches (e.g. "CGST ACT" before "CP ACT" before "CPC").
@@ -322,9 +579,19 @@ _SECTION_SHORT_ACT_PATTERN: re.Pattern[str] = re.compile(
     re.IGNORECASE,
 )
 
-# "Article 14/19/21 of the Constitution"
+# "Article 14/19/21 of the Constitution" — handles sub-clauses like 19(1)(a), 368A
+# Also handles "Article 21 read with Article 14" via _ARTICLE_READ_WITH_PATTERN
 _ARTICLE_PATTERN: re.Pattern[str] = re.compile(
-    r"(?:Article|Art\.?)\s+([\d\w]+(?:\s*\([^)]+\))*)"
+    r"(?:Article|Art\.?)\s+([\d]+[A-Za-z]?(?:\s*\(\d+\))?(?:\s*\([a-z]\))?)"
+    r"(\s+of\s+(?:the\s+)?Constitution)?",
+    re.IGNORECASE,
+)
+
+# "Article 21 read with Article 14" / "Art. 19(1)(a) r/w Art. 21"
+_ARTICLE_READ_WITH_PATTERN: re.Pattern[str] = re.compile(
+    r"(?:Article|Art\.?)\s+([\d]+[A-Za-z]?(?:\s*\(\d+\))?(?:\s*\([a-z]\))?)"
+    r"\s+(?:read\s+with|r/w|r\.w\.)\s+"
+    r"(?:Article|Art\.?)\s+([\d]+[A-Za-z]?(?:\s*\(\d+\))?(?:\s*\([a-z]\))?)"
     r"(\s+of\s+(?:the\s+)?Constitution)?",
     re.IGNORECASE,
 )
@@ -343,6 +610,41 @@ _ORDER_RULE_PATTERN: re.Pattern[str] = re.compile(
     r"Order\s+(\w+)\s+Rule\s+(\d+)"
     r"(?:\s+(?:of\s+(?:the\s+)?)?"
     r"(?:CPC|Code\s+of\s+Civil\s+Procedure|Civil\s+Procedure\s+Code))?",
+    re.IGNORECASE,
+)
+
+# "Regulation 3 of SEBI (LODR) Regulations, 2015" or "Regulation 3 of SEBI Act"
+_REGULATION_PATTERN: re.Pattern[str] = re.compile(
+    r"Regulations?\s+(\d+[A-Za-z]?(?:\s*\(\d+\))?(?:\s*\([a-z]\))?)"
+    r"\s+(?:of\s+(?:the\s+)?)?"
+    r"(" + _SHORT_ACT_ALTERNATION + r")"
+    r"(?:\s+Regulations?)?(?:,?\s+\d{4})?",
+    re.IGNORECASE,
+)
+
+# "Schedule I/II/III of the Act" or "First/Second/Third Schedule"
+_SCHEDULE_PATTERN: re.Pattern[str] = re.compile(
+    r"(?:(?:First|Second|Third|Fourth|Fifth|Sixth|Seventh|Eighth|Ninth|Tenth)"
+    r"|(?:Schedule\s+(?:[IVX]+|\d+)))"
+    r"(?:\s+Schedule)?"
+    r"(?:\s+(?:of|to)\s+(?:the\s+)?"
+    r"(" + _SHORT_ACT_ALTERNATION + r"(?:,?\s+\d{4})?))?",
+    re.IGNORECASE,
+)
+
+# "Clause 49 of the Listing Agreement" / "Clause (a) of Section 10"
+_CLAUSE_PATTERN: re.Pattern[str] = re.compile(
+    r"Clause\s+(\d+[A-Za-z]?|\([a-z]\))"
+    r"\s+(?:of\s+(?:the\s+)?)?"
+    r"(" + _SHORT_ACT_ALTERNATION + r"(?:,?\s+\d{4})?)",
+    re.IGNORECASE,
+)
+
+# "Form 26AS" / "Form No. 16"
+_FORM_PATTERN: re.Pattern[str] = re.compile(
+    r"Form\s+(?:No\.?\s+)?(\w+)"
+    r"(?:\s+(?:of|under)\s+(?:the\s+)?"
+    r"(" + _SHORT_ACT_ALTERNATION + r"(?:,?\s+\d{4})?))?",
     re.IGNORECASE,
 )
 
@@ -766,6 +1068,17 @@ def extract_acts_cited(text: str) -> list[ActReference]:
                 raw_text=raw,
             ))
 
+    # Article "read with" references: "Article 21 read with Article 14"
+    for match in _ARTICLE_READ_WITH_PATTERN.finditer(text):
+        article1 = match.group(1).strip()
+        article2 = match.group(2).strip()
+        has_constitution = match.group(3) is not None
+        act_name = "Constitution of India"
+        year = 1950
+        raw = match.group(0).strip()
+        _add(ActReference(act_name=act_name, section=f"Article {article1}", year=year, raw_text=raw))
+        _add(ActReference(act_name=act_name, section=f"Article {article2}", year=year, raw_text=raw))
+
     # Article references: "Article 21 of the Constitution"
     for match in _ARTICLE_PATTERN.finditer(text):
         article = match.group(1).strip()
@@ -801,6 +1114,36 @@ def extract_acts_cited(text: str) -> list[ActReference]:
             act_name="Code of Civil Procedure",
             section=f"Order {order} Rule {rule}",
             year=1908,
+            raw_text=match.group(0).strip(),
+        ))
+
+    # Regulation references: "Regulation 3 of SEBI (LODR) Regulations"
+    for match in _REGULATION_PATTERN.finditer(text):
+        reg_num = match.group(1).strip()
+        act_raw = match.group(2).strip()
+        short_code = re.sub(r"\s+", " ", act_raw).upper()
+        # Strip trailing ", YYYY" and "REGULATIONS"
+        short_code = re.sub(r",?\s*\d{4}\s*$", "", short_code).strip()
+        short_code = re.sub(r"\s+REGULATIONS?\s*$", "", short_code).strip()
+        act_name = _SHORT_ACT_NAMES.get(short_code, act_raw)
+        _add(ActReference(
+            act_name=act_name,
+            section=f"Regulation {reg_num}",
+            year=None,
+            raw_text=match.group(0).strip(),
+        ))
+
+    # Clause references: "Clause 49 of the Listing Agreement"
+    for match in _CLAUSE_PATTERN.finditer(text):
+        clause_num = match.group(1).strip()
+        act_raw = match.group(2).strip()
+        short_code = re.sub(r"\s+", " ", act_raw).upper()
+        short_code = re.sub(r",?\s*\d{4}\s*$", "", short_code).strip()
+        act_name = _SHORT_ACT_NAMES.get(short_code, act_raw)
+        _add(ActReference(
+            act_name=act_name,
+            section=f"Clause {clause_num}",
+            year=None,
             raw_text=match.group(0).strip(),
         ))
 
