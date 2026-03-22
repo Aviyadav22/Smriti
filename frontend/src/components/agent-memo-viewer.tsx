@@ -7,6 +7,8 @@ import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Check, CheckCircle2, ChevronDown, Clipboard, Copy, Download, HelpCircle, Info, Pencil, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ResearchFootnote } from "@/lib/types";
@@ -254,7 +256,6 @@ function MemoTOC({ headings }: { headings: string[] }) {
 
 export function AgentMemoViewer({ content, confidence, onFootnoteClick, maxFootnote, footnoteVerification, confidenceBreakdown, executionId, onReviseSection, footnotes }: AgentMemoViewerProps) {
     const [copied, setCopied] = useState(false);
-    const [exportOpen, setExportOpen] = useState(false);
     const [revisingSection, setRevisingSection] = useState<string | null>(null);
     const [revisionFeedback, setRevisionFeedback] = useState("");
     const [revisionLoading, setRevisionLoading] = useState(false);
@@ -364,8 +365,8 @@ export function AgentMemoViewer({ content, confidence, onFootnoteClick, maxFootn
                     </div>
                     {revisingSection === headingText && (
                         <div className="flex gap-2 mt-1.5 mb-2">
-                            <input
-                                className="flex-1 text-xs border rounded px-2 py-1 bg-background"
+                            <Input
+                                className="flex-1 text-xs h-8"
                                 placeholder="What should change in this section?"
                                 value={revisionFeedback}
                                 onChange={(e) => setRevisionFeedback(e.target.value)}
@@ -492,43 +493,31 @@ export function AgentMemoViewer({ content, confidence, onFootnoteClick, maxFootn
                         )}
                         {copied ? "Copied" : "Copy"}
                     </Button>
-                    <div className="relative">
-                        <div className="flex">
-                            <Button variant="outline" size="sm" onClick={handleDownload} className="rounded-r-none border-r-0">
-                                <Download className="h-3.5 w-3.5 mr-1.5" />
-                                Download MD
-                            </Button>
-                            {executionId && (
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="rounded-l-none px-1.5"
-                                    onClick={() => setExportOpen((o) => !o)}
-                                >
-                                    <ChevronDown className="h-3.5 w-3.5" />
+                    <Button variant="outline" size="sm" onClick={handleDownload}>
+                        <Download className="h-3.5 w-3.5 mr-1.5" />
+                        Download MD
+                    </Button>
+                    {executionId && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm" className="gap-1">
+                                    <Download className="h-3.5 w-3.5" />
+                                    Export
+                                    <ChevronDown className="h-3 w-3" />
                                 </Button>
-                            )}
-                        </div>
-                        {exportOpen && executionId && (
-                            <div className="absolute right-0 mt-1 w-40 bg-popover border rounded-md shadow-md z-50 py-1">
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
                                 {(["docx", "pdf"] as const).map((fmt) => (
-                                    <button
+                                    <DropdownMenuItem
                                         key={fmt}
-                                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent"
-                                        onClick={() => {
-                                            setExportOpen(false);
-                                            window.open(
-                                                `/api/agents/research/export/${executionId}?format=${fmt}`,
-                                                "_blank",
-                                            );
-                                        }}
+                                        onClick={() => window.open(`/api/agents/research/export/${executionId}?format=${fmt}`, "_blank")}
                                     >
                                         Download {fmt.toUpperCase()}
-                                    </button>
+                                    </DropdownMenuItem>
                                 ))}
-                            </div>
-                        )}
-                    </div>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
                 </div>
             </div>
 
