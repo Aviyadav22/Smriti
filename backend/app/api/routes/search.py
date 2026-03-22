@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.dependencies import get_embedder, get_llm, get_reranker, get_translator, get_vector_store
+from app.core.legal.extractor import normalize_act_name
 from app.core.search.hybrid import SearchResponse, hybrid_search
 from app.core.search.query import SearchFilters
 from app.db.postgres import get_db
@@ -74,6 +75,9 @@ async def search(
         [c.strip() for c in court.split(",") if c.strip()] if court else None
     )
 
+    # Normalize act name to canonical short code (e.g. "Indian Penal Code" → "IPC")
+    normalized_act = normalize_act_name(act) if act else None
+
     filters = SearchFilters(
         court=court_list,
         year_from=year_from,
@@ -81,7 +85,7 @@ async def search(
         case_type=case_type,
         bench_type=bench_type,
         judge=judge,
-        act=act,
+        act=normalized_act,
         judgment_section=judgment_section,
     )
 

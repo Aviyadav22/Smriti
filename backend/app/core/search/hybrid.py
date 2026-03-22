@@ -18,9 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
+from app.core.legal.extractor import normalize_act_name
 from app.core.legal.treatment import has_overruling_language
 from app.core.search.fulltext import FTSResult, search_fulltext
 from app.core.search.query import (
+    QueryEntities,
     QueryUnderstanding,
     SearchFilters,
     expand_statute_references,
@@ -133,8 +135,16 @@ async def hybrid_search(
     db: AsyncSession,
     redis_client=None,
     language: str = "en",
+    pre_understood: bool = False,
+    pre_embedded: list[float] | None = None,
 ) -> SearchResponse:
-    """Execute a hybrid search: LLM parse → parallel vector+FTS → RRF → rerank → enrich."""
+    """Execute a hybrid search: LLM parse → parallel vector+FTS → RRF → rerank → enrich.
+
+    Args:
+        pre_understood: When True, skip the LLM understand_query() call.
+            Use this when the query has already been rewritten/understood by
+            an upstream agent node (saves ~2s per search).
+    """
 
     effective_page_size = min(
         page_size or settings.search_default_page_size,
@@ -148,8 +158,18 @@ async def hybrid_search(
         if cached is not None:
             return cached
 
-    # 2. Query understanding (LLM)
-    qu = await understand_query(query, llm)
+    # 2. Query understanding (LLM) — [B8] skip when pre_understood
+    if pre_understood:
+        qu = QueryUnderstanding(
+            intent="research",
+            original_query=query,
+            expanded_query=query,
+            filters=SearchFilters(),
+            entities=QueryEntities(),
+            search_strategy="hybrid",
+        )
+    else:
+        qu = await understand_query(query, llm)
 
     # Merge explicit filters with LLM-extracted filters (explicit wins)
     merged_filters = _merge_filters(filters, qu.filters)
@@ -205,6 +225,7 @@ async def hybrid_search(
             embedder=embedder,
             vector_store=vector_store,
             filters=merged_filters,
+            pre_embedded=pre_embedded,
         )
 
         if language == "hi":
@@ -348,19 +369,21 @@ async def _exact_citation_search(
 ) -> list[SearchResultItem]:
     """Search for cases by exact citation match — checks both cases and equivalents tables."""
     query_clean = query.strip()
-    # Escape ILIKE wildcards to prevent user input from acting as patterns
-    escaped_q = query_clean.replace("%", "\\%").replace("_", "\\_")
+    # Escape regex special chars for word-boundary matching
+    escaped_re = re.escape(query_clean)
+    # Word-boundary regex: prevents "2020 SCC 1" matching "2020 SCC 10"
+    boundary_pattern = rf"(^|\s){escaped_re}($|\s|[,;.\)])"
 
-    # 1. Direct match on cases.citation
+    # 1. Direct match on cases.citation using regex word boundary
     result = await db.execute(
         text(
             "SELECT id, title, citation, court, year, decision_date, "
             "case_type, judge, bench_type "
-            "FROM cases WHERE citation ILIKE :q "
+            "FROM cases WHERE citation ~* :pattern "
             "ORDER BY year DESC NULLS LAST "
             "LIMIT 5"
         ),
-        {"q": f"%{escaped_q}%"},
+        {"pattern": boundary_pattern},
     )
     rows = result.mappings().all()
 
@@ -372,9 +395,9 @@ async def _exact_citation_search(
                 "c.decision_date, c.case_type, c.judge, c.bench_type "
                 "FROM case_citation_equivalents cce "
                 "JOIN cases c ON c.id = cce.case_id "
-                "WHERE cce.citation_text ILIKE :q LIMIT 5"
+                "WHERE cce.citation_text ~* :pattern LIMIT 5"
             ),
-            {"q": f"%{escaped_q}%"},
+            {"pattern": boundary_pattern},
         )
         rows = equiv_result.mappings().all()
 
@@ -405,9 +428,10 @@ async def _vector_search(
     embedder: EmbeddingProvider,
     vector_store: VectorStore,
     filters: SearchFilters | None,
+    pre_embedded: list[float] | None = None,
 ) -> list[tuple[str, float, str]]:
     """Embed query and search Pinecone, returning (case_id, score, chunk_text) triples."""
-    query_vector = await embedder.embed_text(query)
+    query_vector = pre_embedded if pre_embedded else await embedder.embed_text(query)
 
     # Build Pinecone metadata filter
     pinecone_filter: dict = {}
@@ -434,7 +458,8 @@ async def _vector_search(
         if filters.judge:
             pinecone_filter["author_judge"] = {"$eq": filters.judge}
         if filters.act:
-            pinecone_filter["acts_cited"] = {"$in": [filters.act]}
+            normalized_act = normalize_act_name(filters.act)
+            pinecone_filter["acts_cited"] = {"$in": [normalized_act]}
 
     results = await vector_store.search(
         query_vector,
@@ -515,6 +540,11 @@ async def _enrich_results(
     if not case_ids:
         return []
 
+    # Filter out Pinecone statute IDs (e.g. "statute:CrPC:438") that aren't case UUIDs
+    case_ids = [cid for cid in case_ids if ":" not in cid]
+    if not case_ids:
+        return []
+
     placeholders = ", ".join(f":id_{i}" for i in range(len(case_ids)))
     params = {f"id_{i}": cid for i, cid in enumerate(case_ids)}
 
@@ -590,6 +620,11 @@ async def _build_facets(
     if not case_ids:
         return {}
 
+    # Filter out Pinecone statute IDs (e.g. "statute:CrPC:438")
+    case_ids = [cid for cid in case_ids if ":" not in cid]
+    if not case_ids:
+        return {}
+
     placeholders = ", ".join(f":id_{i}" for i in range(len(case_ids)))
     params = {f"id_{i}": cid for i, cid in enumerate(case_ids)}
 
@@ -647,8 +682,10 @@ async def _check_outcome_bias(
     if len(case_ids) < 2:
         return None
 
-    # Check top 10 results at most
-    check_ids = case_ids[:10]
+    # Check top 10 results at most, filtering out non-case IDs
+    check_ids = [cid for cid in case_ids[:10] if ":" not in cid]
+    if len(check_ids) < 2:
+        return None
     placeholders = ", ".join(f":bias_id_{i}" for i in range(len(check_ids)))
     params = {f"bias_id_{i}": cid for i, cid in enumerate(check_ids)}
 

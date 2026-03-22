@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.legal.extractor import normalize_act_name
 from app.core.search.query import SearchFilters
 
 # ---------------------------------------------------------------------------
@@ -271,10 +272,11 @@ def _build_filter_clauses(
         params["judge"] = f"%{_escape_ilike(filters.judge)}%"
 
     if filters.act:
+        normalized_act = normalize_act_name(filters.act)
         clauses.append(
             f"EXISTS (SELECT 1 FROM unnest({prefix}acts_cited) AS a WHERE a ILIKE :act)"
         )
-        params["act"] = f"%{_escape_ilike(filters.act)}%"
+        params["act"] = f"%{_escape_ilike(normalized_act)}%"
 
     if filters.disposal_nature:
         clauses.append(f"{prefix}disposal_nature ILIKE :disposal_nature")

@@ -8,6 +8,7 @@ import pytest
 
 from app.core.legal.extractor import (
     _is_valid_act_citation,
+    normalize_act_name,
     normalize_acts_cited_list,
 )
 from app.core.legal.statute_enrichment import enrich_statute_cross_references
@@ -211,3 +212,32 @@ class TestEnrichStatuteCrossReferences:
 
     def test_enrich_empty_list(self):
         assert enrich_statute_cross_references([]) == []
+
+
+class TestSearchFilterNormalization:
+    """Tests that search filters normalize act names to canonical short codes."""
+
+    def test_normalize_act_filter_full_name(self):
+        """User searching by full name should match short code in Pinecone."""
+        assert normalize_act_name("Indian Penal Code") == "IPC"
+        assert normalize_act_name("Code of Criminal Procedure") == "CRPC"
+        assert normalize_act_name("Constitution of India") == "COI"
+
+    def test_normalize_act_filter_already_short(self):
+        """Short codes pass through unchanged."""
+        assert normalize_act_name("IPC") == "IPC"
+        assert normalize_act_name("CrPC") == "CRPC"
+
+    def test_normalize_act_filter_with_year(self):
+        """Full names with year suffix normalize correctly."""
+        assert normalize_act_name("Indian Penal Code, 1860") == "IPC"
+        assert normalize_act_name("Limitation Act, 1963") == "LA"
+
+    def test_normalize_act_filter_case_insensitive(self):
+        """Normalization is case-insensitive for short codes."""
+        assert normalize_act_name("ipc") == "IPC"
+        assert normalize_act_name("crpc") == "CRPC"
+
+    def test_normalize_act_filter_unknown_passthrough(self):
+        """Unknown act names pass through as-is."""
+        assert normalize_act_name("Some Obscure Act") == "Some Obscure Act"
