@@ -425,6 +425,33 @@
 ### web_search/tavily.py — Implements `WebSearchProvider`
 - `TavilySearchClient.search()` / `close()` — Tavily web search (India legal domains). **Legal workflow: agent orchestration**
 
+---
+
+## AUDIT-4: Agent Node Wiring Status
+
+### Research Agent — All V3 nodes WIRED
+All 28 nodes registered in `build_research_graph()` via `graph.add_node()`:
+- Stage 1 (Understand): rewrite_query, classify, statute_lookup, element_decomposition
+- Stage 2 (Route): route_by_complexity → fast_path_search/fast_path_synthesis OR plan_research
+- Stage 3 (Investigate): checkpoint_plan → pre_warm_embeddings → dispatch_workers → 7 workers → gather_results → batch_cot_with_reflection → evaluate_and_extract → gap_analysis → checkpoint_findings
+- Stage 4 (Challenge): adversarial_search → temporal_validation
+- Stage 5 (Synthesize): speculative_synthesis/moderate_synthesis → format_footnotes → verify_v2 → quality_check → checkpoint_memo
+
+### Research Nodes — Legacy (V1/V2) functions NOT wired (kept for rollback)
+- `decompose_query_node` — Superseded by `element_decomposition_node` (V3 Stage 2)
+- `detect_contradictions_node` — Superseded by contradiction handling in `speculative_synthesis_with_contradictions_node`
+- `gather_results_node` — Superseded by `gather_worker_results_node` (V2+)
+- `parallel_search_node` — Superseded by worker dispatch pattern (V2+)
+- `synthesize_memo_node` — Superseded by `speculative_synthesis_with_contradictions_node` (V2+)
+- `verify_citations_node` — Superseded by `verify_citations_v2_node` (T4)
+- `deep_read_sections`, `generate_draft`, `process_batch` — Internal helpers used within wired nodes
+
+### Case Prep Agent — All nodes WIRED in `build_case_prep_graph()`
+### Strategy Agent — All nodes WIRED in `build_strategy_graph()`
+### Drafting Agent — All nodes WIRED in `build_drafting_graph()`
+
+---
+
 ### external/indiankanoon.py — Implements `ExternalDocProvider`
 - `IndianKanoonClient.search()` / `get_document()` / `get_fragment()` / `get_metadata()` / `get_court_copy()` / `close()` — Indian Kanoon API with circuit breaker + rate limiting (2 req/sec). **Legal workflow: case search**
 
