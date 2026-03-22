@@ -1,0 +1,27 @@
+# Smriti Refactor Progress Log
+
+## Iteration 1 — AUDIT-1: Map every function in backend/app/core/
+
+### What was done
+- Audited all Python files across backend/app/core/ (search, chat, drafting, graph, analysis, analytics, ingestion, legal, agents, agents/nodes, interfaces, providers, config, dependencies, middleware, logging)
+- Mapped ~245 public functions to their legal workflow purpose
+- Created AUDIT_MAP.md with full inventory organized by module
+
+### Files changed
+- Created: AUDIT_MAP.md (comprehensive function inventory)
+- Modified: SMRITI_REFACTOR_PRD.md (checked off AUDIT-1)
+- Modified: progress.txt (this file)
+
+### Codebase patterns discovered
+1. **Interface+Provider pattern**: All external services (Gemini, Pinecone, Neo4j, Cohere, Sarvam, IK, Tavily) have Protocol interfaces in `core/interfaces/` with concrete implementations in `core/providers/`. Dependencies are injected via `core/dependencies.py` factory functions with `@lru_cache`.
+2. **Agent architecture**: 4 LangGraph StateGraph agents (research, case_prep, strategy, drafting). Each has a graph builder in `core/agents/` and node functions in `core/agents/nodes/`. Nodes are pure async functions returning partial state dicts. Dependencies captured via closures.
+3. **Research Agent V3**: 5-stage pipeline (Understand → Decompose → Investigate → Challenge → Synthesize) with 7 worker types and 3 HITL checkpoints.
+4. **Multi-layer caching**: 5 TTL levels in research_cache.py (memo 24h, search 1h, IK 24h, embed 7d, community 7d) + Redis search cache in hybrid.py + semantic cache via HNSW in semantic_cache.py.
+5. **Ingestion pipeline**: 9-step in pipeline.py (PDF → metadata → validate → store → PG → chunk → embed → Pinecone → Neo4j). Uses `extract_and_score()` not raw `extract_pdf_text()`.
+6. **Statute handling**: acts_cited stores canonical short codes (IPC, CrPC, COI). Old↔new law expansion (IPC↔BNS, CrPC↔BNSS, IEA↔BSA) in multiple places: extractor.py, search/query.py, agents/nodes/common.py.
+7. **Citation formats**: 15+ regex patterns in extractor.py (SCC, AIR, INSC Neutral, MANU, JT, HC reporters, LiveLaw).
+8. **Two potentially orphaned functions**: `build_lookup()` in amendment_service.py, `classify_treatment_llm()` in treatment.py — both defined but no callers found in previous audit.
+
+### What the next iteration should know
+- AUDIT-2 is next: Map providers to interfaces. Most of this is already in AUDIT_MAP.md (providers section). Need to verify every interface has a provider and vice versa.
+- All 13 provider/interface pairs were already verified in a previous session — all compliant.
