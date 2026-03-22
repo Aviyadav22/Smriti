@@ -27,18 +27,18 @@ This codebase was written by Claude across multiple sessions. Many functions wer
 ### Backend Audit
 - [x] AUDIT-1: Read every Python file in `backend/app/core/`. For each function, write a one-line description of what it does and what legal workflow it serves (case search, citation extraction, judgment parsing, metadata extraction, embedding generation, reranking, agent orchestration, statute lookup, etc). Output to AUDIT_MAP.md
 - [x] AUDIT-2: Read every file in `backend/app/core/providers/`. Map each provider to its Protocol interface in `backend/app/core/interfaces/`. Identify any provider with no interface or any interface with no concrete provider. Add to AUDIT_MAP.md
-- [ ] AUDIT-3: Read every API route in `backend/app/api/routes/`. Map each route to: which core function it calls, which frontend component calls it (check `frontend/src/lib/api.ts`). Mark any route with no frontend caller as DISCONNECTED. Mark any core function with no route as UNEXPOSED. Add to AUDIT_MAP.md
+- [x] AUDIT-3: Read every API route in `backend/app/api/routes/`. Map each route to: which core function it calls, which frontend component calls it (check `frontend/src/lib/api.ts`). Mark any route with no frontend caller as DISCONNECTED. Mark any core function with no route as UNEXPOSED. Add to AUDIT_MAP.md
 - [x] AUDIT-4: Read every file in `backend/app/core/agents/` and `backend/app/core/agents/nodes/`. Map each LangGraph node function to: what stage it belongs to (Understand/Decompose/Investigate/Challenge/Synthesize), what state fields it reads/writes, what external services it calls. Identify any node function defined but not wired into any StateGraph. Add to AUDIT_MAP.md
 - [x] AUDIT-5: Map the Pinecone integration — which functions write to Pinecone (`upsert`), which read from it (`search`), which handle metadata filtering (court, year, acts_cited, judgment_section). Identify any vector operations that are defined but never called. Cross-reference with `backend/app/core/providers/vector/pinecone_store.py`. Add to AUDIT_MAP.md
 - [x] AUDIT-6: Map the Neo4j integration — which functions create nodes (MERGE), which create CITES edges, which query the graph (neighbors, shortest path, community detection). Identify any graph operations defined but never called. Cross-reference with `backend/app/core/providers/graph/neo4j_store.py`. Add to AUDIT_MAP.md
 
 ### Frontend Audit
-- [ ] AUDIT-7: Read every page in `frontend/src/app/`. For each page, write what it renders and what user workflow it supports (search, chat, research, case prep, drafting, case detail, judge analytics, graph visualization, document upload). Add to AUDIT_MAP.md
-- [ ] AUDIT-8: Read every component in `frontend/src/components/`. Map each to: which page(s) use it, what props it takes, what API calls it triggers. Identify any component that exists but is not imported by any page. Add to AUDIT_MAP.md
-- [ ] AUDIT-9: Read `frontend/src/lib/api.ts`. Map each API function to: which backend route it calls, which frontend page/component calls it. Identify any API function with no frontend caller. Add to AUDIT_MAP.md
+- [x] AUDIT-7: Read every page in `frontend/src/app/`. For each page, write what it renders and what user workflow it supports (search, chat, research, case prep, drafting, case detail, judge analytics, graph visualization, document upload). Add to AUDIT_MAP.md
+- [x] AUDIT-8: Read every component in `frontend/src/components/`. Map each to: which page(s) use it, what props it takes, what API calls it triggers. Identify any component that exists but is not imported by any page. Add to AUDIT_MAP.md
+- [x] AUDIT-9: Read `frontend/src/lib/api.ts`. Map each API function to: which backend route it calls, which frontend page/component calls it. Identify any API function with no frontend caller. Add to AUDIT_MAP.md
 
 ### Cross-Cutting Audit
-- [ ] AUDIT-10: Create DISCONNECTED_FUNCTIONS.md listing every function (backend or frontend) that exists but is not reachable from any user action. For each one, write your best guess of where it should plug in based on its name, parameters, return type, and the legal workflow it seems to serve.
+- [x] AUDIT-10: Create DISCONNECTED_FUNCTIONS.md listing every function (backend or frontend) that exists but is not reachable from any user action. For each one, write your best guess of where it should plug in based on its name, parameters, return type, and the legal workflow it seems to serve.
 
 ## PHASE 2: WIRE THE DOCUMENT INGESTION PIPELINE
 The ingestion pipeline takes a PDF judgment → extracts text → extracts 16 metadata fields via Gemini → validates with regex → stores PDF (GCS/local) → inserts case into PostgreSQL → chunks (2000 chars, 200 overlap, section-tagged) → embeds (Gemini 1536-dim, batch 100) → upserts to Pinecone → builds citation graph in Neo4j → enriches statutes.
@@ -151,31 +151,31 @@ Four LangGraph agents: Research (V3, 5-stage), Case Prep, Strategy, Drafting. Al
 ## PHASE 8: HARDEN
 
 ### Backend Hardening
-- [ ] HARDEN-1: Add try/except with proper HTTP error codes to every FastAPI route that lacks it. A lawyer getting a generic 500 error loses trust instantly. Use `HTTPException` with meaningful detail messages.
-- [ ] HARDEN-2: Verify Pydantic input validation on every endpoint — especially search (query cant be empty, year must be 1947-2026, court must be valid). Check all request models in route files.
-- [ ] HARDEN-3: Add type hints to every Python function missing them. Never use bare `Exception` — always catch specific exceptions.
-- [ ] HARDEN-4: Verify all external provider calls (Gemini, Pinecone, Neo4j, Cohere, Indian Kanoon, Tavily) use tenacity retry with exponential backoff (2-60s, 5 attempts). Add retry to any provider missing it.
-- [ ] HARDEN-5: Verify circuit breaker pattern is applied to Neo4j (10 consecutive failures → 60s backoff). Check if other providers need circuit breakers.
-- [ ] HARDEN-6: Verify no API keys or secrets are hardcoded anywhere. All must come from environment variables via `config.py`. Grep for any string that looks like `sk-`, `AIza`, hardcoded URLs with credentials.
-- [ ] HARDEN-7: Verify CORS is configured correctly in `backend/app/main.py` for the frontend origin.
-- [ ] HARDEN-8: Run ruff on all Python files. Fix all linting issues.
+- [x] HARDEN-1: Add try/except with proper HTTP error codes to every FastAPI route that lacks it. A lawyer getting a generic 500 error loses trust instantly. Use `HTTPException` with meaningful detail messages.
+- [x] HARDEN-2: Verify Pydantic input validation on every endpoint — especially search (query cant be empty, year must be 1947-2026, court must be valid). Check all request models in route files.
+- [x] HARDEN-3: Add type hints to every Python function missing them. Never use bare `Exception` — always catch specific exceptions.
+- [x] HARDEN-4: Verify all external provider calls (Gemini, Pinecone, Neo4j, Cohere, Indian Kanoon, Tavily) use tenacity retry with exponential backoff (2-60s, 5 attempts). Add retry to any provider missing it.
+- [x] HARDEN-5: Verify circuit breaker pattern is applied to Neo4j (10 consecutive failures → 60s backoff). Check if other providers need circuit breakers.
+- [x] HARDEN-6: Verify no API keys or secrets are hardcoded anywhere. All must come from environment variables via `config.py`. Grep for any string that looks like `sk-`, `AIza`, hardcoded URLs with credentials.
+- [x] HARDEN-7: Verify CORS is configured correctly in `backend/app/main.py` for the frontend origin.
+- [x] HARDEN-8: Run ruff on all Python files. Fix all linting issues.
 
 ### Frontend Hardening
-- [ ] HARDEN-9: Add loading/error/empty states to every frontend page/component that makes an API call. No raw spinners or blank screens.
-- [ ] HARDEN-10: Verify every page that requires auth checks `isAuthenticated` and redirects to `/login`. List any unprotected page that should be protected.
-- [ ] HARDEN-11: Run eslint on all TypeScript files. Fix all linting issues.
-- [ ] HARDEN-12: Verify no `any` types in TypeScript. Grep for `: any` and fix with proper types from `types.ts`.
+- [x] HARDEN-9: Add loading/error/empty states to every frontend page/component that makes an API call. No raw spinners or blank screens.
+- [x] HARDEN-10: Verify every page that requires auth checks `isAuthenticated` and redirects to `/login`. List any unprotected page that should be protected.
+- [x] HARDEN-11: Run eslint on all TypeScript files. Fix all linting issues.
+- [x] HARDEN-12: Verify no `any` types in TypeScript. Grep for `: any` and fix with proper types from `types.ts`.
 
 ## PHASE 9: TEST VERIFICATION
-- [ ] TEST-1: Run all backend tests: `cd backend && python -m pytest tests/unit/ -x -q`. All 2102+ tests must pass. Fix any failures.
-- [ ] TEST-2: Run all frontend tests: `cd frontend && npx vitest run`. All 311+ tests must pass. Fix any failures.
-- [ ] TEST-3: Identify any core function that lacks test coverage. Prioritize: ingestion pipeline steps, search pipeline steps, normalization functions, agent node functions.
+- [x] TEST-1: Run all backend tests: `cd backend && python -m pytest tests/unit/ -x -q`. All 2102+ tests must pass. Fix any failures.
+- [x] TEST-2: Run all frontend tests: `cd frontend && npx vitest run`. All 311+ tests must pass. Fix any failures.
+- [x] TEST-3: Identify any core function that lacks test coverage. Prioritize: ingestion pipeline steps, search pipeline steps, normalization functions, agent node functions.
 
 ## PHASE 10: FINAL VERIFICATION
-- [ ] VERIFY-1: Start the FastAPI backend (`cd backend && uvicorn app.main:app`) — verify zero import errors, zero startup crashes, health endpoint returns all green.
-- [ ] VERIFY-2: Build the Next.js frontend (`cd frontend && npm run build`) — verify zero build errors, zero type errors.
-- [ ] VERIFY-3: Trace search end-to-end: Lawyer opens app → enters "anticipatory bail under Section 438 CrPC Supreme Court" → gets relevant judgments with proper Indian legal citations (SCC/AIR format) → can filter by court, year, bench type → sees precedent strength badges.
-- [ ] VERIFY-4: Trace chat end-to-end: Lawyer opens chat → asks "What is the test for quashing under Section 482 CrPC?" → gets AI answer with cited cases and source cards → can ask follow-up questions in same session.
-- [ ] VERIFY-5: Trace research agent end-to-end: Lawyer opens research workspace → enters "Whether Section 138 NI Act applies to post-dated cheques when account is closed before presentation" → agent runs 5-stage pipeline → presents research plan (HITL) → collects evidence → synthesizes memo with footnotes → shows audit trail.
-- [ ] VERIFY-6: Review DISCONNECTED_FUNCTIONS.md — are there any functions left unwired? For each remaining one, add a comment in the code explaining why it was left and what it likely does.
-- [ ] VERIFY-7: Final commit: `[SMRITI-REFACTOR] All tasks complete. See AUDIT_MAP.md and DISCONNECTED_FUNCTIONS.md for full summary.`
+- [x] VERIFY-1: Start the FastAPI backend (`cd backend && uvicorn app.main:app`) — verify zero import errors, zero startup crashes, health endpoint returns all green.
+- [x] VERIFY-2: Build the Next.js frontend (`cd frontend && npm run build`) — verify zero build errors, zero type errors.
+- [x] VERIFY-3: Trace search end-to-end: Lawyer opens app → enters "anticipatory bail under Section 438 CrPC Supreme Court" → gets relevant judgments with proper Indian legal citations (SCC/AIR format) → can filter by court, year, bench type → sees precedent strength badges.
+- [x] VERIFY-4: Trace chat end-to-end: Lawyer opens chat → asks "What is the test for quashing under Section 482 CrPC?" → gets AI answer with cited cases and source cards → can ask follow-up questions in same session.
+- [x] VERIFY-5: Trace research agent end-to-end: Lawyer opens research workspace → enters "Whether Section 138 NI Act applies to post-dated cheques when account is closed before presentation" → agent runs 5-stage pipeline → presents research plan (HITL) → collects evidence → synthesizes memo with footnotes → shows audit trail.
+- [x] VERIFY-6: Review DISCONNECTED_FUNCTIONS.md — are there any functions left unwired? For each remaining one, add a comment in the code explaining why it was left and what it likely does.
+- [x] VERIFY-7: Final commit: `[SMRITI-REFACTOR] All tasks complete. See AUDIT_MAP.md and DISCONNECTED_FUNCTIONS.md for full summary.`

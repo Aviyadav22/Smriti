@@ -185,6 +185,8 @@ async def classify_query_node(
 # ---------------------------------------------------------------------------
 
 
+# NEEDS_HUMAN_REVIEW: V1 decomposition — superseded by element_decomposition_node() in common.py
+# which uses statute text context from Stage 1. Kept for potential rollback.
 async def decompose_query_node(
     state: ResearchState,
     llm: LLMProvider,
@@ -238,6 +240,7 @@ async def decompose_query_node(
 # ---------------------------------------------------------------------------
 
 
+# NEEDS_HUMAN_REVIEW: V1 parallel search — superseded by worker dispatch pattern (Send() to 7 typed workers).
 async def parallel_search_node(
     state: ResearchState,
     llm: LLMProvider,
@@ -264,6 +267,7 @@ async def parallel_search_node(
 # ---------------------------------------------------------------------------
 
 
+# NEEDS_HUMAN_REVIEW: V1 gather — superseded by gather_worker_results_node() which handles typed workers.
 async def gather_results_node(state: ResearchState) -> dict:
     """Deduplicate search results and identify cross-referenced cases.
 
@@ -311,6 +315,8 @@ async def gather_results_node(state: ResearchState) -> dict:
 # ---------------------------------------------------------------------------
 
 
+# NEEDS_HUMAN_REVIEW: V1 contradiction detection — superseded by integrated handling in
+# speculative_synthesis_with_contradictions_node(). Kept for potential standalone use.
 async def detect_contradictions_node(
     state: ResearchState,
     llm: LLMProvider,
@@ -358,6 +364,8 @@ async def detect_contradictions_node(
 # ---------------------------------------------------------------------------
 
 
+# NEEDS_HUMAN_REVIEW: V1 single-draft synthesis — superseded by speculative_synthesis_with_contradictions_node()
+# which generates 3 strategy drafts. Kept for potential fast-path use.
 async def synthesize_memo_node(
     state: ResearchState,
     llm: LLMProvider,
@@ -486,6 +494,8 @@ async def synthesize_memo_node(
 # ---------------------------------------------------------------------------
 
 
+# NEEDS_HUMAN_REVIEW: V1 citation verification (PG-only) — superseded by verify_citations_v2_node()
+# which verifies against PG + Indian Kanoon + Neo4j. V2 is strictly superior.
 async def verify_citations_node(
     state: ResearchState,
     db: AsyncSession,
