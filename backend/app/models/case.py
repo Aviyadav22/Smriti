@@ -57,7 +57,7 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     headnotes: Mapped[str | None] = mapped_column(Text, nullable=True)
     outcome_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     ingestion_status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="complete"
+        String(20), nullable=False, server_default="pending"
     )
 
     # --- Migration 010 columns ---
@@ -153,35 +153,88 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     enrichment_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="flash_only")
 
     __table_args__ = (
+        # --- CHECK constraints ---
         CheckConstraint("year >= 1800 AND year <= 2200", name="ck_cases_year_range"),
-        # Single-column indexes
+        CheckConstraint(
+            "opinion_type IN ('unanimous','majority','plurality','per_curiam') OR opinion_type IS NULL",
+            name="ck_cases_opinion_type",
+        ),
+        CheckConstraint(
+            "petitioner_type IN ('individual','government_central','government_state','PSU','company','NGO','statutory_body','other') OR petitioner_type IS NULL",
+            name="ck_cases_petitioner_type",
+        ),
+        CheckConstraint(
+            "respondent_type IN ('individual','government_central','government_state','PSU','company','NGO','statutory_body','other') OR respondent_type IS NULL",
+            name="ck_cases_respondent_type",
+        ),
+        CheckConstraint("coram_size > 0 OR coram_size IS NULL", name="ck_cases_coram_size"),
+        CheckConstraint(
+            "disposal_nature IN ('Allowed','Dismissed','Partly Allowed','Withdrawn','Remanded','Disposed Of','Settled','Transferred','Modified','Other','Referred to Larger Bench','Abated','Not Pressed') OR disposal_nature IS NULL",
+            name="ck_cases_disposal_nature",
+        ),
+        CheckConstraint(
+            "jurisdiction IN ('civil','criminal','constitutional','tax','labor','company','family','environmental','arbitration','consumer','election','service','ip/commercial','other') OR jurisdiction IS NULL",
+            name="ck_cases_jurisdiction",
+        ),
+        CheckConstraint(
+            "ingestion_status IN ('pending', 'processing', 'complete', 'failed', 'vectors_failed', 'needs_review', 'rejected')",
+            name="ck_cases_ingestion_status",
+        ),
+        CheckConstraint(
+            "enrichment_status IN ('flash_only', 'pro_enriched', 'failed')",
+            name="ck_cases_enrichment_status",
+        ),
+        # --- Single-column indexes ---
         Index("ix_cases_court", "court"),
         Index("ix_cases_year", "year"),
         Index("ix_cases_case_type", "case_type"),
         Index("ix_cases_jurisdiction", "jurisdiction"),
         Index("ix_cases_bench_type", "bench_type"),
         Index("ix_cases_source", "source"),
-        # Composite indexes
+        Index("ix_cases_opinion_type", "opinion_type"),
+        Index("ix_cases_is_pil", "is_pil"),
+        Index("ix_cases_coram_size", "coram_size"),
+        Index("ix_cases_decision_date", "decision_date"),
+        Index("ix_cases_text_hash", "text_hash"),
+        Index("ix_cases_judicial_tone", "judicial_tone"),
+        Index("ix_cases_filing_date", "filing_date"),
+        Index("ix_cases_enrichment_status", "enrichment_status"),
+        Index("ix_cases_ingestion_status", "ingestion_status"),
+        Index("ix_cases_disposal_nature", "disposal_nature"),
+        # --- Composite indexes ---
         Index("ix_cases_court_year", "court", "year"),
         Index("ix_cases_year_case_type", "year", "case_type"),
         Index("ix_cases_court_case_type", "court", "case_type"),
-        # GIN indexes on arrays
+        Index("ix_cases_court_decision_date", "court", sa.text("decision_date DESC")),
+        # --- Partial indexes ---
+        Index(
+            "ix_cases_citation_unique", "citation",
+            unique=True, postgresql_where=sa.text("citation IS NOT NULL"),
+        ),
+        Index(
+            "ix_cases_author_judge", "author_judge",
+            postgresql_where=sa.text("author_judge IS NOT NULL"),
+        ),
+        Index(
+            "ix_cases_text_hash_unique", "text_hash",
+            unique=True, postgresql_where=sa.text("text_hash IS NOT NULL"),
+        ),
+        # --- GIN indexes on arrays ---
         Index("ix_cases_keywords_gin", "keywords", postgresql_using="gin"),
         Index("ix_cases_acts_cited_gin", "acts_cited", postgresql_using="gin"),
         Index("ix_cases_cases_cited_gin", "cases_cited", postgresql_using="gin"),
         Index("ix_cases_judge_gin", "judge", postgresql_using="gin"),
-        # GIN index on tsvector
-        Index("ix_cases_searchable_text_gin", "searchable_text", postgresql_using="gin"),
-        # Unique partial index on citation
+        Index("ix_cases_fact_pattern_tags", "fact_pattern_tags", postgresql_using="gin"),
+        Index("ix_cases_issue_classification", "issue_classification", postgresql_using="gin"),
+        Index("ix_cases_legal_principles", "legal_principles_applied", postgresql_using="gin"),
+        Index("ix_cases_distinguished", "distinguished_cases", postgresql_using="gin"),
+        Index("ix_cases_overruled", "overruled_cases", postgresql_using="gin"),
         Index(
-            "ix_cases_citation_unique",
-            "citation",
-            unique=True,
-            postgresql_where=sa.text("citation IS NOT NULL"),
+            "ix_cases_party_counsel", "party_counsel",
+            postgresql_using="gin", postgresql_ops={"party_counsel": "jsonb_path_ops"},
         ),
-        # Production readiness indexes
-        Index("ix_cases_ingestion_status", "ingestion_status"),
-        Index("ix_cases_disposal_nature", "disposal_nature"),
+        # --- GIN index on tsvector ---
+        Index("ix_cases_searchable_text_gin", "searchable_text", postgresql_using="gin"),
     )
 
     def __repr__(self) -> str:

@@ -1,25 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { Document, Page, pdfjs } from "react-pdf";
-import "react-pdf/dist/Page/AnnotationLayer.css";
-import "react-pdf/dist/Page/TextLayer.css";
+import dynamic from "next/dynamic";
 import {
     ExternalLink,
     CheckCircle2,
     XCircle,
     AlertCircle,
+    AlertTriangle,
     ChevronDown,
     ChevronRight,
     Download,
     Scale,
     Link2,
     BookOpen,
+    Loader2,
 } from "lucide-react";
 import { getCasePdfUrl } from "@/lib/api";
 import type { ResearchFootnote } from "@/lib/types";
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Lazy-load react-pdf to avoid DOMMatrix SSR error
+const PdfViewer = dynamic(() => import("@/components/pdf-viewer"), {
+    ssr: false,
+    loading: () => (
+        <div className="flex items-center justify-center h-48 text-xs text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            Loading PDF viewer...
+        </div>
+    ),
+});
 
 // ---------------------------------------------------------------------------
 // Verification status config
@@ -47,10 +56,22 @@ const STATUS_CONFIG: Record<
         label: "Verified (Citation Graph)",
     },
     unverified: {
+        icon: AlertCircle,
+        color: "text-amber-500",
+        bgColor: "bg-amber-50 dark:bg-amber-950/20",
+        label: "Not yet verified",
+    },
+    removed: {
         icon: XCircle,
-        color: "text-red-500",
+        color: "text-red-600",
         bgColor: "bg-red-50 dark:bg-red-950/20",
-        label: "Unverified",
+        label: "Removed — could not verify",
+    },
+    flagged: {
+        icon: AlertTriangle,
+        color: "text-amber-600",
+        bgColor: "bg-amber-50 dark:bg-amber-950/20",
+        label: "Flagged — may be inaccurate",
     },
 };
 
@@ -194,10 +215,14 @@ function CasePreview({
                     {metaParts && (
                         <p className="text-xs text-muted-foreground mt-1">{metaParts}</p>
                     )}
-                    {(author || bench) && (
+                    {author && (
                         <p className="text-xs text-muted-foreground mt-0.5">
-                            Bench: {author}
-                            {bench && author ? ` (${bench})` : bench ? bench : ""}
+                            Author: {author}
+                        </p>
+                    )}
+                    {bench && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            Bench: {bench}
                         </p>
                     )}
                 </div>
@@ -248,17 +273,7 @@ function CasePreview({
                 {/* Embedded PDF viewer */}
                 {pdfUrl && !pdfError && (
                     <div className="border rounded-md overflow-hidden max-h-[400px]">
-                        <Document
-                            file={pdfUrl}
-                            onLoadError={() => setPdfError(true)}
-                            loading={
-                                <div className="flex items-center justify-center h-48 text-xs text-muted-foreground">
-                                    Loading PDF...
-                                </div>
-                            }
-                        >
-                            <Page pageNumber={1} width={380} />
-                        </Document>
+                        <PdfViewer file={pdfUrl} onError={() => setPdfError(true)} />
                     </div>
                 )}
 

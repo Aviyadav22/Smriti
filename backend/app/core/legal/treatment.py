@@ -20,6 +20,7 @@ class CitationTreatment(str, Enum):
     NOT_FOLLOWED = "not_followed"
     EXPLAINED = "explained"
     DOUBTED = "doubted"
+    PER_INCURIAM = "per_incuriam"  # [E3] Declared as decided per incuriam
 
 
 # Patterns that indicate treatment of a cited case
@@ -126,3 +127,52 @@ def has_overruling_language(text: str) -> bool:
     """Quick check if text contains overruling language."""
     pattern = TREATMENT_PATTERNS[0][1]  # OVERRULED pattern
     return bool(pattern.search(text))
+
+
+# [E3] LLM-based treatment classification for higher accuracy
+_TREATMENT_CLASSIFICATION_SYSTEM = """You are a legal citation analyst. Classify the treatment of a cited case.
+
+Given a text excerpt around a citation, determine how the citing case treats the cited case.
+
+Valid treatments:
+1. "overruled" — cited case is expressly or impliedly overruled
+2. "distinguished" — cited case is distinguished on facts or law
+3. "affirmed" — cited case is approved/upheld/endorsed
+4. "followed" — cited case is followed as binding/persuasive
+5. "not_followed" — cited case is declined to be followed
+6. "explained" — cited case is explained/interpreted/clarified
+7. "doubted" — cited case is questioned/doubted
+8. "per_incuriam" — cited case is declared per incuriam (decided in ignorance of law)
+
+Return ONLY a JSON object: {"treatment": "<type>", "confidence": <0.0-1.0>}"""
+
+
+async def classify_treatment_llm(
+    text_context: str,
+    llm,
+) -> TreatmentResult | None:
+    """[E3] Use Flash LLM for more accurate treatment classification.
+
+    Falls back to regex if LLM fails. Best used for ambiguous cases
+    where regex confidence is low.
+    """
+    import json as json_mod
+    try:
+        raw = await llm.generate(
+            prompt=f"Classify the citation treatment in this excerpt:\n\n{text_context[:1000]}",
+            system=_TREATMENT_CLASSIFICATION_SYSTEM,
+        )
+        data = json_mod.loads(raw.strip().strip("`").removeprefix("json"))
+        treatment_str = data.get("treatment", "")
+        confidence = float(data.get("confidence", 0.5))
+        try:
+            treatment = CitationTreatment(treatment_str)
+        except ValueError:
+            return None
+        return TreatmentResult(
+            treatment=treatment,
+            cited_text=text_context[:200],
+            confidence=confidence,
+        )
+    except Exception:
+        return None

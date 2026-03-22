@@ -57,7 +57,7 @@ gcloud run deploy smriti-backend \
   --execution-environment=gen2 \
   --port=8000 \
   --http-health-check-path=/health \
-  --set-env-vars="APP_ENV=production,APP_DEBUG=false,LOG_LEVEL=INFO,STORAGE_PROVIDER=gcs,GCS_BUCKET_NAME=smriti-documents" \
+  --set-env-vars="APP_ENV=production,APP_DEBUG=false,LOG_LEVEL=INFO,STORAGE_PROVIDER=gcs,GCS_BUCKET_NAME=smriti-489416-documents,VECTOR_PROVIDER=pinecone,GRAPH_PROVIDER=neo4j" \
   --set-secrets="\
 DATABASE_URL=DATABASE_URL:latest,\
 REDIS_URL=REDIS_URL:latest,\
@@ -70,7 +70,11 @@ PINECONE_HOST=PINECONE_HOST:latest,\
 NEO4J_URI=NEO4J_URI:latest,\
 NEO4J_USER=NEO4J_USER:latest,\
 NEO4J_PASSWORD=NEO4J_PASSWORD:latest,\
+NEO4J_DATABASE=NEO4J_DATABASE:latest,\
 COHERE_API_KEY=COHERE_API_KEY:latest,\
+IK_API_TOKEN=IK_API_TOKEN:latest,\
+TAVILY_API_KEY=TAVILY_API_KEY:latest,\
+GEMINI_API_KEYS=GEMINI_API_KEYS:latest,\
 SENTRY_DSN=SENTRY_DSN:latest,\
 CORS_ORIGINS=CORS_ORIGINS:latest"
 
@@ -96,7 +100,7 @@ gcloud run deploy smriti-worker \
   --timeout=3600 \
   --execution-environment=gen2 \
   --no-cpu-throttling \
-  --set-env-vars="APP_ENV=production,APP_DEBUG=false,LOG_LEVEL=INFO,STORAGE_PROVIDER=gcs,GCS_BUCKET_NAME=smriti-documents" \
+  --set-env-vars="APP_ENV=production,APP_DEBUG=false,LOG_LEVEL=INFO,STORAGE_PROVIDER=gcs,GCS_BUCKET_NAME=smriti-489416-documents,VECTOR_PROVIDER=pinecone,GRAPH_PROVIDER=neo4j" \
   --set-secrets="\
 DATABASE_URL=DATABASE_URL:latest,\
 REDIS_URL=REDIS_URL:latest,\
@@ -109,7 +113,11 @@ PINECONE_HOST=PINECONE_HOST:latest,\
 NEO4J_URI=NEO4J_URI:latest,\
 NEO4J_USER=NEO4J_USER:latest,\
 NEO4J_PASSWORD=NEO4J_PASSWORD:latest,\
+NEO4J_DATABASE=NEO4J_DATABASE:latest,\
 COHERE_API_KEY=COHERE_API_KEY:latest,\
+IK_API_TOKEN=IK_API_TOKEN:latest,\
+TAVILY_API_KEY=TAVILY_API_KEY:latest,\
+GEMINI_API_KEYS=GEMINI_API_KEYS:latest,\
 SENTRY_DSN=SENTRY_DSN:latest,\
 CORS_ORIGINS=CORS_ORIGINS:latest"
 

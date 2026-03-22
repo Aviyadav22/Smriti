@@ -1,6 +1,6 @@
 "use client";
 
-import { Scale, Globe, BookOpen, FileText } from "lucide-react";
+import { Scale, Globe, BookOpen, FileText, CheckCircle2, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { ResearchFootnote } from "@/lib/types";
@@ -63,10 +63,11 @@ export function FootnoteListItem({
             onClick={onClick}
             className={cn(
                 "w-full text-left px-3 py-2.5 flex items-start gap-3 rounded-md transition-colors",
-                "hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                "hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 isSelected
                     ? "border-l-2 border-l-[var(--gold)] bg-muted/40"
-                    : "border-l-2 border-l-transparent"
+                    : "border-l-2 border-l-transparent",
+                footnote.is_used === false && "opacity-60"
             )}
         >
             {/* Number badge */}
@@ -104,6 +105,19 @@ export function FootnoteListItem({
                 <SourceIcon className="h-3 w-3" />
                 {footnote.source_label}
             </Badge>
+
+            {/* Verification status icon */}
+            {footnote.verification_status?.startsWith("verified") ? (
+                <CheckCircle2
+                    className="h-3 w-3 text-green-600 shrink-0 mt-1"
+                    aria-label="Verified"
+                />
+            ) : footnote.verification_status === "unverified" ? (
+                <AlertCircle
+                    className="h-3 w-3 text-amber-500 shrink-0 mt-1"
+                    aria-label="Not yet verified"
+                />
+            ) : null}
         </button>
     );
 }

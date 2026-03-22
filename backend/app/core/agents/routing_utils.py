@@ -2,20 +2,55 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from typing import Any, Callable
 
 from langgraph.graph import END
 from langgraph.types import interrupt
 
+logger = logging.getLogger(__name__)
+
 _PROCEED_PHRASES = frozenset({
     "looks good", "looks good, proceed", "proceed", "continue",
     "ok", "okay", "yes", "go ahead", "lgtm", "good", "fine",
-    "no changes", "no change", "looks great",
+    "no changes", "no change", "looks great", "approve", "approved",
+    # Chip suggestions from frontend checkpoints
+    "looks good, proceed to synthesis",
+    "looks good, finalize",
 })
 
 
-def is_proceed(content: str) -> bool:
-    """Return True if user feedback means 'proceed without changes'."""
+def is_proceed(content: str | dict | None) -> bool:
+    """Return True if user feedback means 'proceed without changes'.
+
+    Accepts plain strings (``"proceed"``), dicts from structured
+    HITL responses (``{"action": "proceed"}``), and JSON-encoded
+    strings from the frontend (``'{"action": "approve", ...}'``).
+    """
+    if content is None:
+        return True  # No feedback = proceed
+    if isinstance(content, dict):
+        # Structured response — check "action" key
+        action = content.get("action", "")
+        if isinstance(action, str):
+            action_lower = action.strip().lower().rstrip(".!")
+            # Explicit approve/proceed action
+            if action_lower in ("approve", "approved", "proceed"):
+                return True
+            return action_lower in _PROCEED_PHRASES
+        return False
+    if not isinstance(content, str):
+        logger.warning("is_proceed: unexpected content type %s: %r", type(content).__name__, content)
+        return True  # Unknown types = don't loop
+    # Try parsing JSON strings from frontend (e.g. '{"action": "approve", ...}')
+    if content.strip().startswith("{"):
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, dict):
+                return is_proceed(parsed)
+        except (json.JSONDecodeError, TypeError):
+            pass
     return content.strip().lower().rstrip(".!") in _PROCEED_PHRASES
 
 
@@ -46,7 +81,7 @@ def make_feedback_router(
             return END
         messages = state.get("messages", [])
         # Find the most recent feedback for this step
-        content = ""
+        content = None
         for m in reversed(messages):
             if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == step:
                 content = m.get("content", "")
@@ -57,7 +92,14 @@ def make_feedback_router(
             1 for m in messages
             if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == step
         )
-        if content and not is_proceed(content) and step_feedback_count < max_iterations:
+
+        proceed_check = is_proceed(content)
+        logger.warning(
+            "ROUTE_DEBUG route_after_%s: content=%r type=%s is_proceed=%s feedback_count=%d",
+            step, str(content)[:200], type(content).__name__, proceed_check, step_feedback_count,
+        )
+
+        if content and not proceed_check and step_feedback_count < max_iterations:
             return loop_back
         return proceed if proceed is not None else END
 
@@ -92,13 +134,20 @@ def make_checkpoint_node(
         for key, (state_key, default) in state_fields.items():
             payload[key] = state.get(state_key, default)
         response = interrupt(payload)
+        # Parse JSON strings from frontend into dicts
+        parsed = response
+        if isinstance(response, str) and response.strip().startswith("{"):
+            try:
+                parsed = json.loads(response)
+            except (json.JSONDecodeError, TypeError):
+                pass
         result: dict[str, Any] = {
             "messages": [
-                {"type": "user_feedback", "step": step, "content": response}
+                {"type": "user_feedback", "step": step, "content": parsed}
             ],
         }
         if extra_return is not None:
-            result.update(extra_return(response))
+            result.update(extra_return(parsed))
         return result
 
     checkpoint.__name__ = f"checkpoint_{step}"

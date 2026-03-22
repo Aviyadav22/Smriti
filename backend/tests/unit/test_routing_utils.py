@@ -28,6 +28,32 @@ class TestIsProceed:
         assert is_proceed("fine.") is True
         assert is_proceed("  continue  ") is True
 
+    def test_frontend_chip_phrases(self) -> None:
+        """Frontend checkpoint chips must be recognized as proceed."""
+        assert is_proceed("Looks good, proceed to synthesis") is True
+        assert is_proceed("Looks good, finalize") is True
+        assert is_proceed("Looks good, proceed") is True
+
+    def test_dict_structured_response(self) -> None:
+        assert is_proceed({"action": "approve"}) is True
+        assert is_proceed({"action": "Approved"}) is True
+        assert is_proceed({"action": "proceed"}) is True
+        assert is_proceed({"action": "revise"}) is False
+        assert is_proceed({"action": ""}) is False
+
+    def test_json_string_from_frontend(self) -> None:
+        """Frontend sends JSON.stringify({action: 'approve', ...}) as a string."""
+        import json
+        payload = json.dumps({
+            "action": "approve",
+            "include_adversarial": False,
+            "removed_tasks": 0,
+        })
+        assert is_proceed(payload) is True
+
+        payload2 = json.dumps({"action": "revise", "reason": "need more cases"})
+        assert is_proceed(payload2) is False
+
     def test_non_proceed_phrases(self) -> None:
         assert is_proceed("add more citations") is False
         assert is_proceed("revise section 3") is False
@@ -98,6 +124,22 @@ class TestMakeFeedbackRouter:
         state = {
             "messages": [
                 {"type": "user_feedback", "step": "memo", "content": "revise this"},
+            ],
+            "iteration": 0,
+        }
+        assert router(state) == "search"
+
+    def test_json_string_approval_proceeds(self) -> None:
+        """Frontend sends JSON string approval — should proceed, not loop."""
+        import json
+        router = make_feedback_router("plan", "decompose", "search")
+        state = {
+            "messages": [
+                {
+                    "type": "user_feedback",
+                    "step": "plan",
+                    "content": json.dumps({"action": "approve", "include_adversarial": False}),
+                },
             ],
             "iteration": 0,
         }

@@ -9,8 +9,16 @@ from collections.abc import AsyncIterator
 
 from google.api_core.exceptions import NotFound
 from google.cloud import storage
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from app.core.config import settings
+
+_gcs_retry = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=15),
+    retry=retry_if_exception_type((OSError, ConnectionError, TimeoutError)),
+    reraise=True,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +31,7 @@ class GCSStorage:
     """
 
     def __init__(self) -> None:
-        self._client = storage.Client()
+        self._client = storage.Client(project=settings.gcs_project_id)
         self._bucket = self._client.bucket(settings.gcs_bucket_name)
 
     def _parse_gs_path(self, storage_path: str) -> str:
@@ -41,6 +49,7 @@ class GCSStorage:
     # Maximum upload size: 500 MB
     MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 
+    @_gcs_retry
     async def store(self, file_path: str, destination: str) -> str:
         """Upload a file to GCS and return its gs:// path."""
         import os
@@ -57,6 +66,7 @@ class GCSStorage:
         logger.info("Stored file to GCS: %s", gs_path)
         return gs_path
 
+    @_gcs_retry
     async def retrieve(self, storage_path: str) -> bytes:
         """Download a file from GCS as bytes."""
         blob_name = self._parse_gs_path(storage_path)
@@ -67,11 +77,8 @@ class GCSStorage:
         self, storage_path: str, chunk_size: int = 8192
     ) -> AsyncIterator[bytes]:
         """Yield file contents in chunks to avoid loading entire file into memory."""
-        blob_name = self._parse_gs_path(storage_path)
-        blob = self._bucket.blob(blob_name)
-
-        # Download into a BytesIO buffer in a thread, then yield chunks
-        raw = await asyncio.to_thread(blob.download_as_bytes)
+        # Use self.retrieve() which already has retry logic
+        raw = await self.retrieve(storage_path)
         buffer = io.BytesIO(raw)
         while True:
             chunk = buffer.read(chunk_size)
@@ -79,6 +86,7 @@ class GCSStorage:
                 break
             yield chunk
 
+    @_gcs_retry
     async def delete(self, storage_path: str) -> None:
         """Delete a blob from GCS. Silently ignores missing blobs."""
         blob_name = self._parse_gs_path(storage_path)
@@ -89,6 +97,7 @@ class GCSStorage:
         except NotFound:
             logger.debug("Blob not found (already deleted): %s", blob_name)
 
+    @_gcs_retry
     async def exists(self, storage_path: str) -> bool:
         """Check if a blob exists in GCS."""
         blob_name = self._parse_gs_path(storage_path)

@@ -279,6 +279,20 @@ async def create_constraints(driver, database: str) -> None:
             )
         except Exception:
             pass
+        try:
+            await session.run(
+                "CREATE CONSTRAINT statute_id_unique IF NOT EXISTS "
+                "FOR (s:Statute) REQUIRE s.id IS UNIQUE"
+            )
+        except Exception:
+            pass
+        try:
+            await session.run(
+                "CREATE FULLTEXT INDEX case_search IF NOT EXISTS "
+                "FOR (c:Case) ON EACH [c.title, c.citation]"
+            )
+        except Exception:
+            pass
     logger.info("Created constraints and indexes")
 
 

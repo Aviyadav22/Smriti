@@ -1,12 +1,14 @@
-"""Tests for extract_metadata_llm retry logic (G9).
+"""Tests for extract_metadata_llm (G9).
 
-Verifies that the LLM extraction function retries on transient errors,
-does NOT retry on non-transient errors (ValueError, KeyError, RuntimeError),
-and returns empty CaseMetadata on all failures.
+Verifies that the LLM extraction function:
+- Succeeds on first try
+- Does NOT retry internally (retries handled by pipeline-level tenacity)
+- Returns empty CaseMetadata on non-transient errors (ValueError, KeyError)
+- Propagates transient errors for pipeline-level retry
 """
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -27,12 +29,12 @@ def mock_llm():
     return AsyncMock()
 
 
-class TestExtractMetadataLLMRetry:
-    """G9: Tests for extract_metadata_llm retry logic."""
+class TestExtractMetadataLLM:
+    """Tests for extract_metadata_llm single-attempt logic."""
 
     @pytest.mark.asyncio
-    async def test_successful_extraction_no_retry(self, mock_llm):
-        """When LLM succeeds on first try, no retries should occur."""
+    async def test_successful_extraction(self, mock_llm):
+        """When LLM succeeds, return populated CaseMetadata."""
         mock_llm.generate_structured.return_value = {
             "title": "John Doe v. State of Maharashtra",
             "court": "Supreme Court of India",
@@ -46,76 +48,50 @@ class TestExtractMetadataLLMRetry:
         assert mock_llm.generate_structured.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_retries_on_transient_error(self, mock_llm):
-        """Transient errors (generic Exception) should trigger retries."""
-        mock_llm.generate_structured.side_effect = [
-            ConnectionError("Network timeout"),
-            ConnectionError("Network timeout"),
-            {"title": "Test Case", "year": 2023},
-        ]
+    async def test_transient_error_propagates(self, mock_llm):
+        """Transient errors propagate to pipeline-level retry."""
+        mock_llm.generate_structured.side_effect = ConnectionError("Network timeout")
 
-        with patch("app.core.ingestion.metadata.asyncio.sleep", new_callable=AsyncMock):
-            result = await extract_metadata_llm(_SAMPLE_TEXT, mock_llm, max_retries=3)
+        with pytest.raises(ConnectionError):
+            await extract_metadata_llm(_SAMPLE_TEXT, mock_llm)
 
-        assert result.title == "Test Case"
-        assert mock_llm.generate_structured.call_count == 3
+        assert mock_llm.generate_structured.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_runtime_error_propagates(self, mock_llm):
+        """RuntimeError (empty output) propagates to pipeline-level retry."""
+        mock_llm.generate_structured.return_value = {}
+
+        with pytest.raises(RuntimeError, match="empty/all-null"):
+            await extract_metadata_llm(_SAMPLE_TEXT, mock_llm)
+
+    @pytest.mark.asyncio
+    async def test_all_null_response_raises(self, mock_llm):
+        """All-null response raises RuntimeError for pipeline retry."""
+        mock_llm.generate_structured.return_value = {"title": None, "year": None}
+
+        with pytest.raises(RuntimeError, match="empty/all-null"):
+            await extract_metadata_llm(_SAMPLE_TEXT, mock_llm)
 
     @pytest.mark.asyncio
     async def test_no_retry_on_value_error(self, mock_llm):
-        """ValueError should NOT trigger retries — returns empty CaseMetadata immediately."""
+        """ValueError returns empty CaseMetadata immediately (non-retryable)."""
         mock_llm.generate_structured.side_effect = ValueError("Invalid schema")
 
-        result = await extract_metadata_llm(_SAMPLE_TEXT, mock_llm, max_retries=3)
+        result = await extract_metadata_llm(_SAMPLE_TEXT, mock_llm)
 
-        assert result.title is None  # Empty CaseMetadata
+        assert result.title is None
         assert mock_llm.generate_structured.call_count == 1
 
     @pytest.mark.asyncio
     async def test_no_retry_on_key_error(self, mock_llm):
-        """KeyError should NOT trigger retries."""
+        """KeyError returns empty CaseMetadata immediately (non-retryable)."""
         mock_llm.generate_structured.side_effect = KeyError("missing_key")
 
-        result = await extract_metadata_llm(_SAMPLE_TEXT, mock_llm, max_retries=3)
+        result = await extract_metadata_llm(_SAMPLE_TEXT, mock_llm)
 
         assert result.title is None
         assert mock_llm.generate_structured.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_no_retry_on_runtime_error(self, mock_llm):
-        """RuntimeError should NOT trigger retries."""
-        mock_llm.generate_structured.side_effect = RuntimeError("schema mismatch")
-
-        result = await extract_metadata_llm(_SAMPLE_TEXT, mock_llm, max_retries=3)
-
-        assert result.title is None
-        assert mock_llm.generate_structured.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_exhausted_retries_returns_empty(self, mock_llm):
-        """After exhausting all retries, should return empty CaseMetadata."""
-        mock_llm.generate_structured.side_effect = ConnectionError("Timeout")
-
-        with patch("app.core.ingestion.metadata.asyncio.sleep", new_callable=AsyncMock):
-            result = await extract_metadata_llm(_SAMPLE_TEXT, mock_llm, max_retries=3)
-
-        assert result.title is None
-        assert result.court is None
-        assert mock_llm.generate_structured.call_count == 3
-
-    @pytest.mark.asyncio
-    async def test_exponential_backoff_timing(self, mock_llm):
-        """Retries should use exponential backoff: 1s, 2s, 4s, etc."""
-        mock_llm.generate_structured.side_effect = ConnectionError("Timeout")
-
-        with patch(
-            "app.core.ingestion.metadata.asyncio.sleep", new_callable=AsyncMock
-        ) as mock_sleep:
-            await extract_metadata_llm(_SAMPLE_TEXT, mock_llm, max_retries=3)
-
-        # Backoff: 2^0=1s, 2^1=2s (only 2 sleeps for 3 attempts, last attempt doesn't sleep)
-        assert mock_sleep.call_count == 2
-        mock_sleep.assert_any_call(1)  # 2^0
-        mock_sleep.assert_any_call(2)  # 2^1
 
     @pytest.mark.asyncio
     async def test_headnotes_list_converted_to_json(self, mock_llm):
@@ -129,7 +105,7 @@ class TestExtractMetadataLLMRetry:
 
         result = await extract_metadata_llm(_SAMPLE_TEXT, mock_llm)
 
-        assert isinstance(result.headnotes, str)  # JSON string, not list
+        assert isinstance(result.headnotes, str)
         assert "Right to privacy" in result.headnotes
 
     @pytest.mark.asyncio

@@ -95,6 +95,9 @@ export default function ResearchAgentPage() {
     } | null>(null);
     const [memo, setMemo] = useState("");
     const [streamingMemo, setStreamingMemo] = useState("");
+    // Typewriter buffer: queue incoming chunks and reveal gradually
+    const streamQueueRef = useRef("");
+    const rafIdRef = useRef<number | null>(null);
     const [confidence, setConfidence] = useState<number | undefined>();
     const [confidenceBreakdown, setConfidenceBreakdown] = useState<{
         data_confidence?: number;
@@ -142,6 +145,23 @@ export default function ResearchAgentPage() {
         };
     }, []);
 
+    // Typewriter animation: consume queued text ~30 chars per frame
+    useEffect(() => {
+        const CHARS_PER_FRAME = 30;
+        const tick = () => {
+            if (streamQueueRef.current.length > 0) {
+                const batch = streamQueueRef.current.slice(0, CHARS_PER_FRAME);
+                streamQueueRef.current = streamQueueRef.current.slice(CHARS_PER_FRAME);
+                setStreamingMemo((prev) => prev + batch);
+            }
+            rafIdRef.current = requestAnimationFrame(tick);
+        };
+        rafIdRef.current = requestAnimationFrame(tick);
+        return () => {
+            if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
+        };
+    }, []);
+
     const handleEvent = useCallback((event: AgentStreamEvent) => {
         // Capture execution_id from the first event that carries it,
         // so it's available before "done" (e.g. at checkpoint time).
@@ -158,11 +178,9 @@ export default function ResearchAgentPage() {
             return;
         }
 
-        // [S5] Handle streaming memo chunks (currently unused — backend emits
-        // final memo as "done" event, not incremental chunks. Kept for future
-        // streaming wire-up)
+        // [S5] Handle streaming memo chunks — queue for typewriter animation
         if (event.type === "memo_stream" && event.chunk) {
-            setStreamingMemo((prev) => prev + event.chunk);
+            streamQueueRef.current += event.chunk;
             return;
         }
 
@@ -222,6 +240,7 @@ export default function ResearchAgentPage() {
                 });
                 // Extract memo + footnotes from checkpoint context (e.g. checkpoint_memo)
                 if (ctx.draft_memo) {
+                    streamQueueRef.current = "";
                     setMemo(ctx.draft_memo as string);
                     setStreamingMemo("");
                 }
@@ -245,6 +264,8 @@ export default function ResearchAgentPage() {
                 break;
             }
             case "memo": {
+                // Flush any remaining queued text and replace with final memo
+                streamQueueRef.current = "";
                 setMemo(event.content || "");
                 setStreamingMemo(""); // Replace streaming content with final
                 const data = event.data as Record<string, unknown> | undefined;
@@ -313,6 +334,7 @@ export default function ResearchAgentPage() {
         setError(null);
         setMemo("");
         setStreamingMemo("");
+        streamQueueRef.current = "";
         setConfidence(undefined);
         setConfidenceBreakdown(undefined);
         setCheckpoint(null);
@@ -467,6 +489,7 @@ export default function ResearchAgentPage() {
         setCheckpoint(null);
         setMemo("");
         setStreamingMemo("");
+        streamQueueRef.current = "";
         setConfidence(undefined);
         setConfidenceBreakdown(undefined);
         setError(null);

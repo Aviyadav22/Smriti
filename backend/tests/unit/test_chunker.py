@@ -11,6 +11,7 @@ from app.core.ingestion.chunker import (
     _detect_paragraph_range,
     _find_break_point,
     _is_abbreviation,
+    _is_heading_position,
     chunk_judgment,
     detect_judgment_sections,
 )
@@ -549,3 +550,26 @@ class TestOpinionAuthorOnChunks:
             case_id="test",
         )
         assert chunk.opinion_author is None
+
+
+class TestIsHeadingPositionLineLengthHeuristic:
+    """Tests for line-length heuristic in _is_heading_position."""
+
+    def test_long_line_with_evidence_keyword_is_not_heading(self):
+        """'15. Evidence shows that the accused...' should NOT match as EVIDENCE heading."""
+        text = "Some text above.\n15. Evidence shows that the accused was present at the scene of the crime on the night of the incident and was seen by multiple witnesses"
+        # Find where 'Evidence' starts in the text
+        match_start = text.index("Evidence")
+        assert _is_heading_position(text, match_start) is False
+
+    def test_short_line_is_heading(self):
+        """A short line like 'EVIDENCE' at line start IS a heading."""
+        text = "Some text above.\nEVIDENCE\nThe court considered..."
+        match_start = text.index("EVIDENCE")
+        assert _is_heading_position(text, match_start) is True
+
+    def test_numbered_short_line_is_heading(self):
+        """'III. EVIDENCE' should be detected as heading."""
+        text = "Some text above.\nIII. EVIDENCE\nThe court considered..."
+        match_start = text.index("EVIDENCE")
+        assert _is_heading_position(text, match_start) is True

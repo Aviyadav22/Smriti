@@ -19,6 +19,7 @@ from app.core.dependencies import (
     get_vector_store,
 )
 from app.core.ingestion.chunker import detect_judgment_sections
+from app.core.legal.extractor import get_acts_cited_display
 from app.db.postgres import get_db
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user, get_current_user_optional
@@ -73,6 +74,11 @@ async def get_case(
         case_dict["sections"] = sections
     else:
         case_dict["sections"] = {}
+
+    # Add human-readable act display names (keeps acts_cited unchanged)
+    case_dict["acts_cited_display"] = get_acts_cited_display(
+        case_dict.get("acts_cited")
+    )
 
     # Serialize datetime objects
     for key in ("created_at", "updated_at", "decision_date"):
@@ -161,7 +167,11 @@ async def get_case_pdf(
     storage = get_storage()
     try:
         pdf_bytes = await storage.retrieve(pdf_path)
-    except (FileNotFoundError, OSError, RuntimeError) as exc:
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error(
+            "PDF retrieve failed for %s (type=%s): %s", pdf_path, type(exc).__name__, exc
+        )
         raise HTTPException(
             status_code=404, detail="PDF file not found in storage"
         ) from exc

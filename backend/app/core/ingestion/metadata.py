@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from dataclasses import dataclass, fields
@@ -12,12 +11,19 @@ from app.core.interfaces.llm import LLMProvider
 
 logger = logging.getLogger(__name__)
 
-# Maximum characters of judgment text sent to the LLM for metadata extraction.
-_MAX_INPUT_CHARS: int = 50_000
+_HEAD_CHARS = 30_000
+_TAIL_CHARS = 20_000
 
-# Head+tail truncation: keeps beginning (parties, header) and end (order, disposition)
-_HEAD_CHARS: int = 30_000
-_TAIL_CHARS: int = 20_000
+
+def _truncate_for_llm(text: str) -> str:
+    """Head+tail truncation to stay within LLM context budget."""
+    if len(text) <= _HEAD_CHARS + _TAIL_CHARS:
+        return text
+    return (
+        text[:_HEAD_CHARS]
+        + "\n\n[...middle section truncated for length...]\n\n"
+        + text[-_TAIL_CHARS:]
+    )
 
 
 def _parse_judge_names(raw: str | list | None) -> list[str] | None:
@@ -153,14 +159,19 @@ class CaseMetadata:
 # ---------------------------------------------------------------------------
 
 async def extract_metadata_llm(
-    text: str, llm: LLMProvider, *, max_retries: int = 3
+    text: str,
+    llm: LLMProvider,
+    *,
+    pdf_path: str | None = None,
 ) -> CaseMetadata:
     """Use an LLM with structured output to extract metadata from judgment text.
 
-    V2: Sends full text to LLM (Gemini 1M context supports this).
-    Average SC judgment = ~60K chars = ~20K tokens, well within limits.
+    V3: Prefers Gemini PDF multimodal when pdf_path is provided (better layout
+    understanding, no pdfplumber artifacts). Falls back to text-only for
+    non-Gemini providers or when pdf_path is unavailable.
 
-    Retries up to max_retries times with exponential backoff on transient failures.
+    Single-attempt function — retries are handled by the pipeline's tenacity
+    decorator (3 attempts) and the Gemini provider's own retry (5 attempts).
     """
     from app.core.legal.prompts import (
         METADATA_EXTRACTION_SYSTEM,
@@ -168,46 +179,58 @@ async def extract_metadata_llm(
         METADATA_OUTPUT_SCHEMA,
     )
 
-    # V2: Send full text to LLM (no truncation).
-    # Gemini 1M context window handles even the longest judgments.
-    truncated = text
+    # Determine whether to use PDF multimodal or text-only
+    can_use_pdf = bool(pdf_path and hasattr(llm, "generate_structured_from_pdf"))
 
-    prompt = METADATA_EXTRACTION_USER.format(judgment_text=truncated)
+    try:
+        result: dict = {}
 
-    for attempt in range(max_retries):
-        try:
+        if can_use_pdf:
+            # PDF multimodal: Gemini sees actual PDF layout
+            try:
+                prompt = METADATA_EXTRACTION_USER.format(
+                    judgment_text="[See attached PDF document]"
+                )
+                result = await llm.generate_structured_from_pdf(
+                    pdf_path,
+                    prompt=prompt,
+                    system=METADATA_EXTRACTION_SYSTEM,
+                    output_schema=METADATA_OUTPUT_SCHEMA,
+                    temperature=0.1,
+                )
+            except Exception as pdf_exc:
+                logger.warning(
+                    "PDF multimodal extraction failed, falling back to text: %s",
+                    pdf_exc,
+                )
+                result = {}  # Trigger text fallback below
+
+        if not result:
+            # Text fallback: send extracted text (for tests, non-Gemini, PDF failure)
+            truncated = _truncate_for_llm(text)
+            prompt = METADATA_EXTRACTION_USER.format(judgment_text=truncated)
             result = await llm.generate_structured(
                 prompt,
                 system=METADATA_EXTRACTION_SYSTEM,
                 output_schema=METADATA_OUTPUT_SCHEMA,
                 temperature=0.1,
             )
-            # Build CaseMetadata only from keys that match its fields.
-            field_names = {f.name for f in fields(CaseMetadata)}
-            filtered = {k: v for k, v in result.items() if k in field_names}
-            # Convert structured headnotes list to JSON string for DB storage
-            if isinstance(filtered.get("headnotes"), list):
-                filtered["headnotes"] = json.dumps(filtered["headnotes"])
-            return CaseMetadata(**filtered)
-        except (ValueError, KeyError, RuntimeError) as exc:
-            # Non-transient errors -- don't retry
-            logger.error("LLM metadata extraction failed (non-retryable): %s", exc)
-            return CaseMetadata()
-        except Exception as exc:
-            if attempt == max_retries - 1:
-                logger.error(
-                    "LLM metadata extraction failed after %d retries: %s",
-                    max_retries, exc,
-                )
-                return CaseMetadata()
-            wait = 2 ** attempt
-            logger.warning(
-                "LLM metadata extraction attempt %d/%d failed, retrying in %ds: %s",
-                attempt + 1, max_retries, wait, exc,
-            )
-            await asyncio.sleep(wait)
 
-    return CaseMetadata()
+        # Empty or all-null result means LLM returned no useful data — retry
+        if not result or all(v is None for v in result.values()):
+            raise RuntimeError("LLM returned empty/all-null structured output")
+
+        # Build CaseMetadata only from keys that match its fields.
+        field_names = {f.name for f in fields(CaseMetadata)}
+        filtered = {k: v for k, v in result.items() if k in field_names}
+        # Convert structured headnotes list to JSON string for DB storage
+        if isinstance(filtered.get("headnotes"), list):
+            filtered["headnotes"] = json.dumps(filtered["headnotes"])
+        return CaseMetadata(**filtered)
+    except (ValueError, KeyError) as exc:
+        # Non-transient errors -- don't retry
+        logger.error("LLM metadata extraction failed (non-retryable): %s", exc)
+        return CaseMetadata()
 
 
 # ---------------------------------------------------------------------------
@@ -420,6 +443,61 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
                 field_name, max_len, len(val),
             )
             setattr(metadata, field_name, val[:max_len])
+
+    # --- V2 Field Validation ---
+
+    # judicial_tone enum
+    valid_tones = {"formal", "assertive", "sympathetic", "critical", "neutral", "analytical"}
+    if metadata.judicial_tone and metadata.judicial_tone.lower() not in valid_tones:
+        metadata.judicial_tone = None
+
+    # filing_date — validate ISO format
+    if metadata.filing_date:
+        try:
+            datetime.fromisoformat(metadata.filing_date)
+        except (ValueError, TypeError):
+            metadata.filing_date = None
+
+    # hearing_count — sanity range
+    if metadata.hearing_count is not None and (metadata.hearing_count < 0 or metadata.hearing_count > 500):
+        metadata.hearing_count = None
+
+    # operative_order length cap
+    if metadata.operative_order and len(metadata.operative_order) > 10_000:
+        metadata.operative_order = metadata.operative_order[:10_000]
+
+    # V2 list fields — ensure lists, dedup, cap length
+    _V2_LIST_FIELDS = {
+        "arguments_raised": 50, "key_observations": 30, "citation_treatments": 100,
+        "distinguished_cases": 50, "overruled_cases": 50, "legal_principles_applied": 30,
+        "procedural_history": 30, "interim_orders": 20, "urgency_indicators": 10,
+        "party_counsel": 30, "issue_classification": 20, "fact_pattern_tags": 20,
+        "conditions_imposed": 20,
+    }
+    for field_name, max_items in _V2_LIST_FIELDS.items():
+        val = getattr(metadata, field_name, None)
+        if val is not None:
+            if not isinstance(val, list):
+                setattr(metadata, field_name, [val] if val else [])
+                val = getattr(metadata, field_name)
+            if len(val) > max_items:
+                setattr(metadata, field_name, val[:max_items])
+
+    # citation_treatments — validate dict structure
+    if metadata.citation_treatments:
+        valid_treatments = []
+        for ct in metadata.citation_treatments:
+            if isinstance(ct, dict) and ct.get("cited_case"):
+                valid_treatments.append(ct)
+        metadata.citation_treatments = valid_treatments
+
+    # party_counsel — validate dict structure
+    if metadata.party_counsel:
+        valid_counsel = []
+        for pc in metadata.party_counsel:
+            if isinstance(pc, dict) and pc.get("name"):
+                valid_counsel.append(pc)
+        metadata.party_counsel = valid_counsel
 
     return metadata
 

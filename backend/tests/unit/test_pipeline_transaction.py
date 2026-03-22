@@ -16,14 +16,14 @@ from app.core.ingestion.pipeline import ingest_judgment
 
 @asynccontextmanager
 async def _fake_begin():
-    """Simulate async with db.begin(): context manager."""
+    """Simulate async with db.begin_nested(): context manager."""
     yield
 
 
 def _make_db_mock() -> AsyncMock:
-    """Build a mock AsyncSession with begin() returning an async CM."""
+    """Build a mock AsyncSession with begin_nested() returning an async CM."""
     db = AsyncMock()
-    db.begin = MagicMock(side_effect=lambda: _fake_begin())
+    db.begin_nested = MagicMock(side_effect=lambda: _fake_begin())
     # execute returns an awaitable; fetchone() on the result returns None
     # (no duplicate hash row).
     exec_result = MagicMock()
@@ -142,11 +142,11 @@ class TestIngestionStatusTransaction:
     """Verify the 'processing' status update uses an explicit transaction."""
 
     @pytest.mark.asyncio
-    async def test_begin_called_for_status_update(self):
-        """db.begin() must be called for the processing status UPDATE.
+    async def test_begin_nested_called_for_status_update(self):
+        """db.begin_nested() must be called for the processing status UPDATE.
 
         The pipeline is halted at detect_judgment_sections (step 6), right
-        after the status UPDATE.  The assertion checks db.begin() was called.
+        after the status UPDATE.  The assertion checks db.begin_nested() was called.
         """
         db = _make_db_mock()
         fake_case_id = "case-tx-test"
@@ -156,25 +156,25 @@ class TestIngestionStatusTransaction:
             with pytest.raises(RuntimeError, match="stop-after-status-update"):
                 await _run_pipeline(db)
 
-        # The key assertion: db.begin() was called (for the status update)
-        db.begin.assert_called()
+        # The key assertion: db.begin_nested() was called (for the status update)
+        db.begin_nested.assert_called()
 
     @pytest.mark.asyncio
-    async def test_status_update_inside_begin_block(self):
+    async def test_status_update_inside_begin_nested_block(self):
         """The UPDATE ... ingestion_status = 'processing' must execute
-        inside the begin() context manager (between __aenter__ and __aexit__).
+        inside the begin_nested() context manager (between __aenter__ and __aexit__).
         """
         db = _make_db_mock()
         call_order: list[str] = []
 
-        # Track call ordering via a custom begin() CM
+        # Track call ordering via a custom begin_nested() CM
         @asynccontextmanager
         async def tracking_begin():
             call_order.append("begin_enter")
             yield
             call_order.append("begin_exit")
 
-        db.begin = MagicMock(side_effect=lambda: tracking_begin())
+        db.begin_nested = MagicMock(side_effect=lambda: tracking_begin())
 
         # Wrap execute to detect the status update query
         base_exec_result = MagicMock()

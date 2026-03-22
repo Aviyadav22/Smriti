@@ -88,6 +88,7 @@ export default function CasePrepAgentPage() {
                 );
             } catch (err) {
                 console.error("Failed to load documents for case prep:", err);
+                setError("Failed to load documents. Please refresh the page.");
             } finally {
                 setDocumentsLoading(false);
             }

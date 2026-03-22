@@ -153,7 +153,7 @@ class TestExtractAndScore:
         ), patch(
             "app.core.ingestion.pdf.extract_with_ocr",
             new_callable=AsyncMock,
-            return_value=ocr_text,
+            return_value=(ocr_text, False, 5),
         ):
             result = await extract_and_score("/fake/path.pdf")
 
@@ -170,7 +170,7 @@ class TestExtractAndScore:
         ), patch(
             "app.core.ingestion.pdf.extract_with_ocr",
             new_callable=AsyncMock,
-            return_value="",
+            return_value=("", False, 0),
         ):
             result = await extract_and_score("/fake/path.pdf")
 

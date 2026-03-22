@@ -173,7 +173,7 @@ function ChatPageInner() {
             setSessions(data);
         } catch (err) {
             console.error("Failed to load sessions:", err);
-            // Don't clear sessions on error - keep existing data
+            setNetworkError("Failed to load conversations. Please refresh the page.");
         } finally {
             setSessionsLoading(false);
         }
@@ -194,7 +194,7 @@ function ChatPageInner() {
             );
         } catch (err) {
             console.error("Failed to load history:", err);
-            setMessages([]);
+            // Don't clear messages — keep existing data visible while showing error
             setNetworkError("Failed to load chat history. Please try again.");
         } finally {
             setMessagesLoading(false);
@@ -230,6 +230,7 @@ function ChatPageInner() {
             }
         } catch (err) {
             console.error("Failed to delete session:", err);
+            setNetworkError("Failed to delete conversation. Please try again.");
         }
     }
 

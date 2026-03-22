@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Safety limit: refuse to process PDFs with more pages than this
 MAX_PAGES = 5000
+MAX_OCR_PAGES = 500
 
 # Characters to strip: zero-width space, BOM, soft hyphen
 # Note: ZWNJ (U+200C) and ZWJ (U+200D) are preserved -- they are structurally
@@ -57,6 +58,37 @@ _BOILERPLATE_PATTERNS = [
     re.compile(r"^\s*UPON\s+hearing\b.*$", re.IGNORECASE),
 ]
 
+# Reporter editorial metadata (bylines, result summaries, digest headers)
+_EDITORIAL_RE = re.compile(
+    r"^\s*(?:†\s*)?Headnotes?\s+prepared\s+by\s*:\s*.*$|"
+    r"^\s*(?:†\s*)?Prepared\s+by\s*:\s*.*$|"
+    r"^\s*(?:†\s*)?Formatted\s+by\s*:\s*.*$|"
+    r"^\s*(?:†\s*)?Compiled\s+by\s*:\s*.*$|"
+    r"^\s*Result\s+of\s+the\s+case\s*:.*$|"
+    r"^\s*Digest\s*:.*$|"
+    r"^\s*Catchwords?\s*:?\s*$|"
+    r"^\s*Cases\s+Referred\s*:?\s*$|"
+    r"^\s*Cases\s+Cited\s*:?\s*$|"
+    r"^\s*Legislation\s+Cited\s*:?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Reporter page markers: SCR, SCC, AIR, SCALE, MANU
+_REPORTER_PAGE_MARKER_RE = re.compile(
+    # SCR: "[2026] 1 S.C.R. 63" or "64 [2026] 1 S.C.R."
+    r"^\s*\[?\d{4}\]?\s+\d+\s+S\.?\s*C\.?\s*R\.?\s+\d+\s*$|"
+    r"^\s*\d+\s+\[?\d{4}\]?\s+\d+\s+S\.?\s*C\.?\s*R\.?\s*$|"
+    # SCC: (2024) 5 SCC 123 or (2024) 5 SCC (Cri) 123
+    r"^\s*\(\d{4}\)\s+\d+\s+SCC\s+(?:\([A-Za-z]+\)\s+)?\d+\s*$|"
+    # AIR: AIR 2024 SC 123
+    r"^\s*AIR\s+\d{4}\s+SC\s+\d+\s*$|"
+    # SCALE: (2024) 3 SCALE 456
+    r"^\s*\(\d{4}\)\s+\d+\s+SCALE\s+\d+\s*$|"
+    # MANU: MANU/SC/1234/2024
+    r"^\s*MANU/\w+/\d+/\d{4}\s*$",
+    re.MULTILINE,
+)
+
 # Footnote reference in body text: superscript digits or [1], [2] etc.
 _FOOTNOTE_REF_RE = re.compile(r"(?:\[(\d{1,3})\]|(?<!\d)(\d{1,2})(?=\s))")
 
@@ -77,6 +109,8 @@ class TextQuality:
     legal_keyword_count: int
     page_count: int
     page_map: list[dict] = field(default_factory=list)
+    ocr_truncated: bool = False
+    ocr_total_pages: int = 0
 
 
 LEGAL_KEYWORDS = {
@@ -115,11 +149,18 @@ def clean_extracted_text(text: str) -> str:
     # 2. Remove zero-width characters and soft hyphens
     text = _ZERO_WIDTH_RE.sub("", text)
 
+    # 2a. Strip control characters (except \n, \t, \r)
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
+
     # 3. Detect and remove repeated headers/footers
     text = _remove_repeated_headers_footers(text)
 
     # 4. Remove standalone page numbers
     text = _PAGE_NUMBER_RE.sub("", text)
+
+    # 4a. Remove editorial metadata and reporter page markers
+    text = _EDITORIAL_RE.sub("", text)
+    text = _REPORTER_PAGE_MARKER_RE.sub("", text)
 
     # 5. Normalize dashes: em/en dashes between word characters -> hyphen
     #    e.g., "self\u2014defence" -> "self-defence" but preserve "-- " (em dash as punctuation)
@@ -494,20 +535,21 @@ async def extract_pdf_text(file_path: str) -> tuple[str, int, list[dict]]:
     return await asyncio.to_thread(_extract_pdf_text_sync, file_path)
 
 
-async def extract_with_ocr(file_path: str) -> str:
+async def extract_with_ocr(file_path: str) -> tuple[str, bool, int]:
     """Fallback OCR extraction for scanned PDFs.
 
     Uses pdf2image to convert pages to images and pytesseract
     for optical character recognition. Processes pages one at a time.
-    Uses Tesseract with
-    English + Hindi language support.
+    Uses Tesseract with English + Hindi language support.
 
     Args:
         file_path: Absolute path to the PDF file.
 
     Returns:
-        OCR-extracted text from all pages, separated by double newlines.
-        Returns an empty string on failure.
+        Tuple of (text, ocr_truncated, total_pages).
+        text: OCR-extracted text, empty string on failure.
+        ocr_truncated: True if pages were capped at MAX_OCR_PAGES.
+        total_pages: Total pages in the PDF.
     """
     try:
         import pytesseract  # noqa: F401
@@ -518,9 +560,9 @@ async def extract_with_ocr(file_path: str) -> str:
             "pdf2image or pytesseract not installed. "
             "Install with: pip install pdf2image pytesseract"
         )
-        return ""
+        return "", False, 0
 
-    def _ocr_sync() -> str:
+    def _ocr_sync() -> tuple[str, bool, int]:
         # Determine page count
         try:
             from pdf2image import pdfinfo_from_path
@@ -534,28 +576,29 @@ async def extract_with_ocr(file_path: str) -> str:
                     total_pages = len(pdf.pages)
             except Exception as exc:
                 logger.error("Cannot determine page count for %s: %s", file_path, exc)
-                return ""
+                return "", False, 0
 
         if total_pages == 0:
             logger.warning("PDF has 0 pages: %s", file_path)
-            return ""
+            return "", False, 0
 
-        if total_pages > MAX_PAGES:
-            logger.error(
-                "PDF %s has %d pages for OCR, exceeds MAX_PAGES=%d",
-                file_path, total_pages, MAX_PAGES,
+        ocr_page_limit = min(total_pages, MAX_OCR_PAGES)
+        truncated = total_pages > MAX_OCR_PAGES
+        if truncated:
+            logger.warning(
+                "PDF %s has %d pages for OCR, truncating to MAX_OCR_PAGES=%d",
+                file_path, total_pages, MAX_OCR_PAGES,
             )
-            return ""
 
         page_texts: list[str] = []
-        for page_num in range(1, total_pages + 1):
+        for page_num in range(1, ocr_page_limit + 1):
             page_text = _ocr_single_page(file_path, page_num)
             if page_text:
                 page_texts.append(page_text)
 
         result = _smart_page_join(page_texts)
         result = clean_extracted_text(result)
-        return result
+        return result, truncated, total_pages
 
     return await asyncio.to_thread(_ocr_sync)
 
@@ -647,9 +690,12 @@ async def extract_and_score(file_path: str) -> TextQuality:
     text, page_count, page_map = await extract_pdf_text(file_path)
     ocr_used = False
 
+    ocr_truncated = False
+    ocr_total_pages = 0
+
     if not text or len(text) < 100:
         logger.warning("pdfplumber extraction insufficient, trying OCR: %s", file_path)
-        text = await extract_with_ocr(file_path)
+        text, ocr_truncated, ocr_total_pages = await extract_with_ocr(file_path)
         ocr_used = True
         page_map = []  # OCR fallback doesn't produce page_map
 
@@ -658,6 +704,8 @@ async def extract_and_score(file_path: str) -> TextQuality:
 
     quality = score_text_quality(text, ocr_used=ocr_used, page_count=page_count)
     quality.page_map = page_map
+    quality.ocr_truncated = ocr_truncated
+    quality.ocr_total_pages = ocr_total_pages
 
     if quality.tier == "low":
         logger.warning(

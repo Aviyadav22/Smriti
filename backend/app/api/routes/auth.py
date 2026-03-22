@@ -133,7 +133,7 @@ async def register(
     )
 
 
-@router.post("/login", dependencies=[Depends(rate_limit_dependency("5/minute"))])
+@router.post("/login", dependencies=[Depends(rate_limit_dependency("15/minute"))])
 async def login(
     body: LoginRequest,
     request: Request,
@@ -154,17 +154,21 @@ async def login(
 
     # Check account lock
     if user["locked_until"] and user["locked_until"] > datetime.now(timezone.utc):
-        raise HTTPException(status_code=423, detail="Account temporarily locked")
+        remaining = (user["locked_until"] - datetime.now(timezone.utc)).seconds // 60 + 1
+        raise HTTPException(
+            status_code=423,
+            detail=f"Account temporarily locked. Try again in {remaining} minute(s).",
+        )
 
     if not user["is_active"]:
         raise HTTPException(status_code=403, detail="Account is deactivated")
 
     if not verify_password(body.password, user["password_hash"]):
-        # Increment failed login count
+        # Increment failed login count — lock after 10 failed attempts for 5 minutes
         new_count = (user["failed_login_count"] or 0) + 1
         lock_until = None
-        if new_count >= 5:
-            lock_until = datetime.now(timezone.utc) + timedelta(minutes=15)
+        if new_count >= 10:
+            lock_until = datetime.now(timezone.utc) + timedelta(minutes=5)
         await db.execute(
             text(
                 "UPDATE users SET failed_login_count = :count, locked_until = :lock "
@@ -183,7 +187,11 @@ async def login(
             user_agent=request.headers.get("user-agent"),
             metadata={"reason": "invalid_password", "attempt": new_count},
         )
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        remaining = 10 - new_count
+        detail = "Invalid email or password"
+        if 0 < remaining <= 3:
+            detail += f" ({remaining} attempt(s) remaining before temporary lock)"
+        raise HTTPException(status_code=401, detail=detail)
 
     # Reset failed count, update last login
     await db.execute(

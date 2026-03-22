@@ -748,7 +748,7 @@ class TestWorkerTimeouts:
         from app.core.agents.research import WORKER_TIMEOUTS
 
         assert WORKER_TIMEOUTS["web_search_worker"] == 10
-        assert WORKER_TIMEOUTS["ik_search_worker"] == 15
+        assert WORKER_TIMEOUTS["ik_search_worker"] == 45
         assert WORKER_TIMEOUTS["case_law_worker"] == 30
         assert WORKER_TIMEOUTS["graph_worker"] == 15
         assert WORKER_TIMEOUTS["graph_community_worker"] == 10

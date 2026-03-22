@@ -36,6 +36,26 @@ BENCH_HIERARCHY: Final[dict[str, int]] = {
 }
 
 
+def _bench_rank(bench: str | None, coram_size: int | None = None) -> int:
+    """Return numeric bench rank, preferring coram_size when available.
+
+    coram_size (actual number of judges) is more precise than bench label:
+    - 1 = single judge
+    - 2-3 = division bench
+    - 3-4 = full bench
+    - 5+ = constitutional bench / larger bench
+    """
+    if coram_size is not None and coram_size > 0:
+        if coram_size >= 5:
+            return 4  # Constitution Bench or larger
+        if coram_size >= 3:
+            return 3  # Full bench
+        if coram_size >= 2:
+            return 2  # Division bench
+        return 1  # Single judge
+    return BENCH_HIERARCHY.get(bench or "", 0)
+
+
 class PrecedentStrength(str, Enum):
     """Classification of how strongly a precedent applies."""
 
@@ -51,6 +71,8 @@ def classify_precedent_strength(
     target_court: str | None = None,
     target_bench: str | None = None,
     overruled: bool = False,
+    source_coram_size: int | None = None,
+    target_coram_size: int | None = None,
 ) -> PrecedentStrength:
     """Classify the binding strength of a precedent.
 
@@ -59,6 +81,9 @@ def classify_precedent_strength(
         source_bench: Bench type of the source decision (single/division/full/constitutional).
         target_court: Court where the precedent is being cited. If None, uses general rules.
         target_bench: Bench type of the target court (for same-court comparisons).
+        overruled: Whether the case has been overruled.
+        source_coram_size: Number of judges on the source bench (overrides source_bench label).
+        target_coram_size: Number of judges on the target bench (overrides target_bench label).
 
     Returns:
         PrecedentStrength indicating how strongly the precedent applies.
@@ -82,10 +107,10 @@ def classify_precedent_strength(
         if target_level == "unknown":
             logger.warning("Unknown court level for: %s (normalized: %s)", target_court, target_canonical)
 
-        # SC citing SC — check bench strength
-        if target_level == "supreme" and target_bench and source_bench:
-            source_rank = BENCH_HIERARCHY.get(source_bench, 0)
-            target_rank = BENCH_HIERARCHY.get(target_bench, 0)
+        # SC citing SC — check bench strength using _bench_rank
+        if target_level == "supreme" and (target_bench or target_coram_size):
+            source_rank = _bench_rank(source_bench, source_coram_size)
+            target_rank = _bench_rank(target_bench, target_coram_size)
             if source_rank >= target_rank:
                 return PrecedentStrength.BINDING
             return PrecedentStrength.PERSUASIVE
@@ -104,9 +129,12 @@ def classify_precedent_strength(
 
         # Same High Court
         if source_canonical == target_canonical:
-            if source_bench and target_bench:
-                source_rank = BENCH_HIERARCHY.get(source_bench, 0)
-                target_rank = BENCH_HIERARCHY.get(target_bench, 0)
+            if source_bench or source_coram_size or target_bench or target_coram_size:
+                source_rank = _bench_rank(source_bench, source_coram_size)
+                target_rank = _bench_rank(target_bench, target_coram_size)
+                if source_rank == 0 and target_rank == 0:
+                    # No bench info — assume binding within same HC
+                    return PrecedentStrength.BINDING
                 if source_rank >= target_rank:
                     return PrecedentStrength.BINDING
                 return PrecedentStrength.PERSUASIVE
@@ -144,8 +172,9 @@ def compute_effective_strength(
     overruled: bool,
     treatment_confidence: float = 0.7,
     year: int | None = None,
+    is_reportable: bool | None = None,
 ) -> float:
-    """Fuse precedent strength with treatment status and recency.
+    """Fuse precedent strength with treatment status, recency, and reportability.
 
     A BINDING precedent that has been overruled will receive a heavy penalty,
     while a recent, non-overruled BINDING case retains a score close to 1.0.
@@ -156,6 +185,8 @@ def compute_effective_strength(
         treatment_confidence: Confidence in the overruled detection (0-1).
             Only applied when *overruled* is True.
         year: Year the judgment was decided (for recency weighting).
+        is_reportable: If explicitly True, apply a 10% boost (reported judgments
+            carry more authority). If None, no adjustment.
 
     Returns:
         Effective strength score between 0.0 and 1.0.
@@ -168,5 +199,9 @@ def compute_effective_strength(
 
     # Recency decay
     result = base_value * recency_weight(year)
+
+    # Reportability boost — reported judgments carry more authority
+    if is_reportable is True:
+        result *= 1.1
 
     return min(1.0, max(0.0, result))

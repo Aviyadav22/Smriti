@@ -132,7 +132,7 @@ class TestEnrichResultsWithRatio:
     async def test_enriches_results_with_ratio(self) -> None:
         mock_result = MagicMock()
         mock_result.fetchall.return_value = [
-            ("case-1", "Natural justice applies to all tribunals.", "division"),
+            ("case-1", "Natural justice applies to all tribunals.", "division", 3),
         ]
         db = AsyncMock()
         db.execute.return_value = mock_result
@@ -142,12 +142,13 @@ class TestEnrichResultsWithRatio:
 
         assert enriched[0]["ratio"] == "Natural justice applies to all tribunals."
         assert enriched[0]["bench_type"] == "division"
+        assert enriched[0]["coram_size"] == 3
 
     @pytest.mark.asyncio
     async def test_enriches_bench_type(self) -> None:
         mock_result = MagicMock()
         mock_result.fetchall.return_value = [
-            ("case-2", "", "constitutional"),
+            ("case-2", "", "constitutional", 5),
         ]
         db = AsyncMock()
         db.execute.return_value = mock_result
@@ -156,6 +157,7 @@ class TestEnrichResultsWithRatio:
         enriched = await enrich_results_with_ratio(results, db)
 
         assert enriched[0]["bench_type"] == "constitutional"
+        assert enriched[0]["coram_size"] == 5
 
     @pytest.mark.asyncio
     async def test_empty_results_returns_empty(self) -> None:
@@ -489,6 +491,7 @@ class TestElementDecompositionNode:
 
         # Verify LLM was called with statute text in the user prompt
         call_args = mock_llm.generate_structured.call_args
-        user_prompt = call_args.kwargs.get("user_prompt", "")
+        # Prompt is passed as first positional arg
+        user_prompt = call_args.args[0] if call_args.args else ""
         assert "IPC Section 302" in user_prompt
         assert "Whoever commits murder" in user_prompt

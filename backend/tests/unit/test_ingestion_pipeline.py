@@ -89,12 +89,12 @@ def mock_db() -> AsyncMock:
     result.fetchone.return_value = None
     result.scalar_one_or_none.return_value = None
     db.execute.return_value = result
-    # Support async with db.begin(): (used for status update transaction)
-    # db.begin() is a sync call returning an async context manager
+    # Support async with db.begin_nested(): (used for status update savepoint)
+    # db.begin_nested() is a sync call returning an async context manager
     mock_begin = MagicMock()
     mock_begin.__aenter__ = AsyncMock(return_value=mock_begin)
     mock_begin.__aexit__ = AsyncMock(return_value=False)
-    db.begin = MagicMock(return_value=mock_begin)
+    db.begin_nested = MagicMock(return_value=mock_begin)
     return db
 
 
@@ -248,10 +248,10 @@ class TestIngestJudgment:
 
         # Should record the failure
         mock_record_failure.assert_called_once()
-        # _record_ingestion_failure(db, case_id, pdf_path, error_message)
+        # _record_ingestion_failure(case_id, pdf_path, error_message)
         call_args = mock_record_failure.call_args[0]
-        assert call_args[2] == "/tmp/corrupt.pdf"
-        assert call_args[3] == "No text extracted"
+        assert call_args[1] == "/tmp/corrupt.pdf"
+        assert call_args[2] == "No text extracted"
         # Returns None on extraction failure
         assert case_id is None
 

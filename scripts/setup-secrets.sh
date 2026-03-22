@@ -9,66 +9,77 @@ PROJECT_ID="smriti-489416"
 gcloud config set project $PROJECT_ID
 
 echo "Creating secrets in Secret Manager..."
-echo "You'll be prompted for each value."
 echo ""
 
-# Helper function
-create_secret() {
+# Helper: create or update a secret with a value
+set_secret() {
+  local name=$1
+  local value=$2
+
+  gcloud secrets create "$name" --replication-policy="automatic" 2>/dev/null || true
+  echo -n "$value" | gcloud secrets versions add "$name" --data-file=-
+  echo "  ✓ $name"
+}
+
+# Helper: prompt for a secret
+prompt_secret() {
   local name=$1
   local prompt=$2
 
   echo -n "$prompt: "
   read -r value
-
-  # Create secret if it doesn't exist
-  gcloud secrets create "$name" --replication-policy="automatic" 2>/dev/null || true
-
-  # Add the value
-  echo -n "$value" | gcloud secrets versions add "$name" --data-file=-
-  echo "  ✓ $name set"
+  set_secret "$name" "$value"
 }
 
-echo "=== Database (use Neon free tier: https://neon.tech) ==="
-create_secret "DATABASE_URL" "PostgreSQL URL (postgresql+asyncpg://user:pass@host/db)"
+echo "=== PostgreSQL (Hostinger KVM2 VPS) ==="
+set_secret "DATABASE_URL" "postgresql+asyncpg://smriti:***REMOVED***@76.13.185.172:5432/smriti"
 
 echo ""
-echo "=== Redis (use Upstash free tier: https://upstash.com) ==="
-create_secret "REDIS_URL" "Redis URL (rediss://default:pass@host:port)"
+echo "=== Redis (Upstash) ==="
+prompt_secret "REDIS_URL" "Redis URL (rediss://...)"
 
 echo ""
-echo "=== Security Keys (generate with: openssl rand -hex 32) ==="
-create_secret "JWT_SECRET_KEY" "JWT Secret Key (64-char hex)"
-create_secret "JWT_REFRESH_SECRET_KEY" "JWT Refresh Secret Key (64-char hex)"
-create_secret "ENCRYPTION_KEY" "Encryption Key (64-char hex)"
+echo "=== Security Keys ==="
+prompt_secret "JWT_SECRET_KEY" "JWT Secret Key (64-char hex)"
+prompt_secret "JWT_REFRESH_SECRET_KEY" "JWT Refresh Secret Key (64-char hex)"
+prompt_secret "ENCRYPTION_KEY" "Encryption Key (64-char hex)"
 
 echo ""
 echo "=== Gemini API ==="
-create_secret "GEMINI_API_KEY" "Gemini API Key"
+prompt_secret "GEMINI_API_KEY" "Primary Gemini API Key"
+prompt_secret "GEMINI_API_KEYS" "Comma-separated Gemini API Keys (for round-robin)"
 
 echo ""
 echo "=== Pinecone ==="
-create_secret "PINECONE_API_KEY" "Pinecone API Key"
-create_secret "PINECONE_HOST" "Pinecone Host URL (https://smriti-legal-xxx.svc.xxx.pinecone.io)"
+prompt_secret "PINECONE_API_KEY" "Pinecone API Key"
+prompt_secret "PINECONE_HOST" "Pinecone Host URL"
 
 echo ""
 echo "=== Neo4j ==="
-create_secret "NEO4J_URI" "Neo4j URI (neo4j+s://xxx.databases.neo4j.io)"
-create_secret "NEO4J_USER" "Neo4j User"
-create_secret "NEO4J_PASSWORD" "Neo4j Password"
+prompt_secret "NEO4J_URI" "Neo4j URI (neo4j+s://...)"
+prompt_secret "NEO4J_USER" "Neo4j User"
+prompt_secret "NEO4J_PASSWORD" "Neo4j Password"
+prompt_secret "NEO4J_DATABASE" "Neo4j Database Name"
 
 echo ""
 echo "=== Cohere ==="
-create_secret "COHERE_API_KEY" "Cohere API Key"
+prompt_secret "COHERE_API_KEY" "Cohere API Key"
 
 echo ""
-echo "=== Sentry ==="
-create_secret "SENTRY_DSN" "Sentry DSN (leave empty to disable)"
+echo "=== Indian Kanoon ==="
+prompt_secret "IK_API_TOKEN" "Indian Kanoon API Token"
+
+echo ""
+echo "=== Tavily ==="
+prompt_secret "TAVILY_API_KEY" "Tavily API Key"
+
+echo ""
+echo "=== Sentry (optional, press Enter to skip) ==="
+prompt_secret "SENTRY_DSN" "Sentry DSN"
 
 echo ""
 echo "=== CORS (will be updated after deployment) ==="
-echo -n "http://localhost:3000" | gcloud secrets create "CORS_ORIGINS" \
-  --replication-policy="automatic" --data-file=- 2>/dev/null || \
-  echo -n "http://localhost:3000" | gcloud secrets versions add "CORS_ORIGINS" --data-file=-
+set_secret "CORS_ORIGINS" "http://localhost:3000"
 
 echo ""
 echo "=== Grant Cloud Run access to secrets ==="

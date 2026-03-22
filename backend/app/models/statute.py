@@ -3,7 +3,7 @@
 from datetime import date
 
 from sqlalchemy import Boolean, Date, Index, Integer, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -23,6 +23,9 @@ class Statute(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     section_text: Mapped[str] = mapped_column(Text, nullable=False)
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
     effective_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    effective_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    amendment_history: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     is_repealed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )

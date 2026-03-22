@@ -228,20 +228,25 @@ class TestIKWorkerCostControl:
 
     @pytest.mark.asyncio
     async def test_uses_search_headline_skips_fragment(self) -> None:
-        """When search result has long headline, skip fragment API call."""
+        """Results beyond top-3 with long headline skip fragment API call."""
         from app.core.agents.nodes.worker_nodes import ik_search_worker
 
+        # Top 3 always get fragment; result at index 3+ uses headline if long enough
         mock_ik = AsyncMock()
         mock_ik.search = AsyncMock(return_value=[
-            {"tid": 1, "title": "Case 1", "headline": "A" * 60},  # 60 chars > 50 threshold
+            {"tid": 1, "title": "Case 1", "headline": "A" * 60},
+            {"tid": 2, "title": "Case 2", "headline": "B" * 60},
+            {"tid": 3, "title": "Case 3", "headline": "C" * 60},
+            {"tid": 4, "title": "Case 4", "headline": "D" * 60},  # idx 3: headline used
         ])
         mock_ik.get_fragment = AsyncMock(return_value={"headline": ["frag"]})
 
         state = {"task": _make_task()}
         result = await ik_search_worker(state, mock_ik)
 
-        assert mock_ik.get_fragment.call_count == 0
-        assert "A" * 60 == result["worker_results"][0]["results"][0]["snippet"]
+        # Top 3 get fragment calls, 4th uses headline
+        assert mock_ik.get_fragment.call_count == 3
+        assert "D" * 60 == result["worker_results"][0]["results"][3]["snippet"]
 
     @pytest.mark.asyncio
     async def test_falls_back_to_fragment_when_headline_short(self) -> None:

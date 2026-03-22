@@ -6,6 +6,12 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 const nextConfig: NextConfig = {
   output: "standalone",
   compress: true,
+  transpilePackages: ["react-pdf"],
+  webpack: (config) => {
+    // react-pdf requires canvas as optional peer dep — stub it for SSR
+    config.resolve.alias.canvas = false;
+    return config;
+  },
   /* API proxy — rewrites /api/v1/* to the backend during development */
   async rewrites() {
     return [

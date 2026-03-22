@@ -108,15 +108,18 @@ async def case_law_worker(
     if court_filter or from_year or to_year:
         from app.core.search.query import SearchFilters
         existing = search_kwargs.get("filters")
-        if not existing:
-            existing = SearchFilters()
-            search_kwargs["filters"] = existing
+        # SearchFilters is frozen — build a new instance merging existing + new
+        merge: dict[str, Any] = {}
+        if existing:
+            import dataclasses
+            merge = {f.name: getattr(existing, f.name) for f in dataclasses.fields(existing) if getattr(existing, f.name) is not None}
         if court_filter:
-            existing.court = [court_filter] if isinstance(court_filter, str) else court_filter
+            merge["court"] = [court_filter] if isinstance(court_filter, str) else court_filter
         if from_year:
-            existing.year_from = int(from_year)
+            merge["year_from"] = int(from_year)
         if to_year:
-            existing.year_to = int(to_year)
+            merge["year_to"] = int(to_year)
+        search_kwargs["filters"] = SearchFilters(**merge)
 
     # [B13] Pass precomputed embeddings to skip redundant embed_text() calls
     precomputed = state.get("precomputed_embeddings") or {}
@@ -157,10 +160,12 @@ async def named_case_worker(
     embedder: EmbeddingProvider,
     vector_store: VectorStore,
     reranker: Reranker,
+    ik_client: object | None = None,
 ) -> dict:
     """Look up specific landmark cases by citation or title.
 
-    Tries exact citation search first, falls back to title-based ILIKE search.
+    Tries exact citation search first, falls back to title-based ILIKE search,
+    then falls back to Indian Kanoon search if the case is not in the local DB.
     """
     task = state["task"]
     results: list[dict] = []
@@ -181,6 +186,51 @@ async def named_case_worker(
                 # Fallback: search by case name in title
                 if not found and named.get("name"):
                     found = await _search_by_title(named["name"], db)
+
+                # Fallback: search Indian Kanoon by case name
+                if not found and ik_client and named.get("name"):
+                    try:
+                        ik_results = await ik_client.search(
+                            named["name"],
+                            max_results=3,
+                        )
+                        for doc in (ik_results or []):
+                            doc_id = str(doc.get("tid", doc.get("docid", "")))
+                            if not doc_id:
+                                continue
+                            title = doc.get("title", "")
+                            court = doc.get("docsource", doc.get("court", ""))
+                            pub_date = doc.get("publishdate", "")
+                            ik_year = doc.get("year")
+                            if not ik_year and pub_date:
+                                _ym = re.search(r"\b(19|20)\d{2}\b", pub_date)
+                                if _ym:
+                                    ik_year = int(_ym.group())
+                            ik_citation = doc.get("citation", "")
+                            if not ik_citation:
+                                if court and pub_date:
+                                    ik_citation = f"{title} ({court}, {pub_date})"
+                                elif court:
+                                    ik_citation = f"{title} ({court})"
+                                else:
+                                    ik_citation = title
+                            found.append({
+                                "case_id": f"ik:{doc_id}",
+                                "title": title,
+                                "citation": ik_citation,
+                                "court": court,
+                                "author": doc.get("author", ""),
+                                "year": ik_year,
+                                "snippet": _strip_html_tags(doc.get("headline", ""))[:500],
+                                "score": 0.8,
+                                "source": "indian_kanoon",
+                                "ik_doc_id": doc_id,
+                            })
+                    except Exception:
+                        logger.debug(
+                            "IK fallback search for named case '%s' failed",
+                            named.get("name"),
+                        )
 
                 results.extend(found)
 
@@ -534,6 +584,15 @@ async def ik_search_worker(
                 else:
                     ik_citation = title
 
+            # Parse year from publishdate if IK API didn't provide year directly
+            ik_year = doc.get("year")
+            if not ik_year:
+                pub_date = doc.get("publishdate", "")
+                if pub_date:
+                    _ym = re.search(r"\b(19|20)\d{2}\b", pub_date)
+                    if _ym:
+                        ik_year = int(_ym.group())
+
             results.append({
                 "case_id": f"ik:{doc_id}",
                 "title": doc.get("title", ""),
@@ -541,7 +600,7 @@ async def ik_search_worker(
                 "court": doc.get("docsource", doc.get("court", "")),
                 "author": doc.get("author", ""),
                 "date": doc.get("publishdate", ""),
-                "year": doc.get("year"),
+                "year": ik_year,
                 "num_cites": doc.get("numcites", 0),
                 "num_cited_by": doc.get("numcitedby", 0),
                 "snippet": snippet,

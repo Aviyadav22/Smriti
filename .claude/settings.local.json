@@ -6,7 +6,18 @@
       "Edit(*)",
       "Write(*)",
       "Glob(*)",
-      "Grep(*)"
+      "Grep(*)",
+      "WebFetch(domain:devgan.in)",
+      "WebFetch(domain:www.indiacode.nic.in)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:ai.google.dev)",
+      "WebFetch(domain:discuss.ai.google.dev)",
+      "WebFetch(domain:docs.cloud.google.com)",
+      "WebFetch(domain:docs.pinecone.io)",
+      "WebFetch(domain:www.pinecone.io)",
+      "WebFetch(domain:neo4j.com)",
+      "WebFetch(domain:www.saasworthy.com)",
+      "WebFetch(domain:supabase.com)"
     ]
   }
 }

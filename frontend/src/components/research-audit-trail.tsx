@@ -9,7 +9,7 @@ interface ResearchAuditTrailProps {
 }
 
 export function ResearchAuditTrail({ audit }: ResearchAuditTrailProps) {
-    const [isOpen, setIsOpen] = useState(false);
+    const [isOpen, setIsOpen] = useState(true);
 
     const stats = [
         { label: "Sources Searched", value: audit.total_sources_searched },
@@ -41,7 +41,7 @@ export function ResearchAuditTrail({ audit }: ResearchAuditTrailProps) {
             </button>
 
             {isOpen && (
-                <div className="px-4 pb-3">
+                <div className="px-4 pb-3 space-y-3">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {stats.map((s) => (
                             <div key={s.label} className="text-center">
@@ -50,6 +50,20 @@ export function ResearchAuditTrail({ audit }: ResearchAuditTrailProps) {
                             </div>
                         ))}
                     </div>
+                    {audit.source_counts && Object.keys(audit.source_counts).length > 0 && (
+                        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border">
+                            <span className="text-xs text-muted-foreground font-medium">Sources:</span>
+                            {Object.entries(audit.source_counts).map(([source, count]) => (
+                                <span
+                                    key={source}
+                                    className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+                                >
+                                    <span className="font-semibold text-foreground">{source}</span>
+                                    <span>{count}</span>
+                                </span>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
         </div>

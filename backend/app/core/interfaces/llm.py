@@ -28,6 +28,16 @@ class LLMProvider(Protocol):
         temperature: float = 0.1,
     ) -> dict: ...
 
+    async def generate_structured_from_pdf(
+        self,
+        pdf_path: str,
+        *,
+        prompt: str,
+        system: str | None = None,
+        output_schema: dict,
+        temperature: float = 0.1,
+    ) -> dict: ...
+
     async def stream(
         self,
         prompt: str,

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from app.core.ingestion.rate_limiter import AsyncRateLimiter
 from app.core.interfaces.llm import LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,7 @@ async def batch_contextualize_chunks(
     flash_llm: LLMProvider,
     document_type: str = "case_law",
     batch_size: int = 10,
+    rate_limiter: AsyncRateLimiter | None = None,
 ) -> list[dict]:
     """Contextualize a list of chunk dicts in parallel batches.
 
@@ -109,15 +111,18 @@ async def batch_contextualize_chunks(
     batches = [chunks[i : i + batch_size] for i in range(0, len(chunks), batch_size)]
 
     for batch in batches:
-        tasks = [
-            generate_contextual_prefix(
-                chunk["text"],
+
+        async def _contextualize_one(chunk_text: str) -> str:
+            if rate_limiter:
+                await rate_limiter.acquire()
+            return await generate_contextual_prefix(
+                chunk_text,
                 document_metadata,
                 flash_llm,
                 document_type,
             )
-            for chunk in batch
-        ]
+
+        tasks = [_contextualize_one(chunk["text"]) for chunk in batch]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for chunk, result in zip(batch, results):

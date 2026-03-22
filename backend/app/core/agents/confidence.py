@@ -139,6 +139,10 @@ def calculate_confidence_detailed(
     contradiction_count: int,
     total_results: int,
     effective_strengths: list[float] | None = None,
+    *,
+    worker_types: list[str] | None = None,
+    initial_gap_count: int = 0,
+    remaining_gap_count: int = 0,
 ) -> ConfidenceBreakdown:
     """Calculate confidence with a full sub-component decomposition.
 
@@ -156,6 +160,9 @@ def calculate_confidence_detailed(
             (from :func:`~app.core.legal.precedent_strength.compute_effective_strength`).
             When provided these take priority over *precedent_strengths* for the
             legal confidence component.
+        worker_types: List of worker types that contributed results [5E.4].
+        initial_gap_count: Number of evidence gaps before refinement [5E.4].
+        remaining_gap_count: Number of evidence gaps remaining [5E.4].
 
     Returns:
         A :class:`ConfidenceBreakdown` dict with ``overall``,
@@ -194,11 +201,18 @@ def calculate_confidence_detailed(
     else:
         consistency_confidence = 1.0
 
-    # Overall uses same weights as calculate_confidence
+    # --- source_diversity and gap_coverage (same as calculate_confidence) ---
+    source_diversity = _compute_source_diversity(worker_types or [])
+    gap_coverage = _compute_gap_coverage(initial_gap_count, remaining_gap_count)
+
+    # Overall uses ALL 6 weights (must sum to 1.0)
     overall = (
-        (_W_RELEVANCE + _W_COVERAGE) * data_confidence
+        _W_RELEVANCE * relevance
+        + _W_COVERAGE * coverage
         + _W_AUTHORITY * legal_confidence
         + _W_CONTRADICTION * consistency_confidence
+        + _W_SOURCE_DIVERSITY * source_diversity
+        + _W_GAP_COVERAGE * gap_coverage
     )
     overall = min(1.0, max(0.0, overall))
 

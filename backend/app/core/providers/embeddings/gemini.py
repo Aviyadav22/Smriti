@@ -6,6 +6,7 @@ Default: 1536 dims (recommended balance of quality vs storage).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from google import genai
@@ -73,22 +74,28 @@ class GeminiEmbedder:
 
     @_embedding_retry
     async def embed_text(self, text: str) -> list[float]:
-        response = await self._client.aio.models.embed_content(
-            model=self._model,
-            contents=text,
-            config=types.EmbedContentConfig(
-                output_dimensionality=self._dimension,
+        response = await asyncio.wait_for(
+            self._client.aio.models.embed_content(
+                model=self._model,
+                contents=text,
+                config=types.EmbedContentConfig(
+                    output_dimensionality=self._dimension,
+                ),
             ),
+            timeout=60.0,
         )
         return response.embeddings[0].values
 
     @_embedding_retry
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        response = await self._client.aio.models.embed_content(
-            model=self._model,
-            contents=texts,
-            config=types.EmbedContentConfig(
-                output_dimensionality=self._dimension,
+        response = await asyncio.wait_for(
+            self._client.aio.models.embed_content(
+                model=self._model,
+                contents=texts,
+                config=types.EmbedContentConfig(
+                    output_dimensionality=self._dimension,
+                ),
             ),
+            timeout=120.0,
         )
         return [e.values for e in response.embeddings]

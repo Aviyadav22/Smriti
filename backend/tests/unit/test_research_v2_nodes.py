@@ -397,11 +397,11 @@ class TestEvaluateAndExtractNode:
 
         result = await evaluate_and_extract_node(state, llm, db)
 
-        # Filtered worker_results should exclude "bad"
-        for wr in result["worker_results"]:
-            case_ids = [r["case_id"] for r in wr["results"]]
-            assert "bad" not in case_ids
-            assert "good" in case_ids
+        # Filtered search_results should exclude "bad"
+        search_results = result["search_results"]
+        case_ids = [r["case_id"] for r in search_results]
+        assert "bad" not in case_ids
+        assert "good" in case_ids
 
     @pytest.mark.asyncio
     async def test_no_passages_for_incorrect(self) -> None:

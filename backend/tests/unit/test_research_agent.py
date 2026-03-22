@@ -636,3 +636,41 @@ class TestPlanResearchV3:
         assert "provocation_defense" in prompt
         assert "trial" in prompt
         assert "accused" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Degenerate output detection
+# ---------------------------------------------------------------------------
+
+
+class TestDegenerateOutputDetection:
+    def test_detects_refusal_loop(self) -> None:
+        from app.core.agents.nodes.research_nodes import _is_degenerate_output
+        refusal = (
+            "I am unable to provide a response in that format. "
+            "I can provide a comprehensive legal research memo. "
+        ) * 50
+        assert _is_degenerate_output(refusal) is True
+
+    def test_accepts_valid_memo(self) -> None:
+        from app.core.agents.nodes.research_nodes import _is_degenerate_output
+        valid = (
+            "## Executive Summary\n\n"
+            "The Supreme Court in ABC v. State held that Section 302 IPC requires "
+            "proof of intention. The High Court of Delhi in XYZ v. Union applied the "
+            "test differently. This memo analyzes these competing interpretations.\n\n"
+            "## Detailed Analysis\n\n"
+            "Issue 1: Whether intention is a necessary element...\n"
+        )
+        assert _is_degenerate_output(valid) is False
+
+    def test_detects_too_short(self) -> None:
+        from app.core.agents.nodes.research_nodes import _is_degenerate_output
+        assert _is_degenerate_output("Short") is True
+        assert _is_degenerate_output("") is True
+        assert _is_degenerate_output(None) is True  # type: ignore[arg-type]
+
+    def test_detects_extreme_repetition(self) -> None:
+        from app.core.agents.nodes.research_nodes import _is_degenerate_output
+        repeated = "I can provide a comprehensive legal research memo. " * 100
+        assert _is_degenerate_output(repeated) is True

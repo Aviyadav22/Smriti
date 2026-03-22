@@ -193,6 +193,51 @@ class GeminiLLM:
             return {}
 
     @_gemini_retry
+    async def generate_structured_from_pdf(
+        self,
+        pdf_path: str,
+        *,
+        prompt: str,
+        system: str | None = None,
+        output_schema: dict,
+        temperature: float = 0.1,
+    ) -> dict:
+        """Extract structured data directly from a PDF file (multimodal)."""
+        import pathlib
+
+        pdf_bytes = pathlib.Path(pdf_path).read_bytes()
+        pdf_part = types.Part.from_bytes(
+            data=pdf_bytes, mime_type="application/pdf"
+        )
+
+        normalized_schema = self._normalize_schema(output_schema)
+        config = types.GenerateContentConfig(
+            system_instruction=system,
+            temperature=temperature,
+            response_mime_type="application/json",
+            response_schema=normalized_schema,
+        )
+        response = await asyncio.wait_for(
+            self._client.aio.models.generate_content(
+                model=self._model,
+                contents=[pdf_part, prompt],
+                config=config,
+            ),
+            timeout=180,  # Longer timeout for PDF processing
+        )
+
+        raw_text = response.text or "{}"
+        try:
+            return json.loads(raw_text)
+        except json.JSONDecodeError as exc:
+            logger.error(
+                "Failed to parse Gemini PDF structured response: %s (raw: %.200s)",
+                exc,
+                raw_text,
+            )
+            return {}
+
+    @_gemini_retry
     async def _start_stream(
         self,
         prompt: str,

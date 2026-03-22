@@ -47,4 +47,5 @@ class PDFParser:
             FileNotFoundError: If the PDF file does not exist.
             RuntimeError: If OCR processing fails.
         """
-        return await extract_with_ocr(file_path)
+        text, _truncated, _total_pages = await extract_with_ocr(file_path)
+        return text

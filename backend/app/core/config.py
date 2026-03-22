@@ -24,15 +24,15 @@ class Settings(BaseSettings):
     # Security
     jwt_secret_key: str = ""
     jwt_refresh_secret_key: str = ""
-    jwt_access_token_expire_minutes: int = 15
+    jwt_access_token_expire_minutes: int = 60
     jwt_refresh_token_expire_days: int = 7
     bcrypt_cost_factor: int = 12
     encryption_key: str = ""
 
     # PostgreSQL
     database_url: str = "postgresql+asyncpg://smriti:smriti_dev@localhost:5432/smriti"
-    database_pool_size: int = 5
-    database_max_overflow: int = 10
+    database_pool_size: int = 30
+    database_max_overflow: int = 20
     database_pool_recycle: int = 1800
     database_pool_timeout: int = 30
 
@@ -79,7 +79,8 @@ class Settings(BaseSettings):
     # Storage
     storage_provider: str = "local"
     local_storage_path: str = "./data/pdfs"
-    gcs_bucket_name: str = "smriti-documents"
+    gcs_bucket_name: str = "smriti-489416-documents"
+    gcs_project_id: str = "smriti-489416"
 
     # Ingestion — local-only SQLite for CLI job tracking (not used in Cloud Run)
     ingestion_tracker_db: str = "./data/ingestion_tracker.db"

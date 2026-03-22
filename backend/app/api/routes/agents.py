@@ -203,7 +203,13 @@ async def _stream_agent_events(
 
         # Build graph lazily if kwargs provided (enables memo streaming)
         if graph_kwargs is not None:
+            _memo_chunk_count = 0
+
             async def _memo_stream_cb(chunk: str) -> None:
+                nonlocal _memo_chunk_count
+                _memo_chunk_count += 1
+                if _memo_chunk_count <= 3 or _memo_chunk_count % 20 == 0:
+                    logger.info("memo_stream chunk #%d (%d chars)", _memo_chunk_count, len(chunk))
                 await queue.put(
                     f'data: {json.dumps({"type": "memo_stream", "execution_id": str(exec_id), "chunk": chunk})}\n\n'
                 )

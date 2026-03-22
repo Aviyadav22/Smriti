@@ -121,12 +121,18 @@ async def set_cached_search(
 # L3: Indian Kanoon API result cache
 # ---------------------------------------------------------------------------
 
-async def get_cached_ik_search(redis: aioredis.Redis | None, query: str) -> list[dict] | None:
-    """[S8-L3] Check for cached IK search results."""
+async def get_cached_ik_search(
+    redis: aioredis.Redis | None, query: str, **filters: Any,
+) -> list[dict] | None:
+    """[S8-L3] Check for cached IK search results.
+
+    Cache key includes filters (court, dates, boolean_query) so that
+    the same NL query with different filters gets distinct cache entries.
+    """
     if redis is None:
         return None
     try:
-        key = f"ik:search:{normalize_cache_key(query)}"
+        key = f"ik:search:{normalize_cache_key(query, **filters)}"
         data = await redis.get(key)
         if data is not None:
             logger.debug("IK search cache hit: %s", key)
@@ -137,13 +143,15 @@ async def get_cached_ik_search(redis: aioredis.Redis | None, query: str) -> list
 
 
 async def set_cached_ik_search(
-    redis: aioredis.Redis | None, query: str, results: list[dict]
+    redis: aioredis.Redis | None, query: str, results: list[dict],
+    **filters: Any,
 ) -> None:
-    """[S8-L3] Cache IK search results."""
-    if redis is None:
+    """[S8-L3] Cache IK search results. Skip caching empty results to allow
+    fallback logic to run on next attempt."""
+    if redis is None or not results:
         return
     try:
-        key = f"ik:search:{normalize_cache_key(query)}"
+        key = f"ik:search:{normalize_cache_key(query, **filters)}"
         await redis.setex(key, IK_TTL, json.dumps(results, default=str))
     except Exception as exc:
         logger.warning("IK cache write failed: %s", exc)

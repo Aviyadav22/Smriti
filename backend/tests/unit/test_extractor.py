@@ -239,6 +239,88 @@ class TestBareArticleConstitution:
 
 
 # ---------------------------------------------------------------------------
+# A2: Article sub-clause and read-with patterns
+# ---------------------------------------------------------------------------
+
+
+class TestArticleSubClauses:
+    """A2: Article regex handles sub-clauses, suffixes, and read-with."""
+
+    def test_article_19_1_a(self):
+        text = "The right under Article 19(1)(a) is fundamental."
+        acts = extract_acts_cited(text)
+        art = [a for a in acts if "19(1)(a)" in a.section]
+        assert len(art) >= 1
+        assert art[0].act_name == "Constitution of India"
+
+    def test_article_226_1(self):
+        text = "The High Court under Article 226(1) may issue writs."
+        acts = extract_acts_cited(text)
+        art = [a for a in acts if "226(1)" in a.section]
+        assert len(art) >= 1
+        assert art[0].act_name == "Constitution of India"
+
+    def test_article_368A(self):
+        text = "Article 368A was considered."
+        acts = extract_acts_cited(text)
+        art = [a for a in acts if "368A" in a.section]
+        assert len(art) >= 1
+        assert art[0].act_name == "Constitution of India"
+
+    def test_article_21_read_with_14(self):
+        text = "Article 21 read with Article 14 of the Constitution"
+        acts = extract_acts_cited(text)
+        art21 = [a for a in acts if a.section == "Article 21"]
+        art14 = [a for a in acts if a.section == "Article 14"]
+        assert len(art21) >= 1
+        assert len(art14) >= 1
+        assert art21[0].act_name == "Constitution of India"
+        assert art14[0].act_name == "Constitution of India"
+
+    def test_article_rw_shorthand(self):
+        text = "Art. 19(1)(a) r/w Art. 21"
+        acts = extract_acts_cited(text)
+        art19 = [a for a in acts if "19(1)(a)" in a.section]
+        art21 = [a for a in acts if "21" in a.section and "19" not in a.section]
+        assert len(art19) >= 1
+        assert len(art21) >= 1
+
+
+# ---------------------------------------------------------------------------
+# A10: Regulation, Clause, Schedule, Form patterns
+# ---------------------------------------------------------------------------
+
+
+class TestRegulationClausePatterns:
+    """A10: Order/Rule/Regulation/Schedule/Clause/Form reference extraction."""
+
+    def test_regulation_sebi(self):
+        text = "Regulation 3 of SEBI Act Regulations, 2015"
+        acts = extract_acts_cited(text)
+        reg = [a for a in acts if "Regulation 3" in a.section]
+        assert len(reg) >= 1
+
+    def test_clause_pattern(self):
+        text = "Clause 49 of SEBI Act"
+        acts = extract_acts_cited(text)
+        clause = [a for a in acts if "Clause 49" in a.section]
+        assert len(clause) >= 1
+
+    def test_order_rule_cpc(self):
+        text = "Order 39 Rule 1 CPC"
+        acts = extract_acts_cited(text)
+        order = [a for a in acts if "Order 39 Rule 1" in a.section]
+        assert len(order) >= 1
+        assert order[0].act_name == "Code of Civil Procedure"
+
+    def test_order_rule_without_cpc(self):
+        text = "Order VII Rule 11 of the Code of Civil Procedure"
+        acts = extract_acts_cited(text)
+        order = [a for a in acts if "Order VII Rule 11" in a.section]
+        assert len(order) >= 1
+
+
+# ---------------------------------------------------------------------------
 # B15: New short act names
 # ---------------------------------------------------------------------------
 

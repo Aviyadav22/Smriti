@@ -492,8 +492,8 @@ class TestDualStageVerification:
         assert "Semaphore" in source, "Must use semaphore to limit concurrency"
 
     @pytest.mark.asyncio
-    async def test_citation_verification_uses_cite_filter(self) -> None:
-        """IK citation verification should use cite_filter for precision."""
+    async def test_citation_verification_uses_title_search(self) -> None:
+        """IK citation verification should use title for reliable matching."""
         from app.core.agents.nodes.research_nodes import _verify_citations_against_sources
 
         mock_db = AsyncMock()
@@ -507,15 +507,17 @@ class TestDualStageVerification:
                 number=1, citation="(2020) 5 SCC 1", source_type="case_law",
                 source_url="", case_id=None, excerpt="Test",
                 is_used=True, verification_status="pending", verified_against="none",
-                title="", court="", year=2020, author="", bench="",
+                title="State of Punjab v. Mohinder Singh", court="", year=2020,
+                author="", bench="",
                 ik_doc_id="", pdf_available=False, source_label="Case",
             ),
         ]
         result = await _verify_citations_against_sources(footnotes, mock_db, mock_ik, None)
 
         mock_ik.search.assert_called_once()
-        call_kwargs = mock_ik.search.call_args[1]
-        assert call_kwargs.get("cite_filter") == "(2020) 5 SCC 1"
+        # IK search now uses title, not cite_filter
+        call_args = mock_ik.search.call_args
+        assert call_args[0][0] == "State of Punjab v. Mohinder Singh"
         assert result[0]["verification_status"] == "verified_ik"
 
     @pytest.mark.asyncio
@@ -549,10 +551,10 @@ class TestDualStageVerification:
 
         # First footnote should be verified (has case_id, DB returns truthy)
         assert result[0]["verification_status"] == "verified_pg"
-        # Second footnote has no case_id, no IK, no Neo4j → unverified → removed
+        # Second footnote has no case_id, no IK, no Neo4j → unverified
+        # Note: is_used is NEVER modified by verification — it reflects memo usage
         assert result[1]["verification_status"] == "unverified"
-        assert "CITATION REMOVED" in result[1]["citation"]
-        assert result[1]["is_used"] is False
+        assert result[1]["is_used"] is True  # preserved from input
 
     @pytest.mark.asyncio
     async def test_verify_citations_v2_node_produces_banner(self) -> None:
@@ -1074,7 +1076,7 @@ class TestProcessEventsInNodes:
         verification_events = [e for e in result["process_events"] if e["type"] == "verification"]
         assert len(verification_events) == 1
         assert "citations_verified" in verification_events[0]["data"]
-        assert "citations_removed" in verification_events[0]["data"]
+        assert "citations_unverified" in verification_events[0]["data"]
 
     @pytest.mark.asyncio
     async def test_legal_quality_emits_quality_event(self) -> None:

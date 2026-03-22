@@ -63,6 +63,8 @@ function makeSearchResponse(overrides: Partial<SearchResponse> = {}): SearchResp
         case_type: "Civil Appeal",
         judge: "K.G. Balakrishnan",
         snippet: "The right to privacy is a fundamental right under Article 21...",
+        bench_type: "division",
+        equivalent_citations: [],
       },
       {
         case_id: "case-002",
@@ -75,6 +77,8 @@ function makeSearchResponse(overrides: Partial<SearchResponse> = {}): SearchResp
         case_type: "Writ Petition",
         judge: "J.S. Khehar",
         snippet: "Right to privacy is protected as an intrinsic part of the right to life...",
+        bench_type: "constitution",
+        equivalent_citations: [],
       },
     ],
     total_count: 2,

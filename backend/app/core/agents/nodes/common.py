@@ -292,12 +292,17 @@ def format_search_results_for_llm(
         snippet = (r.get("snippet") or "")[:max_snippet_len]
         ratio = (r.get("ratio") or "")[:max_ratio_len]
 
-        # Build court string with bench type if available
+        # Build court string with bench type and coram size if available
         court = r.get("court", "Unknown")
         bench_type = r.get("bench_type", "")
+        coram_size = r.get("coram_size")
         if bench_type:
             bench_label = _BENCH_LABELS.get(bench_type, bench_type)
+            if coram_size:
+                bench_label = f"{bench_label}, {coram_size}-judge bench"
             court_str = f"{court} ({bench_label})"
+        elif coram_size:
+            court_str = f"{court} ({coram_size}-judge bench)"
         else:
             court_str = str(court)
 
@@ -525,7 +530,7 @@ async def enrich_results_with_ratio(
     params["max_len"] = max_ratio_len
 
     query = text(
-        f"SELECT id::text, LEFT(ratio_decidendi, :max_len) AS ratio, bench_type "
+        f"SELECT id::text, LEFT(ratio_decidendi, :max_len) AS ratio, bench_type, coram_size "
         f"FROM cases WHERE id::text IN ({placeholders})"
     )
 
@@ -536,9 +541,13 @@ async def enrich_results_with_ratio(
         logger.warning("Failed to enrich results with ratio_decidendi", exc_info=True)
         return results
 
-    ratio_map: dict[str, dict[str, str]] = {}
+    ratio_map: dict[str, dict] = {}
     for row in rows:
-        ratio_map[row[0]] = {"ratio": row[1] or "", "bench_type": row[2] or ""}
+        ratio_map[row[0]] = {
+            "ratio": row[1] or "",
+            "bench_type": row[2] or "",
+            "coram_size": row[3],
+        }
 
     for r in results:
         cid = r.get("case_id", "")
@@ -547,6 +556,8 @@ async def enrich_results_with_ratio(
                 r["ratio"] = ratio_map[cid]["ratio"]
             if not r.get("bench_type"):
                 r["bench_type"] = ratio_map[cid]["bench_type"]
+            if not r.get("coram_size") and ratio_map[cid].get("coram_size"):
+                r["coram_size"] = ratio_map[cid]["coram_size"]
 
     return results
 

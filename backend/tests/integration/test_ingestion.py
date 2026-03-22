@@ -63,14 +63,14 @@ def _make_db_mock(*, existing_citation_id: str | None = None) -> AsyncMock:
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
 
-    # db.begin() must return an async context manager (savepoint)
+    # db.begin_nested() must return an async context manager (savepoint)
     class _FakeBegin:
         async def __aenter__(self):
             return db
         async def __aexit__(self, *exc):
             pass
 
-    db.begin = MagicMock(return_value=_FakeBegin())
+    db.begin_nested = MagicMock(return_value=_FakeBegin())
     return db
 
 
@@ -213,8 +213,8 @@ class TestIngestJudgment:
         graph_store = _make_graph_store_mock()
         storage = _make_storage_mock()
 
-        mock_pdf_extract = AsyncMock(return_value=("short", 1))  # < 100 chars, 1 page
-        mock_ocr_extract = AsyncMock(return_value=sample_judgment_text)
+        mock_pdf_extract = AsyncMock(return_value=("short", 1, []))  # < 100 chars, 1 page
+        mock_ocr_extract = AsyncMock(return_value=(sample_judgment_text, False, 1))
 
         with (
             patch(
@@ -262,9 +262,18 @@ class TestIngestJudgment:
         graph_store = _make_graph_store_mock()
         storage = _make_storage_mock()
 
+        # Mock the fresh session used by _record_ingestion_failure
+        fresh_db = AsyncMock()
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=fresh_db)
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
+
         with patch(
             "app.core.ingestion.pipeline.extract_and_score",
             new=AsyncMock(return_value=_make_text_quality("")),
+        ), patch(
+            "app.core.ingestion.pipeline.async_session_factory",
+            return_value=mock_session_ctx,
         ):
             case_id = await ingest_judgment(
                 pdf_path="/tmp/empty.pdf",
@@ -277,13 +286,12 @@ class TestIngestJudgment:
                 storage=storage,
             )
 
-        # Pipeline returns a case_id even on failure (for tracking).
-        assert isinstance(case_id, str)
+        # Pipeline returns None when no text can be extracted.
+        assert case_id is None
 
-        # A failure record was inserted into audit_logs.
-        # Find the INSERT INTO audit_logs call.
+        # A failure record was inserted into audit_logs via fresh session.
         audit_call_found = False
-        for call in db.execute.call_args_list:
+        for call in fresh_db.execute.call_args_list:
             sql_arg = str(call[0][0])
             if "audit_logs" in sql_arg:
                 audit_call_found = True
@@ -294,7 +302,7 @@ class TestIngestJudgment:
                 break
 
         assert audit_call_found, "Expected INSERT INTO audit_logs for failure"
-        db.commit.assert_awaited()
+        fresh_db.commit.assert_awaited()
 
         # No downstream services should have been called.
         storage.store.assert_not_awaited()

@@ -72,6 +72,52 @@ export function getAccessToken(): string | null {
     return accessToken;
 }
 
+export function getRefreshToken(): string | null {
+    return refreshToken;
+}
+
+// Session-expired event bus — lets AuthProvider react to 401s from any API call
+type SessionExpiredListener = () => void;
+const sessionExpiredListeners: Set<SessionExpiredListener> = new Set();
+
+export function onSessionExpired(cb: SessionExpiredListener): () => void {
+    sessionExpiredListeners.add(cb);
+    return () => { sessionExpiredListeners.delete(cb); };
+}
+
+function emitSessionExpired(): void {
+    for (const cb of sessionExpiredListeners) {
+        try { cb(); } catch { /* listener error */ }
+    }
+}
+
+/** Expose tryRefresh so AuthProvider can proactively refresh on load. */
+export async function tryRefreshToken(): Promise<boolean> {
+    return tryRefresh();
+}
+
+/** Check if a JWT is expired (with 60s buffer to avoid race conditions). */
+function isTokenExpired(token: string): boolean {
+    try {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        // Refresh 60 seconds before actual expiry to avoid mid-request expiration
+        return payload.exp * 1000 < Date.now() + 60_000;
+    } catch {
+        return true;
+    }
+}
+
+/** Proactively refresh the access token if it's expired or about to expire. */
+async function ensureFreshToken(): Promise<void> {
+    if (!accessToken || !isTokenExpired(accessToken)) return;
+    if (!refreshToken || isTokenExpired(refreshToken)) return;
+    try {
+        await tryRefresh();
+    } catch {
+        // Refresh failed — let the 401 handler deal with it
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Core fetch wrapper
 // ---------------------------------------------------------------------------
@@ -113,6 +159,9 @@ async function apiFetch<T>(
     path: string,
     options: RequestInit = {},
 ): Promise<T> {
+    // Proactively refresh token if expired (avoids 401 round-trip)
+    await ensureFreshToken();
+
     const headers: Record<string, string> = {
         "Content-Type": "application/json",
         ...(options.headers as Record<string, string> || {}),
@@ -166,7 +215,8 @@ async function apiFetch<T>(
             }
             // Real auth failure (server returned non-OK) — clear tokens.
             clearTokens();
-            throw new ApiError(401, "UNAUTHORIZED", "Session expired");
+            emitSessionExpired();
+            throw new ApiError(401, "UNAUTHORIZED", "Session expired — please log in again");
         }
 
         if (!res.ok) {
@@ -375,14 +425,16 @@ function _streamSSE<T>(
 ): AbortController {
     const controller = new AbortController();
 
-    const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-    };
-    if (accessToken) {
-        headers["Authorization"] = `Bearer ${accessToken}`;
-    }
-
     (async () => {
+        // Proactively refresh token if expired (avoids 401 round-trip)
+        await ensureFreshToken();
+
+        const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+        };
+        if (accessToken) {
+            headers["Authorization"] = `Bearer ${accessToken}`;
+        }
         let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
         try {
             let res = await fetch(`${API_BASE}${path}`, {
@@ -412,7 +464,8 @@ function _streamSSE<T>(
                     });
                 } else {
                     clearTokens();
-                    throw new ApiError(401, "UNAUTHORIZED", "Session expired");
+                    emitSessionExpired();
+                    throw new ApiError(401, "UNAUTHORIZED", "Session expired — please log in again");
                 }
             }
 
@@ -427,6 +480,8 @@ function _streamSSE<T>(
             const decoder = new TextDecoder();
             let buffer = "";
 
+            let receivedDoneEvent = false;
+
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
@@ -439,12 +494,23 @@ function _streamSSE<T>(
                     if (line.startsWith("data: ")) {
                         try {
                             const event = JSON.parse(line.slice(6)) as T;
+                            // Track if we got a terminal event (checkpoint also ends the stream
+                            // because the backend closes the SSE connection at interrupt())
+                            const eventType = (event as Record<string, unknown>)?.type;
+                            if (eventType === "done" || eventType === "error" || eventType === "checkpoint") {
+                                receivedDoneEvent = true;
+                            }
                             onEvent(event);
                         } catch {
                             // skip malformed SSE lines
                         }
                     }
                 }
+            }
+
+            // Stream ended without a done/error event — unexpected disconnect
+            if (!receivedDoneEvent && !controller.signal.aborted) {
+                onError?.(new Error("Connection lost — the server stopped responding. Please try again."));
             }
         } catch (err) {
             if ((err as Error).name === "AbortError") return;

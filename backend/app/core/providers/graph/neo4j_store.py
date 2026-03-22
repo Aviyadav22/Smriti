@@ -20,8 +20,8 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _neo4j_retry = retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=10),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
     retry=retry_if_exception_type((ServiceUnavailable, OSError, ConnectionError)),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
@@ -31,11 +31,11 @@ _neo4j_retry = retry(
 # Input validation allowlists
 # ---------------------------------------------------------------------------
 
-_VALID_LABELS = frozenset({"Case", "Statute", "Section", "Judge", "Court", "Act"})
+_VALID_LABELS = frozenset({"Case", "Statute", "Section", "Judge", "Court", "Act", "Doctrine"})
 _VALID_RELATIONSHIPS = frozenset({
     "CITES", "CITED_BY", "OVERRULES", "OVERRULED_BY",
     "DISTINGUISHES", "FOLLOWS", "REFERS_TO", "APPLIES",
-    "DECIDED_BY", "HEARD_IN", "EQUIVALENT_TO",
+    "DECIDED_BY", "HEARD_IN", "EQUIVALENT_TO", "APPLIES_DOCTRINE",
 })
 
 
@@ -71,6 +71,8 @@ class Neo4jGraph:
             self._driver = AsyncGraphDatabase.driver(
                 settings.neo4j_uri,
                 auth=(settings.neo4j_user, settings.neo4j_password),
+                max_connection_pool_size=50,
+                connection_acquisition_timeout=60.0,
             )
         except (ServiceUnavailable, Exception) as exc:
             logger.error("Failed to create Neo4j driver (uri=%s): %s", settings.neo4j_uri, exc)
@@ -126,7 +128,7 @@ class Neo4jGraph:
 
             async def _run() -> list[dict]:
                 async with self._driver.session(database=self._database) as session:
-                    result = await session.run(cypher, **(params or {}))
+                    result = await session.run(cypher, parameters=(params or {}))
                     return [dict(record) async for record in result]
 
             return await asyncio.wait_for(_run(), timeout=_QUERY_TIMEOUT_SECONDS)
@@ -193,7 +195,7 @@ class Neo4jGraph:
 
     @_neo4j_retry
     async def ensure_constraints(self) -> None:
-        """Create unique constraints on Case nodes.
+        """Create unique constraints and indexes on Case/Statute nodes.
 
         Safe to call multiple times — uses IF NOT EXISTS.
         """
@@ -208,20 +210,123 @@ class Neo4jGraph:
                 "CREATE CONSTRAINT constraint_case_citation_unique IF NOT EXISTS "
                 "FOR (c:Case) REQUIRE c.citation IS UNIQUE",
             ),
+            (
+                "constraint_statute_id_unique",
+                "CREATE CONSTRAINT constraint_statute_id_unique IF NOT EXISTS "
+                "FOR (s:Statute) REQUIRE s.id IS UNIQUE",
+            ),
+            (
+                "constraint_doctrine_id_unique",
+                "CREATE CONSTRAINT constraint_doctrine_id_unique IF NOT EXISTS "
+                "FOR (d:Doctrine) REQUIRE d.id IS UNIQUE",
+            ),
+            (
+                "constraint_counsel_name_unique",
+                "CREATE CONSTRAINT constraint_counsel_name_unique IF NOT EXISTS "
+                "FOR (c:Counsel) REQUIRE c.name IS UNIQUE",
+            ),
+            (
+                "constraint_principle_name_unique",
+                "CREATE CONSTRAINT constraint_principle_name_unique IF NOT EXISTS "
+                "FOR (p:LegalPrinciple) REQUIRE p.name IS UNIQUE",
+            ),
+            (
+                "constraint_issue_tag_unique",
+                "CREATE CONSTRAINT constraint_issue_tag_unique IF NOT EXISTS "
+                "FOR (i:Issue) REQUIRE i.tag IS UNIQUE",
+            ),
         ]
-        try:
-            async with self._driver.session(database=self._database) as session:
-                for name, cypher in constraints:
+        # [B15] Expanded fulltext index — drop old narrow index first, recreate with more fields
+        fulltext_upgrade = [
+            (
+                "drop_old_case_search",
+                "DROP INDEX case_search IF EXISTS",
+            ),
+            (
+                "fulltext_case_search_v2",
+                "CREATE FULLTEXT INDEX case_search IF NOT EXISTS "
+                "FOR (c:Case) ON EACH [c.title, c.citation, c.keywords, c.acts_cited, c.ratio]",
+            ),
+        ]
+        async with self._driver.session(database=self._database) as session:
+            for name, cypher in constraints:
+                try:
                     await session.run(cypher)
                     logger.info("Ensured Neo4j constraint: %s", name)
-        except Neo4jError as exc:
-            logger.error("Failed to create Neo4j constraints: %s", exc)
-            raise RuntimeError(f"Neo4j ensure_constraints failed: {exc}") from exc
-        except Exception as exc:
-            logger.error("Unexpected error in ensure_constraints: %s", exc)
-            raise RuntimeError(
-                f"Neo4j ensure_constraints failed unexpectedly: {exc}"
-            ) from exc
+                except Exception as exc:
+                    logger.warning("Skipped Neo4j constraint %s: %s", name, exc)
+            for name, cypher in fulltext_upgrade:
+                try:
+                    await session.run(cypher)
+                    logger.info("Ensured Neo4j fulltext: %s", name)
+                except Exception as exc:
+                    logger.warning("Skipped Neo4j fulltext %s: %s", name, exc)
+
+            # [E1] Seed doctrine nodes
+            await self._seed_doctrines(session)
+
+    async def _seed_doctrines(self, session) -> None:
+        """Seed 12 foundational Indian constitutional/legal doctrines."""
+        doctrines = [
+            {"id": "doctrine:basic_structure", "name": "Basic Structure Doctrine",
+             "description": "Parliament cannot amend the Constitution to destroy its basic structure",
+             "origin_case": "Kesavananda Bharati v. State of Kerala (1973) 4 SCC 225",
+             "category": "constitutional"},
+            {"id": "doctrine:eclipse", "name": "Doctrine of Eclipse",
+             "description": "Pre-constitutional laws inconsistent with fundamental rights are eclipsed but not dead",
+             "origin_case": "Bhikaji Narain Dhakras v. State of MP AIR 1955 SC 781",
+             "category": "constitutional"},
+            {"id": "doctrine:pith_and_substance", "name": "Doctrine of Pith and Substance",
+             "description": "Legislation is valid if its true nature falls within the competence of the legislature",
+             "origin_case": "State of Bombay v. FN Balsara AIR 1951 SC 318",
+             "category": "constitutional"},
+            {"id": "doctrine:colourable_legislation", "name": "Doctrine of Colourable Legislation",
+             "description": "Legislature cannot do indirectly what it cannot do directly",
+             "origin_case": "K.C. Gajapati Narayan Deo v. State of Orissa AIR 1953 SC 375",
+             "category": "constitutional"},
+            {"id": "doctrine:severability", "name": "Doctrine of Severability",
+             "description": "Only offending parts of a statute are void; rest survives if separable",
+             "origin_case": "A.K. Gopalan v. State of Madras AIR 1950 SC 27",
+             "category": "constitutional"},
+            {"id": "doctrine:prospective_overruling", "name": "Doctrine of Prospective Overruling",
+             "description": "Supreme Court may limit the effect of overruling to future cases only",
+             "origin_case": "I.C. Golaknath v. State of Punjab AIR 1967 SC 1643",
+             "category": "constitutional"},
+            {"id": "doctrine:legitimate_expectation", "name": "Doctrine of Legitimate Expectation",
+             "description": "A person may have a legitimate expectation of being treated in a certain way by a public authority",
+             "origin_case": "Food Corporation of India v. Kamdhenu Cattle Feed Industries (1993) 1 SCC 71",
+             "category": "administrative"},
+            {"id": "doctrine:proportionality", "name": "Doctrine of Proportionality",
+             "description": "State action must be proportionate to the objective pursued",
+             "origin_case": "K.S. Puttaswamy v. Union of India (2017) 10 SCC 1",
+             "category": "constitutional"},
+            {"id": "doctrine:res_judicata", "name": "Doctrine of Res Judicata",
+             "description": "A matter once finally decided cannot be re-litigated between the same parties",
+             "origin_case": "Section 11, Code of Civil Procedure 1908",
+             "category": "procedural"},
+            {"id": "doctrine:lifting_corporate_veil", "name": "Doctrine of Lifting the Corporate Veil",
+             "description": "Courts may look behind the corporate entity to the persons controlling it",
+             "origin_case": "LIC of India v. Escorts Ltd (1986) 1 SCC 264",
+             "category": "corporate"},
+            {"id": "doctrine:last_seen_together", "name": "Doctrine of Last Seen Together",
+             "description": "If accused was last seen with deceased, burden shifts to explain circumstances",
+             "origin_case": "Trimukh Maroti Kirkan v. State of Maharashtra (2006) 10 SCC 681",
+             "category": "criminal"},
+            {"id": "doctrine:double_jeopardy", "name": "Doctrine of Double Jeopardy",
+             "description": "No person shall be prosecuted and punished for the same offence more than once",
+             "origin_case": "Article 20(2), Constitution of India",
+             "category": "criminal"},
+        ]
+        for d in doctrines:
+            try:
+                await session.run(
+                    "MERGE (doc:Doctrine {id: $id}) "
+                    "SET doc.name = $name, doc.description = $description, "
+                    "doc.origin_case = $origin_case, doc.category = $category",
+                    d,
+                )
+            except Exception:
+                pass  # Best-effort seeding
 
     @_neo4j_retry
     async def batch_create_nodes(
@@ -253,9 +358,11 @@ class Neo4jGraph:
             async with self._driver.session(database=self._database) as session:
                 for i in range(0, len(nodes), batch_size):
                     batch = nodes[i : i + batch_size]
-                    result = await session.run(cypher, batch=batch)
-                    record = await result.single()
-                    total += record["cnt"] if record else 0
+                    async with await session.begin_transaction() as tx:
+                        result = await tx.run(cypher, batch=batch)
+                        record = await result.single()
+                        total += record["cnt"] if record else 0
+                        await tx.commit()
             logger.info(
                 "batch_create_nodes: merged %d nodes in %d batches",
                 total,
@@ -304,9 +411,11 @@ class Neo4jGraph:
             async with self._driver.session(database=self._database) as session:
                 for i in range(0, len(edges), batch_size):
                     batch = edges[i : i + batch_size]
-                    result = await session.run(cypher, batch=batch)
-                    record = await result.single()
-                    total += record["cnt"] if record else 0
+                    async with await session.begin_transaction() as tx:
+                        result = await tx.run(cypher, batch=batch)
+                        record = await result.single()
+                        total += record["cnt"] if record else 0
+                        await tx.commit()
             logger.info(
                 "batch_create_citation_edges: merged %d edges in %d batches",
                 total,

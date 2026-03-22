@@ -267,3 +267,190 @@ async def export_to_pdf(
     doc.build(flowables)
     buf.seek(0)
     return buf.read()
+
+
+# ---------------------------------------------------------------------------
+# Research memo export (no template needed)
+# ---------------------------------------------------------------------------
+
+
+async def export_research_memo_docx(
+    content: str,
+    *,
+    title: str = "Research Memo",
+    footnotes: list[dict] | None = None,
+) -> bytes:
+    """Export a research memo to DOCX with footnotes as bibliography."""
+    doc = Document()
+
+    for section in doc.sections:
+        section.top_margin = Inches(1)
+        section.bottom_margin = Inches(1)
+        section.left_margin = Inches(1)
+        section.right_margin = Inches(1)
+
+    style = doc.styles["Normal"]
+    font = style.font
+    font.name = "Times New Roman"
+    font.size = Pt(12)
+
+    # Title
+    title_para = doc.add_heading(title, level=0)
+    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in title_para.runs:
+        run.font.name = "Times New Roman"
+        run.font.size = Pt(16)
+        run.font.bold = True
+
+    # Body
+    sections = _parse_sections(content)
+    for heading, body_lines in sections:
+        if heading is not None:
+            h = doc.add_heading(heading, level=1)
+            for run in h.runs:
+                run.font.name = "Times New Roman"
+                run.font.size = Pt(14)
+                run.font.bold = True
+        body_text = "\n".join(body_lines).strip()
+        if not body_text:
+            continue
+        for para_text in body_text.split("\n\n"):
+            para_text = para_text.strip()
+            if not para_text:
+                continue
+            para = doc.add_paragraph()
+            para.paragraph_format.space_after = Pt(6)
+            run = para.add_run(para_text.replace("\n", " "))
+            run.font.name = "Times New Roman"
+            run.font.size = Pt(12)
+
+    # Bibliography from footnotes
+    if footnotes:
+        doc.add_heading("Bibliography", level=1)
+        for fn in footnotes:
+            num = fn.get("number", 0)
+            citation = fn.get("citation", "")
+            title_text = fn.get("title", "")
+            label = f"[{num}] {citation}"
+            if title_text and title_text != citation:
+                label += f" — {title_text}"
+            para = doc.add_paragraph()
+            para.paragraph_format.space_after = Pt(2)
+            run = para.add_run(label)
+            run.font.name = "Times New Roman"
+            run.font.size = Pt(10)
+
+    doc.core_properties.title = title
+    doc.core_properties.author = "Smriti AI"
+    doc.core_properties.created = datetime.now(timezone.utc)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
+async def export_research_memo_pdf(
+    content: str,
+    *,
+    title: str = "Research Memo",
+    footnotes: list[dict] | None = None,
+) -> bytes:
+    """Export a research memo to PDF with footnotes as bibliography."""
+    buf = io.BytesIO()
+
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        topMargin=1 * inch,
+        bottomMargin=1 * inch,
+        leftMargin=1 * inch,
+        rightMargin=1 * inch,
+        title=title,
+        author="Smriti AI",
+        creator="Smriti AI",
+        subject="Research Memo",
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "MemoTitle",
+        parent=styles["Title"],
+        fontName="Times-Bold",
+        fontSize=16,
+        alignment=1,
+        spaceAfter=20,
+    )
+
+    heading_style = ParagraphStyle(
+        "MemoHeading",
+        parent=styles["Heading1"],
+        fontName="Times-Bold",
+        fontSize=14,
+        spaceBefore=14,
+        spaceAfter=8,
+    )
+
+    body_style = ParagraphStyle(
+        "MemoBody",
+        parent=styles["BodyText"],
+        fontName="Times-Roman",
+        fontSize=12,
+        leading=16,
+        spaceAfter=6,
+    )
+
+    bib_style = ParagraphStyle(
+        "MemoBib",
+        parent=styles["BodyText"],
+        fontName="Times-Roman",
+        fontSize=10,
+        leading=13,
+        spaceAfter=2,
+    )
+
+    flowables: list[Paragraph | Spacer] = []
+    flowables.append(Paragraph(title, title_style))
+    flowables.append(Spacer(1, 12))
+
+    sections = _parse_sections(content)
+    for heading, body_lines in sections:
+        if heading is not None:
+            flowables.append(Paragraph(heading, heading_style))
+        body_text = "\n".join(body_lines).strip()
+        if not body_text:
+            continue
+        for para_text in body_text.split("\n\n"):
+            para_text = para_text.strip()
+            if not para_text:
+                continue
+            safe_text = (
+                para_text.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\n", "<br/>")
+            )
+            flowables.append(Paragraph(safe_text, body_style))
+
+    # Bibliography
+    if footnotes:
+        flowables.append(Spacer(1, 12))
+        flowables.append(Paragraph("Bibliography", heading_style))
+        for fn in footnotes:
+            num = fn.get("number", 0)
+            citation = fn.get("citation", "")
+            title_text = fn.get("title", "")
+            label = f"[{num}] {citation}"
+            if title_text and title_text != citation:
+                label += f" — {title_text}"
+            safe_label = (
+                label.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+            )
+            flowables.append(Paragraph(safe_label, bib_style))
+
+    doc.build(flowables)
+    buf.seek(0)
+    return buf.read()

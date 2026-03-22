@@ -269,6 +269,16 @@ def _is_heading_position(text: str, match_start: int) -> bool:
     line_start = text.rfind('\n', 0, match_start)
     line_start = line_start + 1 if line_start != -1 else 0
 
+    # Find the end of the line
+    line_end = text.find('\n', match_start)
+    if line_end == -1:
+        line_end = len(text)
+    line_length = line_end - line_start
+
+    # Headings are short lines; body text is long
+    if line_length > 100:
+        return False
+
     # Text between line start and match should be empty or only numbering/whitespace
     prefix = text[line_start:match_start].strip()
     if not prefix:
