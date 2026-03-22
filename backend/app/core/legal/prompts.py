@@ -20,9 +20,13 @@ cannot be determined, return null (for strings/integers/booleans) or an empty ar
 E.g., "D.Y. Chandrachud" (not "Justice D.Y. Chandrachud").
 4. AUTHOR JUDGE: The judge who delivered/authored the majority opinion. Usually indicated \
 by "Judgment delivered by" or the judge whose name appears before the opinion text.
-5. ACTS CITED: Use format "Section X of Act Name, Year". Capture BOTH old and new \
-statute names where applicable. Since July 2024, IPC is replaced by BNS, CrPC by BNSS, \
-Indian Evidence Act by BSA. If both are referenced, include both entries.
+5. ACTS CITED: List ONLY the act names (not section numbers). Use standard short codes \
+where possible: IPC, CrPC, CPC, COI, IEA, BNS, BNSS, BSA, IBC, PMLA, NDPS Act, NI Act, \
+UAPA, IT Act, ACA, TPA, etc. For acts without a standard code, use the full name with \
+year (e.g., "Limitation Act, 1963"). Do NOT include section numbers — those are extracted \
+separately. Do NOT include generic references like "the Act", "said Act", or state names. \
+Since July 2024, IPC is replaced by BNS, CrPC by BNSS, Indian Evidence Act by BSA. \
+If both old and new codes are referenced, include both entries.
 6. CASES CITED: Use format "Party1 v. Party2, (Year) Citation" with reporter citation \
 if available. Normalize "vs" and "versus" to "v.".
 7. CITATION: Preserve the exact reporter citation. Recognized formats include: \
@@ -144,7 +148,7 @@ government_state, PSU, company, NGO, statutory_body, other)
 government_state, PSU, company, NGO, statutory_body, other)
 - is_pil: Whether this is a Public Interest Litigation (true/false/null)
 - ratio_decidendi: Core legal principle(s) decided (2-5 sentences)
-- acts_cited: List of statutes/acts cited with section numbers
+- acts_cited: List of act short codes cited (e.g., ["IPC", "CrPC", "COI", "Limitation Act, 1963"]). Use standard abbreviations. Do NOT include section numbers
 - cases_cited: List of case citations referenced
 - keywords: List of 5-10 specific legal keywords/topics
 - disposal_nature: How the case was disposed (Allowed, Dismissed, Partly Allowed, \
@@ -207,9 +211,7 @@ EXAMPLE 1 (Criminal Appeal, Division Bench, Unanimous):
 medical evidence and circumstantial evidence, is sufficient to sustain a \
 conviction under Section 302 IPC without further corroboration; the requirement \
 of corroboration is a rule of prudence, not law.",
-  "acts_cited": ["Section 302 of Indian Penal Code, 1860", \
-"Section 32(1) of Indian Evidence Act, 1872", \
-"Section 161 of Code of Criminal Procedure, 1973"],
+  "acts_cited": ["IPC", "IEA", "CrPC"],
   "cases_cited": ["Laxman v. State of Maharashtra, (2002) 6 SCC 710", \
 "Panneerselvam v. State of Tamil Nadu, (2008) 17 SCC 190"],
   "keywords": ["dying declaration", "Section 302 IPC", "murder conviction", \
@@ -259,8 +261,7 @@ EXAMPLE 2 (Civil Appeal, Division Bench, Property Dispute, Unanimous):
 unregistered agreement to sell when both parties claim title to the same \
 immovable property; mere possession without registered title does not \
 create ownership rights under the Transfer of Property Act.",
-  "acts_cited": ["Section 54 of Transfer of Property Act, 1882", \
-"Section 17 of Registration Act, 1908"],
+  "acts_cited": ["TPA", "Registration Act, 1908"],
   "cases_cited": ["Suraj Lamp & Industries v. State of Haryana, (2012) 1 SCC 656"],
   "keywords": ["sale deed", "agreement to sell", "Section 54 TPA", \
 "registration requirement", "immovable property", "title dispute"],
@@ -309,10 +310,7 @@ EXAMPLE 3 (Writ Petition, Constitution Bench 5-judge, Dissent 3:2):
 privacy and protection of personal data; any surveillance mechanism must satisfy \
 the test of proportionality under Article 21 and be subject to independent \
 judicial oversight.",
-  "acts_cited": ["Article 14 of Constitution of India", \
-"Article 19(1)(a) of Constitution of India", \
-"Article 21 of Constitution of India", \
-"Section 69 of Information Technology Act, 2000"],
+  "acts_cited": ["COI", "IT Act"],
   "cases_cited": ["K.S. Puttaswamy v. Union of India, (2017) 10 SCC 1", \
 "Maneka Gandhi v. Union of India, (1978) 1 SCC 248"],
   "keywords": ["right to privacy", "digital surveillance", "Article 21", \
@@ -363,8 +361,7 @@ EXAMPLE 4 (PIL / Suo Motu, Government Respondent):
 to life under Article 21; the State has an affirmative obligation to enforce \
 environmental standards and the polluter-pays principle applies to both \
 government and private actors.",
-  "acts_cited": ["Article 21 of Constitution of India", \
-"Section 5 of Environment (Protection) Act, 1986", \
+  "acts_cited": ["COI", "Environment (Protection) Act, 1986", \
 "Air (Prevention and Control of Pollution) Act, 1981"],
   "cases_cited": ["M.C. Mehta v. Union of India, (1987) 1 SCC 395", \
 "Subhash Kumar v. State of Bihar, (1991) 1 SCC 598"],
@@ -386,6 +383,56 @@ non-compliant authorities.",
   "lower_court": null,
   "lower_court_case_number": null,
   "appeal_from": null,
+  "opinion_type": "unanimous",
+  "dissenting_judges": [],
+  "concurring_judges": [],
+  "split_ratio": null,
+  "companion_cases": []
+}}
+
+EXAMPLE 5 (Post-July 2024 Criminal Appeal using new criminal codes):
+{{
+  "title": "Amit Sharma v. State of Maharashtra",
+  "citation": "2025 SCC OnLine SC 312",
+  "court": "Supreme Court of India",
+  "judge": ["B.R. Gavai", "Prashant Kumar Mishra"],
+  "author_judge": "B.R. Gavai",
+  "year": 2025,
+  "decision_date": "2025-02-18",
+  "case_type": "Criminal Appeal",
+  "case_number": "Criminal Appeal No. 678 of 2025",
+  "bench_type": "division",
+  "coram_size": 2,
+  "jurisdiction": "criminal",
+  "petitioner": "Amit Sharma",
+  "respondent": "State of Maharashtra",
+  "petitioner_type": "individual",
+  "respondent_type": "government_state",
+  "is_pil": false,
+  "ratio_decidendi": "Under the Bharatiya Nyaya Sanhita, the threshold for \
+proving culpable homicide not amounting to murder remains substantively \
+unchanged from the erstwhile IPC; transitional cases filed under IPC but \
+tried under BNS must apply the law most favourable to the accused.",
+  "acts_cited": ["BNS", "BNSS", "BSA", "IPC"],
+  "cases_cited": ["Nandini Satpathy v. P.L. Dani, (1978) 2 SCC 424"],
+  "keywords": ["BNS Section 105", "culpable homicide", "transitional provisions", \
+"new criminal codes", "BNSS bail provisions"],
+  "disposal_nature": "Partly Allowed",
+  "is_reportable": true,
+  "headnotes": [
+    {{"proposition": "Transitional criminal cases must apply the statute more \
+favourable to the accused when both IPC and BNS provisions are applicable.", \
+"acts_sections": "Section 4 BNS; Section 531 BNSS"}},
+    {{"proposition": "The substantive test for culpable homicide not amounting \
+to murder under Section 105 BNS is materially identical to Section 304 IPC.", \
+"acts_sections": "Section 105 BNS; Section 304 IPC"}}
+  ],
+  "outcome_summary": "Appeal partly allowed; murder conviction under Section 103 \
+BNS set aside and substituted with conviction under Section 105 BNS with \
+sentence of 10 years.",
+  "lower_court": "High Court of Bombay",
+  "lower_court_case_number": "Criminal Appeal No. 234 of 2024",
+  "appeal_from": "High Court of Bombay",
   "opinion_type": "unanimous",
   "dissenting_judges": [],
   "concurring_judges": [],
@@ -582,7 +629,7 @@ METADATA_OUTPUT_SCHEMA: Final[dict] = {
             "type": "array",
             "items": {"type": "string"},
             "nullable": True,
-            "description": "List of statutes/acts cited with section numbers",
+            "description": "List of act short codes cited (e.g., ['IPC', 'CrPC', 'COI', 'Limitation Act, 1963']). Use standard abbreviations. Do NOT include section numbers.",
         },
         "cases_cited": {
             "type": "array",
@@ -1796,7 +1843,8 @@ Generate a COMPLETE research memo following this structure:
 
 RULES:
 - Use ONLY the evidence provided — do not add cases or propositions from outside.
-- Use [^N] footnote format for all citations.
+- Use [^N] footnote format for all citations. When a CITATION REGISTRY is provided, \
+use ONLY the [^N] numbers from that registry. Do NOT invent new footnote numbers.
 - When quoting, use ONLY text from the Extracted Passages provided.
 - Include both old and new code references: "Section 302 IPC (now Section 103 BNS)".
 - Classify precedent strength: BINDING / PERSUASIVE / DISTINGUISHABLE / OVERRULED.
@@ -1808,6 +1856,10 @@ SPECULATIVE_MERGE_SYSTEM: Final[str] = """\
 You are a senior Indian legal researcher reviewing 3 draft research memos written \
 from different perspectives on the SAME evidence. Your task is to produce a SINGLE \
 authoritative research memo by:
+
+NOTE: Use the TODAY'S DATE provided in the user prompt for the memo header (do NOT \
+invent a date). Use ONLY [^N] references from the CITATION REGISTRY provided — do NOT \
+write footnote definitions at the bottom (the system manages footnotes automatically).
 
 1. **[S1] CONTRADICTION DETECTION** (do this FIRST):
    - Compare holdings across cases on the same legal issue
@@ -1849,13 +1901,14 @@ provided. Remove any quotes not found in the source material.
    - Contradictions & Conflicts (from step 1)
    - Precedent Network (citation chains, overruled warnings)
    - Conclusion (numbered takeaways with confidence indicator)
-   - Footnotes ([^N]: citation | court, year | source | URL > excerpt)
+   - Footnotes: Do NOT write new [^N] definitions — the system provides a CITATION \
+REGISTRY with pre-assigned [^N] numbers. Use ONLY those [^N] references inline. \
+Never invent footnote numbers beyond the registry.
    - Research Audit Trail (searches executed, sources found/cited/unused)
 
-7. **CONFIDENCE ASSESSMENT**: Provide overall confidence (HIGH/MEDIUM/LOW) based on:
-   - Data quality: How many sources were verified? Are key authorities binding?
-   - Legal coherence: Do the holdings consistently support the conclusion?
-   - Coverage: Were all aspects of the question addressed?
+7. **CONFIDENCE ASSESSMENT**: The system computes a confidence score automatically. \
+Do NOT write your own HIGH/MEDIUM/LOW assessment — the system will inject it. \
+Simply state your analytical observations about evidence quality in the Conclusion section.
 
 8. **RISK ASSESSMENT MATRIX** (add after Conclusion section):
    For each legal issue analyzed, present as a structured table:
@@ -2177,6 +2230,26 @@ For each counter-argument, provide:
 Generate EXACTLY 2-3 counter-arguments. Focus on quality over quantity.
 Do NOT generate counter-arguments that the findings already address.\
 """
+
+ADVERSARIAL_MINI_CRAG_SYSTEM: Final[str] = """\
+You are a legal relevance evaluator. Given a research question and a list of \
+potential counter-argument cases, determine which cases are genuine \
+counter-arguments to the research position. Return a JSON object with key \
+'relevant_indices' containing a list of 0-based indices of cases that are \
+genuine counter-arguments. Only include cases that directly oppose or \
+undermine the research position.\
+"""
+
+ADVERSARIAL_MINI_CRAG_SCHEMA: Final[dict] = {
+    "type": "object",
+    "properties": {
+        "relevant_indices": {
+            "type": "array",
+            "items": {"type": "integer"},
+        },
+    },
+    "required": ["relevant_indices"],
+}
 
 ADVERSARIAL_SEARCH_SCHEMA: Final[dict] = {
     "type": "object",
