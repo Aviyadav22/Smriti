@@ -457,6 +457,51 @@ All 28 nodes registered in `build_research_graph()` via `graph.add_node()`:
 
 ---
 
+---
+
+## AUDIT-5: Pinecone Integration Map
+
+### Writes (upsert)
+- `pipeline.py:_upsert_vectors()` — Upserts chunk vectors (batch 100) with metadata: case_id, citation, chunk_index, year, court, acts_cited, judgment_section, document_type
+- `pipeline.py:ingest_judgment()` — Upserts Level-1 summary vectors via `build_pinecone_summary_vectors()`
+
+### Reads (search)
+- `hybrid.py:hybrid_search()` — Vector search with metadata filters (court, year, acts_cited, etc.)
+- `common.py:statute_lookup_node()` — Searches statute vectors with document_type=statute filter
+- `worker_nodes.py:case_law_worker()` — Hybrid search case law via Pinecone + FTS
+- `worker_nodes.py:statute_worker()` — Searches statute sections via document_type filter
+
+### Deletes
+- `pipeline.py:_upsert_vectors()` — Stale vector cleanup before re-upsert (delete_by_metadata case_id)
+- `pipeline.py:ingest_judgment()` — Cleanup on re-ingestion
+
+### Metadata Filters Used
+- `court`, `year`, `acts_cited`, `judgment_section`, `document_type`, `case_id`, `chunk_index`
+
+**Status: FULLY WIRED — no orphaned Pinecone operations**
+
+---
+
+## AUDIT-6: Neo4j Integration Map
+
+### Writes (MERGE)
+- `pipeline.py:_build_citation_graph()` — Creates Case nodes (MERGE by case_id), CITES edges with treatment
+- `pipeline.py:_link_citation_equivalents()` — Creates EQUIVALENT_TO edges for old↔new law mappings
+- `neo4j_store.py:ensure_constraints()` — Seeds 12 foundational Indian legal doctrines as Doctrine nodes
+
+### Reads (query/get_neighbors)
+- `traversal.py` — Neighborhood, chain, authorities, stats (4 functions)
+- `rag.py:check_treatment_from_graph()` — Query treatment property on CITES edges
+- `worker_nodes.py:graph_worker()` — Citation graph neighbors (citing + cited-by)
+- `worker_nodes.py:graph_community_worker()` — Community detection via connected components
+- `common.py:get_citation_neighbors()` — Citation neighbors for grounding
+- `research_nodes.py:verify_citations_v2_node()` — Verifies citations via Neo4j + PG + IK
+- `research_nodes.py:format_footnotes_node()` — Checks treatment via graph query
+
+**Status: FULLY WIRED — no orphaned Neo4j operations**
+
+---
+
 ## Summary Statistics
 
 | Legal Workflow | Function Count |
