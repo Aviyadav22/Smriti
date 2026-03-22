@@ -502,6 +502,75 @@ All 28 nodes registered in `build_research_graph()` via `graph.add_node()`:
 
 ---
 
+---
+
+## AUDIT-3: API Route → Core Function → Frontend Mapping
+
+**Total routes: 56** | **Connected: 29** | **Disconnected: 27** (admin/DPDP/infra)
+
+### Connected Routes (user-facing)
+- Auth: register, login, refresh, logout (4)
+- Cases: get, pdf, citations, cited-by, similar (5)
+- Search: search, facets (2)
+- Chat: create, message, sessions, history, delete (5)
+- Graph: neighborhood, chain, authorities, stats (4)
+- Judges: list, compare, profile, cases, court stats (5)
+- Documents: upload, list, get, delete (4)
+- Audio: generate, status, stream (3)
+- Agents: run (4 types), executions list, resume, templates, export (8)
+
+### Disconnected Routes (intentionally admin/infra)
+- Health check (1), auth account deletion (1), case summary (1)
+- Search suggest/autocomplete (1), document memo (1)
+- Agent execution detail/cancel/revise/export (4)
+- Ingest admin endpoints (7), DPDP compliance (4)
+- Admin review queue (4), Admin corrections (2), Data quality (1)
+
+### Frontend API Functions: ALL CONNECTED (0 orphaned)
+
+---
+
+## AUDIT-7: Frontend Pages (22 total, all connected)
+
+| Page | Workflow | API Calls |
+|------|----------|-----------|
+| `/` | Landing | None (static) |
+| `/search` | Case search | search(), searchFacets() |
+| `/chat` | RAG chat | createChatSession(), sendChatMessage(), getChatSessions(), getChatHistory(), deleteChatSession() |
+| `/case/[id]` | Case detail | getCase(), getCaseCitations(), getCaseCitedBy(), getCaseSimilar(), getCasePdfUrl(), getGraphNeighborhood() |
+| `/graph` | Citation graph | search(), getGraphNeighborhood(), getGraphChain(), getGraphAuthorities(), getGraphStats() |
+| `/agents` | Agent hub | None |
+| `/agents/research` | Research agent | runResearchAgent(), resumeAgentExecution() |
+| `/agents/case-prep` | Case prep agent | getDocuments(), runCasePrepAgent(), resumeAgentExecution() |
+| `/agents/strategy` | Strategy agent | runStrategyAgent(), resumeAgentExecution() |
+| `/agents/drafting` | Drafting agent | getDraftingTemplates(), runDraftingAgent(), resumeAgentExecution(), exportDraft() |
+| `/agents/history` | Execution history | getAgentExecutions() |
+| `/judges` | Judge directory | getJudges() |
+| `/judges/compare` | Judge comparison | getJudges(), compareJudges() |
+| `/judge/[name]` | Judge profile | getJudgeProfile(), getJudgeCases() |
+| `/courts` | Court analytics | getCourtStats(), searchFacets() |
+| `/upload` | Document upload | uploadDocument() |
+| `/documents` | Document list | getDocuments() |
+| `/documents/[id]` | Document detail | getDocument(), deleteDocument() |
+| `/login` | Login | login() |
+| `/register` | Register | register() |
+| `/about`, `/privacy`, `/terms` | Static | None |
+
+---
+
+## AUDIT-8: Frontend Components (30 total, 1 disconnected)
+
+All components are imported by at least one page EXCEPT:
+- **`section-filter.tsx`** — DISCONNECTED (search page uses inline section tabs instead)
+
+---
+
+## AUDIT-9: Frontend API Functions (ALL connected)
+
+All 43 exported functions in `api.ts` are called by at least one page or component.
+
+---
+
 ## Summary Statistics
 
 | Legal Workflow | Function Count |
