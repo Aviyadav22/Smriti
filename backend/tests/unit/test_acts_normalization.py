@@ -1,7 +1,7 @@
 """Tests for acts_cited normalization and garbage filtering.
 
 Covers normalize_acts_cited_list(), _is_valid_act_citation(),
-and the expanded _SHORT_ACT_NAMES dict.
+the expanded _SHORT_ACT_NAMES dict, and enrich_statute_cross_references().
 """
 
 import pytest
@@ -10,6 +10,7 @@ from app.core.legal.extractor import (
     _is_valid_act_citation,
     normalize_acts_cited_list,
 )
+from app.core.legal.statute_enrichment import enrich_statute_cross_references
 
 
 class TestNormalizeActsCitedList:
@@ -175,3 +176,38 @@ class TestNewActAliases:
         """New acts map from full name to shortest short code."""
         result = normalize_acts_cited_list([raw])
         assert result == [expected]
+
+
+class TestEnrichStatuteCrossReferences:
+    """Tests for act-level old<->new statute enrichment."""
+
+    def test_enrich_adds_bns_for_ipc(self):
+        result = enrich_statute_cross_references(["IPC"])
+        assert "BNS" in result
+
+    def test_enrich_adds_ipc_for_bns(self):
+        result = enrich_statute_cross_references(["BNS"])
+        assert "IPC" in result
+
+    def test_enrich_bidirectional_crpc(self):
+        result = enrich_statute_cross_references(["CrPC"])
+        assert "BNSS" in result
+        result2 = enrich_statute_cross_references(["BNSS"])
+        assert "CrPC" in result2
+
+    def test_enrich_bidirectional_iea(self):
+        result = enrich_statute_cross_references(["IEA"])
+        assert "BSA" in result
+        result2 = enrich_statute_cross_references(["BSA"])
+        assert "IEA" in result2
+
+    def test_enrich_no_duplicates(self):
+        result = enrich_statute_cross_references(["IPC", "BNS"])
+        assert result == ["BNS", "IPC"]
+
+    def test_enrich_preserves_other_acts(self):
+        result = enrich_statute_cross_references(["IPC", "ACA"])
+        assert result == ["ACA", "BNS", "IPC"]
+
+    def test_enrich_empty_list(self):
+        assert enrich_statute_cross_references([]) == []
