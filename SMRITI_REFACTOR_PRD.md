@@ -58,39 +58,39 @@ The ingestion pipeline takes a PDF judgment → extracts text → extracts 16 me
 ## PHASE 3: WIRE THE SEARCH AND RETRIEVAL PIPELINE
 The search pipeline takes a user query → LLM query understanding → parallel vector search (Pinecone) + FTS (PostgreSQL tsvector) → RRF merge (k=60) → Cohere reranking (top 10) → results with citations.
 
-- [ ] SEARCH-1: Verify the search page (`frontend/src/app/search/page.tsx`) calls `GET /search` via `api.search()`. Verify query, all 7 filter params (court, year_from, year_to, case_type, bench_type, judge, act), section filter, and pagination are passed through. Wire if disconnected.
-- [ ] SEARCH-2: Verify `backend/app/core/search/hybrid.py` receives the query and runs LLM query understanding (Gemini) to extract legal concepts, then generates a Gemini embedding for vector search. Wire if any step is disconnected.
-- [ ] SEARCH-3: Verify hybrid search works — vector search via Pinecone (`pinecone_store.search()`) + full-text search via PostgreSQL (`fulltext.py` using `websearch_to_tsquery`). Verify both run in parallel and results are merged via Reciprocal Rank Fusion (k=60). Wire if disconnected.
-- [ ] SEARCH-4: Verify metadata filtering works — the `act` filter is normalized via `normalize_act_name()` before hitting Pinecone (`{"acts_cited": {"$in": [normalized_act]}}`). Verify court, year, case_type, bench_type, and judge filters are applied to both Pinecone and PostgreSQL queries. Wire if disconnected.
-- [ ] SEARCH-5: Verify Cohere reranking works — `backend/app/core/providers/rerankers/cohere_reranker.py` has `rerank()` that re-ranks top results using `rerank-v4.0-pro`. Verify `hybrid.py` calls it after RRF merge and before returning results. Wire if disconnected.
-- [ ] SEARCH-6: Verify search results display correctly — result cards show citation, court, year, judge, snippet with highlights, relevance score, precedent strength badge, bench strength indicator, section tabs. Wire any missing display element.
-- [ ] SEARCH-7: Verify search suggestions work — `GET /search/suggest` provides autocomplete from case titles/citations. Verify frontend calls it. Wire if disconnected.
-- [ ] SEARCH-8: Verify search facets work — `GET /search/facets` returns available filter values (courts, case types, etc.) cached for 1 hour. Verify frontend populates filter dropdowns from this. Wire if disconnected.
-- [ ] SEARCH-9: Verify Hindi search works — if query is Hindi, `gemini_translator.py` translates to English for search, then translates result snippets back to Hindi. Wire if disconnected.
-- [ ] SEARCH-10: Test the full search pipeline: enter "Section 302 IPC bail Supreme Court" → get relevant judgments with proper citations (SCC/AIR format). Fix any errors.
+- [x] SEARCH-1: Verify the search page (`frontend/src/app/search/page.tsx`) calls `GET /search` via `api.search()`. Verify query, all 7 filter params (court, year_from, year_to, case_type, bench_type, judge, act), section filter, and pagination are passed through. Wire if disconnected.
+- [x] SEARCH-2: Verify `backend/app/core/search/hybrid.py` receives the query and runs LLM query understanding (Gemini) to extract legal concepts, then generates a Gemini embedding for vector search. Wire if any step is disconnected.
+- [x] SEARCH-3: Verify hybrid search works — vector search via Pinecone (`pinecone_store.search()`) + full-text search via PostgreSQL (`fulltext.py` using `websearch_to_tsquery`). Verify both run in parallel and results are merged via Reciprocal Rank Fusion (k=60). Wire if disconnected.
+- [x] SEARCH-4: Verify metadata filtering works — the `act` filter is normalized via `normalize_act_name()` before hitting Pinecone (`{"acts_cited": {"$in": [normalized_act]}}`). Verify court, year, case_type, bench_type, and judge filters are applied to both Pinecone and PostgreSQL queries. Wire if disconnected.
+- [x] SEARCH-5: Verify Cohere reranking works — `backend/app/core/providers/rerankers/cohere_reranker.py` has `rerank()` that re-ranks top results using `rerank-v4.0-pro`. Verify `hybrid.py` calls it after RRF merge and before returning results. Wire if disconnected.
+- [x] SEARCH-6: Verify search results display correctly — result cards show citation, court, year, judge, snippet with highlights, relevance score, precedent strength badge, bench strength indicator, section tabs. Wire any missing display element.
+- [x] SEARCH-7: Verify search suggestions work — `GET /search/suggest` provides autocomplete from case titles/citations. Verify frontend calls it. Wire if disconnected.
+- [x] SEARCH-8: Verify search facets work — `GET /search/facets` returns available filter values (courts, case types, etc.) cached for 1 hour. Verify frontend populates filter dropdowns from this. Wire if disconnected.
+- [x] SEARCH-9: Verify Hindi search works — if query is Hindi, `gemini_translator.py` translates to English for search, then translates result snippets back to Hindi. Wire if disconnected.
+- [x] SEARCH-10: Test the full search pipeline: enter "Section 302 IPC bail Supreme Court" → get relevant judgments with proper citations (SCC/AIR format). Fix any errors.
 
 ## PHASE 4: WIRE THE RAG CHAT PIPELINE
 The chat pipeline provides multi-turn conversational legal research with source attribution.
 
-- [ ] CHAT-1: Verify the chat page (`frontend/src/app/chat/page.tsx`) creates sessions via `POST /chat` and sends messages via `POST /chat/{session_id}/message`. Both should stream via SSE. Wire if disconnected.
-- [ ] CHAT-2: Verify `backend/app/core/chat/rag.py` has `rag_respond()` that: searches context cases → reranks → sends to Gemini with legal-context prompt → streams response with source attribution. Wire if disconnected.
-- [ ] CHAT-3: Verify chat session management works — `GET /chat/sessions` lists sessions, `GET /chat/{session_id}/history` returns messages (decrypted), `DELETE /chat/{session_id}` deletes cascade. Wire if disconnected.
-- [ ] CHAT-4: Verify source cards display — each assistant message should show cited cases with case_id, title, citation, court, year, relevance score. Wire if disconnected.
-- [ ] CHAT-5: Test: open chat → ask "What is the test for anticipatory bail under Section 438 CrPC?" → get answer with proper SCC/AIR citations and source cards. Fix any errors.
+- [x] CHAT-1: Verify the chat page (`frontend/src/app/chat/page.tsx`) creates sessions via `POST /chat` and sends messages via `POST /chat/{session_id}/message`. Both should stream via SSE. Wire if disconnected.
+- [x] CHAT-2: Verify `backend/app/core/chat/rag.py` has `rag_respond()` that: searches context cases → reranks → sends to Gemini with legal-context prompt → streams response with source attribution. Wire if disconnected.
+- [x] CHAT-3: Verify chat session management works — `GET /chat/sessions` lists sessions, `GET /chat/{session_id}/history` returns messages (decrypted), `DELETE /chat/{session_id}` deletes cascade. Wire if disconnected.
+- [x] CHAT-4: Verify source cards display — each assistant message should show cited cases with case_id, title, citation, court, year, relevance score. Wire if disconnected.
+- [x] CHAT-5: Test: open chat → ask "What is the test for anticipatory bail under Section 438 CrPC?" → get answer with proper SCC/AIR citations and source cards. Fix any errors.
 
 ## PHASE 5: WIRE THE AGENT PIPELINES
 Four LangGraph agents: Research (V3, 5-stage), Case Prep, Strategy, Drafting. All stream via SSE with HITL checkpoints.
 
 ### Research Agent V3 (5-Stage Pipeline)
-- [ ] AGENT-1: Verify `frontend/src/app/agents/research/page.tsx` calls `POST /agents/research` via `api.runResearchAgent()` and handles all SSE event types (status, progress, checkpoint, memo, memo_stream, done, error). Wire if disconnected.
-- [ ] AGENT-2: Verify `backend/app/core/agents/research.py` builds the StateGraph with all 5 stages:
+- [x] AGENT-1: Verify `frontend/src/app/agents/research/page.tsx` calls `POST /agents/research` via `api.runResearchAgent()` and handles all SSE event types (status, progress, checkpoint, memo, memo_stream, done, error). Wire if disconnected.
+- [x] AGENT-2: Verify `backend/app/core/agents/research.py` builds the StateGraph with all 5 stages:
   - Stage 1 (Understand): `rewrite_query_node` → `classify_query_node`
   - Stage 2 (Decompose): `statute_lookup_node` → `element_decomposition_node` → `route_by_complexity`
   - Stage 3 (Investigate): `plan_research_node` → checkpoint → `dispatch_workers` (7 workers: case_law, named_case, statute, graph, graph_community, ik_search, web_search) → `gather_results` → `batch_cot_reflection` → `evaluate_extract` → `gap_analysis` → checkpoint
   - Stage 4 (Challenge): `adversarial_search_node` → `temporal_validation_node`
   - Stage 5 (Synthesize): `speculative_synthesis_node` → `format_footnotes_node` → `verify_citations_v2_node` → `quality_check_node` → checkpoint
   Identify any node function defined in `nodes/research_nodes.py` but not wired into the graph. Wire or document why.
-- [ ] AGENT-3: Verify all 7 worker nodes in `nodes/worker_nodes.py` are dispatched by `dispatch_workers_node`. Each worker should call its respective service:
+- [x] AGENT-3: Verify all 7 worker nodes in `nodes/worker_nodes.py` are dispatched by `dispatch_workers_node`. Each worker should call its respective service:
   - `case_law_worker` → `hybrid_search()` (Pinecone + PG)
   - `named_case_worker` → direct PG lookup by citation/title
   - `statute_worker` → PG statute section lookup
@@ -99,54 +99,54 @@ Four LangGraph agents: Research (V3, 5-stage), Case Prep, Strategy, Drafting. Al
   - `ik_search_worker` → Indian Kanoon API (`indiankanoon.py`)
   - `web_search_worker` → Tavily API (`tavily.py`)
   Wire if any worker is defined but not dispatched.
-- [ ] AGENT-4: Verify HITL checkpoints work — `interrupt()` at plan, findings, and memo stages. Frontend `agent-checkpoint-prompt.tsx` renders the checkpoint dialog. `POST /agents/research/{execution_id}/resume` resumes from checkpoint. Wire if disconnected.
-- [ ] AGENT-5: Verify research footnotes work — `format_footnotes_node` structures citations, `footnotes-panel.tsx` + `footnote-list-item.tsx` + `footnote-preview.tsx` display them. Wire if disconnected.
-- [ ] AGENT-6: Verify research audit trail works — `research-audit-trail.tsx` displays methodology log (searches executed, refinement rounds, strategy pivots). Wire if the component exists but doesn't receive data.
+- [x] AGENT-4: Verify HITL checkpoints work — `interrupt()` at plan, findings, and memo stages. Frontend `agent-checkpoint-prompt.tsx` renders the checkpoint dialog. `POST /agents/research/{execution_id}/resume` resumes from checkpoint. Wire if disconnected.
+- [x] AGENT-5: Verify research footnotes work — `format_footnotes_node` structures citations, `footnotes-panel.tsx` + `footnote-list-item.tsx` + `footnote-preview.tsx` display them. Wire if disconnected.
+- [x] AGENT-6: Verify research audit trail works — `research-audit-trail.tsx` displays methodology log (searches executed, refinement rounds, strategy pivots). Wire if the component exists but doesn't receive data.
 
 ### Case Prep Agent
-- [ ] AGENT-7: Verify `frontend/src/app/agents/case-prep/page.tsx` calls `POST /agents/case-prep` with a document ID. Verify `backend/app/core/agents/case_prep.py` builds a graph with nodes from `nodes/case_prep_nodes.py`. Wire if disconnected.
+- [x] AGENT-7: Verify `frontend/src/app/agents/case-prep/page.tsx` calls `POST /agents/case-prep` with a document ID. Verify `backend/app/core/agents/case_prep.py` builds a graph with nodes from `nodes/case_prep_nodes.py`. Wire if disconnected.
 
 ### Strategy Agent
-- [ ] AGENT-8: Verify `frontend/src/app/agents/strategy/page.tsx` calls `POST /agents/strategy` with case facts + desired relief + optional judge/bench. Verify `backend/app/core/agents/strategy.py` builds a graph with nodes from `nodes/strategy_nodes.py`. Wire if disconnected.
+- [x] AGENT-8: Verify `frontend/src/app/agents/strategy/page.tsx` calls `POST /agents/strategy` with case facts + desired relief + optional judge/bench. Verify `backend/app/core/agents/strategy.py` builds a graph with nodes from `nodes/strategy_nodes.py`. Wire if disconnected.
 
 ### Drafting Agent
-- [ ] AGENT-9: Verify `frontend/src/app/agents/drafting/page.tsx` calls `POST /agents/drafting` with template + context. Verify `backend/app/core/agents/drafting.py` builds a graph with nodes from `nodes/drafting_nodes.py`. Verify export endpoints (`/export/pdf`, `/export/docx`) work via `backend/app/core/drafting/export.py`. Wire if disconnected.
+- [x] AGENT-9: Verify `frontend/src/app/agents/drafting/page.tsx` calls `POST /agents/drafting` with template + context. Verify `backend/app/core/agents/drafting.py` builds a graph with nodes from `nodes/drafting_nodes.py`. Verify export endpoints (`/export/pdf`, `/export/docx`) work via `backend/app/core/drafting/export.py`. Wire if disconnected.
 
 ### Agent History
-- [ ] AGENT-10: Verify `frontend/src/app/agents/history/page.tsx` calls `GET /agents/{execution_id}` and `api.getAgentExecutions()` to list past runs. Verify status badges (running, waiting_input, completed, failed, cancelled) display correctly. Wire if disconnected.
+- [x] AGENT-10: Verify `frontend/src/app/agents/history/page.tsx` calls `GET /agents/{execution_id}` and `api.getAgentExecutions()` to list past runs. Verify status badges (running, waiting_input, completed, failed, cancelled) display correctly. Wire if disconnected.
 
 ## PHASE 6: WIRE THE CITATION GRAPH
-- [ ] GRAPH-1: Verify `frontend/src/app/graph/page.tsx` calls `api.getGraphNeighborhood()`, `api.getGraphChain()`, and `api.getGraphAuthorities()`. Verify it renders an interactive D3/force graph. Wire if disconnected.
-- [ ] GRAPH-2: Verify case detail page (`frontend/src/app/case/[id]/page.tsx`) shows "Cites" and "Cited By" tabs using `api.getCaseCitations()` and `api.getCaseCitedBy()`. Wire if disconnected.
-- [ ] GRAPH-3: Verify `backend/app/core/graph/traversal.py` has working shortest-path and community detection algorithms. Verify the API route `GET /graph/path/{id1}/{id2}` calls it. Wire if disconnected.
+- [x] GRAPH-1: Verify `frontend/src/app/graph/page.tsx` calls `api.getGraphNeighborhood()`, `api.getGraphChain()`, and `api.getGraphAuthorities()`. Verify it renders an interactive D3/force graph. Wire if disconnected.
+- [x] GRAPH-2: Verify case detail page (`frontend/src/app/case/[id]/page.tsx`) shows "Cites" and "Cited By" tabs using `api.getCaseCitations()` and `api.getCaseCitedBy()`. Wire if disconnected.
+- [x] GRAPH-3: Verify `backend/app/core/graph/traversal.py` has working shortest-path and community detection algorithms. Verify the API route `GET /graph/path/{id1}/{id2}` calls it. Wire if disconnected.
 
 ## PHASE 7: WIRE SUPPORTING FEATURES
 
 ### Case Detail
-- [ ] SUPPORT-1: Verify case detail page shows: full metadata (title, citation, court, year, judge, parties, bench type, disposal), acts cited (with display names from `get_act_display_name()`), cases cited, judgment sections (FACTS, ISSUES, ARGUMENTS, HOLDINGS, REASONING, ORDER), similar cases, PDF viewer, audio digest player. Wire any disconnected element.
+- [x] SUPPORT-1: Verify case detail page shows: full metadata (title, citation, court, year, judge, parties, bench type, disposal), acts cited (with display names from `get_act_display_name()`), cases cited, judgment sections (FACTS, ISSUES, ARGUMENTS, HOLDINGS, REASONING, ORDER), similar cases, PDF viewer, audio digest player. Wire any disconnected element.
 
 ### Judge Analytics
-- [ ] SUPPORT-2: Verify `frontend/src/app/judges/page.tsx` lists judges with search + pagination via `api.getJudges()`. Verify `frontend/src/app/judge/[name]/page.tsx` shows profile (cases, disposal patterns, top judgments, acts frequency) via `api.getJudgeProfile()`. Wire if disconnected.
-- [ ] SUPPORT-3: Verify judge comparison (`frontend/src/app/judges/compare/page.tsx`) calls `api.compareJudges()`. Wire if disconnected.
+- [x] SUPPORT-2: Verify `frontend/src/app/judges/page.tsx` lists judges with search + pagination via `api.getJudges()`. Verify `frontend/src/app/judge/[name]/page.tsx` shows profile (cases, disposal patterns, top judgments, acts frequency) via `api.getJudgeProfile()`. Wire if disconnected.
+- [x] SUPPORT-3: Verify judge comparison (`frontend/src/app/judges/compare/page.tsx`) calls `api.compareJudges()`. Wire if disconnected.
 
 ### Document Upload & Analysis
-- [ ] SUPPORT-4: Verify `frontend/src/app/upload/page.tsx` calls `api.uploadDocument()` (50MB limit, PDF validation). Verify `frontend/src/app/documents/[id]/page.tsx` shows analysis results (issues extracted, counter-arguments, research memo). Verify Celery task `analyze_document()` processes uploads asynchronously. Wire if disconnected.
+- [x] SUPPORT-4: Verify `frontend/src/app/upload/page.tsx` calls `api.uploadDocument()` (50MB limit, PDF validation). Verify `frontend/src/app/documents/[id]/page.tsx` shows analysis results (issues extracted, counter-arguments, research memo). Verify Celery task `analyze_document()` processes uploads asynchronously. Wire if disconnected.
 
 ### Audio Digests (TTS)
-- [ ] SUPPORT-5: Verify `audio-player.tsx` component calls `api.generateAudioDigest()` and `api.getAudioUrl()`. Verify Celery task `generate_audio()` uses Sarvam AI TTS. Verify it appears on case detail page. Wire if disconnected.
+- [x] SUPPORT-5: Verify `audio-player.tsx` component calls `api.generateAudioDigest()` and `api.getAudioUrl()`. Verify Celery task `generate_audio()` uses Sarvam AI TTS. Verify it appears on case detail page. Wire if disconnected.
 
 ### Authentication & DPDP
-- [ ] SUPPORT-6: Verify full auth flow: register (with DPDP consent) → login (with account lockout: 10 attempts / 5-min lock) → JWT access (60 min) + refresh (7 days) → proactive refresh (60s buffer) → session-expired event bus → logout (token revocation). Wire any disconnected step.
-- [ ] SUPPORT-7: Verify DPDP compliance endpoints work: `GET /dpdp/audit-log`, `POST /dpdp/request-data`, `POST /dpdp/withdraw-consent`, `DELETE /auth/me` (cascade delete). Wire if disconnected.
+- [x] SUPPORT-6: Verify full auth flow: register (with DPDP consent) → login (with account lockout: 10 attempts / 5-min lock) → JWT access (60 min) + refresh (7 days) → proactive refresh (60s buffer) → session-expired event bus → logout (token revocation). Wire any disconnected step.
+- [x] SUPPORT-7: Verify DPDP compliance endpoints work: `GET /dpdp/audit-log`, `POST /dpdp/request-data`, `POST /dpdp/withdraw-consent`, `DELETE /auth/me` (cascade delete). Wire if disconnected.
 
 ### Semantic Cache
-- [ ] SUPPORT-8: Verify `backend/app/core/search/semantic_cache.py` caches search results in Redis (5-min TTL) and is called by `hybrid.py` before running full search. Wire if disconnected.
+- [x] SUPPORT-8: Verify `backend/app/core/search/semantic_cache.py` caches search results in Redis (5-min TTL) and is called by `hybrid.py` before running full search. Wire if disconnected.
 
 ### Admin Features
-- [ ] SUPPORT-9: Verify admin review queue (`GET /review-queue`, `POST /review/{case_id}/approve|reject`) and admin corrections (`POST /corrections/{case_id}`) work. These are admin-only endpoints — verify RBAC middleware checks `user.role == "admin"`. Wire if disconnected.
+- [x] SUPPORT-9: Verify admin review queue (`GET /review-queue`, `POST /review/{case_id}/approve|reject`) and admin corrections (`POST /corrections/{case_id}`) work. These are admin-only endpoints — verify RBAC middleware checks `user.role == "admin"`. Wire if disconnected.
 
 ### Error Handling & Logging
-- [ ] SUPPORT-10: Verify `frontend/src/components/error-boundary.tsx` wraps the app. Verify all catch blocks in agent/chat/search pages surface errors to the UI (not silently swallowed). Check for any silent `catch (e) {}` blocks.
+- [x] SUPPORT-10: Verify `frontend/src/components/error-boundary.tsx` wraps the app. Verify all catch blocks in agent/chat/search pages surface errors to the UI (not silently swallowed). Check for any silent `catch (e) {}` blocks.
 
 ## PHASE 8: HARDEN
 
