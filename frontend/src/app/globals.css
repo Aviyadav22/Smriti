@@ -54,7 +54,7 @@
    Warm creams, muted tans, deep off-black text, serif headings
    ---------------------------------------------------------------- */
 :root {
-  --radius: 0.375rem;
+  --radius: 0.5rem;
 
   /* Warm parchment backgrounds */
   --background: #F5F0E8;
@@ -74,7 +74,7 @@
 
   /* Muted warm tones */
   --muted: #EDE8DD;
-  --muted-foreground: #6B6458;
+  --muted-foreground: #4D4839;
 
   /* Subtle warm accent */
   --accent: #E8E0D0;
@@ -89,7 +89,6 @@
   --ring: #B8A990;
 
   /* Brand gold from marketing site */
-  --warm: #C4A97D;
   --gold: #B89B6A;
 
   /* Charts */
@@ -133,7 +132,6 @@
   --ring: #4A5163;
 
   /* Gold persists across modes */
-  --warm: #C4A97D;
   --gold: #D4B98A;
 
   --chart-1: #D4B98A;
@@ -161,4 +159,9 @@
     transition-duration: 100ms;
     transition-timing-function: ease-out;
   }
+}
+
+@media print {
+    .memo-toc, .memo-actions, .group button { display: none !important; }
+    .memo-body { max-width: 100% !important; }
 }
