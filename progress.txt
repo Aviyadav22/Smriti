@@ -25,3 +25,24 @@
 ### What the next iteration should know
 - AUDIT-2 is next: Map providers to interfaces. Most of this is already in AUDIT_MAP.md (providers section). Need to verify every interface has a provider and vice versa.
 - All 13 provider/interface pairs were already verified in a previous session — all compliant.
+
+## Iteration 2 — AUDIT-2, AUDIT-4, AUDIT-5, AUDIT-6
+
+### What was done
+- AUDIT-2: Verified all 11 Protocol interfaces have concrete providers (13 total implementations)
+- AUDIT-4: Mapped all agent node functions to StateGraph wiring. Found 6 legacy V1/V2 research node functions not wired (kept for rollback, not bugs)
+- AUDIT-5: Mapped Pinecone integration — writes (pipeline.py), reads (hybrid.py, workers, statute_lookup), deletes (re-ingestion cleanup). All wired.
+- AUDIT-6: Mapped Neo4j integration — writes (pipeline.py MERGE), reads (traversal, rag, workers, verifier). Seeds 12 doctrines. All wired.
+
+### Files changed
+- Updated: AUDIT_MAP.md (added AUDIT-2, AUDIT-4, AUDIT-5, AUDIT-6 sections)
+- Modified: SMRITI_REFACTOR_PRD.md (checked off AUDIT-2, AUDIT-4, AUDIT-5, AUDIT-6)
+
+### Key findings
+- No orphaned Pinecone or Neo4j operations
+- 6 legacy research node functions exist but are superseded by V2/V3 versions — not bugs
+- Interface→Provider mapping is 1:1 or 1:many (no gaps)
+
+### What the next iteration should know
+- AUDIT-3 (route mapping) and AUDIT-7/8/9 (frontend audit) are running as background agents
+- After those complete, AUDIT-10 (DISCONNECTED_FUNCTIONS.md) can be compiled from all previous audits
