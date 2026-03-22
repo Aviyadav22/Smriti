@@ -32,7 +32,12 @@ from app.core.dependencies import (
     get_vector_store,
     get_web_search,
 )
-from app.core.drafting.export import export_to_docx, export_to_pdf
+from app.core.drafting.export import (
+    export_research_memo_docx,
+    export_research_memo_pdf,
+    export_to_docx,
+    export_to_pdf,
+)
 from app.core.drafting.templates import TEMPLATES, get_template
 from app.db.postgres import async_session_factory, get_db
 from app.db.redis_client import get_redis
@@ -46,6 +51,52 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+# ---------------------------------------------------------------------------
+# [D9] Error categorization for SSE error events
+# ---------------------------------------------------------------------------
+
+def _categorize_error(exc: Exception) -> dict:
+    """Categorize an exception into an SSE error event payload."""
+    msg = str(exc)
+    lower = msg.lower()
+
+    if "rate" in lower and "limit" in lower or "429" in lower or "quota" in lower:
+        return {
+            "type": "error",
+            "category": "rate_limit",
+            "message": "API rate limit reached. Please wait a moment and try again.",
+            "recoverable": True,
+        }
+    if "timeout" in lower or "timed out" in lower:
+        return {
+            "type": "error",
+            "category": "timeout",
+            "message": "A search operation timed out. Results may be incomplete.",
+            "recoverable": True,
+        }
+    if "auth" in lower or "401" in lower or "403" in lower or "permission" in lower:
+        return {
+            "type": "error",
+            "category": "auth_error",
+            "message": "Authentication error. Please sign in again.",
+            "recoverable": False,
+        }
+    if "no results" in lower or "not found" in lower:
+        return {
+            "type": "error",
+            "category": "no_results",
+            "message": "No matching cases found. Try rephrasing your query.",
+            "recoverable": True,
+        }
+    # Default: LLM or infrastructure error
+    return {
+        "type": "error",
+        "category": "llm_error",
+        "message": "Agent execution failed. Please try again.",
+        "recoverable": False,
+    }
+
 # ---------------------------------------------------------------------------
 # Request / Response schemas
 # ---------------------------------------------------------------------------
@@ -54,6 +105,7 @@ router = APIRouter()
 class ResearchRequest(BaseModel):
     query: str = Field(..., min_length=5, max_length=5000)
     language: str = Field(default="en", pattern="^(en|hi)$")
+    auto_approve: bool = Field(default=False, description="Skip HITL checkpoints, auto-approve all")
 
 
 class CasePrepRequest(BaseModel):
@@ -124,6 +176,7 @@ async def _stream_agent_events(
     initial_input: dict,
     config: dict,
     exec_id: uuid.UUID,
+    graph_kwargs: dict | None = None,
 ) -> AsyncIterator[str]:
     """Stream SSE events from agent graph execution.
 
@@ -146,7 +199,16 @@ async def _stream_agent_events(
 
     async def _run_graph() -> None:
         """Producer: iterate graph events and push SSE strings into queue."""
-        nonlocal is_checkpoint
+        nonlocal is_checkpoint, graph
+
+        # Build graph lazily if kwargs provided (enables memo streaming)
+        if graph_kwargs is not None:
+            async def _memo_stream_cb(chunk: str) -> None:
+                await queue.put(
+                    f'data: {json.dumps({"type": "memo_stream", "execution_id": str(exec_id), "chunk": chunk})}\n\n'
+                )
+            graph = build_research_graph(**graph_kwargs, memo_stream_callback=_memo_stream_cb)
+
         try:
             async for event in graph.astream(
                 initial_input, config=config, stream_mode="updates"
@@ -208,6 +270,12 @@ async def _stream_agent_events(
             else:
                 # Graph completed normally
                 final_state = state.values
+                logger.info(
+                    "Agent %s completed. State keys: %s, footnotes count: %d",
+                    exec_id,
+                    list(final_state.keys()),
+                    len(final_state.get("footnotes") or []),
+                )
                 result_data = {
                     "memo": (
                         final_state.get("draft_memo")
@@ -229,6 +297,8 @@ async def _stream_agent_events(
                     result_data["legal_quality_result"] = final_state["legal_quality_result"]
                 if final_state.get("contradictions"):
                     result_data["contradictions"] = final_state["contradictions"]
+                if final_state.get("confidence_breakdown"):
+                    result_data["confidence_breakdown"] = final_state["confidence_breakdown"]
                 async with async_session_factory() as db:
                     await db.execute(
                         text(
@@ -239,7 +309,18 @@ async def _stream_agent_events(
                     )
                     await db.commit()
 
-                await queue.put(f"data: {json.dumps({'type': 'memo', 'execution_id': str(exec_id), 'content': result_data['memo'], 'data': {'confidence': result_data['confidence']}})}\n\n")
+                memo_event_data: dict = {"confidence": result_data["confidence"]}
+                if result_data.get("footnotes"):
+                    memo_event_data["footnotes"] = result_data["footnotes"]
+                if result_data.get("research_audit"):
+                    memo_event_data["research_audit"] = result_data["research_audit"]
+                if result_data.get("source_attribution"):
+                    memo_event_data["source_attribution"] = result_data["source_attribution"]
+                if result_data.get("legal_quality_result"):
+                    memo_event_data["legal_quality_result"] = result_data["legal_quality_result"]
+                if result_data.get("contradictions"):
+                    memo_event_data["contradictions"] = result_data["contradictions"]
+                await queue.put(f"data: {json.dumps({'type': 'memo', 'execution_id': str(exec_id), 'content': result_data['memo'], 'data': memo_event_data})}\n\n")
                 await queue.put(f"data: {json.dumps({'type': 'done', 'execution_id': str(exec_id), 'status': 'completed'})}\n\n")
 
         except Exception as exc:
@@ -260,7 +341,7 @@ async def _stream_agent_events(
                     await db.commit()
             except Exception:
                 logger.exception("Failed to update execution %s status to failed", exec_id)
-            await queue.put(f"data: {json.dumps({'type': 'error', 'message': 'Agent execution failed. Please try again.', 'recoverable': False})}\n\n")
+            await queue.put(f"data: {json.dumps(_categorize_error(exc))}\n\n")
         finally:
             await queue.put(_SENTINEL)
 
@@ -410,6 +491,7 @@ async def run_agent(
     reranker = get_reranker()
 
     config = {"configurable": {"thread_id": thread_id}}
+    graph_kwargs: dict | None = None  # Only set for research agent (memo streaming)
 
     if agent_type == "research":
         # Inject IK/Tavily providers — gracefully handle missing API keys
@@ -437,8 +519,15 @@ async def run_agent(
                 if cached_semantic:
                     cached_semantic["cache_type"] = "semantic"
                     async def _cached_stream_semantic():
-                        yield f"data: {json.dumps({'type': 'memo', 'data': cached_semantic})}\n\n"
-                        yield "data: [DONE]\n\n"
+                        exec_str = str(execution.id)
+                        yield f"data: {json.dumps({'type': 'status', 'execution_id': exec_str, 'step': 'cache_hit', 'message': 'Found cached result (semantic)'})}\n\n"
+                        memo_data: dict = {"confidence": cached_semantic.get("confidence", 0)}
+                        if cached_semantic.get("footnotes"):
+                            memo_data["footnotes"] = cached_semantic["footnotes"]
+                        if cached_semantic.get("research_audit"):
+                            memo_data["research_audit"] = cached_semantic["research_audit"]
+                        yield f"data: {json.dumps({'type': 'memo', 'execution_id': exec_str, 'content': cached_semantic.get('memo', ''), 'data': memo_data})}\n\n"
+                        yield f"data: {json.dumps({'type': 'done', 'execution_id': exec_str, 'status': 'completed'})}\n\n"
                     return StreamingResponse(
                         _cached_stream_semantic(),
                         media_type="text/event-stream",
@@ -451,15 +540,22 @@ async def run_agent(
         cached_memo = await get_cached_memo(_redis, request_body.query)
         if cached_memo:
             async def _cached_stream():
-                yield f"data: {json.dumps({'type': 'memo', 'data': cached_memo})}\n\n"
-                yield "data: [DONE]\n\n"
+                exec_str = str(execution.id)
+                yield f"data: {json.dumps({'type': 'status', 'execution_id': exec_str, 'step': 'cache_hit', 'message': 'Found cached result'})}\n\n"
+                memo_data_h: dict = {"confidence": cached_memo.get("confidence", 0)}
+                if cached_memo.get("footnotes"):
+                    memo_data_h["footnotes"] = cached_memo["footnotes"]
+                if cached_memo.get("research_audit"):
+                    memo_data_h["research_audit"] = cached_memo["research_audit"]
+                yield f"data: {json.dumps({'type': 'memo', 'execution_id': exec_str, 'content': cached_memo.get('memo', ''), 'data': memo_data_h})}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'execution_id': exec_str, 'status': 'completed'})}\n\n"
             return StreamingResponse(
                 _cached_stream(),
                 media_type="text/event-stream",
                 headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
             )
 
-        graph = build_research_graph(
+        graph_kwargs = dict(
             llm=llm,
             flash_llm=get_flash_llm(),
             embedder=embedder,
@@ -470,7 +566,11 @@ async def run_agent(
             ik_client=_ik_client,
             checkpointer=checkpointer,
         )
+        graph = None  # Built lazily inside _run_graph for memo streaming
         initial_input = {"query": request_body.query, "language": request_language}
+        # [D10] Pass auto_approve if set
+        if hasattr(request_body, "auto_approve") and request_body.auto_approve:
+            initial_input["auto_approve"] = True
     elif agent_type == "case_prep":
         graph_store = get_graph_store()
         graph = build_case_prep_graph(
@@ -534,7 +634,7 @@ async def run_agent(
     )
 
     return StreamingResponse(
-        _stream_agent_events(graph, initial_input, config, execution.id),
+        _stream_agent_events(graph, initial_input, config, execution.id, graph_kwargs=graph_kwargs),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -708,6 +808,7 @@ async def resume_execution(
     reranker = get_reranker()
 
     config = {"configurable": {"thread_id": str(execution.thread_id)}}
+    resume_graph_kwargs: dict | None = None  # Only set for research agent (memo streaming)
 
     if execution.agent_type == AgentType.research.value:
         try:
@@ -719,7 +820,7 @@ async def resume_execution(
         except (ValueError, Exception):
             _web_search = None
 
-        graph = build_research_graph(
+        resume_graph_kwargs = dict(
             llm=llm,
             flash_llm=get_flash_llm(),
             embedder=embedder,
@@ -730,6 +831,9 @@ async def resume_execution(
             ik_client=_ik_client,
             checkpointer=checkpointer,
         )
+        # Build graph eagerly for checkpoint state check; rebuilt with memo
+        # streaming callback inside _run_graph.
+        graph = build_research_graph(**resume_graph_kwargs)
     elif execution.agent_type == AgentType.case_prep.value:
         graph_store = get_graph_store()
         graph = build_case_prep_graph(
@@ -770,6 +874,40 @@ async def resume_execution(
     # Resume with Command
     resume_input = Command(resume=body.input)
 
+    # [DEBUG] Log resume details to diagnose checkpoint loop bug
+    logger.warning(
+        "RESUME_DEBUG: exec_id=%s thread_id=%s agent_type=%s body_input=%r resume_input=%r",
+        exec_uuid, execution.thread_id, execution.agent_type,
+        body.input[:200], resume_input,
+    )
+
+    # Verify checkpoint state exists before resuming
+    try:
+        pre_state = await graph.aget_state(config)
+        if not pre_state.values:
+            # Checkpoint state was lost (e.g. server restart with InMemorySaver)
+            async with async_session_factory() as err_db:
+                await err_db.execute(
+                    text("UPDATE agent_executions SET status = 'failed', error_message = 'Checkpoint state lost (server was restarted). Please start a new research query.' WHERE id = :id"),
+                    {"id": exec_uuid},
+                )
+                await err_db.commit()
+            raise HTTPException(
+                status_code=410,
+                detail="Checkpoint state was lost due to server restart. Please start a new research query.",
+            )
+        logger.warning(
+            "RESUME_DEBUG: pre_resume_state next=%s values_keys=%s msg_count=%d plan_len=%d",
+            pre_state.next,
+            list(pre_state.values.keys())[:10] if pre_state.values else [],
+            len(pre_state.values.get("messages", [])) if pre_state.values else 0,
+            len(pre_state.values.get("research_plan", [])) if pre_state.values else 0,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("RESUME_DEBUG: failed to get pre-state: %s", e)
+
     # Audit log: agent resume
     await create_audit_log(
         db=db,
@@ -781,7 +919,7 @@ async def resume_execution(
     )
 
     return StreamingResponse(
-        _stream_agent_events(graph, resume_input, config, exec_uuid),
+        _stream_agent_events(graph, resume_input, config, exec_uuid, graph_kwargs=resume_graph_kwargs),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -931,6 +1069,194 @@ async def export_draft(
     )
 
     from io import BytesIO
+    return StreamingResponse(
+        BytesIO(file_bytes),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /research/revise-section/{execution_id} -- Revise a single memo section
+# ---------------------------------------------------------------------------
+
+
+class ReviseSectionRequest(BaseModel):
+    """Request body for section-level revision."""
+    section_heading: str = Field(..., min_length=1, max_length=200)
+    feedback: str = Field(..., min_length=1, max_length=2000)
+
+
+@router.post("/research/revise-section/{execution_id}", dependencies=[Depends(rate_limit_dependency("10/minute"))])
+async def revise_research_section(
+    execution_id: str,
+    body: ReviseSectionRequest,
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Revise a single section of a completed research memo.
+
+    Streams SSE events: ``section_start``, ``section_delta``, ``section_done``.
+    """
+    try:
+        exec_uuid = uuid.UUID(execution_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid execution_id format.")
+
+    stmt = select(AgentExecution).where(AgentExecution.id == exec_uuid)
+    result = await db.execute(stmt)
+    execution = result.scalar_one_or_none()
+
+    if execution is None:
+        raise HTTPException(status_code=404, detail="Execution not found.")
+    if str(execution.user_id) != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied.")
+    if execution.agent_type != AgentType.research.value:
+        raise HTTPException(status_code=400, detail="Revision is only available for research executions.")
+    if execution.status != AgentStatus.completed.value:
+        raise HTTPException(status_code=400, detail="Execution is not completed.")
+
+    result_data = execution.result_data or {}
+    memo_content = result_data.get("memo", "")
+    if not memo_content:
+        raise HTTPException(status_code=400, detail="No memo content available.")
+
+    # Extract the target section
+    section_heading = body.section_heading
+    feedback = body.feedback
+
+    # Parse memo into sections, find the target
+    lines = memo_content.split("\n")
+    section_start_idx: int | None = None
+    section_end_idx: int | None = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("##") and not stripped.startswith("###"):
+            heading_text = stripped.lstrip("#").strip()
+            if heading_text.lower() == section_heading.lower():
+                section_start_idx = i
+            elif section_start_idx is not None and section_end_idx is None:
+                section_end_idx = i
+    if section_start_idx is None:
+        raise HTTPException(status_code=404, detail=f"Section '{section_heading}' not found in memo.")
+    if section_end_idx is None:
+        section_end_idx = len(lines)
+
+    original_section = "\n".join(lines[section_start_idx:section_end_idx]).strip()
+
+    # Build revision prompt
+    revision_prompt = (
+        f"You are revising ONE section of a legal research memo.\n\n"
+        f"## Original Section\n{original_section}\n\n"
+        f"## User Feedback\n{feedback}\n\n"
+        f"## Instructions\n"
+        f"Rewrite ONLY this section incorporating the user's feedback. "
+        f"Keep the same heading (## {section_heading}). "
+        f"Maintain existing footnote references [^N]. "
+        f"Do not change other sections. Return ONLY the revised section."
+    )
+
+    llm = get_llm()
+
+    async def _stream_revision() -> AsyncIterator[str]:
+        yield f"data: {json.dumps({'type': 'section_start', 'heading': section_heading})}\n\n"
+
+        try:
+            revised_text = await llm.generate(revision_prompt)
+
+            # Update memo content in-place
+            new_lines = lines[:section_start_idx] + revised_text.split("\n") + lines[section_end_idx:]
+            new_memo = "\n".join(new_lines)
+
+            # Persist updated memo
+            async with async_session_factory() as session:
+                upd_stmt = select(AgentExecution).where(AgentExecution.id == exec_uuid)
+                upd_result = await session.execute(upd_stmt)
+                upd_exec = upd_result.scalar_one_or_none()
+                if upd_exec and upd_exec.result_data:
+                    upd_exec.result_data = {**upd_exec.result_data, "memo": new_memo}
+                    await session.commit()
+
+            yield f"data: {json.dumps({'type': 'section_delta', 'heading': section_heading, 'content': revised_text})}\n\n"
+            yield f"data: {json.dumps({'type': 'section_done', 'heading': section_heading})}\n\n"
+        except Exception as exc:
+            logger.exception("Section revision failed for %s", execution_id)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        _stream_revision(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+# ---------------------------------------------------------------------------
+# GET /research/export/{execution_id} -- Export research memo as DOCX, PDF, or MD
+# ---------------------------------------------------------------------------
+
+
+@router.get("/research/export/{execution_id}", dependencies=[Depends(rate_limit_dependency("20/minute"))])
+async def export_research_memo(
+    execution_id: str,
+    format: str = Query("docx", pattern="^(docx|pdf|md)$"),
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Export a completed research memo as Word, PDF, or Markdown."""
+    try:
+        exec_uuid = uuid.UUID(execution_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid execution_id format.")
+
+    stmt = select(AgentExecution).where(AgentExecution.id == exec_uuid)
+    result = await db.execute(stmt)
+    execution = result.scalar_one_or_none()
+
+    if execution is None:
+        raise HTTPException(status_code=404, detail="Execution not found.")
+    if str(execution.user_id) != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied.")
+    if execution.agent_type != AgentType.research.value:
+        raise HTTPException(status_code=400, detail="Export is only available for research executions.")
+    if execution.status != AgentStatus.completed.value:
+        raise HTTPException(status_code=400, detail="Execution is not completed.")
+
+    result_data = execution.result_data or {}
+    memo_content = result_data.get("memo", "")
+    footnotes = result_data.get("footnotes", [])
+    memo_title = result_data.get("title", "Research Memo")
+
+    if not memo_content:
+        raise HTTPException(status_code=400, detail="No memo content available for export.")
+
+    fmt = format
+    from io import BytesIO
+
+    if fmt == "md":
+        file_bytes = memo_content.encode("utf-8")
+        media_type = "text/markdown; charset=utf-8"
+        filename = "research_memo.md"
+    elif fmt == "docx":
+        file_bytes = await export_research_memo_docx(
+            memo_content, title=memo_title, footnotes=footnotes,
+        )
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        filename = "research_memo.docx"
+    else:
+        file_bytes = await export_research_memo_pdf(
+            memo_content, title=memo_title, footnotes=footnotes,
+        )
+        media_type = "application/pdf"
+        filename = "research_memo.pdf"
+
+    await create_audit_log(
+        db=db,
+        action="agent.export",
+        user_id=user.sub,
+        resource_type="agent_execution",
+        resource_id=execution_id,
+        metadata={"format": fmt, "agent_type": "research"},
+    )
+
     return StreamingResponse(
         BytesIO(file_bytes),
         media_type=media_type,

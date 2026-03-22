@@ -74,6 +74,8 @@ from app.core.legal.prompts import (
     SPECULATIVE_MERGE_SYSTEM,
     ADVERSARIAL_SEARCH_SYSTEM,
     ADVERSARIAL_SEARCH_SCHEMA,
+    ADVERSARIAL_MINI_CRAG_SYSTEM,
+    ADVERSARIAL_MINI_CRAG_SCHEMA,
     RESEARCH_DISTINGUISH_SYSTEM,
 )
 from app.security.sanitizer import sanitize_search_query
@@ -665,33 +667,47 @@ async def gather_worker_results_node(state: ResearchState) -> dict:
     """Collect all worker results, deduplicate with diversity control.
 
     Worker results arrive via the operator.add reducer on worker_results.
-    This node deduplicates and identifies cross-references across workers.
+    This node deduplicates by task_id and only processes NEW results
+    (not already gathered in prior rounds) to prevent explosive accumulation.
     """
-    worker_results = state.get("worker_results", [])
-    if not worker_results:
+    all_worker_results = state.get("worker_results", [])
+    if not all_worker_results:
         return {"search_results": [], "cross_references": []}
 
     # [C2] Deduplicate by task_id — keep latest (last dispatch cycle wins)
     seen_task_ids: dict[str, dict] = {}
-    for wr in worker_results:
+    for wr in all_worker_results:
         tid = wr.get("task_id", "")
         if tid:
             seen_task_ids[tid] = wr  # Later entry overwrites earlier
         else:
             seen_task_ids[id(wr)] = wr  # Fallback for results without task_id
-    worker_results = list(seen_task_ids.values())
+    deduped_workers = list(seen_task_ids.values())
 
-    # Flatten all results from all workers
-    all_results: list[dict] = []
-    for wr in worker_results:
-        all_results.extend(wr.get("results", []))
+    # Only process workers not yet gathered in a prior round
+    already_gathered = set(state.get("_gathered_task_ids", []))
+    new_workers = [
+        wr for wr in deduped_workers
+        if wr.get("task_id", "") not in already_gathered
+    ]
+    # Track all gathered task_ids (old + new)
+    new_gathered_ids = [
+        wr.get("task_id", "") for wr in deduped_workers if wr.get("task_id", "")
+    ]
 
-    # Deduplicate with diversity control (max 4 chunks per case)
-    deduped = deduplicate_with_diversity(all_results, max_chunks_per_case=4)
+    # Merge NEW results with prior search_results (from earlier rounds)
+    prior_results = state.get("search_results", [])
+    new_results: list[dict] = []
+    for wr in new_workers:
+        new_results.extend(wr.get("results", []))
 
-    # Identify cross-references (cases found by 2+ workers)
+    # Deduplicate new + prior combined, with diversity control
+    combined = prior_results + new_results
+    deduped = deduplicate_with_diversity(combined, max_chunks_per_case=4)
+
+    # Identify cross-references (cases found by 2+ workers) — use ALL workers
     case_workers: dict[str, set[str]] = {}
-    for wr in worker_results:
+    for wr in deduped_workers:
         for r in wr.get("results", []):
             cid = r.get("case_id", "")
             if cid:
@@ -700,7 +716,6 @@ async def gather_worker_results_node(state: ResearchState) -> dict:
     cross_refs: list[dict] = []
     for cid, workers in case_workers.items():
         if len(workers) >= 2:
-            # Find best result for this case
             best = max(
                 (r for r in deduped if r.get("case_id") == cid),
                 key=lambda x: x.get("score", 0),
@@ -717,9 +732,9 @@ async def gather_worker_results_node(state: ResearchState) -> dict:
 
     cross_refs.sort(key=lambda x: x["match_count"], reverse=True)
 
-    # [T1] Emit found events per worker
+    # [T1] Emit found events only for NEW workers (not already gathered)
     found_events = []
-    for wr in worker_results:
+    for wr in new_workers:
         results_list = wr.get("results", [])
         top_case = results_list[0].get("title", "")[:80] if results_list else ""
         found_events.append(emit_status("found", {
@@ -728,11 +743,17 @@ async def gather_worker_results_node(state: ResearchState) -> dict:
             "top_case": top_case,
         }))
 
+    # Track cumulative worker count
+    prior_dispatched = state.get("_total_workers_dispatched", 0)
+    total_dispatched = prior_dispatched + len(new_workers)
+
     # [C6] No-results check — set abort flag + caveat
     result: dict = {
         "search_results": deduped,
         "cross_references": cross_refs,
         "process_events": found_events,
+        "_gathered_task_ids": new_gathered_ids,
+        "_total_workers_dispatched": total_dispatched,
     }
     if not deduped:
         result["draft_memo"] = (
@@ -858,17 +879,14 @@ async def evaluate_and_extract_node(
     For IK results, fetches query-specific fragment via IK API as deep-read.
     [S12] All batches processed in PARALLEL via asyncio.gather().
     """
+    # Use search_results (already deduplicated by gather_worker_results_node)
+    # instead of re-flattening worker_results (which accumulates via operator.add).
+    # Fallback to worker_results if search_results hasn't been populated yet.
+    all_results: list[dict] = state.get("search_results", [])
     worker_results = state.get("worker_results", [])
-    if not worker_results:
-        return {
-            "relevance_scores": [],
-            "extracted_passages": [],
-        }
-
-    # Flatten all results
-    all_results: list[dict] = []
-    for wr in worker_results:
-        all_results.extend(wr.get("results", []))
+    if not all_results and worker_results:
+        for wr in worker_results:
+            all_results.extend(wr.get("results", []))
 
     if not all_results:
         return {
@@ -1010,26 +1028,10 @@ async def evaluate_and_extract_node(
             except Exception:
                 logger.warning("Deep read re-eval failed for %s", case_id)
 
-    # Filter incorrect results
+    # Filter incorrect results from the deduplicated search_results
     incorrect_ids = {
         s["case_id"] for s in relevance_scores if s["verdict"] == "incorrect"
     }
-    filtered_worker_results: list[WorkerResult] = []
-    for wr in worker_results:
-        filtered = [
-            r for r in wr["results"]
-            if r.get("case_id") not in incorrect_ids
-        ]
-        filtered_worker_results.append(WorkerResult(
-            task_id=wr["task_id"],
-            task_type=wr["task_type"],
-            query=wr["query"],
-            results=filtered,
-            source_urls=wr.get("source_urls", []),
-            metadata=wr.get("metadata", {}),
-            error=wr.get("error"),
-            reasoning=wr.get("reasoning", ""),
-        ))
 
     # [T1] Emit evaluating event
     correct_count = sum(1 for s in relevance_scores if s["verdict"] == "correct")
@@ -1047,12 +1049,11 @@ async def evaluate_and_extract_node(
     contradictions: list[dict] = []
     if incorrect_ids and llm:
         try:
-            # Build pairs of conflicting holdings
-            incorrect_results = []
-            for wr in worker_results:
-                for r in wr.get("results", []):
-                    if r.get("case_id") in incorrect_ids:
-                        incorrect_results.append(r)
+            # Build pairs of conflicting holdings from search_results
+            incorrect_results = [
+                r for r in all_results
+                if r.get("case_id") in incorrect_ids
+            ]
 
             if incorrect_results and len(incorrect_results) <= 10:
                 conflict_text = "\n".join(
@@ -1078,13 +1079,11 @@ async def evaluate_and_extract_node(
         except Exception:
             logger.warning("Distinguish classification failed", exc_info=True)
 
-    # IMPORTANT: Do NOT write filtered results back to worker_results!
-    # worker_results uses operator.add reducer (needed for Send() fan-out),
-    # so writing here would APPEND duplicates instead of replacing.
-    # Instead, flatten filtered results into search_results (simple replace).
-    filtered_search_results: list[dict] = []
-    for wr in filtered_worker_results:
-        filtered_search_results.extend(wr.get("results", []))
+    # Filter search_results directly (already deduplicated from gather)
+    filtered_search_results = [
+        r for r in all_results
+        if r.get("case_id") not in incorrect_ids
+    ]
 
     return {
         "relevance_scores": relevance_scores,
@@ -1111,26 +1110,30 @@ async def gap_analysis_node(
     """
     query = state.get("rewritten_query") or state["query"]
     research_plan = state.get("research_plan", [])
+    search_results = state.get("search_results", [])
     worker_results = state.get("worker_results", [])
     relevance_scores = state.get("relevance_scores", [])
     worker_reasonings = state.get("worker_reasonings", [])
     strategy_adj = state.get("strategy_adjustment")
     refinement_round = state.get("refinement_round", 0)
 
-    if not worker_results:
+    # Fallback: if search_results empty but worker_results exist, flatten
+    if not search_results and worker_results:
+        for wr in worker_results:
+            search_results.extend(wr.get("results", []))
+
+    if not search_results:
         return {"evidence_gaps": [], "refinement_round": refinement_round}
 
-    # Build summary of what was found
+    # Build summary of what was found from deduplicated search_results
     results_summary = []
-    for wr in worker_results:
-        n = len(wr.get("results", []))
-        top = [
-            f"{r.get('title', '?')[:60]} ({r.get('citation', '?')[:40]})"
-            for r in wr.get("results", [])[:5]
-        ]
-        results_summary.append(
-            f"[{wr['task_type']}] {n} results: {', '.join(top)}"
-        )
+    top = [
+        f"{r.get('title', '?')[:60]} ({r.get('citation', '?')[:40]})"
+        for r in search_results[:20]
+    ]
+    results_summary.append(
+        f"[{len(search_results)} results]: {', '.join(top)}"
+    )
 
     # CRAG quality summary
     crag_summary = ""
@@ -1164,16 +1167,14 @@ async def gap_analysis_node(
     # [Q1] MC-RAG: provide top results from prior rounds as conditioning context
     top_results_summary = ""
     if refinement_round > 0:
-        top_results = []
-        for wr in worker_results:
-            for r in wr.get("results", [])[:3]:
-                top_results.append(
-                    f"- {r.get('citation', '?')}: {r.get('title', '?')[:80]}"
-                )
+        top_results = [
+            f"- {r.get('citation', '?')}: {r.get('title', '?')[:80]}"
+            for r in search_results[:15]
+        ]
         if top_results:
             top_results_summary = (
                 "\n\nTOP RESULTS FROM PRIOR ROUNDS (condition follow-up queries on these):\n"
-                + "\n".join(top_results[:15])
+                + "\n".join(top_results)
             )
 
     prompt = (
@@ -1417,7 +1418,7 @@ async def speculative_synthesis_with_contradictions_node(
     state: ResearchState,
     llm: LLMProvider,
     flash_llm: LLMProvider,
-    stream_callback: Callable[[str], None] | None = None,
+    stream_callback: Callable[[str], Any] | None = None,
 ) -> dict:
     """Speculative RAG: 3x Flash drafts → Pro verification/merge/contradiction-detection.
 
@@ -1597,6 +1598,24 @@ async def speculative_synthesis_with_contradictions_node(
             "strategy": s, "status": "complete",
         }))
 
+    # --- Build citation registry: pre-assign [^N] numbers to search results ---
+    # This gives the LLM a deterministic mapping so format_footnotes_node
+    # doesn't need fuzzy matching (the root cause of citation removal failures).
+    citation_registry: dict[int, dict] = {}  # fn_number → search result dict
+    registry_lines: list[str] = []
+    for reg_idx, r in enumerate(all_results[:40], 1):
+        citation_registry[reg_idx] = r
+        title = r.get("title", "Untitled")
+        citation = r.get("citation", "No citation")
+        court = r.get("court", "Unknown")
+        year = r.get("year", "Unknown")
+        bench = r.get("bench_type", "")
+        bench_label = f" ({bench})" if bench else ""
+        registry_lines.append(
+            f"[^{reg_idx}]: {title} | {citation} | {court}{bench_label}, {year}"
+        )
+    citation_registry_text = "\n".join(registry_lines)
+
     # --- Pro verifier/merger [S1 + S5] ---
     all_formatted = format_search_results_for_llm_extended(all_results[:30])
 
@@ -1626,8 +1645,15 @@ async def speculative_synthesis_with_contradictions_node(
                 + "\n".join(adv_formatted_parts) + "\n"
             )
 
+    # Inject current date for the memo header
+    from datetime import date as _date
+    current_date = _date.today().isoformat()
+
     verification_prompt = (
         f"RESEARCH QUESTION: {shared_context['query']}\n\n"
+        f"TODAY'S DATE: {current_date}\n\n"
+        f"CITATION REGISTRY — use ONLY these [^N] references in your memo:\n"
+        f"{citation_registry_text}\n\n"
         f"COMPLETE EVIDENCE (all sources):\n{all_formatted}\n\n"
         f"EXTRACTED PASSAGES (verbatim quotes):\n{shared_context['passages']}\n\n"
         f"CITATION COMMUNITY CONTEXT:\n{shared_context['communities']}\n\n"
@@ -1638,7 +1664,9 @@ async def speculative_synthesis_with_contradictions_node(
         f"--- DRAFT B (organized by authority/precedent) ---\n{drafts[1]['memo_text']}\n\n"
         f"--- DRAFT C (organized by source diversity) ---\n{drafts[2]['memo_text']}\n\n"
         "---\n\n"
-        "Produce the FINAL research memo following your system instructions."
+        "Produce the FINAL research memo following your system instructions.\n"
+        "IMPORTANT: Use ONLY [^N] numbers from the CITATION REGISTRY above. "
+        "Do NOT invent new footnote numbers or cite cases not in the registry."
     )
 
     # Check if all drafts are broken — skip Pro merge and use direct generation
@@ -1648,12 +1676,16 @@ async def speculative_synthesis_with_contradictions_node(
         # Direct Pro generation without speculative drafts
         direct_prompt = (
             f"RESEARCH QUESTION: {shared_context['query']}\n\n"
+            f"TODAY'S DATE: {current_date}\n\n"
+            f"CITATION REGISTRY — use ONLY these [^N] references in your memo:\n"
+            f"{citation_registry_text}\n\n"
             f"COMPLETE EVIDENCE (all sources):\n{all_formatted}\n\n"
             f"EXTRACTED PASSAGES (verbatim quotes):\n{shared_context['passages']}\n\n"
             f"CITATION COMMUNITY CONTEXT:\n{shared_context['communities']}\n\n"
             f"WORKER REASONING:\n{shared_context['worker_reasoning']}\n"
             f"{temporal_section}{adversarial_section}\n"
-            "Produce a comprehensive legal research memo following your system instructions."
+            "Produce a comprehensive legal research memo following your system instructions.\n"
+            "IMPORTANT: Use ONLY [^N] numbers from the CITATION REGISTRY above."
         )
         verification_prompt = direct_prompt
 
@@ -1665,7 +1697,9 @@ async def speculative_synthesis_with_contradictions_node(
             prompt=verification_prompt,
         ):
             final_memo_chunks.append(chunk)
-            stream_callback(chunk)
+            result = stream_callback(chunk)
+            if asyncio.iscoroutine(result):
+                await result
         final_memo = "".join(final_memo_chunks)
     else:
         final_memo = await llm.generate(
@@ -1713,16 +1747,29 @@ async def speculative_synthesis_with_contradictions_node(
     # Build research audit
     research_audit = _build_research_audit(state, all_results)
 
-    # [C5] Calculate confidence with 3-dimensional breakdown
+    # [C5] Calculate confidence with 3-dimensional breakdown (all 6 components)
     scores = [r.get("score", 0) for r in all_results if r.get("score")]
     contradictions = state.get("contradictions", [])
     precedent_strs = [r.get("bench_type", "PERSUASIVE") for r in all_results if r.get("bench_type")]
+    # Collect worker types for source diversity scoring
+    _worker_types = [
+        wr.get("task_type", "case_law")
+        for wr in raw_worker_results
+        if isinstance(wr, dict)
+    ]
+    # Gap counts for gap coverage scoring
+    evidence_gaps = state.get("evidence_gaps", [])
+    _initial_gaps = len(evidence_gaps)
+    _remaining_gaps = sum(1 for g in evidence_gaps if not g.get("filled", False))
     breakdown = calculate_confidence_detailed(
         reranker_scores=scores[:10],
         cross_ref_ratio=min(1.0, len(all_results) / max(len(state.get("research_plan", [])), 1)),
         precedent_strengths=[s.upper() for s in precedent_strs] if precedent_strs else [],
         contradiction_count=len(contradictions),
         total_results=len(all_results),
+        worker_types=_worker_types,
+        initial_gap_count=_initial_gaps,
+        remaining_gap_count=_remaining_gaps,
     )
     confidence = breakdown["overall"]
 
@@ -1734,6 +1781,24 @@ async def speculative_synthesis_with_contradictions_node(
         "confidence": confidence,
         "confidence_breakdown": dict(breakdown),
         "process_events": process_events,
+        "citation_registry": {
+            str(k): {
+                "case_id": v.get("case_id"),
+                "ik_doc_id": v.get("ik_doc_id", ""),
+                "title": v.get("title", ""),
+                "citation": v.get("citation", ""),
+                "court": v.get("court", ""),
+                "year": v.get("year"),
+                "author": v.get("author", v.get("judge", "")),
+                "bench_type": v.get("bench_type", ""),
+                "coram_size": v.get("coram_size"),
+                "snippet": (v.get("snippet") or v.get("ratio") or "")[:300],
+                "source_type": v.get("source", v.get("source_type", "case_law")),
+                "url": v.get("url", v.get("source_url", "")),
+                "score": v.get("score", 0),
+            }
+            for k, v in citation_registry.items()
+        },
     }
 
 
@@ -1833,46 +1898,47 @@ def _build_source_url(case_id: str | None, ik_doc_id: str, url: str) -> str:
 async def format_footnotes_node(state: ResearchState) -> dict:
     """Post-processing: extract [^N] references, build structured footnotes.
 
-    Parses the memo for [^N] references and builds Footnote entries with
-    source URLs. Also identifies searched-but-not-cited sources.
-    Uses fuzzy citation matching (Task 1) and includes statute/web sources (Task 2).
+    Uses the citation_registry (pre-assigned [^N] → search result mapping) for
+    deterministic footnote resolution. Falls back to fuzzy matching for any
+    [^N] not in the registry (backward compatibility).
+    Also strips any LLM-written [^N]: definitions from the memo to avoid duplication.
     """
     memo = state.get("draft_memo", "")
     if not memo:
         return {"footnotes": []}
 
-    # Use search_results (filtered, deduplicated) as primary source for footnotes,
-    # with fallback to raw worker_results for citation lookup coverage
+    # --- Primary source: citation registry (deterministic mapping) ---
+    registry: dict[str, dict] = state.get("citation_registry", {})
+
+    # Use search_results + worker_results as fallback for non-registry footnotes
     search_results = state.get("search_results", [])
     worker_results = state.get("worker_results", [])
 
-    # Parse [^N] references from memo
-    refs_in_memo = set(re.findall(r"\[\^(\d+)\]", memo))
+    # Parse [^N] references from memo (inline only, not definitions)
+    refs_in_memo = set(re.findall(r"\[\^(\d+)\](?!:)", memo))
 
-    # Build a lookup from citation → result metadata
-    # Task 2: Include ALL source types (statute, web, community), not just case law
+    # Strip any LLM-written footnote definitions from the memo
+    # (the system manages footnotes via registry, not LLM-written definitions)
+    cleaned_memo = re.sub(r"^\[\^\d+\]:\s*.+?$", "", memo, flags=re.MULTILINE)
+    cleaned_memo = re.sub(r"\n{3,}", "\n\n", cleaned_memo)
+
+    # Build citation_lookup as fallback for refs not in registry
     citation_lookup: dict[str, dict] = {}
-    # First populate from filtered search_results
     for r in search_results:
         citation = r.get("citation", "")
         if citation and citation not in citation_lookup:
             citation_lookup[citation] = r
-    # Then fill gaps from raw worker_results (for citations that might have been filtered)
     for wr in worker_results:
         task_type = wr.get("task_type", "case_law")
         for r in wr.get("results", []):
             citation = r.get("citation", "")
-
-            # Task 2: Generate synthetic keys for non-case sources
             if not citation:
                 title = r.get("title", "")
                 if task_type in ("statute", "constitution"):
-                    # Use act + section as synthetic citation key
                     act = r.get("act_name", r.get("title", ""))
                     section = r.get("section", "")
                     citation = f"{act} Section {section}".strip() if section else act
                 elif task_type == "ik_search":
-                    # Indian Kanoon: synthesize citation from title + court
                     court = r.get("court", r.get("docsource", ""))
                     date = r.get("date", "")
                     if court and date:
@@ -1882,13 +1948,11 @@ async def format_footnotes_node(state: ResearchState) -> dict:
                     else:
                         citation = title
                 elif task_type == "web":
-                    # Use title or URL as key
                     citation = title or r.get("url", "")
                 elif task_type == "graph_community":
                     citation = title or r.get("community_id", "")
                 else:
                     citation = title
-
             if citation and citation not in citation_lookup:
                 ik_doc_id = r.get("ik_doc_id", "")
                 raw_url = r.get("url", r.get("source_url", ""))
@@ -1905,21 +1969,16 @@ async def format_footnotes_node(state: ResearchState) -> dict:
                     "url": raw_url,
                 }
 
-    # Pre-build normalized index for fuzzy matching (Task 1)
     norm_index: dict[str, str] = {
         _normalize_citation(k): k for k in citation_lookup
     }
 
-    # Extract footnote definitions from the memo itself (if LLM wrote them)
+    # Also parse LLM-written footnote defs (fallback for non-registry refs)
     footnote_defs: dict[int, dict] = {}
-    # Pattern: [^N]: Citation text | Court, Year | Source: ... | URL
-    fn_pattern = re.compile(
-        r"\[\^(\d+)\]:\s*(.+?)(?:\n|$)", re.MULTILINE,
-    )
+    fn_pattern = re.compile(r"\[\^(\d+)\]:\s*(.+?)(?:\n|$)", re.MULTILINE)
     for match in fn_pattern.finditer(memo):
         fn_num = int(match.group(1))
         fn_text = match.group(2).strip()
-        # Try to parse structured format: Citation | Court, Year | Source | URL
         parts = [p.strip() for p in fn_text.split("|")]
         footnote_defs[fn_num] = {
             "citation": parts[0] if parts else fn_text,
@@ -1929,28 +1988,72 @@ async def format_footnotes_node(state: ResearchState) -> dict:
         }
 
     footnotes: list[Footnote] = []
-    matched_keys: set[str] = set()  # Track which citation_lookup keys were matched
+    matched_registry_nums: set[int] = set()
+    matched_lookup_keys: set[str] = set()
+
     for ref_str in sorted(refs_in_memo, key=int):
         ref_num = int(ref_str)
+
+        # --- Priority 1: Use citation registry (deterministic) ---
+        reg_entry = registry.get(str(ref_num))
+        if reg_entry:
+            matched_registry_nums.add(ref_num)
+            case_id = reg_entry.get("case_id")
+            ik_doc_id = reg_entry.get("ik_doc_id", "")
+            source_type = reg_entry.get("source_type", "case_law")
+            if source_type == "indian_kanoon":
+                source_type = "ik_search"
+            source_url = _build_source_url(case_id, ik_doc_id, reg_entry.get("url", ""))
+            footnotes.append(Footnote(
+                number=ref_num,
+                citation=reg_entry.get("citation", ""),
+                source_type=source_type,
+                source_url=source_url,
+                case_id=case_id,
+                excerpt=reg_entry.get("snippet", "")[:300],
+                is_used=True,
+                verification_status="pending",
+                verified_against="none",
+                title=reg_entry.get("title", ""),
+                court=reg_entry.get("court", ""),
+                year=reg_entry.get("year"),
+                author=reg_entry.get("author", ""),
+                bench=reg_entry.get("bench_type", ""),
+                ik_doc_id=ik_doc_id,
+                pdf_available=bool(case_id and not str(case_id or "").startswith("ik:")),
+                source_label=_infer_source_label(source_type),
+            ))
+            # Track the citation_lookup key if it matches this registry entry
+            reg_citation = reg_entry.get("citation", "")
+            if reg_citation in citation_lookup:
+                matched_lookup_keys.add(reg_citation)
+            continue
+
+        # --- Priority 2: Fuzzy match against citation_lookup (fallback) ---
         fn_def = footnote_defs.get(ref_num, {})
         citation = fn_def.get("citation", f"[Citation {ref_num}]")
 
-        # Task 1: Fuzzy lookup instead of exact match
+        # Skip phantom footnotes (no definition, no registry entry)
+        if citation.startswith("[Citation ") and not fn_def:
+            logger.warning(
+                "Phantom footnote [^%d]: no registry entry and no LLM definition — skipping",
+                ref_num,
+            )
+            # Remove the phantom [^N] reference from memo
+            cleaned_memo = re.sub(rf"\[\^{ref_num}\](?!:)", "", cleaned_memo)
+            continue
+
         meta = _fuzzy_lookup(citation, citation_lookup, norm_index)
         case_id = meta.get("case_id")
         ik_doc_id = meta.get("ik_doc_id", "")
 
-        # Track matched citation_lookup key for unused-source tracking
         if meta:
             for k, v in citation_lookup.items():
                 if v is meta:
-                    matched_keys.add(k)
+                    matched_lookup_keys.add(k)
                     break
 
-        # Task 4: Build source URL with IK URL generation
         source_url = _build_source_url(case_id, ik_doc_id, fn_def.get("url", ""))
-
-        # Determine source type
         source_type = meta.get("source_type", "case_law")
         if "ik" in source_type or "indiankanoon" in fn_def.get("url", "").lower():
             source_type = "ik_search"
@@ -1971,15 +2074,21 @@ async def format_footnotes_node(state: ResearchState) -> dict:
             author=meta.get("author", ""),
             bench=meta.get("bench", ""),
             ik_doc_id=ik_doc_id,
-            pdf_available=bool(case_id and not str(case_id).startswith("ik:")),
+            pdf_available=bool(case_id and not str(case_id or "").startswith("ik:")),
             source_label=_infer_source_label(source_type),
         ))
 
-    # Add unused sources (searched but not cited)
-    next_num = max((fn["number"] for fn in footnotes), default=0) + 1
+    # Add unused sources (searched but not cited) — cap at 15 most relevant
+    unused_sources: list[tuple[str, dict]] = []
     for citation, meta in citation_lookup.items():
-        if citation in matched_keys:
+        if citation in matched_lookup_keys:
             continue
+        unused_sources.append((citation, meta))
+    # Sort by score descending so most relevant unused sources appear first
+    unused_sources.sort(key=lambda x: x[1].get("score", 0), reverse=True)
+
+    next_num = max((fn["number"] for fn in footnotes), default=0) + 1
+    for citation, meta in unused_sources[:15]:
         unused_source_type = meta.get("source_type", "case_law")
         unused_case_id = meta.get("case_id")
         unused_ik_doc_id = meta.get("ik_doc_id", "")
@@ -2004,7 +2113,11 @@ async def format_footnotes_node(state: ResearchState) -> dict:
         ))
         next_num += 1
 
-    return {"footnotes": footnotes}
+    result: dict = {"footnotes": footnotes}
+    # Update memo if we cleaned LLM-written definitions or phantom refs
+    if cleaned_memo != memo:
+        result["draft_memo"] = cleaned_memo
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -2046,71 +2159,104 @@ async def verify_citations_v2_node(
     )
 
     # [H25] Grounding enforcement — check if citation was in search results
+    # Uses normalized matching and citation registry for reliable grounding
     search_results = state.get("search_results", [])
-    grounding_citations = {
-        r.get("citation", ""): r.get("case_id", "")
-        for r in search_results if r.get("citation")
+    citation_registry = state.get("citation_registry", {})
+
+    # Build grounding sets with normalized citations for fuzzy matching
+    grounding_case_ids: set[str] = set()
+    grounding_ik_ids: set[str] = set()
+    grounding_norm_titles: set[str] = set()
+    for r in search_results:
+        cid = r.get("case_id", "")
+        if cid:
+            grounding_case_ids.add(str(cid))
+        ik_id = r.get("ik_doc_id", "")
+        if ik_id:
+            grounding_ik_ids.add(str(ik_id))
+        title = r.get("title", "")
+        if title:
+            grounding_norm_titles.add(_normalize_citation(title))
+
+    # Also consider citation registry entries as grounded (they came from search results)
+    registry_case_ids = {
+        v.get("case_id", "") for v in citation_registry.values() if v.get("case_id")
     }
-    grounding_case_ids = {r.get("case_id", "") for r in search_results if r.get("case_id")}
-    grounding_ik_ids = {
-        r.get("ik_doc_id", ""): r.get("case_id", "")
-        for r in search_results if r.get("ik_doc_id")
+    registry_ik_ids = {
+        v.get("ik_doc_id", "") for v in citation_registry.values() if v.get("ik_doc_id")
     }
+    grounding_case_ids |= {str(cid) for cid in registry_case_ids if cid}
+    grounding_ik_ids |= {str(ik) for ik in registry_ik_ids if ik}
+
     for fn in verified_footnotes:
         if fn.get("verification_status", "").startswith("verified"):
+            fn_case_id = str(fn.get("case_id", "")) if fn.get("case_id") else ""
+            fn_ik_id = str(fn.get("ik_doc_id", "")) if fn.get("ik_doc_id") else ""
+            fn_title_norm = _normalize_citation(fn.get("title", ""))
+
             is_grounded = (
-                fn.get("citation", "") in grounding_citations
-                or fn.get("ik_doc_id", "") in grounding_ik_ids
-                or fn.get("case_id", "") in grounding_case_ids
+                (fn_case_id and fn_case_id in grounding_case_ids)
+                or (fn_ik_id and fn_ik_id in grounding_ik_ids)
+                or (fn_title_norm and fn_title_norm in grounding_norm_titles)
             )
             if not is_grounded:
+                # Downgrade to ungrounded but NEVER touch is_used
                 fn["verification_status"] = "ungrounded"
-                fn["is_used"] = False
+                logger.info(
+                    "Grounding check: footnote %s (%s) not found in search results",
+                    fn.get("number"), fn.get("title", ""),
+                )
 
-    # [H20/M52] Clean orphan [^N] markers from memo text
-    removed_numbers = {
-        fn["number"] for fn in verified_footnotes
-        if not fn.get("is_used") and fn.get("verification_status") in ("unverified", "ungrounded")
-    }
+    # [H20/M52] Clean orphan [^N] markers for ungrounded footnotes
     cleaned_memo = memo
-    for num in removed_numbers:
-        cleaned_memo = re.sub(rf'\[\^{num}\](?!:)', '', cleaned_memo)
-        cleaned_memo = re.sub(rf'^\[\^{num}\]:.*$', '', cleaned_memo, flags=re.MULTILINE)
-    # Clean up double spaces / blank lines from removals
-    cleaned_memo = re.sub(r'\n{3,}', '\n\n', cleaned_memo)
+    for fn in verified_footnotes:
+        if fn.get("verification_status") == "ungrounded" and fn.get("is_used"):
+            ref_num = fn.get("number")
+            if ref_num is not None:
+                # Remove inline references [^N] (but not definition lines [^N]:)
+                cleaned_memo = re.sub(rf"\[\^{ref_num}\](?!:)", "", cleaned_memo)
+                # Remove definition lines [^N]: ...
+                cleaned_memo = re.sub(
+                    rf"^\[\^{ref_num}\]:\s*.+?$", "", cleaned_memo, flags=re.MULTILINE
+                )
+                fn["is_used"] = False
+                logger.info("Removed orphan markers for ungrounded footnote [^%s]", ref_num)
+    # Clean up any leftover blank lines from removed definitions
+    cleaned_memo = re.sub(r"\n{3,}", "\n\n", cleaned_memo)
 
     # Count results
     verified_count = sum(
         1 for fn in verified_footnotes
-        if fn["verification_status"].startswith("verified") and fn["is_used"]
+        if fn["verification_status"].startswith("verified") and fn.get("is_used")
     )
-    removed_count = sum(
+    unverified_count = sum(
         1 for fn in verified_footnotes
-        if fn["verification_status"] in ("unverified", "ungrounded") and not fn["is_used"]
+        if fn["verification_status"] in ("unverified", "ungrounded") and fn.get("is_used")
     )
 
     # Build verification banner
-    if removed_count == 0:
+    if unverified_count == 0:
         banner = (
             "All citations in this memo have been verified against "
             "primary sources (PostgreSQL / Indian Kanoon / Neo4j)."
         )
     else:
         banner = (
-            f"{removed_count} citation(s) could not be verified against "
-            f"primary sources and have been flagged."
+            f"{verified_count} citation(s) verified, "
+            f"{unverified_count} citation(s) could not be verified against "
+            f"primary sources and have been flagged for manual review."
         )
 
     # Update research audit with verification info
     research_audit = dict(state.get("research_audit", {}))
     research_audit["verification_banner"] = banner
     research_audit["citations_verified"] = verified_count
-    research_audit["citations_removed"] = removed_count
+    research_audit["citations_unverified"] = unverified_count
 
     # [T1] Emit verification event
     verification_event = emit_status("verification", {
         "citations_verified": verified_count,
-        "citations_removed": removed_count,
+        "citations_unverified": unverified_count,
         "quotes_verified": sum(
             1 for i in issues if i["type"] != "unverified_quote"
         ),
@@ -2243,7 +2389,11 @@ async def _verify_citations_against_sources(
     """[T4] Verify every citation against at least ONE primary source.
 
     [B9] Uses batch DB query for PostgreSQL verification instead of N+1.
-    Falls back to IK/Neo4j for footnotes not found in PG.
+    Falls back to IK doc-ID lookup, then IK search, then Neo4j.
+
+    IMPORTANT: This function NEVER modifies is_used. The is_used flag is a
+    factual indicator of whether the footnote is referenced in the memo text
+    and must not be conflated with verification status.
     """
     # [B9] Batch PostgreSQL verification — single query for all case_ids
     pg_case_ids: list[str] = []
@@ -2271,31 +2421,41 @@ async def _verify_citations_against_sources(
             if cid and str(cid) in valid_pg_ids:
                 status = "verified_pg"
 
-            # Check 2: Indian Kanoon API — use cite: filter for precision
-            if status == "unverified" and ik_client and fn.get("citation"):
+            # Check 2a: IK doc-ID existence — most reliable for IK-sourced
+            if status == "unverified" and fn.get("ik_doc_id"):
+                ik_doc_id = fn["ik_doc_id"]
+                # If case_id is ik:{doc_id}, that means it came from IK search
+                # results — treat as verified since we found it from a real source
+                if cid and str(cid) == f"ik:{ik_doc_id}":
+                    status = "verified_ik"
+
+            # Check 2b: Indian Kanoon API — use title for more reliable matching
+            if status == "unverified" and ik_client and fn.get("title"):
                 try:
                     ik_results = await ik_client.search(
-                        fn["citation"],
+                        fn["title"],
                         max_results=1,
-                        cite_filter=fn["citation"],
                     )
                     if ik_results:
                         status = "verified_ik"
                 except Exception:
-                    pass  # IK failure is non-fatal
+                    logger.debug(
+                        "IK verification failed for footnote %s: %s",
+                        fn.get("number"), fn.get("title"),
+                    )
 
             # Check 3: Neo4j Case node
-            if status == "unverified" and graph_store and fn.get("citation"):
+            if status == "unverified" and graph_store and fn.get("title"):
                 try:
                     neo4j_match = await graph_store.query(
-                        "MATCH (c:Case) WHERE c.citation CONTAINS $cit "
+                        "MATCH (c:Case) WHERE c.title CONTAINS $title "
                         "RETURN c.id LIMIT 1",
-                        {"cit": fn["citation"][:30]},
+                        {"title": fn["title"][:50]},
                     )
                     if neo4j_match:
                         status = "verified_neo4j"
                 except Exception:
-                    pass  # Neo4j failure is non-fatal
+                    logger.debug("Neo4j verification failed for footnote %s", fn.get("number"))
 
             fn_copy = dict(fn)
             fn_copy["verification_status"] = status
@@ -2303,14 +2463,13 @@ async def _verify_citations_against_sources(
                 status.replace("verified_", "") if status != "unverified" else "none"
             )
 
+            # NEVER modify is_used — it reflects whether the memo text references
+            # this footnote, not whether it's verified. Log unverified citations
+            # but keep them visible with a warning flag.
             if status == "unverified" and fn_copy.get("is_used", False):
-                fn_copy["citation"] = (
-                    f"[CITATION REMOVED — unable to verify: {fn['citation']}]"
-                )
-                fn_copy["is_used"] = False
                 logger.warning(
-                    "T4 guardrail: removed unverifiable citation footnote %s: %s",
-                    fn["number"], fn["citation"],
+                    "T4 warning: unverified citation footnote %s: %s",
+                    fn["number"], fn.get("citation", ""),
                 )
 
             return Footnote(**fn_copy)
@@ -2659,21 +2818,8 @@ async def adversarial_search_node(
                     "For each case, is it a genuine counter-argument to the research "
                     "position, or is it irrelevant? Return only relevant ones."
                 ),
-                system=(
-                    "You are a legal relevance evaluator. Return a JSON object "
-                    "with key 'relevant_indices' containing a list of 0-based "
-                    "indices of cases that are genuine counter-arguments."
-                ),
-                output_schema={
-                    "type": "object",
-                    "properties": {
-                        "relevant_indices": {
-                            "type": "array",
-                            "items": {"type": "integer"},
-                        },
-                    },
-                    "required": ["relevant_indices"],
-                },
+                system=ADVERSARIAL_MINI_CRAG_SYSTEM,
+                output_schema=ADVERSARIAL_MINI_CRAG_SCHEMA,
             )
             relevant_set = set(verification.get("relevant_indices", []))
             if relevant_set:

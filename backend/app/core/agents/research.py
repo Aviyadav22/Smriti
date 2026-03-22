@@ -114,6 +114,7 @@ def build_research_graph(
     web_search: Any = None,
     ik_client: Any = None,
     checkpointer: Any | None = None,
+    memo_stream_callback: Any | None = None,
 ) -> Any:
     """Build and compile the Research Agent V2 LangGraph graph.
 
@@ -327,14 +328,14 @@ def build_research_graph(
     async def speculative_synthesis(state: ResearchState) -> dict:
         return await speculative_synthesis_with_contradictions_node(
             state, llm, flash_llm,
-            stream_callback=None,  # Stream callback set by SSE layer
+            stream_callback=memo_stream_callback,
         )
 
     # [B10] Moderate complexity synthesis — uses Flash for speed
     async def moderate_synthesis(state: ResearchState) -> dict:
         return await speculative_synthesis_with_contradictions_node(
             state, flash_llm, flash_llm,
-            stream_callback=None,
+            stream_callback=memo_stream_callback,
         )
 
     async def format_footnotes(state: ResearchState) -> dict:
@@ -399,7 +400,7 @@ def build_research_graph(
     async def _named_case_worker(state: dict) -> dict:
         return await _timed_worker(
             "named_case_worker",
-            named_case_worker(state, llm, embedder, vector_store, reranker),
+            named_case_worker(state, llm, embedder, vector_store, reranker, ik_client),
             state,
         )
 
@@ -507,6 +508,13 @@ def build_research_graph(
             except (json.JSONDecodeError, TypeError):
                 parsed = response  # plain text feedback
 
+        # [DEBUG] Log interrupt return value to diagnose loop bug
+        from app.core.agents.routing_utils import is_proceed
+        logger.warning(
+            "CHECKPOINT_PLAN_DEBUG: interrupt returned type=%s response=%r parsed=%r is_proceed=%s",
+            type(response).__name__, str(response)[:200], str(parsed)[:200], is_proceed(parsed),
+        )
+
         result_dict: dict = {
             "messages": [
                 {"type": "user_feedback", "step": "plan", "content": parsed}
@@ -534,8 +542,8 @@ def build_research_graph(
         filtered_results = state.get("search_results", [])
         result_count = len(filtered_results)
         cross_ref_count = len(state.get("cross_references", []))
-        # Show unique worker count from research_plan, not accumulated worker_results
-        worker_count = len(state.get("research_plan", []))
+        # Show cumulative dispatched workers count across all rounds
+        worker_count = state.get("_total_workers_dispatched", len(state.get("research_plan", [])))
         gaps = state.get("evidence_gaps", [])
 
         # [D2] Build top-10 case previews from filtered search results
@@ -583,22 +591,59 @@ def build_research_graph(
                 f"{cross_ref_count} cross-references."
             ),
         })
+
+        # Parse response — may be a dict or a JSON string from frontend
+        parsed = response
+        if isinstance(response, str) and response.strip().startswith("{"):
+            try:
+                parsed = json.loads(response)
+            except (json.JSONDecodeError, TypeError):
+                parsed = response  # plain text feedback
+
+        logger.debug("checkpoint_findings: response=%r parsed=%r", response, parsed)
+
         return {
             "messages": [
-                {"type": "user_feedback", "step": "findings", "content": response}
+                {"type": "user_feedback", "step": "findings", "content": parsed}
             ],
         }
 
-    checkpoint_memo = make_checkpoint_node(
-        "memo",
-        "Here is the draft research memo. Any revisions?",
-        {
-            "draft_memo": ("draft_memo", ""),
-            "confidence": ("confidence", 0.0),
-            "footnotes": ("footnotes", []),
-            "research_audit": ("research_audit", None),
-        },
-    )
+    async def checkpoint_memo(state: ResearchState) -> dict:
+        """Pause for user review of draft memo (respects auto_approve)."""
+        memo = state.get("draft_memo", "")
+        confidence = state.get("confidence", 0.0)
+        footnotes = state.get("footnotes", [])
+        audit = state.get("research_audit", None)
+
+        # [D10/H1] Auto-approve — skip interrupt, emit as process event
+        if state.get("auto_approve"):
+            return {
+                "messages": [
+                    {"type": "user_feedback", "step": "memo", "content": "Looks good, proceed"}
+                ],
+                "process_events": [{"type": "memo", "data": {"auto_approved": True}}],
+            }
+
+        response = interrupt({
+            "question": "Here is the draft research memo. Any revisions?",
+            "draft_memo": memo,
+            "confidence": confidence,
+            "footnotes": footnotes,
+            "research_audit": audit,
+        })
+
+        parsed = response
+        if isinstance(response, str) and response.strip().startswith("{"):
+            try:
+                parsed = json.loads(response)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        return {
+            "messages": [
+                {"type": "user_feedback", "step": "memo", "content": parsed}
+            ],
+        }
 
     # -- Routing functions --------------------------------------------------
 
@@ -632,6 +677,13 @@ def build_research_graph(
         if state.get("complexity") == "complex":
             return "plan_research"  # Fallback triggered
         return "fast_path_synthesis"
+
+    def route_after_temporal(state: ResearchState) -> str:
+        """[H2] Route after temporal validation: moderate → format_footnotes, complex → speculative_synthesis."""
+        complexity = state.get("complexity", "complex")
+        if complexity == "moderate":
+            return "format_footnotes"
+        return "speculative_synthesis"
 
     def route_after_quality(state: ResearchState) -> str:
         """[B3] Route after quality check: pass → memo, fail + retry → synthesis, max → memo with warning."""
@@ -770,11 +822,19 @@ def build_research_graph(
 
     # Stage 4: Challenge — adversarial search → temporal validation → synthesis
     graph.add_edge("adversarial_search", "temporal_validation")
-    graph.add_edge("temporal_validation", "speculative_synthesis")
+    graph.add_edge("moderate_synthesis", "temporal_validation")  # [B10/H2] Moderate also gets temporal checks
+    # [H2] Temporal validation routes based on complexity
+    graph.add_conditional_edges(
+        "temporal_validation",
+        route_after_temporal,
+        {
+            "speculative_synthesis": "speculative_synthesis",
+            "format_footnotes": "format_footnotes",
+        },
+    )
 
     # Stage 5: Synthesize — speculative synthesis → format footnotes → verify → quality → memo
     graph.add_edge("speculative_synthesis", "format_footnotes")
-    graph.add_edge("moderate_synthesis", "format_footnotes")  # [B10] Moderate joins main path
     graph.add_edge("format_footnotes", "verify_v2")
     graph.add_edge("verify_v2", "quality_check")
     # [B3] Quality retry loop — conditional routing after quality check
