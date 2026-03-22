@@ -8,6 +8,8 @@ import pytest
 
 from app.core.legal.extractor import (
     _is_valid_act_citation,
+    get_act_display_name,
+    get_acts_cited_display,
     normalize_act_name,
     normalize_acts_cited_list,
 )
@@ -241,3 +243,42 @@ class TestSearchFilterNormalization:
     def test_normalize_act_filter_unknown_passthrough(self):
         """Unknown act names pass through as-is."""
         assert normalize_act_name("Some Obscure Act") == "Some Obscure Act"
+
+
+class TestDisplayNameLookup:
+    """Tests for get_act_display_name() and get_acts_cited_display()."""
+
+    def test_known_act_with_year(self):
+        assert get_act_display_name("IPC") == "Indian Penal Code, 1860"
+        assert get_act_display_name("CrPC") == "Code of Criminal Procedure, 1973"
+        assert get_act_display_name("COI") == "Constitution of India, 1950"
+
+    def test_known_act_without_year(self):
+        # FA (Foreigners Act) is in _SHORT_ACT_NAMES but not in _ACT_YEARS
+        result = get_act_display_name("FA")
+        assert result == "Foreigners Act"
+
+    def test_unknown_code_passthrough(self):
+        assert get_act_display_name("XYZ") == "XYZ"
+        assert get_act_display_name("Some Random Act") == "Some Random Act"
+
+    def test_case_insensitive(self):
+        assert get_act_display_name("ipc") == "Indian Penal Code, 1860"
+
+    def test_new_criminal_codes(self):
+        assert get_act_display_name("BNS") == "Bharatiya Nyaya Sanhita, 2023"
+        assert get_act_display_name("BNSS") == "Bharatiya Nagarik Suraksha Sanhita, 2023"
+        assert get_act_display_name("BSA") == "Bharatiya Sakshya Adhiniyam, 2023"
+
+    def test_display_list(self):
+        result = get_acts_cited_display(["IPC", "CRPC"])
+        assert result == [
+            {"code": "IPC", "name": "Indian Penal Code, 1860"},
+            {"code": "CRPC", "name": "Code of Criminal Procedure, 1973"},
+        ]
+
+    def test_display_list_empty(self):
+        assert get_acts_cited_display([]) == []
+
+    def test_display_list_none(self):
+        assert get_acts_cited_display(None) == []

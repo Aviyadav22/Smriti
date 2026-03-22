@@ -359,6 +359,18 @@ _SHORT_ACT_NAMES: dict[str, str] = {
     "POTA": "Prevention of Terrorism Act",
     "RPA": "Representation of the People Act",
     "MMDRA": "Mines and Minerals (Development and Regulation) Act",
+    "MACT": "Motor Accident Claims Tribunal Act",
+    "FA": "Foreigners Act",
+    # --- [SA7] Display-name entries (short code → full name) ---
+    "COI": "Constitution of India",
+    "IEA": "Indian Evidence Act",
+    "ICA": "Indian Contract Act",
+    "TPA": "Transfer of Property Act",
+    "ACA": "Arbitration and Conciliation Act",
+    "ITA": "Income Tax Act",
+    "SOGA": "Sale of Goods Act",
+    "CA2013": "Companies Act",
+    "IPA": "Indian Partnership Act",
 }
 
 # Reverse mapping: full act name → preferred short code (for DB lookups).
@@ -372,6 +384,70 @@ for _short, _full in _SHORT_ACT_NAMES.items():
         _FULL_TO_SHORT[_full_lower] = _short
 # Add "Constitution of India" → "COI" for Article references
 _FULL_TO_SHORT["constitution of india"] = "COI"
+
+# Year each act was enacted — used for human-readable display names.
+_ACT_YEARS: dict[str, int] = {
+    "IPC": 1860, "BNS": 2023, "CRPC": 1973, "BNSS": 2023,
+    "CPC": 1908, "IEA": 1872, "BSA": 2023, "COI": 1950,
+    "ICA": 1872, "TPA": 1882, "ACA": 1996, "IBC": 2016,
+    "PMLA": 2002, "NDPS ACT": 1985, "NI ACT": 1881, "UAPA": 1967,
+    "IT ACT": 2000, "ITA": 1961, "SARFAESI": 2002, "FEMA": 1999,
+    "RERA": 2016, "HMA": 1955, "HSA": 1956, "DV ACT": 2005,
+    "LA": 1963, "PCA": 1988, "GCA": 1897, "MVA": 1988,
+    "CPA": 2019, "DPA": 1961, "RPA": 1951,
+    "COMPETITION ACT": 2002, "CONTEMPT ACT": 1971,
+    "REGISTRATION ACT": 1908, "STAMP ACT": 1899,
+    "FACTORIES ACT": 1948, "ID ACT": 1947, "CGST ACT": 2017,
+    "EASEMENTS ACT": 1882, "SOGA": 1930, "BENAMI ACT": 1988,
+    "JJ ACT": 2015, "DPDP ACT": 2023, "LLP ACT": 2008,
+    "LOKPAL ACT": 2013, "AADHAAR ACT": 2016, "CA2013": 2013,
+    "NIA ACT": 2008, "ARMS ACT": 1959,
+    "LIMITATION ACT": 1963, "ARBITRATION ACT": 1996,
+    "COMPANIES ACT": 2013, "POCSO ACT": 2012, "RTI ACT": 2005,
+    "TADA": 1987, "SC/ST ACT": 1989, "TP ACT": 1882,
+    "MV ACT": 1988, "LAA": 1894, "IPA": 1932,
+    "INSURANCE ACT": 1938, "CE ACT": 1944,
+    "MW ACT": 1948, "EPF ACT": 1952, "SMA": 1954,
+    "NHA": 1956, "EC ACT": 1923, "TU ACT": 1926,
+    "PW ACT": 1936, "AT ACT": 1985, "GW ACT": 1890,
+    "WLP ACT": 1972, "MSMED ACT": 2006, "POCSO": 2012,
+    "BR ACT": 1949, "CUSTOMS ACT": 1962, "EP ACT": 1986,
+    "FC ACT": 1980, "LARR": 2013, "ESI ACT": 1948,
+    "HSA": 1956,
+}
+
+
+def get_act_display_name(short_code: str) -> str:
+    """Return a human-readable display name for an act short code.
+
+    Looks up the full name from ``_SHORT_ACT_NAMES`` and appends the
+    enactment year from ``_ACT_YEARS`` when available.
+
+    Falls back to ``short_code`` itself if not found.
+
+    Examples:
+        "IPC" → "Indian Penal Code, 1860"
+        "XYZ" → "XYZ"
+    """
+    upper = short_code.strip().upper()
+    full_name = _SHORT_ACT_NAMES.get(upper)
+    if full_name is None:
+        return short_code
+    year = _ACT_YEARS.get(upper)
+    if year is not None:
+        return f"{full_name}, {year}"
+    return full_name
+
+
+def get_acts_cited_display(short_codes: list[str] | None) -> list[dict[str, str]]:
+    """Convert list of short codes to display objects.
+
+    Returns: [{"code": "IPC", "name": "Indian Penal Code, 1860"}, ...]
+    """
+    return [
+        {"code": code, "name": get_act_display_name(code)}
+        for code in short_codes
+    ] if short_codes else []
 
 
 def normalize_act_name(raw: str) -> str:
@@ -415,6 +491,9 @@ _ACTS_CITED_BLOCKLIST: frozenset[str] = frozenset({
     "telangana", "madhya pradesh", "west bengal", "odisha", "assam",
     "nct of delhi", "delhi", "goa", "jharkhand", "chhattisgarh",
     "uttarakhand", "himachal pradesh", "jammu and kashmir",
+    "tripura", "meghalaya", "manipur", "mizoram", "nagaland",
+    "arunachal pradesh", "sikkim", "puducherry", "chandigarh",
+    "ladakh", "lakshadweep",
 })
 
 # Patterns to strip "Section X of " or "Article X of " prefix
@@ -469,6 +548,9 @@ def _is_valid_act_citation(name: str) -> bool:
         return False
     # Contains newlines (should have been cleaned)
     if "\n" in stripped or "\r" in stripped:
+        return False
+    # CPC procedural refs like "Order VII Rule 11" are not act names
+    if re.match(r"^Order\s+\w+\s+Rule\s+\d+", stripped, re.IGNORECASE):
         return False
     return True
 
