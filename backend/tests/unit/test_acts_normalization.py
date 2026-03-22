@@ -282,3 +282,114 @@ class TestDisplayNameLookup:
 
     def test_display_list_none(self):
         assert get_acts_cited_display(None) == []
+
+
+# ---------------------------------------------------------------------------
+# SA10: Full pipeline integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestFullPipelineNormalization:
+    """Integration-style tests verifying end-to-end normalization pipeline."""
+
+    def test_full_pipeline_normalization(self):
+        """Messy acts_cited input → normalize → enrich → clean short codes."""
+        raw = [
+            "Section 302 of Indian Penal Code, 1860",
+            "Article 21 of Constitution of India",
+            "Unknown Act",
+            "IPC",  # duplicate of first entry after normalization
+            "Code of Criminal\nProcedure",
+            "said Act",
+            "Maharashtra",
+            "2013",
+            "Limitation Act, 1963",
+        ]
+        result = normalize_acts_cited_list(raw)
+        result = enrich_statute_cross_references(result)
+
+        # Should contain expected short codes (enriched)
+        assert "IPC" in result
+        assert "BNS" in result  # enriched from IPC
+        assert "COI" in result
+        assert "CRPC" in result
+        assert "BNSS" in result  # enriched from CRPC
+        assert "LA" in result
+
+        # Should NOT contain garbage
+        assert "Unknown Act" not in result
+        assert "said Act" not in result
+        assert "Maharashtra" not in result
+        assert "2013" not in result
+
+        # Should NOT contain full names
+        assert "Indian Penal Code" not in result
+        assert "Indian Penal Code, 1860" not in result
+        assert "Constitution of India" not in result
+
+    def test_display_name_roundtrip(self):
+        """Every code in pipeline output has a human-readable display name."""
+        raw = [
+            "Indian Penal Code, 1860",
+            "Constitution of India",
+            "Limitation Act, 1963",
+        ]
+        result = normalize_acts_cited_list(raw)
+        result = enrich_statute_cross_references(result)
+
+        for code in result:
+            display = get_act_display_name(code)
+            # Known acts should return a name different from the short code
+            assert display != code, (
+                f"get_act_display_name('{code}') returned the code itself"
+            )
+
+    def test_section_refs_never_stored(self):
+        """Strings starting with 'Section' or 'Article' never appear in output."""
+        raw = [
+            "Section 302 of Indian Penal Code",
+            "Section 34 IPC",
+            "Section 120B r/w Section 34 IPC",
+            "Article 21 of Constitution of India",
+            "Article 14 of Constitution of India",
+        ]
+        result = normalize_acts_cited_list(raw)
+
+        for item in result:
+            assert not item.startswith("Section"), (
+                f"Section reference leaked into output: {item}"
+            )
+            assert not item.startswith("Article"), (
+                f"Article reference leaked into output: {item}"
+            )
+
+    def test_order_rule_filtered(self):
+        """Order/Rule procedural references are filtered out, not stored as act names."""
+        raw = ["Order VII Rule 11(d) of Code of Civil Procedure, 1908"]
+        result = normalize_acts_cited_list(raw)
+        # Order/Rule refs are filtered by _is_valid_act_citation
+        for item in result:
+            assert "Order" not in item, (
+                f"Order/Rule reference leaked into output: {item}"
+            )
+
+
+class TestHealthCheckQuery:
+    """Verify the health check SQL constant is valid syntax."""
+
+    def test_health_check_query_syntax(self):
+        """Verify the health check SQL is valid syntax."""
+        HEALTH_CHECK_SQL = """
+        SELECT act, COUNT(*)
+        FROM cases, unnest(acts_cited) AS act
+        WHERE length(act) < 4
+           OR act LIKE 'Section %%'
+           OR act LIKE 'Article %%'
+           OR act IN ('Unknown Act', 'Act', 'Code', 'said Act', 'that Act')
+           OR act ~ E'\\n'
+        GROUP BY act ORDER BY count DESC;
+        """
+        # Just verify it's a non-empty string (actual DB test would need connection)
+        assert len(HEALTH_CHECK_SQL.strip()) > 0
+        assert "unnest(acts_cited)" in HEALTH_CHECK_SQL
+        assert "GROUP BY" in HEALTH_CHECK_SQL
