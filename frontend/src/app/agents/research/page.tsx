@@ -610,6 +610,7 @@ export default function ResearchAgentPage() {
 
             {/* Running or completed state */}
             {showWorkspace && (
+                <>
                 <div className={cn(
                     "grid gap-6 md:grid-cols-[240px_1fr]",
                     "transition-[margin] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
@@ -852,6 +853,7 @@ export default function ResearchAgentPage() {
                         Sources ({footnotes.filter(f => f.is_used).length})
                     </button>
                 )}
+                </>
             )}
                 </div>
             </main>
