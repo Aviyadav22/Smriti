@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
-import { search as apiSearch, searchFacets } from "@/lib/api";
+import { search as apiSearch, searchFacets, searchSuggest } from "@/lib/api";
+import type { SearchSuggestion } from "@/lib/api";
 import type { SearchResponse, FacetsResponse, JudgmentSection } from "@/lib/types";
 import { Search, ChevronLeft, ChevronRight, Filter, X, Loader2, AlertTriangle, Download } from "lucide-react";
 import { PrecedentBadge } from "@/components/precedent-badge";
@@ -46,6 +47,15 @@ function SearchContent() {
     const [yearTo, setYearTo] = useState<string>("");
     const [caseType, setCaseType] = useState<string>("");
     const [sectionFilter, setSectionFilter] = useState<JudgmentSection | null>(null);
+
+    // WIRED_BY_REFACTOR: Search suggest was a disconnected backend endpoint.
+    // Wired here for typeahead autocomplete — lawyers can quickly find cases
+    // by title or citation as they type (e.g., "Section 302" shows matching judgments).
+    const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+    const suggestAbortRef = useRef<AbortController | null>(null);
+    const suggestDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -94,6 +104,61 @@ function SearchContent() {
             console.error("Failed to load search facets:", err);
         });
     }, []);
+
+    // Fetch search suggestions with debounce (300ms, min 3 chars)
+    const fetchSuggestions = useCallback((q: string) => {
+        if (suggestDebounceRef.current) clearTimeout(suggestDebounceRef.current);
+        if (suggestAbortRef.current) suggestAbortRef.current.abort();
+
+        if (q.trim().length < 3) {
+            setSuggestions([]);
+            setShowSuggestions(false);
+            return;
+        }
+
+        suggestDebounceRef.current = setTimeout(async () => {
+            const controller = new AbortController();
+            suggestAbortRef.current = controller;
+            try {
+                const res = await searchSuggest(q.trim(), 8, controller.signal);
+                setSuggestions(res.suggestions);
+                setShowSuggestions(res.suggestions.length > 0);
+                setSelectedSuggestionIndex(-1);
+            } catch (err) {
+                if (err instanceof DOMException && err.name === "AbortError") return;
+                setSuggestions([]);
+                setShowSuggestions(false);
+            }
+        }, 300);
+    }, []);
+
+    const handleSuggestionSelect = useCallback((suggestion: SearchSuggestion) => {
+        setQuery(suggestion.title);
+        setShowSuggestions(false);
+        setSuggestions([]);
+        executeSearch(suggestion.title, 1);
+    }, [executeSearch]);
+
+    const handleInputKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (!showSuggestions || suggestions.length === 0) return;
+
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setSelectedSuggestionIndex((prev) =>
+                prev < suggestions.length - 1 ? prev + 1 : 0
+            );
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setSelectedSuggestionIndex((prev) =>
+                prev > 0 ? prev - 1 : suggestions.length - 1
+            );
+        } else if (e.key === "Enter" && selectedSuggestionIndex >= 0) {
+            e.preventDefault();
+            handleSuggestionSelect(suggestions[selectedSuggestionIndex]);
+        } else if (e.key === "Escape") {
+            setShowSuggestions(false);
+        }
+    }, [showSuggestions, suggestions, selectedSuggestionIndex, handleSuggestionSelect]);
 
     // Auto-apply filters with 300ms debounce (Gap 3)
     const isInitialMount = useRef(true);
@@ -176,11 +241,52 @@ function SearchContent() {
                                 <Input
                                     id="search-input"
                                     value={query}
-                                    onChange={(e) => setQuery(e.target.value)}
+                                    onChange={(e) => {
+                                        setQuery(e.target.value);
+                                        fetchSuggestions(e.target.value);
+                                    }}
+                                    onKeyDown={handleInputKeyDown}
+                                    onBlur={() => {
+                                        // Delay hiding so click on suggestion registers
+                                        setTimeout(() => setShowSuggestions(false), 200);
+                                    }}
+                                    onFocus={() => {
+                                        if (suggestions.length > 0) setShowSuggestions(true);
+                                    }}
                                     placeholder="Search Indian case law…"
                                     maxLength={500}
+                                    autoComplete="off"
+                                    role="combobox"
+                                    aria-expanded={showSuggestions}
+                                    aria-autocomplete="list"
+                                    aria-controls="search-suggestions"
                                     className="pl-9 h-10 text-sm bg-background rounded-md"
                                 />
+                                {/* Autocomplete dropdown */}
+                                {showSuggestions && suggestions.length > 0 && (
+                                    <ul
+                                        id="search-suggestions"
+                                        role="listbox"
+                                        className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg max-h-64 overflow-y-auto"
+                                    >
+                                        {suggestions.map((s, idx) => (
+                                            <li
+                                                key={s.case_id}
+                                                role="option"
+                                                aria-selected={idx === selectedSuggestionIndex}
+                                                onMouseDown={() => handleSuggestionSelect(s)}
+                                                className={`px-3 py-2 cursor-pointer text-sm border-b last:border-b-0 ${
+                                                    idx === selectedSuggestionIndex
+                                                        ? "bg-accent text-accent-foreground"
+                                                        : "hover:bg-muted"
+                                                }`}
+                                            >
+                                                <div className="font-medium truncate">{s.title}</div>
+                                                <div className="text-xs text-muted-foreground">{s.citation}</div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
                             </div>
                             <Button type="submit" className="h-10 px-5 text-xs rounded-md">Search</Button>
                             <Button

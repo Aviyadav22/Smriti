@@ -97,6 +97,30 @@
 - verify_citations_node noted as still used by case_prep and strategy pipelines (not deprecated from those)
 - All 2102 backend tests pass
 
+## Iteration 6: GAP-6 — Wire search suggest/autocomplete
+### What was done:
+- Added `searchSuggest()` function to frontend/src/lib/api.ts with SearchSuggestion interface
+- Wired autocomplete into search page (frontend/src/app/search/page.tsx):
+  - Added suggestion state (suggestions, showSuggestions, selectedSuggestionIndex)
+  - Added debounced fetch (300ms delay, min 3 chars, AbortController for cancellation)
+  - Added dropdown UI below search input with case title + citation display
+  - Added keyboard navigation (ArrowUp/ArrowDown to navigate, Enter to select, Escape to close)
+  - Added proper ARIA attributes (role="combobox", aria-expanded, aria-autocomplete, role="listbox", role="option")
+  - Added onBlur/onFocus handlers with 200ms delay for click registration
+- Backend endpoint was already fully functional (GET /search/suggest with ILIKE, Redis 15-min cache, rate limit 60/min)
+- Zero TypeScript errors. All 311 frontend tests pass.
+
+### Files changed:
+- frontend/src/lib/api.ts (added searchSuggest function + SearchSuggestion interface)
+- frontend/src/app/search/page.tsx (added autocomplete state, fetching, UI, keyboard nav)
+
+### Patterns learned:
+- Backend suggest endpoint at GET /search/suggest uses ILIKE on title + citation, ordered by year DESC
+- Minimum 3 chars required by backend validation (also enforced in frontend fetchSuggestions)
+- Redis cache key pattern: `suggest:{q.lower().strip()}`
+- The search page form uses onSubmit so Enter key submits the form by default — autocomplete Enter must call e.preventDefault() to intercept when a suggestion is selected
+- onBlur needs a setTimeout(200ms) delay so that onMouseDown on suggestions fires before the dropdown hides
+
 ### Files changed:
 - backend/app/core/agents/nodes/research_nodes.py (6 deprecation docstrings added)
 

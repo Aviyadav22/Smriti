@@ -334,6 +334,25 @@ export async function searchFacets(): Promise<FacetsResponse> {
     return apiFetch("/search/facets");
 }
 
+// WIRED_BY_REFACTOR: Search suggest was a disconnected backend endpoint.
+// Wired to frontend for typeahead autocomplete on the search page.
+export interface SearchSuggestion {
+    case_id: string;
+    title: string;
+    citation: string;
+}
+
+export async function searchSuggest(
+    q: string,
+    limit: number = 10,
+    signal?: AbortSignal,
+): Promise<{ suggestions: SearchSuggestion[] }> {
+    const query = new URLSearchParams();
+    query.set("q", q);
+    query.set("limit", String(limit));
+    return apiFetch(`/search/suggest?${query.toString()}`, { signal });
+}
+
 // ---------------------------------------------------------------------------
 // Cases API
 // ---------------------------------------------------------------------------
