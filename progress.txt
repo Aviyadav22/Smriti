@@ -488,3 +488,17 @@
 ### Files changed:
 - backend/tests/unit/test_ingestion_integration.py (NEW — 6 tests)
 
+## Iteration 28: TEST-4 — Write bidirectional statute expansion tests
+### What was done:
+- Created test_statute_bidirectional.py with 17 tests covering all 3 abstraction levels:
+  - TestBidirectionalBuildLookup (6 tests): IPC↔BNS, CrPC↔BNSS, IEA↔BSA at raw tuple level
+  - TestBidirectionalExpandRefs (5 tests): _expand_refs() agent-level tuple expansion
+  - TestBidirectionalQueryExpansion (6 tests): expand_statute_references() query-text regex, both directions
+- Tests verify bidirectional mapping: old→new AND new→old for all 3 act pairs
+- Tests also verify unknown acts pass through unchanged
+- All 17 new tests pass. Suite at 2150 tests.
+
+### Files changed:
+- backend/tests/unit/test_statute_bidirectional.py (NEW — 17 tests)
+
+
