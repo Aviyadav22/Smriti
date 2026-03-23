@@ -130,3 +130,21 @@
 - verify_citations_node is still actively used by case_prep.py and strategy.py — it's only deprecated for the research agent
 - speculative_synthesis generates 3 competing strategy drafts (plaintiff/defendant/balanced) — much more useful for litigation lawyers than single-draft V1
 
+## Iteration 7: GAP-7 — Verify document memo route
+### What was done:
+- Verified the document memo route is already fully wired end-to-end:
+  - Backend: GET /documents/{id}/memo exists in routes/documents.py (line 246)
+  - Frontend: getDocument() retrieves memo as part of DocumentDetail.analysis.research_memo
+  - UI: ResearchMemoSection component in documents/[id]/page.tsx renders memo with copy button
+  - Pipeline: Celery task generates memo in step 5 of 7 (DocumentAnalyzerService.generate_research_memo)
+- The "disconnected" audit label was inaccurate — the separate /memo endpoint isn't called directly because the frontend correctly uses getDocument() which includes the memo in the analysis object
+- No code changes needed — verification-only task
+
+### Files changed:
+- None (verification-only)
+
+### Patterns learned:
+- Document analysis is a 7-step Celery pipeline: extract text → extract issues → search precedents → counter-arguments → research memo → chunk/embed/index → store results
+- The /documents/{id}/memo endpoint is a convenience endpoint for memo-only retrieval but isn't needed when getDocument() already returns the full analysis
+- Memo generation uses DOCUMENT_RESEARCH_MEMO_SYSTEM/USER prompts with 8192 max tokens, temperature 0.2
+
