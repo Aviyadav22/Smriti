@@ -63,3 +63,23 @@
 - The pill tabs include badge removal in the active filter pills section (line 280-283)
 - section-filter.tsx was only imported in test files, never in production code
 
+## Iteration 4: GAP-4 — Verify admin routes auth middleware
+### What was done:
+- Audited all 18 admin/infra/DPDP endpoints across 5 route files
+- Ingest (7 endpoints): 6 use require_role("admin"), 1 (status check) uses get_current_user — CORRECT
+- Admin review (4 endpoints): All use require_role("admin") — CORRECT
+- Admin corrections (2 endpoints): All use require_role("admin") — CORRECT
+- Data quality (1 endpoint): Uses require_role("admin") — CORRECT
+- DPDP (4 endpoints): All use get_current_user (not admin) — CORRECT by design (user data subject rights per DPDP Act 2023, Sections 6/11/12)
+- Auth functions in security/rbac.py: get_current_user (JWT validation) and require_role (role-based access)
+- No code changes needed — all routes already properly protected
+
+### Files changed:
+- None (verification-only task)
+
+### Patterns learned:
+- Auth is per-route via Depends() rather than router-level dependencies — explicit and clear
+- DPDP endpoints are user-scoped by design: users access their own data (data_summary, erasure, consent_withdraw, consent_status). User ID scoping is enforced in SQL WHERE clauses.
+- Rate limiting (rate_limit_dependency) is applied to all admin routes via router-level dependencies
+- The "27 disconnected admin routes" from the audit were actually 18 (some were counted differently) — all verified protected
+
