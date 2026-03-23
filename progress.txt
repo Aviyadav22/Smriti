@@ -277,3 +277,16 @@
 - Typeahead/autocomplete catch blocks clearing results silently is standard UX — no user feedback needed for intermediate search failures
 - Promise.allSettled in case detail page is a correct pattern — shows what loaded, silently degrades for optional data (similar cases, graph data)
 
+## Iteration 14: HARDEN-4 — Verify CORS configuration
+### What was done:
+- Verified CORS middleware in main.py: uses settings.cors_origin_list (comma-separated)
+- Default: "http://localhost:3000" for development
+- Production validation explicitly rejects wildcard "*" (config.py line 174)
+- Specific allow_methods (6 methods), specific allow_headers (4 headers) — no wildcards
+- TrustedHostMiddleware in production derives allowed hosts from CORS origins
+- allow_credentials=True for JWT cookie auth
+- No code changes needed — CORS is already properly hardened
+
+### Files changed:
+- None (verification-only)
+
