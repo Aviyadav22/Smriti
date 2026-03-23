@@ -784,6 +784,67 @@ export async function getAgentExecutions(
     return apiFetch(`/agents/executions?page=${page}&page_size=${pageSize}`);
 }
 
+// WIRED_BY_REFACTOR: The following 4 agent management functions were disconnected
+// backend endpoints. Wired here for history page cancel/export/detail actions.
+
+export async function getAgentExecution(executionId: string): Promise<AgentExecution> {
+    return apiFetch(`/agents/executions/${executionId}`);
+}
+
+export async function cancelExecution(
+    executionId: string,
+): Promise<{ status: string; execution_id: string }> {
+    return apiFetch(`/agents/executions/${executionId}`, { method: "DELETE" });
+}
+
+export async function exportResearchMemo(
+    executionId: string,
+    format: "docx" | "pdf" | "md" = "docx",
+): Promise<Blob> {
+    const headers: Record<string, string> = {};
+    if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+    }
+
+    let res = await fetch(
+        `${API_BASE}/agents/research/export/${executionId}?format=${format}`,
+        { headers },
+    );
+
+    if (res.status === 401 && refreshToken) {
+        let refreshed: boolean;
+        try {
+            refreshed = await tryRefresh();
+        } catch (err) {
+            if (err instanceof TypeError) {
+                throw new ApiError(0, "NETWORK_ERROR", "Network error during authentication");
+            }
+            throw err;
+        }
+        if (refreshed) {
+            headers["Authorization"] = `Bearer ${accessToken}`;
+            res = await fetch(
+                `${API_BASE}/agents/research/export/${executionId}?format=${format}`,
+                { headers },
+            );
+        } else {
+            clearTokens();
+            throw new ApiError(401, "UNAUTHORIZED", "Session expired");
+        }
+    }
+
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new ApiError(
+            res.status,
+            extractErrorCode(err),
+            extractErrorMessage(err, "Export failed"),
+        );
+    }
+
+    return res.blob();
+}
+
 export function runStrategyAgent(
     caseFacts: string,
     desiredRelief: string,

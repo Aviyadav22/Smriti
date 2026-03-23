@@ -148,3 +148,28 @@
 - The /documents/{id}/memo endpoint is a convenience endpoint for memo-only retrieval but isn't needed when getDocument() already returns the full analysis
 - Memo generation uses DOCUMENT_RESEARCH_MEMO_SYSTEM/USER prompts with 8192 max tokens, temperature 0.2
 
+## Iteration 8: GAP-8 — Wire agent execution detail/cancel/export to history page
+### What was done:
+- Added 3 new API functions to frontend/src/lib/api.ts:
+  - getAgentExecution(executionId) — GET /agents/executions/{id}
+  - cancelExecution(executionId) — DELETE /agents/executions/{id}
+  - exportResearchMemo(executionId, format) — GET /agents/research/export/{id}?format={format}
+- Note: reviseResearchSection (SSE streaming) left for future — complex streaming UI not needed for history page MVP
+- Wired cancel button into history page for running/waiting_input executions (with loading state)
+- Wired export button for completed research executions (downloads DOCX via blob URL)
+- Both buttons have loading spinners and proper error handling
+- Zero TypeScript errors. All 311 frontend tests pass.
+
+### Files changed:
+- frontend/src/lib/api.ts (added getAgentExecution, cancelExecution, exportResearchMemo)
+- frontend/src/app/agents/history/page.tsx (added cancel/export buttons with handlers)
+
+### Patterns learned:
+- exportDraft uses POST method (for drafting agent), but exportResearchMemo uses GET (different pattern)
+- Both export functions use the same auth refresh pattern: try → 401 → refresh → retry
+- The blob download pattern: createObjectURL → click invisible anchor → revokeObjectURL
+- History page execution rows now show 3 possible action buttons depending on status/type:
+  - running/waiting_input → Cancel
+  - completed + result_data → View Results
+  - completed + research type → Export
+

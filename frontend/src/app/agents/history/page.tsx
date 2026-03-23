@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { getAgentExecutions } from "@/lib/api";
+import { getAgentExecutions, cancelExecution, exportResearchMemo } from "@/lib/api";
 import type { AgentExecution } from "@/lib/types";
 import { AgentMemoViewer } from "@/components/agent-memo-viewer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, X } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Square, X } from "lucide-react";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import Link from "next/link";
@@ -89,6 +89,8 @@ export default function AgentHistoryPage() {
     const [totalPages, setTotalPages] = useState(1);
     const [error, setError] = useState<string | null>(null);
     const [viewingMemo, setViewingMemo] = useState<AgentExecution | null>(null);
+    const [cancellingId, setCancellingId] = useState<string | null>(null);
+    const [exportingId, setExportingId] = useState<string | null>(null);
 
     useEffect(() => {
         if (!authLoading && !isAuthenticated) router.push("/login");
@@ -120,6 +122,42 @@ export default function AgentHistoryPage() {
             fetchExecutions(1);
         }
     }, [isAuthenticated, fetchExecutions]);
+
+    // WIRED_BY_REFACTOR: Cancel and export were disconnected backend endpoints.
+    // Wired here so lawyers can cancel running agents and export completed memos.
+    const handleCancel = useCallback(async (executionId: string) => {
+        setCancellingId(executionId);
+        try {
+            await cancelExecution(executionId);
+            // Refresh the list to show updated status
+            await fetchExecutions(page);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "Failed to cancel execution.";
+            setError(message);
+        } finally {
+            setCancellingId(null);
+        }
+    }, [fetchExecutions, page]);
+
+    const handleExport = useCallback(async (executionId: string, format: "docx" | "pdf" | "md") => {
+        setExportingId(executionId);
+        try {
+            const blob = await exportResearchMemo(executionId, format);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `research-memo-${executionId.slice(0, 8)}.${format}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "Export failed.";
+            setError(message);
+        } finally {
+            setExportingId(null);
+        }
+    }, []);
 
     // Close modal on Escape key
     useEffect(() => {
@@ -222,18 +260,51 @@ export default function AgentHistoryPage() {
                                             ).toLocaleString()}
                                         </p>
                                     </div>
-                                    {exec.status === "completed" &&
-                                        exec.result_data && (
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        {/* Cancel button for running/waiting executions */}
+                                        {(exec.status === "running" || exec.status === "waiting_input") && (
                                             <Button
                                                 variant="outline"
                                                 size="sm"
-                                                onClick={() =>
-                                                    setViewingMemo(exec)
-                                                }
+                                                className="text-destructive hover:text-destructive"
+                                                disabled={cancellingId === exec.id}
+                                                onClick={() => handleCancel(exec.id)}
+                                            >
+                                                {cancellingId === exec.id ? (
+                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                ) : (
+                                                    <Square className="h-3.5 w-3.5 mr-1" />
+                                                )}
+                                                Cancel
+                                            </Button>
+                                        )}
+                                        {/* View results for completed executions */}
+                                        {exec.status === "completed" && exec.result_data && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setViewingMemo(exec)}
                                             >
                                                 View Results
                                             </Button>
                                         )}
+                                        {/* Export for completed research executions */}
+                                        {exec.status === "completed" && exec.agent_type === "research" && exec.result_data && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={exportingId === exec.id}
+                                                onClick={() => handleExport(exec.id, "docx")}
+                                            >
+                                                {exportingId === exec.id ? (
+                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                ) : (
+                                                    <Download className="h-3.5 w-3.5 mr-1" />
+                                                )}
+                                                Export
+                                            </Button>
+                                        )}
+                                    </div>
                                 </div>
                             ))}
                         </div>
