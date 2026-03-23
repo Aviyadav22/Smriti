@@ -215,3 +215,22 @@
 - Suggest endpoint uses parameterized text() queries with ILIKE (not raw SQL)
 - SQL escaping for %, _, \ prevents injection in ILIKE patterns
 
+## Iteration 11: HARDEN-1 — Audit all routes for try/except error handling
+### What was done:
+- Audited all 56 route handlers across 16 route files
+- Every user-facing route has proper try/except with specific exception catching and logging
+- Key patterns found: TimeoutError → 504, ConnectionError/RuntimeError → 502, ValueError → 400, UUID validation → 422
+- SSE streaming endpoints (chat, agents) use error event pattern for client notification
+- Optional services (Redis, Indian Kanoon, web search) use graceful degradation (catch + log + continue)
+- File cleanup uses try/finally pattern (documents, auth, dpdp)
+- Zero critical issues found — no code changes needed
+
+### Files changed:
+- None (audit-only task)
+
+### Patterns learned:
+- Error handling patterns are well-established: UUID validation catches ValueError → 422, graph errors → 502, timeouts → 504
+- Agents routes have the most comprehensive error handling with error categorization and DB state updates
+- Health check route is exemplary: individual timeouts per dependency with graceful degradation
+- All 56 route handlers follow consistent patterns — previous refactor iterations already hardened these
+
