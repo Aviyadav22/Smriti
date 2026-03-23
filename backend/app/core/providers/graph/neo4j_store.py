@@ -247,6 +247,11 @@ class Neo4jGraph:
                 "CREATE FULLTEXT INDEX case_search IF NOT EXISTS "
                 "FOR (c:Case) ON EACH [c.title, c.citation, c.keywords, c.acts_cited, c.ratio]",
             ),
+            (
+                "fulltext_principle_text",
+                "CREATE FULLTEXT INDEX principle_text IF NOT EXISTS "
+                "FOR (n:LegalPrinciple) ON EACH [n.name]",
+            ),
         ]
         async with self._driver.session(database=self._database) as session:
             for name, cypher in constraints:

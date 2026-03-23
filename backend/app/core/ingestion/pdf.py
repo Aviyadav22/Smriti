@@ -491,6 +491,20 @@ def _extract_pdf_text_sync(file_path: str) -> tuple[str, int, list[dict]]:
                     ocr_text = _ocr_single_page(file_path, page_num)
                     if len(ocr_text) > len(page_text.strip()):
                         page_text = ocr_text
+                elif page_text.strip():
+                    # Alpha-ratio check: catch garbled text that passed the 30-char threshold
+                    alpha_count = sum(1 for c in page_text if c.isalpha())
+                    alpha_ratio = alpha_count / len(page_text) if page_text else 0
+                    if alpha_ratio < 0.5:
+                        logger.debug(
+                            "Page %d/%d has low alpha ratio (%.2f), attempting OCR: %s",
+                            page_num, total_pages, alpha_ratio, file_path,
+                        )
+                        ocr_text = _ocr_single_page(file_path, page_num)
+                        if ocr_text and len(ocr_text) > len(page_text):
+                            ocr_alpha = sum(1 for c in ocr_text if c.isalpha()) / len(ocr_text)
+                            if ocr_alpha > alpha_ratio:
+                                page_text = ocr_text
 
                 if page_text.strip():
                     page_texts.append(page_text.strip())
