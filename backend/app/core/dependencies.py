@@ -124,7 +124,7 @@ def get_tts() -> TTSProvider:
 
 
 @lru_cache
-def get_checkpointer():
+def get_checkpointer() -> object:
     """Return the appropriate LangGraph checkpointer for the current environment.
 
     In production/staging, uses AsyncPostgresSaver backed by the main PostgreSQL

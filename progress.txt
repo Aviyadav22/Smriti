@@ -348,3 +348,18 @@
 - The circuit breaker uses time.monotonic() for reliable timing (not affected by system clock changes)
 - Phase 2 (HARDEN) complete — all 7 hardening tasks done
 
+## Iteration 18: QUALITY-1 — Add type hints to functions missing them
+### What was done:
+- Scanned all Python functions in backend/app/core/ — only 4 missing type hints (codebase is already well-typed)
+- Fixed all 4:
+  1. dependencies.py: get_checkpointer() -> object
+  2. ingestion/pipeline.py: _upsert_with_retry() -> None
+  3. ingestion/pipeline.py: _cleanup_stale_vectors() -> None
+  4. agents/nodes/worker_nodes.py: func_websearch_to_tsquery() -> object (also removed unused text import)
+- All 2102 backend tests pass.
+
+### Files changed:
+- backend/app/core/dependencies.py (added return type to get_checkpointer)
+- backend/app/core/ingestion/pipeline.py (added return types to 2 nested functions)
+- backend/app/core/agents/nodes/worker_nodes.py (added return type, removed unused import)
+

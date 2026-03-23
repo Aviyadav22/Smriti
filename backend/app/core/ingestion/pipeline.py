@@ -378,7 +378,7 @@ async def ingest_judgment(
             wait=wait_exponential(multiplier=2, min=2, max=30),
             reraise=True,
         )
-        async def _upsert_with_retry():
+        async def _upsert_with_retry() -> None:
             await _upsert_vectors(
                 case_id, chunks, embeddings, metadata, vector_store,
                 page_map=quality.page_map, full_text=full_text,
@@ -392,7 +392,7 @@ async def ingest_judgment(
 
         # Fire stale-vector cleanup as a background task — it's independent
         # of RAPTOR and chunk_count update, so run concurrently.
-        async def _cleanup_stale_vectors():
+        async def _cleanup_stale_vectors() -> None:
             try:
                 await vector_store.delete_by_metadata(
                     {"case_id": case_id},

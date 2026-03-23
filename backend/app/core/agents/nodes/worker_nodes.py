@@ -382,9 +382,9 @@ async def statute_worker(
     )]}
 
 
-def func_websearch_to_tsquery(query: str):
+def func_websearch_to_tsquery(query: str) -> object:
     """Create a websearch_to_tsquery SQL function call."""
-    from sqlalchemy import func, text
+    from sqlalchemy import func
     return func.websearch_to_tsquery("english", query)
 
 
