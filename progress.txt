@@ -548,4 +548,18 @@
 ### Files changed:
 - None (build verification only)
 
+## Iteration 33: FINAL-3 — Trace search pipeline end-to-end
+### What was done:
+- Traced full search flow for "anticipatory bail under Section 438 CrPC Bombay High Court":
+  1. Statute expansion: CrPC 438 → "Section 482 BNSS" (correct bidirectional mapping)
+  2. Routes: /search, /search/suggest, /search/facets all registered
+  3. Act normalization: CrPC normalizes correctly
+  4. Citation extraction: SCC and AIR formats both detected and parsed
+  5. SearchResponse: 7 fields (results, total_count, page, page_size, query_understanding, facets, outcome_bias_warning)
+  6. All providers importable: hybrid_search, CohereReranker
+- No live DB test possible (no running services), but all code paths verified via imports + unit assertions
+
+### Files changed:
+- None (trace verification only)
+
 
