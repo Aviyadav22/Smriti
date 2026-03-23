@@ -418,4 +418,16 @@
 - frontend/src/lib/api.ts (removed unused DocumentTemplate)
 - frontend/src/__tests__/audio-player.test.tsx, judge-compare-page.test.tsx, upload-page.test.tsx (removed unused imports)
 
+## Iteration 22: QUALITY-5 — Review pyproject.toml dependencies
+### What was done:
+- Cross-referenced all 33 dependencies with actual imports across app/, scripts/, tests/
+- All dependencies are actively used (including pandas in scripts/ingest_s3.py and sentry-sdk conditionally in main.py)
+- Found 2 missing dependencies that are imported but not declared:
+  1. pdfminer.six — directly imported in ingestion/pdf.py for PSException and PDFPasswordIncorrect (transitive via pdfplumber but should be declared explicitly)
+  2. networkx — imported as nx in worker_nodes.py for graph traversal algorithms
+- Added both to pyproject.toml under appropriate sections
+- All 2102 backend tests pass.
+
+### Files changed:
+- backend/pyproject.toml (added pdfminer.six>=20221105, networkx>=3.0)
 

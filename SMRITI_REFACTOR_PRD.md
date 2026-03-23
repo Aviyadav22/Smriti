@@ -39,7 +39,7 @@ Smriti audit is complete. The codebase is ~95% wired. This PRD targets the remai
 - [x] QUALITY-2: Add docstrings to every public function that lacks one. Each docstring should explain: what the function does, what legal workflow it serves, and any important constraints (e.g. "chunks must be < 2000 chars" or "expects canonical court name format").
 - [x] QUALITY-3: Run ruff or flake8 on the entire backend. Fix all linting errors. Do NOT change any logic, only fix formatting, unused imports, and style issues.
 - [x] QUALITY-4: Run eslint/tsc on the entire frontend. Fix all type errors and linting issues. Do NOT change any logic.
-- [ ] QUALITY-5: Review requirements.txt / pyproject.toml — remove any dependency that is imported nowhere in the codebase. Add any dependency that is imported but not listed.
+- [x] QUALITY-5: Review requirements.txt / pyproject.toml — remove any dependency that is imported nowhere in the codebase. Add any dependency that is imported but not listed.
 - [ ] QUALITY-6: Review package.json — remove unused frontend dependencies, ensure all imported packages are listed.
 - [ ] QUALITY-7: Consolidate duplicate statute normalization — statute expansion exists in search/query.py, extractor.py, and agents/nodes/common.py. Create a single shared utility if one doesnt exist, and redirect all three callers to it. If this was already done, verify consistency.
 
