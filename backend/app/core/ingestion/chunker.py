@@ -36,6 +36,30 @@ class Chunk:
     para_start: int | None = None
     para_end: int | None = None
     opinion_author: str | None = None
+    legal_signal: float = 0.0  # V3: signal phrase density (higher = more likely a holding)
+
+
+# ---------------------------------------------------------------------------
+# V3: Legal signal scoring
+# ---------------------------------------------------------------------------
+
+_LEGAL_SIGNAL_PHRASES: tuple[str, ...] = (
+    "held that", "we hold", "in our opinion", "it is well settled",
+    "the ratio", "we are of the view", "the principle",
+    "we approve", "we overrule", "we distinguish",
+    "the question is answered", "the appeal is allowed",
+    "the appeal is dismissed", "we are of the considered view",
+    "in our considered opinion", "we accordingly hold",
+)
+
+
+def _compute_legal_signal(text: str) -> float:
+    """Compute legal signal density: count of signal phrases per 1000 chars."""
+    if not text:
+        return 0.0
+    text_lower = text.lower()
+    count = sum(1 for phrase in _LEGAL_SIGNAL_PHRASES if phrase in text_lower)
+    return round(count / len(text) * 1000, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +280,10 @@ SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
 
 CHUNK_SIZE: int = 2000
 CHUNK_OVERLAP: int = 200
+# Dense legal sections get smaller, more focused chunks
+_DENSE_SECTIONS: frozenset[str] = frozenset({"ANALYSIS", "RATIO", "ORDER", "DISSENT", "CONCURRENCE"})
+_DENSE_CHUNK_SIZE: int = 1200
+_DENSE_CHUNK_OVERLAP: int = 300
 
 
 # ---------------------------------------------------------------------------
@@ -456,9 +484,13 @@ def chunk_judgment(
         if section_len == 0:
             continue
 
+        # Section-aware chunk sizing
+        effective_chunk_size = _DENSE_CHUNK_SIZE if section.type in _DENSE_SECTIONS else CHUNK_SIZE
+        effective_overlap = _DENSE_CHUNK_OVERLAP if section.type in _DENSE_SECTIONS else CHUNK_OVERLAP
+
         pos = 0
         while pos < section_len:
-            raw_end = min(pos + CHUNK_SIZE, section_len)
+            raw_end = min(pos + effective_chunk_size, section_len)
             end = _find_break_point(section_text, pos, raw_end)
             chunk_text = section_text[pos:end]
 
@@ -475,6 +507,7 @@ def chunk_judgment(
                     else:
                         break
 
+                signal = _compute_legal_signal(chunk_text)
                 chunks.append(
                     Chunk(
                         text=chunk_text,
@@ -484,13 +517,14 @@ def chunk_judgment(
                         para_start=para_start,
                         para_end=para_end,
                         opinion_author=current_author,
+                        legal_signal=signal,
                     )
                 )
                 chunk_idx += 1
 
-            # Advance by (actual_chunk_len - CHUNK_OVERLAP) for overlap.
+            # Advance by (actual_chunk_len - effective_overlap) for overlap.
             actual_chunk_len = end - pos
-            next_pos = pos + max(actual_chunk_len - CHUNK_OVERLAP, 1)
+            next_pos = pos + max(actual_chunk_len - effective_overlap, 1)
 
             # Snap overlap start to nearest sentence boundary to avoid mid-word fragments
             # Search forward for a period-space that isn't an abbreviation
@@ -507,7 +541,7 @@ def chunk_judgment(
             # If the remaining text after next_pos is smaller than the
             # overlap, we have already captured it -- stop to avoid a
             # near-duplicate trailing chunk.
-            if next_pos >= section_len or (section_len - next_pos) <= CHUNK_OVERLAP:
+            if next_pos >= section_len or (section_len - next_pos) <= effective_overlap:
                 break
 
             pos = next_pos

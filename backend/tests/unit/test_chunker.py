@@ -573,3 +573,28 @@ class TestIsHeadingPositionLineLengthHeuristic:
         text = "Some text above.\nIII. EVIDENCE\nThe court considered..."
         match_start = text.index("EVIDENCE")
         assert _is_heading_position(text, match_start) is True
+
+
+# ---------------------------------------------------------------------------
+# V3: Section-aware chunking + legal signal scoring
+# ---------------------------------------------------------------------------
+
+
+def test_dense_sections_get_smaller_chunks():
+    from app.core.ingestion.chunker import chunk_judgment, Section
+    # Create a long ANALYSIS section (3000 chars)
+    analysis_text = "The court held that " * 150  # ~3000 chars
+    sections = [Section(type="ANALYSIS", start=0, end=len(analysis_text), text=analysis_text)]
+    chunks = chunk_judgment(analysis_text, sections, case_id="test")
+    # With 1200-char chunks, should produce 3+ chunks (not 2 as with 2000-char)
+    assert len(chunks) >= 3
+    for chunk in chunks:
+        assert len(chunk.text) <= 1200 + 50  # small tolerance for break-point adjustment
+
+
+def test_legal_signal_scoring():
+    from app.core.ingestion.chunker import _compute_legal_signal
+    high = _compute_legal_signal("We held that the appeal is dismissed. In our opinion, the principle is well settled.")
+    low = _compute_legal_signal("The petitioner filed a complaint on 15th March 2020 regarding the property dispute.")
+    assert high > low
+    assert high > 0
