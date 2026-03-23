@@ -55,7 +55,7 @@ Smriti audit is complete. The codebase is ~95% wired. This PRD targets the remai
 ## PHASE 5: FINAL VERIFICATION
 
 - [x] FINAL-1: Start the FastAPI backend — verify zero import errors, zero startup crashes, all routes register.
-- [ ] FINAL-2: Build the Next.js frontend — verify zero build errors, all pages render.
+- [x] FINAL-2: Build the Next.js frontend — verify zero build errors, all pages render.
 - [ ] FINAL-3: Trace end-to-end: search "anticipatory bail under Section 438 CrPC Bombay High Court" → verify results show with proper Indian legal citations, court filter works, year filter works.
 - [ ] FINAL-4: Trace agent flow: start a research agent with query "Whether anticipatory bail can be granted under Section 438 CrPC for offences under Section 302 IPC" → verify the 5-stage V3 pipeline executes without errors.
 - [ ] FINAL-5: Update AUDIT_MAP.md with final status of all gaps — what was wired, what was deprecated, what needs human review.

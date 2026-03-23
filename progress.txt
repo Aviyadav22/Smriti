@@ -538,4 +538,14 @@
 ### Files changed:
 - None (verification only)
 
+## Iteration 32: FINAL-2 — Build Next.js frontend
+### What was done:
+- Ran `npx next build` — zero build errors
+- 25 pages generated (2 static, 23 dynamic)
+- All pages render: search, case detail, chat, agents (5 pages), graph, judges (4 pages), documents (3 pages), auth (2 pages), legal (3 pages), SEO (2 static)
+- No code changes needed
+
+### Files changed:
+- None (build verification only)
+
 
