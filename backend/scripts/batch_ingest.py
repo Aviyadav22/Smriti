@@ -75,9 +75,19 @@ async def _upload_pdf(client: genai.Client, pdf_path: Path) -> str:
 
 
 def _build_batch_request_entry(doc_key: str, file_uri: str) -> dict:
-    """Build one entry for the batch JSONL file."""
+    """Build one entry for the batch JSONL file.
+
+    Note: Batch API does not support responseSchema in JSONL requests.
+    We include the JSON schema in the prompt text instead and use
+    responseMimeType to enforce JSON output format.
+    """
+    schema_text = json.dumps(METADATA_OUTPUT_SCHEMA, indent=2)
     prompt = METADATA_EXTRACTION_USER.format(
         judgment_text="[See attached PDF document]"
+    )
+    prompt += (
+        "\n\nYou MUST return your response as valid JSON matching this schema exactly:\n"
+        f"```json\n{schema_text}\n```"
     )
     return {
         "key": doc_key,
@@ -94,7 +104,6 @@ def _build_batch_request_entry(doc_key: str, file_uri: str) -> dict:
             "systemInstruction": {"parts": [{"text": METADATA_EXTRACTION_SYSTEM}]},
             "generationConfig": {
                 "responseMimeType": "application/json",
-                "responseSchema": METADATA_OUTPUT_SCHEMA,
                 "temperature": 0.1,
             },
         },
@@ -104,7 +113,7 @@ def _build_batch_request_entry(doc_key: str, file_uri: str) -> dict:
 async def _load_existing_text_hashes() -> set[str]:
     """Batch-fetch all existing text hashes from PG into a set for O(1) dedup."""
     from sqlalchemy import text
-    from app.core.database import async_session_factory
+    from app.db.postgres import async_session_factory
 
     async with async_session_factory() as db:
         result = await db.execute(
@@ -244,7 +253,7 @@ async def submit_year(
 
             # Upload JSONL file to Gemini Files API
             jsonl_file = await asyncio.to_thread(
-                client.files.upload, file=jsonl_path,
+                client.files.upload, file=jsonl_path, config={"mime_type": "jsonl"},
             )
 
             # Submit batch job
@@ -351,7 +360,7 @@ async def _collect_results(
         # Download the result file content
         try:
             result_content = await asyncio.to_thread(
-                client.files.download, name=result_file_name,
+                client.files.download, file=result_file_name,
             )
             # Parse JSONL results
             for line in result_content.decode("utf-8").strip().split("\n"):
@@ -426,7 +435,7 @@ async def process_completed(
 ) -> None:
     """Phase 3: Feed cached batch results into existing pipeline."""
     import itertools
-    from app.core.database import async_session_factory
+    from app.db.postgres import async_session_factory
     from app.core.ingestion.pipeline import ingest_judgment
     from app.core.ingestion.rate_limiter import RateLimiterPool
     from app.core.providers.embeddings.gemini import GeminiEmbedder
