@@ -460,6 +460,8 @@ async def _vector_search(
         if filters.act:
             normalized_act = normalize_act_name(filters.act)
             pinecone_filter["acts_cited"] = {"$in": [normalized_act]}
+        if filters.vector_types:
+            pinecone_filter["vector_type"] = {"$in": filters.vector_types}
 
     results = await vector_store.search(
         query_vector,

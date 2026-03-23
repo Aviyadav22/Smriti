@@ -140,6 +140,47 @@ async def case_law_worker(
             reasoning="",
         )]}
 
+    # [V3] Proposition-level semantic search (skip FTS — propositions are vector-only)
+    try:
+        search_filters = search_kwargs.get("filters")
+        prop_filter: dict = {"vector_type": {"$in": ["proposition", "ratio"]}}
+        if search_filters and search_filters.court:
+            prop_filter["court"] = {"$eq": search_filters.court[0]}
+        if search_filters and search_filters.year_from:
+            prop_filter["year"] = prop_filter.get("year", {})
+            prop_filter["year"]["$gte"] = search_filters.year_from
+        if search_filters and search_filters.year_to:
+            prop_filter["year"] = prop_filter.get("year", {})
+            prop_filter["year"]["$lte"] = search_filters.year_to
+
+        query_embedding = precomputed.get(nl_query) if precomputed else None
+        if not query_embedding:
+            query_embedding = await embedder.embed_text(nl_query)
+
+        prop_pinecone_results = await vector_store.search(
+            query_embedding,
+            top_k=10,
+            filters=prop_filter,
+        )
+        # Boost proposition results by 1.5x and merge
+        existing_ids = {r.get("case_id") for r in results}
+        for r in prop_pinecone_results:
+            case_id = r.metadata.get("case_id", r.id)
+            if case_id not in existing_ids:
+                results.append({
+                    "case_id": case_id,
+                    "title": r.metadata.get("title", ""),
+                    "citation": r.metadata.get("citation", ""),
+                    "court": r.metadata.get("court", ""),
+                    "year": r.metadata.get("year"),
+                    "snippet": r.metadata.get("text", "")[:500],
+                    "score": r.score * 1.5,
+                    "source": "proposition_search",
+                })
+                existing_ids.add(case_id)
+    except Exception as exc:
+        logger.warning("Proposition search failed (non-fatal): %s", exc)
+
     return {"worker_results": [WorkerResult(
         task_id=task["task_id"], task_type="case_law",
         query=task["nl_query"], results=results,

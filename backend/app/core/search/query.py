@@ -110,6 +110,7 @@ class SearchFilters:
     section: str | None = None
     judgment_section: str | None = None  # FACTS, HOLDINGS, REASONING, etc.
     disposal_nature: str | None = None
+    vector_types: list[str] | None = None  # ["chunk", "proposition", "ratio", "headnote"]
 
 
 @dataclass(frozen=True, slots=True)
