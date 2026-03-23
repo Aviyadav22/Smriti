@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 export default function JudgesPage() {
     const [data, setData] = useState<JudgeListResponse | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [searchInput, setSearchInput] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
     const [page, setPage] = useState(1);
@@ -19,6 +20,7 @@ export default function JudgesPage() {
 
     const fetchJudges = useCallback(async (search: string, p: number) => {
         setLoading(true);
+        setError(null);
         try {
             const res = await getJudges({
                 search: search || undefined,
@@ -26,8 +28,9 @@ export default function JudgesPage() {
                 page_size: 20,
             });
             setData(res);
-        } catch {
+        } catch (err: unknown) {
             setData(null);
+            setError(err instanceof Error ? err.message : "Failed to load judges");
         } finally {
             setLoading(false);
         }
@@ -83,6 +86,16 @@ export default function JudgesPage() {
                         <div className="flex items-center justify-center py-20">
                             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                             <span className="ml-2 text-sm text-muted-foreground">Loading judges…</span>
+                        </div>
+                    )}
+
+                    {/* Error */}
+                    {!loading && error && (
+                        <div className="text-center py-20">
+                            <p className="text-sm text-destructive font-medium">{error}</p>
+                            <Button variant="outline" size="sm" className="mt-3" onClick={() => fetchJudges(searchQuery, page)}>
+                                Retry
+                            </Button>
                         </div>
                     )}
 

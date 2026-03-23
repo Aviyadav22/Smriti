@@ -255,4 +255,25 @@
 - Agent endpoints have the strongest validation: min_length/max_length on all text fields, prompt injection detection, sanitization
 - year_from should be 1947 not 1900 for Indian law context (Supreme Court established 1950, but older HC judgments from 1947+)
 
+## Iteration 13: HARDEN-3 — Audit frontend API calls for loading/error/empty states
+### What was done:
+- Audited all 15+ pages that make API calls
+- Most pages already have proper loading/error/empty states (search, chat, agents, auth, documents, upload)
+- Fixed 1 real gap: judges/page.tsx — catch block silently set data to null without showing error
+  - Added `error` state variable
+  - Added proper catch handler that stores error message
+  - Added error display UI with retry button between loading spinner and results
+- Other reported gaps turned out to be acceptable patterns:
+  - Typeahead search failures (graph, judges compare) silently clearing suggestions is standard autocomplete UX
+  - Graph stats load failure logs to console but page still works without stats
+  - Case detail page using Promise.allSettled with partial display is reasonable (citations failing shouldn't block case view)
+- 311 frontend tests pass. Zero TypeScript errors.
+
+### Files changed:
+- frontend/src/app/judges/page.tsx (added error state, error display with retry button)
+
+### Patterns learned:
+- The codebase has two error handling patterns: (1) full-page error for critical loads (case detail, judge profile), (2) inline error for partial failures (graph stats, search suggestions)
+- Typeahead/autocomplete catch blocks clearing results silently is standard UX — no user feedback needed for intermediate search failures
+- Promise.allSettled in case detail page is a correct pattern — shows what loaded, silently degrades for optional data (similar cases, graph data)
 
