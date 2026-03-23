@@ -327,3 +327,24 @@
 - The rate_limit_dependency uses a string format like "30/minute", "5/hour", "10/minute"
 - All routes now use dependencies=[Depends(rate_limit_dependency(...))] pattern consistently
 
+## Iteration 17: HARDEN-7 — Verify Indian Kanoon circuit breaker and rate limiter
+### What was done:
+- Verified IndianKanoonClient in providers/external/indiankanoon.py:
+  - Rate limiter: asyncio.Lock + min_interval (1/rate_limit) between requests, configured via settings.ik_rate_limit
+  - Circuit breaker: 3 consecutive 429s → IKCircuitBreakerOpen raised → 60s cooldown → half-open retry
+  - Retry: tenacity 3 attempts, exponential backoff 2-10s, retries on HTTPStatusError/ConnectError/TimeoutException
+  - Fallback: research.py line 256 checks `ik_client is None` → falls back to case_law_worker with logged warning
+  - Deep read fallback: research_nodes.py line 997 returns empty string if ik_client is None
+  - 17 IK-specific unit tests pass
+- No code changes needed — circuit breaker and rate limiter are well-implemented
+
+### Files changed:
+- None (verification-only)
+
+### Patterns learned:
+- IK API pricing: Rs 0.02/docmeta, Rs 0.05/fragment, Rs 0.20/doc — expensive enough to warrant circuit breaker
+- IK uses POST for all endpoints (not GET) — even search is POST /search/
+- IK court codes mapping covers 40+ courts/tribunals including district courts and specialized tribunals
+- The circuit breaker uses time.monotonic() for reliable timing (not affected by system clock changes)
+- Phase 2 (HARDEN) complete — all 7 hardening tasks done
+

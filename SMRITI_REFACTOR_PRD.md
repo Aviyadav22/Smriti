@@ -31,7 +31,7 @@ Smriti audit is complete. The codebase is ~95% wired. This PRD targets the remai
 - [x] HARDEN-4: Verify CORS configuration in middleware — ensure the allowed origins list matches the actual frontend deployment URLs. Check that no wildcard (*) is used in production config.
 - [x] HARDEN-5: Scan entire codebase for hardcoded API keys, secrets, or credentials. If any are found outside .env files, move them to environment variables.
 - [x] HARDEN-6: Verify rate limiting on expensive endpoints — search, chat message, agent run, document upload, and TTS generation should all have rate limits to prevent abuse. If rate limiting middleware exists but isnt applied to these routes, apply it.
-- [ ] HARDEN-7: Verify the Indian Kanoon circuit breaker and rate limiter (2 req/sec) are functioning correctly. Test that when IK API is down, the fallback path works gracefully.
+- [x] HARDEN-7: Verify the Indian Kanoon circuit breaker and rate limiter (2 req/sec) are functioning correctly. Test that when IK API is down, the fallback path works gracefully.
 
 ## PHASE 3: CODE QUALITY
 
