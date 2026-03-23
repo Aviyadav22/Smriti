@@ -153,6 +153,12 @@ class CaseMetadata:
     # Enrichment tracking
     enrichment_status: str = "flash_only"
 
+    # --- Ingestion V3 fields ---
+    source_dataset: str = "aws_open_data_sc"
+    legal_propositions: list[dict] | None = None  # [{proposition_text, paragraph_number, is_novel, related_section}]
+    statute_sections_interpreted: list[dict] | None = None  # [{section, act, interpretation_summary}]
+    fact_pattern_summary: str | None = None
+
 
 # ---------------------------------------------------------------------------
 # LLM extraction
@@ -502,6 +508,33 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
     return metadata
 
 
+def cross_validate_propositions(metadata: CaseMetadata) -> CaseMetadata:
+    """Cross-reference legal_propositions against ratio_decidendi.
+
+    - If ratio is empty but propositions exist, synthesize ratio from top 3.
+    - If propositions empty but ratio exists, create a single proposition from ratio.
+    """
+    props = metadata.legal_propositions or []
+    ratio = metadata.ratio_decidendi or ""
+
+    if not ratio.strip() and props:
+        # Synthesize ratio from top propositions (non-novel first, then novel)
+        sorted_props = sorted(props, key=lambda p: (p.get("is_novel", False),))
+        top = sorted_props[:3]
+        metadata.ratio_decidendi = " ".join(p["proposition_text"] for p in top)
+
+    if ratio.strip() and not props:
+        # Create a single proposition from ratio
+        metadata.legal_propositions = [{
+            "proposition_text": ratio.strip(),
+            "paragraph_number": None,
+            "is_novel": False,
+            "related_section": None,
+        }]
+
+    return metadata
+
+
 def validate_cross_fields(metadata: CaseMetadata) -> CaseMetadata:
     """Cross-validate fields against each other to catch inconsistencies."""
     # Year must match decision_date year if both present
@@ -754,6 +787,8 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> tuple[CaseMeta
         "legal_principles_applied", "procedural_history", "interim_orders",
         "filing_date", "urgency_indicators", "party_counsel", "issue_classification",
         "fact_pattern_tags", "operative_order", "conditions_imposed", "costs_awarded",
+        # V3 fields
+        "legal_propositions", "statute_sections_interpreted", "fact_pattern_summary",
     )
     for field in llm_only_fields:
         llm_val = getattr(llm_meta, field, None)

@@ -121,6 +121,28 @@ judgment: page markers like "[2026] 1 S.C.R. 63", "Headnotes prepared by: [Name]
 "Result of the case: ...", digest summaries. These are editorial additions by law \
 reporters (SCC, AIR, SCR). Ignore all such content — extract only from the judge's \
 actual text.
+31. LEGAL PROPOSITIONS: Extract 3-10 discrete legal propositions established or \
+affirmed by this judgment. Each proposition should be a single, self-contained statement \
+of law that a lawyer could cite this case for. Do NOT restate the facts — state the \
+abstract legal rule. Format: list of objects with keys: proposition_text (the legal \
+statement), paragraph_number (the paragraph where this proposition appears, or null), \
+is_novel (true if this case ESTABLISHES the proposition for the first time, false if it \
+AFFIRMS existing law), related_section (the statute section this proposition interprets, \
+if any, e.g. "Section 138, Indian Evidence Act, 1872", or null). \
+Example proposition: "Cross-examination under Section 138 of the Evidence Act is the \
+examination of a witness by the adverse party, and does not extend to co-accused inter se."
+32. STATUTE SECTIONS INTERPRETED: Different from acts_cited. List ONLY the \
+statutory provisions that this judgment SUBSTANTIVELY interprets, applies, or rules upon. \
+Do NOT include sections merely referenced in passing or cited for general context. \
+Format: list of objects with keys: section (e.g. "Section 20(c)"), act (e.g. "Code of \
+Civil Procedure, 1908"), interpretation_summary (1 sentence summarizing what the court \
+held about this section). Maximum 10 entries.
+33. FACT PATTERN SUMMARY: In 2-3 sentences, describe the factual scenario of this \
+case in GENERIC terms suitable for analogical matching. Strip party names and use role \
+descriptions instead (e.g., "employer" not "Tata Motors", "accused" not "Rajesh Kumar"). \
+Focus on the factual pattern that makes this case a useful precedent. Example: "An \
+employee was terminated after 15 years of service for alleged misconduct without being \
+given an opportunity to present their defense in a departmental inquiry."
 """
 
 METADATA_EXTRACTION_USER: Final[str] = """\
@@ -187,6 +209,9 @@ Withdrawn, Remanded, Disposed Of, Settled, Transferred, Modified, Other)
 - operative_order: Verbatim text of court's operative order
 - conditions_imposed: Conditions attached to relief (bail conditions, compliance timelines)
 - costs_awarded: Costs details (amount, to_whom, reason)
+- legal_propositions: Array of legal propositions (proposition_text, paragraph_number, is_novel, related_section)
+- statute_sections_interpreted: Array of statute sections interpreted (section, act, interpretation_summary)
+- fact_pattern_summary: 2-3 sentences describing the generic fact pattern (no party names)
 
 EXAMPLE 1 (Criminal Appeal, Division Bench, Unanimous):
 {{
@@ -912,6 +937,35 @@ METADATA_OUTPUT_SCHEMA: Final[dict] = {
             },
             "description": "Costs awarded details",
         },
+        # --- V3 fields ---
+        "legal_propositions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "proposition_text": {"type": "string"},
+                    "paragraph_number": {"type": "integer", "nullable": True},
+                    "is_novel": {"type": "boolean"},
+                    "related_section": {"type": "string", "nullable": True},
+                },
+                "required": ["proposition_text", "is_novel"],
+            },
+            "nullable": True,
+        },
+        "statute_sections_interpreted": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "section": {"type": "string"},
+                    "act": {"type": "string"},
+                    "interpretation_summary": {"type": "string"},
+                },
+                "required": ["section", "act"],
+            },
+            "nullable": True,
+        },
+        "fact_pattern_summary": {"type": "string", "nullable": True},
     },
     "required": [
         "title", "citation", "court", "judge", "author_judge", "year",
@@ -932,6 +986,8 @@ METADATA_OUTPUT_SCHEMA: Final[dict] = {
         "urgency_indicators", "party_counsel", "issue_classification",
         "fact_pattern_tags", "operative_order", "conditions_imposed",
         "costs_awarded",
+        # V3 fields
+        "legal_propositions", "statute_sections_interpreted", "fact_pattern_summary",
     ],
 }
 

@@ -31,6 +31,7 @@ from app.core.ingestion.graph_retry import record_graph_failure
 from app.core.ingestion.metadata import (
     CaseMetadata,
     compute_extraction_confidence,
+    cross_validate_propositions,
     extract_metadata_llm,
     merge_metadata,
     validate_cross_fields,
@@ -228,6 +229,7 @@ async def ingest_judgment(
     # ------------------------------------------------------------------
     metadata = validate_with_regex(metadata)
     metadata = validate_cross_fields(metadata)
+    metadata = cross_validate_propositions(metadata)
 
     # Supplement LLM acts_cited with regex extraction
     regex_acts = extract_acts_cited(full_text)

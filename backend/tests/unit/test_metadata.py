@@ -298,3 +298,33 @@ class TestParseJudgeNamesPrefixes:
     def test_multiple_judges_mixed_prefixes(self):
         result = _parse_judge_names("Dr. Justice X; Smt. Y; Shri Z")
         assert result == ["X", "Y", "Z"]
+
+
+# ---------------------------------------------------------------------------
+# V3: Cross-validation tests
+# ---------------------------------------------------------------------------
+
+
+def test_cross_validate_synthesizes_ratio_from_propositions():
+    from app.core.ingestion.metadata import CaseMetadata, cross_validate_propositions
+    meta = CaseMetadata(
+        legal_propositions=[
+            {"proposition_text": "Section 302 requires mens rea.", "is_novel": False},
+            {"proposition_text": "Circumstantial evidence must be conclusive.", "is_novel": True},
+        ],
+        ratio_decidendi=None,
+    )
+    result = cross_validate_propositions(meta)
+    assert "Section 302" in result.ratio_decidendi
+    assert "mens rea" in result.ratio_decidendi
+
+
+def test_cross_validate_creates_proposition_from_ratio():
+    from app.core.ingestion.metadata import CaseMetadata, cross_validate_propositions
+    meta = CaseMetadata(
+        ratio_decidendi="The right to privacy is a fundamental right under Article 21.",
+        legal_propositions=None,
+    )
+    result = cross_validate_propositions(meta)
+    assert len(result.legal_propositions) == 1
+    assert "privacy" in result.legal_propositions[0]["proposition_text"]
