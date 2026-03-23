@@ -1189,16 +1189,14 @@ The `_process_result_entry()` function in Phase 2 already handles this unwrappin
 
 ---
 
-### Task 6: Production Run — Full 43K
+### Task 6: First Production Run — 5K Latest Cases (2023)
 
-After smoke test passes, run the full ingestion:
+After smoke test passes, run the first batch with the latest ~5K cases:
 
 ```bash
-# Phase 1: Submit all years in waves
-for YEAR in $(seq 2015 2023); do
-  GEMINI_API_KEYS="key1,key2,key3,key4,key5" \
-  python -m scripts.batch_ingest submit --year-from $YEAR --year-to $YEAR --wave-size 5000 --concurrency 10
-done
+# Phase 1: Submit year 2023 only (~5K cases)
+GEMINI_API_KEYS="key1,key2,key3,key4,key5" \
+python -m scripts.batch_ingest submit --year-from 2023 --year-to 2023 --wave-size 5000 --concurrency 10
 
 # Phase 2: Poll until all complete
 GEMINI_API_KEYS="key1,key2,key3,key4,key5" \
@@ -1206,10 +1204,12 @@ python -m scripts.batch_ingest poll --interval 60
 
 # Phase 3: Process all results
 GEMINI_API_KEYS="key1,key2,key3,key4,key5" \
-python -m scripts.batch_ingest process --year-from 2015 --year-to 2023 --concurrency 20
+python -m scripts.batch_ingest process --year-from 2023 --year-to 2023 --concurrency 20
 
 # Post-processing: FTS rebuild
 DATABASE_URL="..." python -m scripts.ingest_s3 rebuild-fts
 ```
 
 Monitor: `sqlite3 data/batch_state.db "SELECT status, COUNT(*) FROM batch_docs GROUP BY status"`
+
+After 5K succeeds, extend to remaining years (2015-2022) in subsequent runs.
