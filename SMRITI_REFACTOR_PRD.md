@@ -45,7 +45,7 @@ Smriti audit is complete. The codebase is ~95% wired. This PRD targets the remai
 
 ## PHASE 4: TESTS
 
-- [ ] TEST-1: Write unit tests for the 2 newly-wired functions (build_lookup, classify_treatment_llm) to verify they work correctly in their new wiring.
+- [x] TEST-1: Write unit tests for the 2 newly-wired functions (build_lookup, classify_treatment_llm) to verify they work correctly in their new wiring.
 - [ ] TEST-2: Write an integration test for the search pipeline: query "Section 302 IPC bail" → verify response contains case results with proper citation format.
 - [ ] TEST-3: Write an integration test for the ingestion pipeline: mock PDF → parse → chunk → embed → verify vectors stored with correct metadata.
 - [ ] TEST-4: Write unit tests for statute expansion: verify IPC↔BNS, CrPC↔BNSS, IEA↔BSA bidirectional mapping works.

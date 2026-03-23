@@ -451,3 +451,13 @@
 ### Files changed:
 - None (verification)
 
+## Iteration 25: TEST-1 — Write tests for build_lookup and classify_treatment_llm
+### What was done:
+- Created test_amendment_service.py (10 tests): empty/single/multi entries, cross-act, IPC↔BNS, CrPC, IEA, consistency with centralized lookups
+- Created test_classify_treatment_llm.py (11 tests): 5 treatment types, error handling, JSON edge cases, context truncation
+- All 21 new tests pass. Full suite: 2123 tests (up from 2102).
+
+### Files changed:
+- backend/tests/unit/test_amendment_service.py (NEW — 10 tests)
+- backend/tests/unit/test_classify_treatment_llm.py (NEW — 11 tests)
+
