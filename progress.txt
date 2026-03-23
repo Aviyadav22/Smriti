@@ -591,3 +591,13 @@
 ### Files changed:
 - AUDIT_MAP.md (added final gap status section)
 
+## Iteration 36: FINAL-6 — Final commit
+### Summary:
+V2 refactor complete. 36 iterations across 5 phases:
+- Phase 1 (WIRE): 10 gaps resolved — build_lookup, classify_treatment_llm, section-filter, admin auth, legacy nodes, search suggest, document memo, agent management, case summary, search suggest flow
+- Phase 2 (HARDEN): 7 tasks — error handling audit, Pydantic validation, frontend states, CORS, secrets scan, rate limiting (11 endpoints fixed), IK circuit breaker
+- Phase 3 (QUALITY): 7 tasks — type hints, docstrings, ruff (101 fixes), eslint (11 fixes), pyproject.toml (2 deps added), package.json, statute normalization
+- Phase 4 (TESTS): 6 tasks — 66 new tests (amendment, treatment, search pipeline, ingestion, statute bidirectional, citation formats), full suite green
+- Phase 5 (FINAL): 6 tasks — FastAPI startup (68 routes), Next.js build (25 pages), search trace, agent trace, AUDIT_MAP update, this commit
+- Final counts: 2479 tests passing (2168 backend + 311 frontend), zero TS errors, zero build errors
+
