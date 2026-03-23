@@ -562,4 +562,22 @@
 ### Files changed:
 - None (trace verification only)
 
+## Iteration 34: FINAL-4 — Trace research agent V3 pipeline
+### What was done:
+- Traced full V3 research agent pipeline:
+  - build_research_graph: importable, compiles StateGraph
+  - ResearchState: 44 fields
+  - 21 node functions across 5 stages all import successfully
+  - Stage 1 (Understand): rewrite_query, classify_query
+  - Stage 2 (Decompose): statute_lookup, element_decomposition
+  - Stage 3 (Investigate): plan, gather_workers, evaluate_extract, gap_analysis + 7 typed workers
+  - Stage 4 (Challenge): adversarial_search, temporal_validation
+  - Stage 5 (Synthesize): speculative_synthesis, format_footnotes, verify_v2, quality_check
+  - HITL: langgraph interrupt() available
+  - 5 core research prompts in PROMPT_LIBRARY
+- Some nodes (batch_cot, quality_check) are local closures in build_research_graph, not standalone — this is correct LangGraph pattern for dependency injection
+
+### Files changed:
+- None (trace verification only)
+
 
