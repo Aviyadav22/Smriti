@@ -1,48 +1,23 @@
-# Smriti Refactor Progress Log
+# Smriti Refactor v2 Progress Log
+# Based on completed audit findings (245 functions mapped, 10 real gaps identified)
 
-## Iteration 1 — AUDIT-1: Map every function in backend/app/core/
+## Iteration 1: GAP-1 — Wire build_lookup() in amendment_service.py
+### What was done:
+- Added `build_lookup_from_constants()` to amendment_service.py — synchronous fallback that converts hardcoded IPC_TO_BNS_MAP/CRPC_TO_BNSS_MAP/EVIDENCE_TO_BSA_MAP into AmendmentEntry list and runs through build_lookup()
+- Added `get_amendment_lookups()` to amendment_service.py — async convenience wrapper combining get_amendment_maps() + build_lookup() for DB-backed usage
+- Wired `build_lookup_from_constants()` into search/query.py — module-level `_CENTRALIZED_OLD_TO_NEW` and `_CENTRALIZED_NEW_TO_OLD` dicts now available for DB-consistent expansion
+- Wired `build_lookup_from_constants()` into agents/nodes/common.py — `_AMENDMENT_OLD_TO_NEW` and `_AMENDMENT_NEW_TO_OLD` dicts provide centralized lookups alongside existing `_OLD_TO_NEW`/`_NEW_TO_OLD`
+- Verified: 567 old→new mappings, 562 new→old mappings. IPC 302↔BNS 103 works correctly.
+- All 2102 backend tests pass. 65 statute-specific tests pass.
 
-### What was done
-- Audited all Python files across backend/app/core/ (search, chat, drafting, graph, analysis, analytics, ingestion, legal, agents, agents/nodes, interfaces, providers, config, dependencies, middleware, logging)
-- Mapped ~245 public functions to their legal workflow purpose
-- Created AUDIT_MAP.md with full inventory organized by module
+### Files changed:
+- backend/app/core/legal/amendment_service.py (added build_lookup_from_constants, get_amendment_lookups)
+- backend/app/core/search/query.py (imported and initialized centralized lookups)
+- backend/app/core/agents/nodes/common.py (imported and initialized centralized lookups)
 
-### Files changed
-- Created: AUDIT_MAP.md (comprehensive function inventory)
-- Modified: SMRITI_REFACTOR_PRD.md (checked off AUDIT-1)
-- Modified: progress.txt (this file)
+### Patterns learned:
+- Statute expansion operates at TWO levels: act-level (enrich_statute_cross_references in statute_enrichment.py) and section-level (expand_statute_references in query.py). build_lookup() is section-level.
+- The existing _STATUTE_EXPANSION_RULES in query.py and _OLD_TO_NEW/_NEW_TO_OLD in common.py are well-tested (65 tests) so keeping them alongside the centralized lookups is safer than replacing.
+- amendment_service.py has full DB + Redis caching infrastructure (seed_amendment_maps, get_amendment_maps) ready for when new amendment acts are added without code redeploys.
+- The hardcoded constants in legal/constants.py have 567 section mappings across IPC→BNS, CrPC→BNSS, IEA→BSA (all effective 2024-07-01).
 
-### Codebase patterns discovered
-1. **Interface+Provider pattern**: All external services (Gemini, Pinecone, Neo4j, Cohere, Sarvam, IK, Tavily) have Protocol interfaces in `core/interfaces/` with concrete implementations in `core/providers/`. Dependencies are injected via `core/dependencies.py` factory functions with `@lru_cache`.
-2. **Agent architecture**: 4 LangGraph StateGraph agents (research, case_prep, strategy, drafting). Each has a graph builder in `core/agents/` and node functions in `core/agents/nodes/`. Nodes are pure async functions returning partial state dicts. Dependencies captured via closures.
-3. **Research Agent V3**: 5-stage pipeline (Understand → Decompose → Investigate → Challenge → Synthesize) with 7 worker types and 3 HITL checkpoints.
-4. **Multi-layer caching**: 5 TTL levels in research_cache.py (memo 24h, search 1h, IK 24h, embed 7d, community 7d) + Redis search cache in hybrid.py + semantic cache via HNSW in semantic_cache.py.
-5. **Ingestion pipeline**: 9-step in pipeline.py (PDF → metadata → validate → store → PG → chunk → embed → Pinecone → Neo4j). Uses `extract_and_score()` not raw `extract_pdf_text()`.
-6. **Statute handling**: acts_cited stores canonical short codes (IPC, CrPC, COI). Old↔new law expansion (IPC↔BNS, CrPC↔BNSS, IEA↔BSA) in multiple places: extractor.py, search/query.py, agents/nodes/common.py.
-7. **Citation formats**: 15+ regex patterns in extractor.py (SCC, AIR, INSC Neutral, MANU, JT, HC reporters, LiveLaw).
-8. **Two potentially orphaned functions**: `build_lookup()` in amendment_service.py, `classify_treatment_llm()` in treatment.py — both defined but no callers found in previous audit.
-
-### What the next iteration should know
-- AUDIT-2 is next: Map providers to interfaces. Most of this is already in AUDIT_MAP.md (providers section). Need to verify every interface has a provider and vice versa.
-- All 13 provider/interface pairs were already verified in a previous session — all compliant.
-
-## Iteration 2 — AUDIT-2, AUDIT-4, AUDIT-5, AUDIT-6
-
-### What was done
-- AUDIT-2: Verified all 11 Protocol interfaces have concrete providers (13 total implementations)
-- AUDIT-4: Mapped all agent node functions to StateGraph wiring. Found 6 legacy V1/V2 research node functions not wired (kept for rollback, not bugs)
-- AUDIT-5: Mapped Pinecone integration — writes (pipeline.py), reads (hybrid.py, workers, statute_lookup), deletes (re-ingestion cleanup). All wired.
-- AUDIT-6: Mapped Neo4j integration — writes (pipeline.py MERGE), reads (traversal, rag, workers, verifier). Seeds 12 doctrines. All wired.
-
-### Files changed
-- Updated: AUDIT_MAP.md (added AUDIT-2, AUDIT-4, AUDIT-5, AUDIT-6 sections)
-- Modified: SMRITI_REFACTOR_PRD.md (checked off AUDIT-2, AUDIT-4, AUDIT-5, AUDIT-6)
-
-### Key findings
-- No orphaned Pinecone or Neo4j operations
-- 6 legacy research node functions exist but are superseded by V2/V3 versions — not bugs
-- Interface→Provider mapping is 1:1 or 1:many (no gaps)
-
-### What the next iteration should know
-- AUDIT-3 (route mapping) and AUDIT-7/8/9 (frontend audit) are running as background agents
-- After those complete, AUDIT-10 (DISCONNECTED_FUNCTIONS.md) can be compiled from all previous audits

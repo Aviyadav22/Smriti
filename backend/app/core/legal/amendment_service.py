@@ -136,3 +136,54 @@ def build_lookup(
         old_to_new.setdefault(key_old, []).append(e["new_section"])
         new_to_old.setdefault(key_new, []).append(e["old_section"])
     return old_to_new, new_to_old
+
+
+async def get_amendment_lookups(
+    db: AsyncSession,
+    redis: object | None = None,
+) -> tuple[dict[tuple[str, str], list[str]], dict[tuple[str, str], list[str]]]:
+    """Load amendment maps from DB (with Redis cache) and return bidirectional lookups.
+
+    Convenience wrapper that combines get_amendment_maps() + build_lookup().
+    Used by search and agent code that needs section-level old↔new mappings.
+
+    Returns:
+        (old_to_new, new_to_old) — each maps (act, section) → list of sections.
+    """
+    entries = await get_amendment_maps(db, redis)
+    return build_lookup(entries)
+
+
+def build_lookup_from_constants() -> (
+    tuple[dict[tuple[str, str], list[str]], dict[tuple[str, str], list[str]]]
+):
+    """Build bidirectional lookups from hardcoded constants.
+
+    Synchronous fallback for contexts where DB access is unavailable
+    (e.g., module-level initialization, sync search expansion).
+    Uses the same build_lookup() logic to ensure consistency between
+    the constants-based and DB-backed code paths.
+
+    WIRED_BY_REFACTOR: Centralizes dict construction through build_lookup()
+    so all statute expansion uses the same bidirectional mapping logic,
+    whether sourced from constants or the amendment_maps DB table.
+    """
+    entries: list[AmendmentEntry] = []
+    maps = [
+        ("IPC", "BNS", IPC_TO_BNS_MAP),
+        ("CrPC", "BNSS", CRPC_TO_BNSS_MAP),
+        ("IEA", "BSA", EVIDENCE_TO_BSA_MAP),
+    ]
+    for old_act, new_act, section_map in maps:
+        for old_sec, new_sec in section_map.items():
+            entries.append(
+                AmendmentEntry(
+                    old_act=old_act,
+                    new_act=new_act,
+                    old_section=old_sec,
+                    new_section=new_sec,
+                    effective_date="2024-07-01",
+                    notes=None,
+                )
+            )
+    return build_lookup(entries)

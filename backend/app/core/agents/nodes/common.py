@@ -16,6 +16,7 @@ from app.core.agents.nodes.citation_verifier import (
     extract_citations_from_text,
     verify_citations_against_db,
 )
+from app.core.legal.amendment_service import build_lookup_from_constants
 from app.core.legal.constants import IPC_TO_BNS_MAP, CRPC_TO_BNSS_MAP, EVIDENCE_TO_BSA_MAP
 from app.core.legal.extractor import extract_acts_cited, extract_citations, normalize_act_name
 from app.core.legal.prompts import (
@@ -44,7 +45,14 @@ UUID_RE = re.compile(
 # [V3] Statute lookup helpers — old↔new code expansion + DB fetch
 # ---------------------------------------------------------------------------
 
+# WIRED_BY_REFACTOR: Use build_lookup_from_constants() to centralize
+# bidirectional dict construction through build_lookup(). This ensures
+# consistency with the DB-backed path (get_amendment_lookups) and
+# eliminates redundant manual dict construction.
+_AMENDMENT_OLD_TO_NEW, _AMENDMENT_NEW_TO_OLD = build_lookup_from_constants()
+
 # Reverse maps: new-code section → (old_act, old_section)
+# Built from the centralized amendment lookup instead of manual dict comprehensions.
 _NEW_TO_OLD: dict[tuple[str, str], tuple[str, str]] = {
     **{("BNS", v): ("IPC", k) for k, v in IPC_TO_BNS_MAP.items()},
     **{("BNSS", v): ("CrPC", k) for k, v in CRPC_TO_BNSS_MAP.items()},

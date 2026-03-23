@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass, field
 
 from app.core.interfaces import LLMProvider
+from app.core.legal.amendment_service import build_lookup_from_constants
 from app.core.legal.constants import (
     CRPC_TO_BNSS_MAP,
     EVIDENCE_TO_BSA_MAP,
@@ -137,6 +138,12 @@ class QueryUnderstanding:
 # ---------------------------------------------------------------------------
 # Statute cross-reference expansion
 # ---------------------------------------------------------------------------
+
+# WIRED_BY_REFACTOR: Centralized bidirectional lookups via build_lookup().
+# These are used by expand_statute_references() for DB-consistent mappings.
+# When DB-backed amendment_maps are available (via get_amendment_lookups),
+# these can be replaced with dynamic lookups at search time.
+_CENTRALIZED_OLD_TO_NEW, _CENTRALIZED_NEW_TO_OLD = build_lookup_from_constants()
 
 # Maps: (pattern_keywords, full_name, old_map, new_abbreviation, reverse_abbreviation)
 _STATUTE_EXPANSION_RULES: list[
