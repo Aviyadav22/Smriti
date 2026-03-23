@@ -461,3 +461,17 @@
 - backend/tests/unit/test_amendment_service.py (NEW — 10 tests)
 - backend/tests/unit/test_classify_treatment_llm.py (NEW — 11 tests)
 
+## Iteration 26: TEST-2 — Write search pipeline integration test
+### What was done:
+- Created test_search_pipeline_integration.py with 4 integration tests:
+  1. test_section_302_ipc_bail — full pipeline with mocked providers, verifies response structure, provider calls, citation format
+  2. test_statute_expansion_triggers_for_ipc — verifies pipeline handles IPC→BNS expansion gracefully
+  3. test_response_pagination — verifies page/page_size metadata in response
+  4. test_air_citation_format — verifies AIR citation format preserved
+- Mock strategy: all external services mocked (LLM, embedder, Pinecone, Cohere, PostgreSQL) but pipeline logic exercised end-to-end
+- DB mock handles multiple query types (enrichment, equivalents, FTS, disposal bias, sections)
+- All 2127 tests pass (up from 2123).
+
+### Files changed:
+- backend/tests/unit/test_search_pipeline_integration.py (NEW — 4 tests)
+
