@@ -83,3 +83,26 @@
 - Rate limiting (rate_limit_dependency) is applied to all admin routes via router-level dependencies
 - The "27 disconnected admin routes" from the audit were actually 18 (some were counted differently) — all verified protected
 
+## Iteration 5: GAP-5 — Add deprecation docstrings to 6 legacy V1/V2 research nodes
+### What was done:
+- Added comprehensive deprecation docstrings to all 6 legacy functions in research_nodes.py:
+  1. decompose_query_node (line ~190) → replaced by element_decomposition_node in common.py
+  2. parallel_search_node (line ~244) → replaced by 7 typed workers via Send() dispatch
+  3. gather_results_node (line ~271) → replaced by gather_worker_results_node
+  4. detect_contradictions_node (line ~320) → integrated into speculative_synthesis_with_contradictions_node
+  5. synthesize_memo_node (line ~369) → replaced by speculative_synthesis_with_contradictions_node
+  6. verify_citations_node (line ~499) → replaced by verify_citations_v2_node (3-layer verification)
+- Each docstring includes: what replaced it, when superseded, under what conditions to restore
+- Removed the old NEEDS_HUMAN_REVIEW one-liner comments and replaced with proper Sphinx-style deprecation docs
+- verify_citations_node noted as still used by case_prep and strategy pipelines (not deprecated from those)
+- All 2102 backend tests pass
+
+### Files changed:
+- backend/app/core/agents/nodes/research_nodes.py (6 deprecation docstrings added)
+
+### Patterns learned:
+- V3 research pipeline has 5 stages: Understand → Decompose → Investigate → Challenge → Synthesize
+- The "fast path" for simple queries skips planning/dispatch entirely (fast_path_search → fast_path_synthesis)
+- verify_citations_node is still actively used by case_prep.py and strategy.py — it's only deprecated for the research agent
+- speculative_synthesis generates 3 competing strategy drafts (plaintiff/defendant/balanced) — much more useful for litigation lawyers than single-draft V1
+

@@ -185,13 +185,26 @@ async def classify_query_node(
 # ---------------------------------------------------------------------------
 
 
-# NEEDS_HUMAN_REVIEW: V1 decomposition — superseded by element_decomposition_node() in common.py
-# which uses statute text context from Stage 1. Kept for potential rollback.
 async def decompose_query_node(
     state: ResearchState,
     llm: LLMProvider,
 ) -> dict:
-    """Decompose the research query into focused sub-queries."""
+    """Decompose the research query into focused sub-queries.
+
+    .. deprecated::
+        Superseded by ``element_decomposition_node()`` in ``common.py`` (V3 Stage 2).
+        V3 decomposes queries into legal elements (mens rea, actus reus, exceptions,
+        procedural requirements) using statute text context read in Stage 1, rather
+        than blind decomposition. This produces more targeted sub-queries because the
+        statute structure is known before planning begins.
+
+        **Replaced by:** ``element_decomposition_node()`` in ``agents/nodes/common.py``
+        **Superseded:** V3 Research Agent (March 2026)
+        **Restore if:** V3 element decomposition produces worse sub-queries for
+        non-criminal law queries where statute structure is less relevant.
+
+    Kept for rollback capability — not wired into any active StateGraph.
+    """
     query = state["query"]
 
     # Retrieve classification from messages (set by classify_query_node)
@@ -240,7 +253,6 @@ async def decompose_query_node(
 # ---------------------------------------------------------------------------
 
 
-# NEEDS_HUMAN_REVIEW: V1 parallel search — superseded by worker dispatch pattern (Send() to 7 typed workers).
 async def parallel_search_node(
     state: ResearchState,
     llm: LLMProvider,
@@ -249,7 +261,23 @@ async def parallel_search_node(
     reranker: Reranker,
     db: AsyncSession,
 ) -> dict:
-    """Run hybrid_search for each sub-query in parallel and collect results."""
+    """Run hybrid_search for each sub-query in parallel and collect results.
+
+    .. deprecated::
+        Superseded by V3's typed worker dispatch pattern using LangGraph ``Send()``.
+        V3 fans out to 7 specialized workers (case_law, named_case, statute, graph,
+        graph_community, ik_search, web_search) in ``worker_nodes.py``, each with
+        task-specific routing, per-worker timeouts, and provider availability checks.
+        This monolithic approach ran all sub-queries through the same hybrid_search,
+        missing statute DB lookups, graph traversals, and external sources.
+
+        **Replaced by:** ``dispatch_workers()`` in ``research.py`` + 7 workers in ``worker_nodes.py``
+        **Superseded:** V3 Research Agent (March 2026)
+        **Restore if:** Worker dispatch introduces too much latency for simple queries
+        and the fast-path mechanism proves insufficient.
+
+    Kept for rollback capability — not wired into any active StateGraph.
+    """
     sub_queries = state.get("sub_queries", [])
     if not sub_queries:
         return {"search_results": []}
@@ -267,12 +295,24 @@ async def parallel_search_node(
 # ---------------------------------------------------------------------------
 
 
-# NEEDS_HUMAN_REVIEW: V1 gather — superseded by gather_worker_results_node() which handles typed workers.
 async def gather_results_node(state: ResearchState) -> dict:
     """Deduplicate search results and identify cross-referenced cases.
 
     A case appearing in results from 2+ different sub-queries is
     considered a cross-reference.
+
+    .. deprecated::
+        Superseded by ``gather_worker_results_node()`` (line ~677 in this file).
+        V3 handles typed ``WorkerResult`` objects with structured metadata from
+        7 different worker types, implements diversity control across result sources,
+        tracks which results are new to prevent explosive accumulation across gap
+        analysis rounds, and properly handles LangGraph's ``operator.add`` reducer.
+
+        **Replaced by:** ``gather_worker_results_node()`` in this file
+        **Superseded:** V3 Research Agent (March 2026)
+        **Restore if:** The typed worker pattern is reverted to monolithic search.
+
+    Kept for rollback capability — not wired into the V3 research StateGraph.
     """
     results = state.get("search_results", [])
 
@@ -315,13 +355,27 @@ async def gather_results_node(state: ResearchState) -> dict:
 # ---------------------------------------------------------------------------
 
 
-# NEEDS_HUMAN_REVIEW: V1 contradiction detection — superseded by integrated handling in
-# speculative_synthesis_with_contradictions_node(). Kept for potential standalone use.
 async def detect_contradictions_node(
     state: ResearchState,
     llm: LLMProvider,
 ) -> dict:
-    """Detect contradictions among the gathered search results."""
+    """Detect contradictions among the gathered search results.
+
+    .. deprecated::
+        Superseded by integrated contradiction handling in
+        ``speculative_synthesis_with_contradictions_node()`` (line ~1428 in this file).
+        V3 detects contradictions as part of synthesis rather than as a separate stage,
+        generating 3 competing strategy drafts (e.g., plaintiff-favorable, defendant-
+        favorable, balanced statutory) that inherently surface contradictions between
+        holdings. This approach produces more actionable output for litigation lawyers.
+
+        **Replaced by:** ``speculative_synthesis_with_contradictions_node()`` in this file
+        **Superseded:** V3 Research Agent (March 2026)
+        **Restore if:** Standalone contradiction detection is needed as a separate
+        analysis step independent of memo synthesis (e.g., for a contradiction report).
+
+    Kept for rollback capability — not wired into the V3 research StateGraph.
+    """
     results = state.get("search_results", [])
     if not results:
         return {"contradictions": []}
@@ -364,13 +418,26 @@ async def detect_contradictions_node(
 # ---------------------------------------------------------------------------
 
 
-# NEEDS_HUMAN_REVIEW: V1 single-draft synthesis — superseded by speculative_synthesis_with_contradictions_node()
-# which generates 3 strategy drafts. Kept for potential fast-path use.
 async def synthesize_memo_node(
     state: ResearchState,
     llm: LLMProvider,
 ) -> dict:
-    """Synthesize all findings into a structured research memo."""
+    """Synthesize all findings into a structured research memo.
+
+    .. deprecated::
+        Superseded by ``speculative_synthesis_with_contradictions_node()`` (line ~1428).
+        V3 generates 3 alternative strategy drafts rather than a single memo,
+        includes adversarial analysis (Stage 4), temporal validation of old vs. new
+        law applicability, and produces a full research audit trail with reasoning.
+        A litigation lawyer benefits from seeing multiple angles, not just one synthesis.
+
+        **Replaced by:** ``speculative_synthesis_with_contradictions_node()`` in this file
+        **Superseded:** V3 Research Agent (March 2026)
+        **Restore if:** Single-draft synthesis is preferred for simple queries or
+        the fast-path mechanism needs a lighter synthesis step.
+
+    Kept for rollback capability — not wired into the V3 research StateGraph.
+    """
     query = state["query"]
     results = state.get("search_results", [])
     cross_refs = state.get("cross_references", [])
@@ -494,13 +561,28 @@ async def synthesize_memo_node(
 # ---------------------------------------------------------------------------
 
 
-# NEEDS_HUMAN_REVIEW: V1 citation verification (PG-only) — superseded by verify_citations_v2_node()
-# which verifies against PG + Indian Kanoon + Neo4j. V2 is strictly superior.
 async def verify_citations_node(
     state: ResearchState,
     db: AsyncSession,
 ) -> dict:
-    """Verify citations in the draft memo using shared 3-layer verification."""
+    """Verify citations in the draft memo using shared 3-layer verification.
+
+    .. deprecated::
+        Superseded by ``verify_citations_v2_node()`` (line ~2139 in this file).
+        V2 implements 3-layer verification: PostgreSQL database + Indian Kanoon API +
+        Neo4j graph store. V1 only checked against PostgreSQL, missing citations that
+        exist in external databases. V2 is strictly superior for ensuring citation
+        accuracy in research memos — critical for Indian legal practice where incorrect
+        citations can lead to court sanctions.
+
+        **Replaced by:** ``verify_citations_v2_node()`` in this file
+        **Superseded:** V2 Research Agent (February 2026)
+        **Restore if:** External API calls (Indian Kanoon, Neo4j) add too much latency
+        and PG-only verification is acceptable for draft memos.
+
+    Note: This function is still used by case_prep and strategy agent pipelines
+    which haven't been upgraded to V2 verification yet.
+    """
     memo = state.get("draft_memo", "")
     if not memo:
         return {"draft_memo": memo}
