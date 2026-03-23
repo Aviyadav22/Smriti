@@ -290,3 +290,16 @@
 ### Files changed:
 - None (verification-only)
 
+## Iteration 15: HARDEN-5 — Scan for hardcoded secrets
+### What was done:
+- Scanned for API key patterns (sk-, AIza, ghp_, AKIA) across entire codebase — zero matches
+- Scanned for password/secret/api_key/token hardcoded values in backend/app/ — zero matches
+- Test files have dummy values only (test-key, test-token, LoadTest1234) — safe
+- Frontend has no hardcoded secrets — only token management functions
+- Git-tracked .env files are only examples (.env.example, .env.prod.example) with placeholder values
+- All real secrets come from environment variables via config.py Settings class
+- No code changes needed
+
+### Files changed:
+- None (scan-only)
+
