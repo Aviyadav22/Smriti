@@ -528,6 +528,7 @@ def _merge_filters(
         section=explicit.section or llm_extracted.section,
         judgment_section=explicit.judgment_section or llm_extracted.judgment_section,
         disposal_nature=explicit.disposal_nature or llm_extracted.disposal_nature,
+        vector_types=explicit.vector_types or llm_extracted.vector_types,
     )
 
 
