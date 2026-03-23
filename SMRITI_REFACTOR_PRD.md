@@ -21,7 +21,7 @@ Smriti audit is complete. The codebase is ~95% wired. This PRD targets the remai
 - [x] GAP-7: Document memo route — listed as disconnected. This likely serves the research memo export for uploaded documents. Trace where the document analysis → memo generation flow should call this route, and wire it so a user can generate a research memo from an uploaded document.
 - [x] GAP-8: Agent execution detail/cancel/revise/export routes (4 disconnected) — these are agent management endpoints. Wire them to the /agents/history frontend page so a user can view execution details, cancel a running agent, request revision, and export results from the history view.
 - [x] GAP-9: Case summary route — listed as disconnected. Wire it so the case detail page (/case/[id]) can show an AI-generated summary. If the frontend case detail page has a summary section that is empty or placeholder, wire it to this endpoint.
-- [ ] GAP-10: Verify the full search suggest flow — after GAP-6, test: user types "Section 302" in search → autocomplete shows suggestions → user selects one → search executes with proper filters.
+- [x] GAP-10: Verify the full search suggest flow — after GAP-6, test: user types "Section 302" in search → autocomplete shows suggestions → user selects one → search executes with proper filters.
 
 ## PHASE 2: HARDEN EVERY USER-FACING ROUTE
 

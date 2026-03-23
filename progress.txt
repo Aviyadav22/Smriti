@@ -194,3 +194,24 @@
 - The case detail page loads 5 data sources in parallel via Promise.allSettled (case, citations, citedBy, similar, graph)
 - Hindi support is important for Smriti — many Indian lawyers work in Hindi courts and need Hindi summaries
 
+## Iteration 10: GAP-10 — Verify full search suggest flow
+### What was done:
+- Verified end-to-end search suggest flow:
+  1. Backend: GET /search/suggest registered at /api/v1/search/suggest (confirmed via app.routes inspection)
+  2. Backend: ILIKE search on cases.title and cases.citation, ordered by year DESC, Redis-cached 15 min
+  3. Frontend: searchSuggest() in api.ts calls endpoint with q + limit params
+  4. Frontend: search page fetchSuggestions() debounces 300ms, min 3 chars, AbortController cancellation
+  5. Frontend: dropdown renders suggestions with case title + citation
+  6. Frontend: keyboard nav (ArrowUp/Down/Enter/Escape) + mouse click selection
+  7. Frontend: handleSuggestionSelect sets query and triggers executeSearch
+- Zero TypeScript errors confirmed. Route registration confirmed.
+- No code changes needed — verification-only task (wiring done in GAP-6)
+
+### Files changed:
+- None (verification-only)
+
+### Patterns learned:
+- 68 total routes registered in the FastAPI app
+- Suggest endpoint uses parameterized text() queries with ILIKE (not raw SQL)
+- SQL escaping for %, _, \ prevents injection in ILIKE patterns
+
