@@ -138,6 +138,11 @@ class GeminiLLM:
         max_tokens: int = 8192,
         use_context_cache: bool = False,
     ) -> str:
+        """Generate text via Gemini API with optional context caching.
+
+        Used for research memo synthesis, query understanding, treatment
+        classification, and all free-form LLM generation in the legal pipeline.
+        """
         config_kwargs: dict = {
             "system_instruction": system,
             "temperature": temperature,
@@ -167,6 +172,12 @@ class GeminiLLM:
         output_schema: dict,
         temperature: float = 0.1,
     ) -> dict:
+        """Generate structured JSON output via Gemini with schema enforcement.
+
+        Used for metadata extraction (16 fields), query understanding,
+        research plan generation, and all structured LLM outputs.
+        Schema is normalized to use Gemini-compatible nullable format.
+        """
         normalized_schema = self._normalize_schema(output_schema)
         config = types.GenerateContentConfig(
             system_instruction=system,

@@ -74,6 +74,7 @@ class GeminiEmbedder:
 
     @_embedding_retry
     async def embed_text(self, text: str) -> list[float]:
+        """Embed a single text string into a 1536-dim vector via Gemini."""
         response = await asyncio.wait_for(
             self._client.aio.models.embed_content(
                 model=self._model,
@@ -88,6 +89,7 @@ class GeminiEmbedder:
 
     @_embedding_retry
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Embed a batch of texts into 1536-dim vectors. Used during ingestion (batch 100)."""
         response = await asyncio.wait_for(
             self._client.aio.models.embed_content(
                 model=self._model,

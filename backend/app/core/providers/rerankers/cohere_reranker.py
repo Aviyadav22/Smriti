@@ -53,6 +53,11 @@ class CohereReranker:
         *,
         top_n: int = 10,
     ) -> list[RerankResult]:
+        """Rerank search results using Cohere rerank-v4.0-pro for precision.
+
+        Applied after RRF merge of Pinecone + PostgreSQL FTS results.
+        Returns top_n results ordered by relevance score.
+        """
         if not documents:
             return []
         try:

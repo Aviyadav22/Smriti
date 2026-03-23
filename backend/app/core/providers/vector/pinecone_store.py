@@ -80,6 +80,11 @@ class PineconeStore:
         filters: dict | None = None,
         user_scope: str | None = None,
     ) -> list[SearchResult]:
+        """Semantic vector search against Pinecone (1536-dim, Gemini embeddings).
+
+        Supports metadata filters (court, year, acts_cited, judgment_section)
+        and optional user_scope for multi-tenant isolation.
+        """
         if user_scope:
             filters = dict(filters) if filters else {}
             filters["user_id"] = user_scope
