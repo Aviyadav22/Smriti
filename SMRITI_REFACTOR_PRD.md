@@ -50,7 +50,7 @@ Smriti audit is complete. The codebase is ~95% wired. This PRD targets the remai
 - [x] TEST-3: Write an integration test for the ingestion pipeline: mock PDF → parse → chunk → embed → verify vectors stored with correct metadata.
 - [x] TEST-4: Write unit tests for statute expansion: verify IPC↔BNS, CrPC↔BNSS, IEA↔BSA bidirectional mapping works.
 - [x] TEST-5: Write unit tests for citation extraction: test against known Indian citation formats (SCC, AIR, INSC Neutral, MANU, LiveLaw).
-- [ ] TEST-6: Run the full test suite. Fix any failures. Do not mark this done until ALL tests pass.
+- [x] TEST-6: Run the full test suite. Fix any failures. Do not mark this done until ALL tests pass.
 
 ## PHASE 5: FINAL VERIFICATION
 
