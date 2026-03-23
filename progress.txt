@@ -431,3 +431,13 @@
 ### Files changed:
 - backend/pyproject.toml (added pdfminer.six>=20221105, networkx>=3.0)
 
+## Iteration 23: QUALITY-6 — Review package.json
+### What was done:
+- Cross-referenced all 18 production dependencies with actual imports in frontend/src/
+- All dependencies actively used: radix-ui components, lucide-react icons, next/next-intl, react-markdown/remark-gfm/rehype-sanitize for chat, react-force-graph-2d for citation graph, react-pdf for PDF viewer, recharts for judge analytics charts, class-variance-authority/clsx/tailwind-merge for styling utilities
+- No unused dependencies. No missing dependencies.
+- No code changes needed.
+
+### Files changed:
+- None (verification-only)
+
