@@ -327,6 +327,7 @@ async def ingest_judgment(
             {"case_id": str(case_id)},
         )
         await _persist_sections(str(case_id), sections, db)
+        await _persist_statute_interpretations(str(case_id), metadata, db)
         citation_equivalents = _extract_citation_equivalents(full_text, str(case_id))
         await db.execute(
             text("DELETE FROM case_citation_equivalents WHERE case_id = :case_id"),
@@ -397,6 +398,22 @@ async def ingest_judgment(
             vectors_upserted = True
         except Exception:
             raise
+
+        # V3: Proposition-level vectors for direct legal-point retrieval
+        try:
+            _embed_limiter_prop = embed_rate_limiter or rate_limiter
+            prop_count, prop_vector_ids = await _upsert_proposition_vectors(
+                case_id, metadata, embedder, vector_store,
+                rate_limiter=_embed_limiter_prop,
+            )
+            if prop_count:
+                logger.info("Created %d proposition vectors for %s", prop_count, case_id)
+            # CRITICAL: include proposition IDs in new_vector_ids BEFORE stale cleanup
+            new_vector_ids.extend(prop_vector_ids)
+        except Exception as exc:
+            logger.warning("Proposition vector upsert failed for %s: %s", case_id, exc)
+            if warnings_out is not None:
+                warnings_out.append(f"proposition_vectors_failed: {exc}")
 
         # Fire stale-vector cleanup as a background task — it's independent
         # of RAPTOR and chunk_count update, so run concurrently.
@@ -695,6 +712,11 @@ async def _insert_case(
         "costs_awarded": json.dumps(metadata.costs_awarded) if metadata.costs_awarded else None,
         "page_map": json.dumps(page_map) if page_map else None,
         "enrichment_status": metadata.enrichment_status,
+        # V3 fields
+        "legal_propositions": json.dumps(metadata.legal_propositions) if metadata.legal_propositions else None,
+        "statute_sections_interpreted": json.dumps(metadata.statute_sections_interpreted) if metadata.statute_sections_interpreted else None,
+        "fact_pattern_summary": metadata.fact_pattern_summary,
+        "source_dataset": metadata.source_dataset if hasattr(metadata, "source_dataset") else "aws_open_data_sc",
     }
 
     # text_hash dedup is already done in ingest_judgment() step 1b (before
@@ -748,7 +770,9 @@ async def _insert_case(
                 procedural_history, interim_orders, filing_date, urgency_indicators,
                 party_counsel, issue_classification, fact_pattern_tags,
                 operative_order, conditions_imposed, costs_awarded,
-                page_map, enrichment_status
+                page_map, enrichment_status,
+                legal_propositions, statute_sections_interpreted,
+                fact_pattern_summary, source_dataset
             ) VALUES (
                 :id, :title, :citation, :case_id, :cnr, :court, :year, :case_type,
                 :jurisdiction, :bench_type, :judge, :author_judge, :petitioner,
@@ -772,7 +796,9 @@ async def _insert_case(
                 :procedural_history, :interim_orders, :filing_date, :urgency_indicators,
                 :party_counsel, :issue_classification, :fact_pattern_tags,
                 :operative_order, :conditions_imposed, :costs_awarded,
-                :page_map, :enrichment_status
+                :page_map, :enrichment_status,
+                :legal_propositions, :statute_sections_interpreted,
+                :fact_pattern_summary, :source_dataset
             )
             ON CONFLICT (citation) WHERE citation IS NOT NULL DO UPDATE SET
                 full_text = EXCLUDED.full_text,
@@ -829,6 +855,10 @@ async def _insert_case(
                 costs_awarded = COALESCE(EXCLUDED.costs_awarded, cases.costs_awarded),
                 page_map = COALESCE(EXCLUDED.page_map, cases.page_map),
                 enrichment_status = COALESCE(EXCLUDED.enrichment_status, cases.enrichment_status),
+                legal_propositions = COALESCE(EXCLUDED.legal_propositions, cases.legal_propositions),
+                statute_sections_interpreted = COALESCE(EXCLUDED.statute_sections_interpreted, cases.statute_sections_interpreted),
+                fact_pattern_summary = COALESCE(EXCLUDED.fact_pattern_summary, cases.fact_pattern_summary),
+                source_dataset = COALESCE(EXCLUDED.source_dataset, cases.source_dataset),
                 updated_at = NOW()
             RETURNING id
             """
@@ -996,6 +1026,8 @@ async def _upsert_vectors(
                 "para_end": chunk.para_end or 0,
                 "text": chunk.text[:2000],  # Pinecone 40KB metadata cap; full text lives in PostgreSQL
                 "document_type": "case_law",
+                "vector_type": "chunk",
+                "legal_signal": chunk.legal_signal if hasattr(chunk, "legal_signal") else 0.0,
                 # V2 fields
                 "judicial_tone": metadata.judicial_tone or "",
                 "fact_pattern_tags": list(metadata.fact_pattern_tags[:5]) if metadata.fact_pattern_tags else [],
@@ -1010,6 +1042,160 @@ async def _upsert_vectors(
     # Upsert in batches of 100 (Pinecone recommended batch size)
     for i in range(0, len(vectors), 100):
         await vector_store.upsert(vectors[i : i + 100])
+
+
+async def _upsert_proposition_vectors(
+    case_id: str,
+    metadata: CaseMetadata,
+    embedder: EmbeddingProvider,
+    vector_store: VectorStore,
+    *,
+    rate_limiter: AsyncRateLimiter | None = None,
+) -> tuple[int, list[str]]:
+    """Create separate Pinecone vectors for propositions, ratio, and headnotes.
+
+    Returns (count, vector_ids) — vector_ids needed for stale cleanup exclusion.
+    """
+    vectors: list[dict] = []
+    texts_to_embed: list[str] = []
+    vector_ids: list[str] = []
+
+    base_meta = {
+        "case_id": case_id,
+        "court": metadata.court or "",
+        "year": metadata.year or 0,
+        "case_type": metadata.case_type or "",
+        "bench_type": metadata.bench_type or "",
+        "title": (metadata.title or "")[:200],
+        "citation": metadata.citation or "",
+        "acts_cited": list(metadata.acts_cited[:25]) if metadata.acts_cited else [],
+        "document_type": "case_law",
+    }
+
+    # --- Proposition vectors ---
+    for i, prop in enumerate(metadata.legal_propositions or []):
+        prop_text = prop.get("proposition_text", "")
+        if not prop_text or len(prop_text) < 20:
+            continue
+        vid = f"{case_id}_prop_{i}"
+        vector_ids.append(vid)
+        texts_to_embed.append(prop_text)
+        vectors.append({
+            "id": vid,
+            "metadata": {
+                **base_meta,
+                "vector_type": "proposition",
+                "text": prop_text[:2000],
+                "section_type": "RATIO",
+                "related_section": prop.get("related_section") or "",
+                "is_novel": prop.get("is_novel", False),
+                "para_start": prop.get("paragraph_number") or 0,
+                "para_end": prop.get("paragraph_number") or 0,
+            },
+        })
+
+    # --- Ratio vector (one per case) ---
+    ratio = metadata.ratio_decidendi or ""
+    if len(ratio.strip()) >= 30:
+        vid = f"{case_id}_ratio"
+        vector_ids.append(vid)
+        texts_to_embed.append(ratio)
+        vectors.append({
+            "id": vid,
+            "metadata": {
+                **base_meta,
+                "vector_type": "ratio",
+                "text": ratio[:2000],
+                "section_type": "RATIO",
+            },
+        })
+
+    # --- Headnote vectors ---
+    headnotes_raw = metadata.headnotes or ""
+    headnotes: list[dict] = []
+    if headnotes_raw:
+        try:
+            headnotes = json.loads(headnotes_raw) if isinstance(headnotes_raw, str) else headnotes_raw
+        except (ValueError, TypeError):
+            headnotes = []
+    for i, hn in enumerate(headnotes):
+        hn_text = hn.get("proposition", "") if isinstance(hn, dict) else str(hn)
+        if not hn_text or len(hn_text) < 20:
+            continue
+        vid = f"{case_id}_headnote_{i}"
+        vector_ids.append(vid)
+        texts_to_embed.append(hn_text)
+        vectors.append({
+            "id": vid,
+            "metadata": {
+                **base_meta,
+                "vector_type": "headnote",
+                "text": hn_text[:2000],
+                "section_type": "RATIO",
+            },
+        })
+
+    if not texts_to_embed:
+        return 0, []
+
+    # Embed all at once
+    embeddings = await _embed_chunks(
+        [],  # unused — we pass texts_override
+        embedder,
+        rate_limiter=rate_limiter,
+        texts_override=texts_to_embed,
+    )
+
+    # Attach embeddings to vectors
+    for vec, emb in zip(vectors, embeddings):
+        vec["values"] = emb
+
+    # Upsert in batches of 100
+    for batch_start in range(0, len(vectors), _EMBED_BATCH_SIZE):
+        batch = vectors[batch_start : batch_start + _EMBED_BATCH_SIZE]
+        await vector_store.upsert(batch)
+
+    logger.info("Upserted %d proposition/ratio/headnote vectors for %s", len(vectors), case_id)
+    return len(vectors), vector_ids
+
+
+async def _persist_statute_interpretations(
+    case_id: str,
+    metadata: CaseMetadata,
+    db: AsyncSession,
+) -> None:
+    """Populate case_statute_interpretations from metadata.statute_sections_interpreted."""
+    interpretations = metadata.statute_sections_interpreted or []
+    if not interpretations:
+        return
+
+    from app.core.legal.extractor import normalize_act_name
+
+    for interp in interpretations[:10]:  # Cap at 10
+        section = interp.get("section", "").strip()
+        act = interp.get("act", "").strip()
+        if not section or not act:
+            continue
+        normalized = f"{section} {normalize_act_name(act)}".strip()
+        await db.execute(
+            text("""
+                INSERT INTO case_statute_interpretations
+                    (id, case_id, section_text, normalized_section, act_name,
+                     interpretation_summary, is_primary_holding)
+                VALUES (gen_random_uuid(), :case_id, :section_text, :normalized,
+                        :act_name, :summary, :is_primary)
+                ON CONFLICT (case_id, normalized_section) DO UPDATE SET
+                    interpretation_summary = EXCLUDED.interpretation_summary
+            """),
+            {
+                "case_id": case_id,
+                "section_text": f"{section} of {act}",
+                "normalized": normalized,
+                "act_name": act,
+                "summary": interp.get("interpretation_summary", ""),
+                "is_primary": False,
+            },
+        )
 
 
 async def _build_citation_graph(

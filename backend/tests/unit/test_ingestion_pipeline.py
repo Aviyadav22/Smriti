@@ -142,6 +142,7 @@ class TestIngestJudgment:
     @patch("app.core.ingestion.pipeline.chunk_judgment")
     @patch("app.core.ingestion.pipeline.detect_judgment_sections")
     @patch("app.core.ingestion.pipeline._insert_case", new_callable=AsyncMock)
+    @patch("app.core.ingestion.pipeline.cross_validate_propositions")
     @patch("app.core.ingestion.pipeline.validate_cross_fields")
     @patch("app.core.ingestion.pipeline.validate_with_regex")
     @patch("app.core.ingestion.pipeline.merge_metadata")
@@ -154,6 +155,7 @@ class TestIngestJudgment:
         mock_merge_meta: MagicMock,
         mock_validate: MagicMock,
         mock_validate_cross: MagicMock,
+        mock_cross_validate_props: MagicMock,
         mock_insert_case: AsyncMock,
         mock_detect_sections: MagicMock,
         mock_chunk: MagicMock,
@@ -182,6 +184,7 @@ class TestIngestJudgment:
         mock_merge_meta.return_value = (metadata, {"title": "parquet"})
         mock_validate.return_value = metadata
         mock_validate_cross.return_value = metadata
+        mock_cross_validate_props.return_value = metadata
         mock_insert_case.return_value = ("case-id-123", False)
         mock_detect_sections.return_value = _make_sections()
         mock_chunk.return_value = chunks
@@ -206,9 +209,11 @@ class TestIngestJudgment:
         mock_merge_meta.assert_called_once()
         mock_validate.assert_called_once()
         mock_validate_cross.assert_called_once()
+        mock_cross_validate_props.assert_called_once()
         mock_detect_sections.assert_called_once_with(_LONG_TEXT)
         mock_chunk.assert_called_once()
-        mock_embed_chunks.assert_called_once()
+        # V3: _embed_chunks called once for chunks, possibly again for proposition vectors
+        assert mock_embed_chunks.call_count >= 1
         mock_upsert.assert_called_once()
         mock_build_graph.assert_called_once()
         mock_storage.store.assert_called_once()

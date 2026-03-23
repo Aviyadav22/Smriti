@@ -19,15 +19,18 @@ logger = logging.getLogger(__name__)
 # Prompt constants
 # ---------------------------------------------------------------------------
 
-CONTEXTUAL_PREFIX_SYSTEM = """You are a legal document analyst. Given a chunk of text from a legal document and metadata about the full document, generate a concise 1-2 sentence context prefix that situates this chunk within the document.
-
-The prefix should include:
-- The case name/statute name and citation (if available)
-- The section of the document this chunk comes from (facts, holdings, arguments, etc.)
-- The key legal issue the overall document addresses
+CONTEXTUAL_PREFIX_SYSTEM = """\
+You are a legal document analyst. Given a chunk from an Indian court judgment and \
+metadata about the full document, generate a concise 1-2 sentence context prefix that \
+states:
+(1) What specific legal question this chunk addresses.
+(2) What the court's position is on that question (if discernible from the chunk).
+If the chunk is purely factual narration, state what legal issue the facts relate to.
+Include the case citation.
 
 Format: "<context prefix>\\n\\n<original chunk text>"
-Do NOT summarize or paraphrase the chunk. Only add contextual framing."""
+Do NOT summarize or paraphrase the chunk. Only add contextual framing.\
+"""
 
 CONTEXTUAL_PREFIX_STATUTE = """You are a legal document analyst. Given a section of an Indian statute, generate a 1-sentence context prefix.
 
