@@ -475,3 +475,16 @@
 ### Files changed:
 - backend/tests/unit/test_search_pipeline_integration.py (NEW — 4 tests)
 
+## Iteration 27: TEST-3 — Write ingestion pipeline integration test
+### What was done:
+- Created test_ingestion_integration.py with 6 tests:
+  - TestChunkingProducesValidChunks: section types, size limits (≤2200 chars), case_id tagging
+  - TestUpsertVectorsMetadata: verifies Pinecone metadata (case_id, citation, year, court, acts_cited, section_type, chunk_index)
+  - TestEndToEndChunkEmbed: chunk count matches embedding count, all 1536-dim
+- Uses real chunk_judgment() function on realistic judgment text (Section 302 IPC bail case)
+- Metadata field is section_type (not judgment_section) — consistent with pipeline.py line 980
+- All 2133 tests pass (up from 2127).
+
+### Files changed:
+- backend/tests/unit/test_ingestion_integration.py (NEW — 6 tests)
+
