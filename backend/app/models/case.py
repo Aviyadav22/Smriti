@@ -151,6 +151,14 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Enrichment Tracking
     enrichment_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="flash_only")
 
+    # --- Ingestion V3 fields ---
+    source_dataset: Mapped[str | None] = mapped_column(
+        String(50), server_default="aws_open_data_sc", index=True
+    )
+    legal_propositions: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    statute_sections_interpreted: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    fact_pattern_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     __table_args__ = (
         # --- CHECK constraints ---
         CheckConstraint("year >= 1800 AND year <= 2200", name="ck_cases_year_range"),
