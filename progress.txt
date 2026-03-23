@@ -45,3 +45,21 @@
 - detect_treatment_in_text() returns confidence 0.7 for strong patterns (overruled, distinguished, not_followed) and 0.5 for weaker ones (followed, affirmed, explained). The 0.6 threshold catches the weaker ones for LLM upgrade.
 - rag_respond() already has `llm: LLMProvider` in its signature so no dependency injection changes needed.
 
+## Iteration 3: GAP-3 — Deprecate section-filter.tsx
+### What was done:
+- Analyzed section-filter.tsx (dropdown Select) vs search/page.tsx inline pill tabs (SECTION_TABS)
+- The inline pill tabs are genuinely superior: always visible, toggle behavior, proper ARIA (role="tab", aria-selected), visual feedback via bg-primary
+- Added comprehensive deprecation docstring to section-filter.tsx explaining why it was superseded and what replaced it
+- Added @deprecated JSDoc tag to the SectionFilter export
+- Did NOT delete the component — kept for potential reuse in mobile views or filter sidebars
+- Zero TypeScript errors confirmed via tsc --noEmit
+
+### Files changed:
+- frontend/src/components/section-filter.tsx (added deprecation comments)
+
+### Patterns learned:
+- The search page (search/page.tsx) defines SECTION_TABS at line 21 with 6 judgment sections: FACTS, ISSUES, ARGUMENTS, HOLDINGS, REASONING, ORDER
+- Section filter is passed as `section` param to api.search() and used as Pinecone metadata filter (judgment_section)
+- The pill tabs include badge removal in the active filter pills section (line 280-283)
+- section-filter.tsx was only imported in test files, never in production code
+
