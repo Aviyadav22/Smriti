@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -9,10 +9,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import dynamic from "next/dynamic";
-import { getCase, getCaseCitations, getCaseCitedBy, getCaseSimilar, getCasePdfUrl, getGraphNeighborhood } from "@/lib/api";
+import { getCase, getCaseCitations, getCaseCitedBy, getCaseSimilar, getCasePdfUrl, getCaseSummary, getGraphNeighborhood } from "@/lib/api";
 import type { CaseDetail, CitationItem, GraphData, SimilarCase } from "@/lib/types";
 import Link from "next/link";
-import { ArrowLeft, FileText, BookOpen, Link2, Scale, ExternalLink, Loader2, GitBranch, MessageSquare } from "lucide-react";
+import { ArrowLeft, FileText, BookOpen, Link2, Scale, ExternalLink, Languages, Loader2, GitBranch, MessageSquare } from "lucide-react";
 import AudioPlayer from "@/components/audio-player";
 import { CaseDetailSkeleton } from "@/components/skeleton";
 
@@ -35,6 +35,11 @@ export default function CaseDetailPage() {
     const [graphData, setGraphData] = useState<GraphData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // WIRED_BY_REFACTOR: Hindi translation of ratio decidendi via case summary endpoint
+    const [summaryLang, setSummaryLang] = useState<"en" | "hi">("en");
+    const [translatedSummary, setTranslatedSummary] = useState<string | null>(null);
+    const [summaryLoading, setSummaryLoading] = useState(false);
 
     useEffect(() => {
         if (!UUID_RE.test(caseId)) {
@@ -66,6 +71,27 @@ export default function CaseDetailPage() {
         }
         load();
     }, [caseId]);
+
+    const toggleSummaryLanguage = useCallback(async () => {
+        const newLang = summaryLang === "en" ? "hi" : "en";
+        if (newLang === "en") {
+            // Switch back to English — use original ratio_decidendi
+            setSummaryLang("en");
+            setTranslatedSummary(null);
+            return;
+        }
+        // Fetch Hindi translation from summary endpoint
+        setSummaryLoading(true);
+        try {
+            const res = await getCaseSummary(caseId, "hi");
+            setTranslatedSummary(res.summary);
+            setSummaryLang("hi");
+        } catch {
+            // Silently fail — keep showing English
+        } finally {
+            setSummaryLoading(false);
+        }
+    }, [caseId, summaryLang]);
 
     if (loading) return (
         <div className="min-h-screen flex flex-col">
@@ -355,13 +381,35 @@ export default function CaseDetailPage() {
                                 </Card>
                             )}
 
-                            {/* Ratio decidendi */}
+                            {/* Ratio decidendi with Hindi translation toggle */}
                             {caseData.ratio_decidendi && (
                                 <Card className="p-4 rounded-md border-l-2 border-l-[var(--gold)]">
-                                    <h4 className="text-[11px] uppercase tracking-wider font-medium text-[var(--gold)] mb-2">Ratio Decidendi</h4>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h4 className="text-[11px] uppercase tracking-wider font-medium text-[var(--gold)]">Ratio Decidendi</h4>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 px-2 text-[10px] gap-1"
+                                            onClick={toggleSummaryLanguage}
+                                            disabled={summaryLoading}
+                                            title={summaryLang === "en" ? "Translate to Hindi" : "Switch to English"}
+                                        >
+                                            {summaryLoading ? (
+                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                            ) : (
+                                                <Languages className="h-3 w-3" />
+                                            )}
+                                            {summaryLang === "en" ? "हिन्दी" : "English"}
+                                        </Button>
+                                    </div>
                                     <p className="text-sm leading-relaxed font-[family-name:var(--font-lora)]">
-                                        {caseData.ratio_decidendi}
+                                        {summaryLang === "hi" && translatedSummary
+                                            ? translatedSummary
+                                            : caseData.ratio_decidendi}
                                     </p>
+                                    {summaryLang === "hi" && translatedSummary && (
+                                        <p className="text-[10px] text-muted-foreground mt-2">AI-translated — verify accuracy for legal proceedings</p>
+                                    )}
                                 </Card>
                             )}
 

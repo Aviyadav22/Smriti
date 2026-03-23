@@ -173,3 +173,24 @@
   - completed + result_data → View Results
   - completed + research type → Export
 
+## Iteration 9: GAP-9 — Wire case summary route with Hindi translation
+### What was done:
+- Added getCaseSummary(id, language) function to frontend/src/lib/api.ts with CaseSummaryResponse interface
+- Wired Hindi translation toggle into the Ratio Decidendi card on case detail page:
+  - Added Languages icon button with "हिन्दी" / "English" toggle
+  - Calls GET /cases/{id}/summary?language=hi for Hindi translation
+  - Shows translated text with disclaimer "AI-translated — verify accuracy for legal proceedings"
+  - Loading spinner during translation, graceful failure (stays on English)
+- Backend endpoint was already fully functional (pulls ratio_decidendi, translates via Gemini translator)
+- Zero TypeScript errors. All 311 frontend tests pass.
+
+### Files changed:
+- frontend/src/lib/api.ts (added getCaseSummary + CaseSummaryResponse)
+- frontend/src/app/case/[id]/page.tsx (added translation toggle to Ratio Decidendi card)
+
+### Patterns learned:
+- The backend summary endpoint at GET /cases/{id}/summary returns ratio_decidendi with optional Hindi translation
+- Translation is server-side via get_translator() which uses Gemini
+- The case detail page loads 5 data sources in parallel via Promise.allSettled (case, citations, citedBy, similar, graph)
+- Hindi support is important for Smriti — many Indian lawyers work in Hindi courts and need Hindi summaries
+

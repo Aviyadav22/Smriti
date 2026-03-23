@@ -389,6 +389,25 @@ export function getCasePdfUrl(id: string): string {
     return `${API_BASE}/cases/${id}/pdf`;
 }
 
+// WIRED_BY_REFACTOR: Case summary endpoint was disconnected from frontend.
+// Wired here to support Hindi translation of ratio decidendi on case detail page.
+export interface CaseSummaryResponse {
+    case_id: string;
+    title: string;
+    citation: string;
+    court: string;
+    year: number;
+    summary: string;
+    language: string;
+}
+
+export async function getCaseSummary(
+    id: string,
+    language: "en" | "hi" = "en",
+): Promise<CaseSummaryResponse> {
+    return apiFetch(`/cases/${id}/summary?language=${language}`);
+}
+
 // ---------------------------------------------------------------------------
 // Chat API
 // ---------------------------------------------------------------------------
