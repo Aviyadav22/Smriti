@@ -501,4 +501,19 @@
 ### Files changed:
 - backend/tests/unit/test_statute_bidirectional.py (NEW — 17 tests)
 
+## Iteration 29: TEST-5 — Write citation extraction tests for Indian formats
+### What was done:
+- Created test_citation_formats.py with 18 tests covering 5 key formats:
+  - SCC (4 tests): standard, with volume, SCC OnLine, sub-reporter (Cri)
+  - AIR (3 tests): Supreme Court, High Court, Delhi
+  - INSC Neutral (2 tests): standard 2024:INSC:123, with-spaces normalization
+  - MANU (3 tests): SC, HC (Delhi), space normalization
+  - LiveLaw (2 tests): SC, HC formats
+  - Normalization (4 tests): SCC brackets, neutral separators, MANU spaces, versus→v.
+- MANU was previously untested — now covered
+- All 18 new tests pass.
+
+### Files changed:
+- backend/tests/unit/test_citation_formats.py (NEW — 18 tests)
+
 
