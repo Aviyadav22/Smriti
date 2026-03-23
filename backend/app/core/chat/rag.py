@@ -19,7 +19,11 @@ from app.core.config import settings
 from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
 from app.core.interfaces.graph_store import GraphStore
 from app.core.legal.prompts import CHAT_SYSTEM_PROMPT, CHAT_USER_WITH_CONTEXT, LEGAL_DISCLAIMER
-from app.core.legal.treatment import has_overruling_language
+from app.core.legal.treatment import (
+    classify_treatment_llm,
+    detect_treatment_in_text,
+    has_overruling_language,
+)
 from app.core.search.hybrid import hybrid_search
 from app.core.search.query import SearchFilters
 from app.security.encryption import encrypt_field, safe_decrypt
@@ -236,8 +240,13 @@ async def rag_respond(
                 "year": source.year,
                 "score": round(source.score, 4),
             }
-            # Check treatment status: first from graph (authoritative), then
-            # fall back to text heuristic on ratio/chunk content.
+            # Check treatment status: three-stage pipeline:
+            # 1. Graph (authoritative) — Neo4j CITES edges with treatment metadata
+            # 2. Regex heuristic — pattern matching on ratio/chunk text
+            # 3. LLM fallback — Gemini Flash for ambiguous cases (config-gated)
+            # WIRED_BY_REFACTOR: Stage 3 uses classify_treatment_llm() which was
+            # previously defined but never called. Activated when regex confidence
+            # is below threshold and enable_treatment_llm_fallback is True.
             if source.case_id in graph_overruled:
                 source_data["treatment_warning"] = (
                     f"This case has been overruled by {graph_overruled[source.case_id]}. "
@@ -250,6 +259,28 @@ async def rag_respond(
                         "This case may have been overruled or distinguished. "
                         "Verify its current status before relying on it."
                     )
+                elif (
+                    check_text.strip()
+                    and settings.enable_treatment_llm_fallback
+                ):
+                    # Stage 3: LLM fallback — try regex first, if low confidence,
+                    # escalate to LLM for more accurate classification.
+                    regex_results = detect_treatment_in_text(check_text)
+                    low_confidence = any(
+                        r.confidence < settings.treatment_llm_confidence_threshold
+                        for r in regex_results
+                    )
+                    if regex_results and low_confidence:
+                        llm_result = await classify_treatment_llm(check_text, llm)
+                        if llm_result and llm_result.treatment.value in (
+                            "overruled", "distinguished", "not_followed", "doubted",
+                        ):
+                            source_data["treatment_warning"] = (
+                                f"AI analysis suggests this case may have been "
+                                f"{llm_result.treatment.value} "
+                                f"(confidence: {llm_result.confidence:.0%}). "
+                                "Verify its current status before relying on it."
+                            )
             yield RAGEvent(type="source", data=source_data)
 
         # 8. Save messages to DB

@@ -21,3 +21,27 @@
 - amendment_service.py has full DB + Redis caching infrastructure (seed_amendment_maps, get_amendment_maps) ready for when new amendment acts are added without code redeploys.
 - The hardcoded constants in legal/constants.py have 567 section mappings across IPC→BNS, CrPC→BNSS, IEA→BSA (all effective 2024-07-01).
 
+## Iteration 2: GAP-2 — Wire classify_treatment_llm() in treatment.py
+### What was done:
+- Added config flags to config.py: `enable_treatment_llm_fallback` (default: False) and `treatment_llm_confidence_threshold` (default: 0.6)
+- Fixed classify_treatment_llm() in treatment.py: added proper LLMProvider type hint, replaced bare Exception with specific exceptions, added json import at module level, added comprehensive docstring explaining legal purpose
+- Wired classify_treatment_llm() into rag.py as Stage 3 of treatment checking pipeline:
+  - Stage 1: Graph (Neo4j CITES edges) — authoritative
+  - Stage 2: Regex heuristic (has_overruling_language) — fast pattern matching
+  - Stage 3: LLM fallback (classify_treatment_llm) — config-gated, activated when regex finds low-confidence results
+- The LLM fallback only fires when: (a) config flag is enabled, (b) graph found nothing, (c) regex found no overruling language, (d) regex detected some treatment but with confidence below threshold
+- Only negative treatments (overruled, distinguished, not_followed, doubted) trigger warnings — affirmed/followed are positive and don't need warnings
+- All 2102 backend tests pass.
+
+### Files changed:
+- backend/app/core/config.py (added enable_treatment_llm_fallback, treatment_llm_confidence_threshold)
+- backend/app/core/legal/treatment.py (fixed type hints, imports, exception handling, docstring)
+- backend/app/core/chat/rag.py (wired 3-stage treatment pipeline with LLM fallback)
+
+### Patterns learned:
+- Treatment checking in RAG is a 3-stage pipeline: Graph → Regex → LLM. Each stage is progressively more expensive but more accurate.
+- classify_treatment_llm uses _TREATMENT_CLASSIFICATION_SYSTEM prompt which classifies 8 treatment types (overruled, distinguished, affirmed, followed, not_followed, explained, doubted, per_incuriam).
+- The function is designed for Gemini Flash (cheap/fast) not Gemini Pro, making it viable as a fallback even on every RAG call.
+- detect_treatment_in_text() returns confidence 0.7 for strong patterns (overruled, distinguished, not_followed) and 0.5 for weaker ones (followed, affirmed, explained). The 0.6 threshold catches the weaker ones for LLM upgrade.
+- rag_respond() already has `llm: LLMProvider` in its signature so no dependency injection changes needed.
+

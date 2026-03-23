@@ -3,12 +3,22 @@
 Detects treatment language (overruled, distinguished, affirmed, followed)
 in judgment text using regex patterns. This is used during ingestion to
 build citation treatment metadata.
+
+The LLM-based classifier (classify_treatment_llm) provides higher accuracy
+for ambiguous cases. It is gated by the enable_treatment_llm_fallback config
+flag and activated when regex confidence falls below treatment_llm_confidence_threshold.
 """
 from __future__ import annotations
 
+import json
+import logging
 import re
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
+
+from app.core.interfaces import LLMProvider
+
+logger = logging.getLogger(__name__)
 
 
 class CitationTreatment(str, Enum):
@@ -149,20 +159,28 @@ Return ONLY a JSON object: {"treatment": "<type>", "confidence": <0.0-1.0>}"""
 
 async def classify_treatment_llm(
     text_context: str,
-    llm,
+    llm: LLMProvider,
 ) -> TreatmentResult | None:
-    """[E3] Use Flash LLM for more accurate treatment classification.
+    """Use Flash LLM for more accurate treatment classification.
 
-    Falls back to regex if LLM fails. Best used for ambiguous cases
-    where regex confidence is low.
+    Best used for ambiguous cases where regex confidence is low.
+    Gated by settings.enable_treatment_llm_fallback — callers should
+    check the flag before invoking this function.
+
+    Legal purpose: Indian courts frequently use nuanced language when
+    distinguishing or doubting a precedent. Regex catches explicit patterns
+    ("overruled", "distinguished") but misses contextual treatment like
+    "the ratio in X does not apply to the facts of the present case".
+    The LLM classifier handles these ambiguous cases more accurately.
+
+    Returns None on any failure so callers can fall back to regex results.
     """
-    import json as json_mod
     try:
         raw = await llm.generate(
             prompt=f"Classify the citation treatment in this excerpt:\n\n{text_context[:1000]}",
             system=_TREATMENT_CLASSIFICATION_SYSTEM,
         )
-        data = json_mod.loads(raw.strip().strip("`").removeprefix("json"))
+        data = json.loads(raw.strip().strip("`").removeprefix("json"))
         treatment_str = data.get("treatment", "")
         confidence = float(data.get("confidence", 0.5))
         try:
@@ -174,5 +192,6 @@ async def classify_treatment_llm(
             cited_text=text_context[:200],
             confidence=confidence,
         )
-    except Exception:
+    except (json.JSONDecodeError, KeyError, ValueError, ConnectionError, TimeoutError, RuntimeError) as exc:
+        logger.debug("LLM treatment classification failed: %s", exc)
         return None

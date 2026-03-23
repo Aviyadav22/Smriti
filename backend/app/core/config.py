@@ -121,6 +121,12 @@ class Settings(BaseSettings):
     chat_max_context_results: int = 5
     chat_max_snippet_chars: int = 3000
 
+    # Treatment classification — LLM fallback for ambiguous citation treatment.
+    # When enabled, uses Gemini Flash to classify treatment when regex confidence
+    # is below threshold. Improves accuracy for overruled/distinguished detection.
+    enable_treatment_llm_fallback: bool = False
+    treatment_llm_confidence_threshold: float = 0.6
+
     # Logging
     log_level: str = "INFO"
 
