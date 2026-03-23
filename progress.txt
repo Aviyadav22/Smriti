@@ -394,3 +394,28 @@
 - Multiple files across app/ — ruff auto-fixed imports, unused vars, formatting
 - Key files: routes/*.py (import cleanup), core/chat/rag.py (import cleanup), core/dependencies.py (import reorder)
 
+## Iteration 21: QUALITY-4 — Run eslint/tsc on frontend
+### What was done:
+- tsc --noEmit: zero TypeScript errors (confirmed)
+- eslint: found 19 issues (5 errors, 14 warnings)
+- Fixed 11 warnings (unused imports/vars):
+  - footnotes-panel.tsx: removed unused PanelRightOpen import, prefixed unused isOpen prop
+  - chat/page.tsx: removed unused Card and Footer imports
+  - graph/page.tsx: removed unused Card import, removed unused GraphEdge type import
+  - search/page.tsx: removed unused Loader2 import
+  - api.ts: removed unused DocumentTemplate import
+  - research/page.tsx: prefixed unused detectedPath
+  - Test files: removed unused AudioDigestStatus, waitFor, fireEvent imports
+- Remaining 8 issues are React Compiler warnings (setState-in-effect patterns, useMemo deps) that require logic changes — task says not to change logic
+- 311 frontend tests pass, zero TypeScript errors.
+
+### Files changed:
+- frontend/src/components/footnotes-panel.tsx (removed unused import, prefixed unused prop)
+- frontend/src/app/chat/page.tsx (removed unused imports)
+- frontend/src/app/graph/page.tsx (removed unused imports)
+- frontend/src/app/search/page.tsx (removed unused Loader2)
+- frontend/src/app/agents/research/page.tsx (prefixed unused detectedPath)
+- frontend/src/lib/api.ts (removed unused DocumentTemplate)
+- frontend/src/__tests__/audio-player.test.tsx, judge-compare-page.test.tsx, upload-page.test.tsx (removed unused imports)
+
+

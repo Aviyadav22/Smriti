@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { PanelRightOpen, PanelRightClose, Search } from "lucide-react";
+import { PanelRightClose, Search } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { FootnoteListItem } from "@/components/footnote-list-item";
@@ -21,7 +21,7 @@ export function FootnotesPanel({
     footnotes,
     selectedFootnoteNumber,
     onFootnoteSelect,
-    isOpen,
+    isOpen: _isOpen,
     onToggle,
 }: FootnotesPanelProps) {
     const [activeTab, setActiveTab] = useState<string>("footnotes");

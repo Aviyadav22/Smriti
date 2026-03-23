@@ -118,7 +118,7 @@ export default function ResearchAgentPage() {
     const [selectedFootnoteNum, setSelectedFootnoteNum] = useState<number | null>(null);
     const [isOffline, setIsOffline] = useState(false);
     const [currentStepLabel, setCurrentStepLabel] = useState("");
-    const [detectedPath, setDetectedPath] = useState<"full" | "fast" | null>(null);
+    const [_detectedPath, setDetectedPath] = useState<"full" | "fast" | null>(null);
     const [cancelled, setCancelled] = useState(false);
 
     // D21: Offline detection

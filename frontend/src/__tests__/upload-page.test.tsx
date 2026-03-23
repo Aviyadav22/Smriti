@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { renderWithProviders } from "./test-utils";
 
 vi.mock("next/navigation", async () => {

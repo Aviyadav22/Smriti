@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Header } from "@/components/header";
@@ -16,7 +15,7 @@ import {
     getGraphStats,
     search as searchApi,
 } from "@/lib/api";
-import type { GraphNode, GraphEdge, GraphData, GraphStats } from "@/lib/types";
+import type { GraphNode, GraphData, GraphStats } from "@/lib/types";
 import {
     Loader2,
     Search,

@@ -11,7 +11,7 @@ import { Footer } from "@/components/footer";
 import { search as apiSearch, searchFacets, searchSuggest } from "@/lib/api";
 import type { SearchSuggestion } from "@/lib/api";
 import type { SearchResponse, FacetsResponse, JudgmentSection } from "@/lib/types";
-import { Search, ChevronLeft, ChevronRight, Filter, X, Loader2, AlertTriangle, Download } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Filter, X, AlertTriangle, Download } from "lucide-react";
 import { PrecedentBadge } from "@/components/precedent-badge";
 import { BenchStrength } from "@/components/bench-strength";
 import { EquivalentCitations } from "@/components/equivalent-citations";

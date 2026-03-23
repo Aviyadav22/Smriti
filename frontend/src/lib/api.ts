@@ -11,7 +11,6 @@ import type {
     CourtStats,
     DocumentDetail,
     DocumentListResponse,
-    DocumentTemplate,
     DocumentTemplatesResponse,
     DocumentUploadResponse,
     FacetsResponse,
