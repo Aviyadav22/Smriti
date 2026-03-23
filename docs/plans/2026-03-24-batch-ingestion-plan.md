@@ -532,6 +532,7 @@ from scripts.batch_state import BatchStateDB
 from scripts.ingest_s3 import (
     _build_key_pool,
     _strip_language_suffix,
+    download_year_data,
     extract_tar,
     load_parquet_metadata,
 )
@@ -591,17 +592,18 @@ def _build_batch_request_entry(doc_key: str, file_uri: str) -> dict:
     }
 
 
-async def _check_text_hash_exists(text_hash: str) -> bool:
-    """Check if a case with this text_hash already exists in PG."""
+async def _load_existing_text_hashes() -> set[str]:
+    """Batch-fetch all existing text hashes from PG into a set for O(1) dedup."""
     from sqlalchemy import text
     from app.core.database import async_session_factory
 
     async with async_session_factory() as db:
         result = await db.execute(
-            text("SELECT 1 FROM cases WHERE text_hash = :hash"),
-            {"hash": text_hash},
+            text("SELECT text_hash FROM cases WHERE text_hash IS NOT NULL")
         )
-        return result.fetchone() is not None
+        hashes = {row[0] for row in result.fetchall()}
+    logger.info("Loaded %d existing text hashes for dedup", len(hashes))
+    return hashes
 
 
 async def submit_year(
@@ -614,21 +616,12 @@ async def submit_year(
     concurrency: int = 10,
 ) -> None:
     """Phase 1: Extract, upload, and submit batch jobs for one year."""
-    # Download tar and parquet (reuse ingest_s3 helpers)
-    import urllib.request
-
-    year_dir = data_dir / f"year={year}"
-    tar_path = year_dir / f"{year}.tar"
-    parquet_path = year_dir / f"{year}.parquet"
-    extract_dir = year_dir / "extracted"
-
-    # Download if not present
-    for filename, suffix in [(tar_path, f"year={year}/{year}.tar"), (parquet_path, f"year={year}/{year}.parquet")]:
-        if not filename.exists():
-            url = f"https://indian-supreme-court-judgments.s3.ap-south-1.amazonaws.com/{suffix}"
-            logger.info("Downloading %s...", url)
-            filename.parent.mkdir(parents=True, exist_ok=True)
-            await asyncio.to_thread(urllib.request.urlretrieve, url, str(filename))
+    # Download tar and parquet (reuse ingest_s3 helpers — correct S3 paths)
+    tar_path, parquet_path = download_year_data(year, data_dir)
+    if tar_path is None:
+        logger.error("Failed to download tar for year %d, skipping", year)
+        return
+    extract_dir = data_dir / f"year={year}" / "extracted"
 
     # Extract PDFs
     pdf_paths = extract_tar(tar_path, extract_dir)
@@ -653,6 +646,9 @@ async def submit_year(
             continue  # Already uploaded or further along
         new_pdfs.append(pdf_path)
     logger.info("Year %d: %d new PDFs to process (skipping %d already tracked)", year, len(new_pdfs), len(pdf_paths) - len(new_pdfs))
+
+    # Batch-fetch existing text hashes for O(1) dedup (instead of per-PDF DB query)
+    existing_hashes = await _load_existing_text_hashes()
 
     # Process in waves, round-robin across API keys
     clients = [genai.Client(api_key=key) for key in api_keys]
@@ -685,8 +681,8 @@ async def submit_year(
 
                     text_hash = _compute_text_hash(text_quality.text)
 
-                    # Dedup against PG
-                    if await _check_text_hash_exists(text_hash):
+                    # Dedup against pre-loaded hash set (O(1) lookup, no DB round-trip)
+                    if text_hash in existing_hashes:
                         logger.info("Skipping %s: duplicate text_hash", doc_key)
                         return None
 
