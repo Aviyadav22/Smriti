@@ -24,7 +24,7 @@ def _validate_uuid(value: str, name: str = "ID") -> None:
         raise HTTPException(status_code=422, detail=f"Invalid {name} format")
 
 
-@router.post("/{case_id}/audio/generate", status_code=202)
+@router.post("/{case_id}/audio/generate", status_code=202, dependencies=[Depends(rate_limit_dependency("5/minute"))])
 async def generate_audio_digest(
     case_id: str,
     language: str = Query("en", pattern="^(en|hi)$", description="Language code"),
@@ -66,7 +66,7 @@ async def generate_audio_digest(
     }
 
 
-@router.get("/{case_id}/audio/status")
+@router.get("/{case_id}/audio/status", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def get_audio_status(
     case_id: str,
     db: AsyncSession = Depends(get_db),

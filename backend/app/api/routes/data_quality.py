@@ -13,12 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.postgres import get_db
 from app.security.auth import TokenPayload
+from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import require_role
 
 router = APIRouter()
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def data_quality_dashboard(
     user: TokenPayload = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),

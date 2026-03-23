@@ -113,7 +113,7 @@ async def upload_document(
     }
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def list_documents(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -150,7 +150,7 @@ async def list_documents(
     }
 
 
-@router.get("/{document_id}")
+@router.get("/{document_id}", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def get_document(
     document_id: str,
     db: AsyncSession = Depends(get_db),
@@ -193,7 +193,7 @@ async def get_document(
     return response
 
 
-@router.delete("/{document_id}")
+@router.delete("/{document_id}", dependencies=[Depends(rate_limit_dependency("20/minute"))])
 async def delete_document(
     document_id: str,
     request: Request,
@@ -243,7 +243,7 @@ async def delete_document(
     return {"status": "deleted"}
 
 
-@router.get("/{document_id}/memo")
+@router.get("/{document_id}/memo", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def get_research_memo(
     document_id: str,
     db: AsyncSession = Depends(get_db),

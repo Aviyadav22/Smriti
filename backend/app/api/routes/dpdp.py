@@ -163,7 +163,7 @@ async def withdraw_consent(
     return {"status": "consent_withdrawn"}
 
 
-@router.get("/consent-status")
+@router.get("/consent-status", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def consent_status(
     user: TokenPayload = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

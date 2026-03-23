@@ -20,6 +20,7 @@ from sqlalchemy.orm import InstrumentedAttribute
 from app.db.postgres import get_db
 from app.models.case import Case
 from app.security.auth import TokenPayload
+from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import require_role
 
 logger = logging.getLogger(__name__)
@@ -88,7 +89,7 @@ class CorrectionRequest(BaseModel):
     )
 
 
-@router.post("/{case_id}/correct")
+@router.post("/{case_id}/correct", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def correct_metadata(
     case_id: str,
     body: CorrectionRequest,
@@ -186,7 +187,7 @@ async def correct_metadata(
     }
 
 
-@router.get("/{case_id}/history")
+@router.get("/{case_id}/history", dependencies=[Depends(rate_limit_dependency("60/minute"))])
 async def correction_history(
     case_id: str,
     user: TokenPayload = Depends(require_role("admin")),

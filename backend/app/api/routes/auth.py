@@ -290,7 +290,7 @@ async def logout(
     return {"detail": "Successfully logged out"}
 
 
-@router.delete("/me", status_code=200)
+@router.delete("/me", status_code=200, dependencies=[Depends(rate_limit_dependency("3/hour"))])
 async def delete_account(
     request: Request,
     current_user: TokenPayload = Depends(get_current_user),

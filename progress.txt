@@ -303,3 +303,27 @@
 ### Files changed:
 - None (scan-only)
 
+## Iteration 16: HARDEN-6 — Add rate limiting to all unprotected endpoints
+### What was done:
+- Scanned all 68 routes for rate_limit_dependency — found 11 endpoints missing rate limits
+- Fixed audio.py: Added 5/min to TTS generate (expensive!), 60/min to status polling
+- Fixed documents.py: Added 60/min to list, 60/min to get, 20/min to delete, 30/min to memo
+- Fixed auth.py: Added 3/hour to DELETE /me (account deletion — very destructive)
+- Fixed admin_corrections.py: Added 30/min to correct, 60/min to history
+- Fixed data_quality.py: Added 30/min to dashboard
+- Fixed dpdp.py: Added 30/min to consent-status
+- All 68 routes now have rate limiting. 2102 backend tests pass.
+
+### Files changed:
+- backend/app/api/routes/audio.py (added rate limits to generate + status)
+- backend/app/api/routes/documents.py (added rate limits to list, get, delete, memo)
+- backend/app/api/routes/auth.py (added rate limit to delete account)
+- backend/app/api/routes/admin_corrections.py (added rate limits + import)
+- backend/app/api/routes/data_quality.py (added rate limit + import)
+- backend/app/api/routes/dpdp.py (added rate limit to consent-status)
+
+### Patterns learned:
+- Rate limits should match the cost of the operation: TTS generate (5/min), account delete (3/hour), search (30/min), list/read (60/min)
+- The rate_limit_dependency uses a string format like "30/minute", "5/hour", "10/minute"
+- All routes now use dependencies=[Depends(rate_limit_dependency(...))] pattern consistently
+
