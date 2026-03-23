@@ -617,18 +617,19 @@ async def submit_year(
 ) -> None:
     """Phase 1: Extract, upload, and submit batch jobs for one year."""
     # Download tar and parquet (reuse ingest_s3 helpers — correct S3 paths)
-    tar_path, parquet_path = download_year_data(year, data_dir)
+    # download_year_data is sync — wrap in thread to avoid blocking event loop
+    tar_path, parquet_path = await asyncio.to_thread(download_year_data, year, data_dir)
     if tar_path is None:
         logger.error("Failed to download tar for year %d, skipping", year)
         return
     extract_dir = data_dir / f"year={year}" / "extracted"
 
-    # Extract PDFs
-    pdf_paths = extract_tar(tar_path, extract_dir)
+    # extract_tar is also sync
+    pdf_paths = await asyncio.to_thread(extract_tar, tar_path, extract_dir)
     logger.info("Year %d: %d PDFs extracted", year, len(pdf_paths))
 
-    # Load parquet metadata
-    metadata_map = load_parquet_metadata(parquet_path)
+    # Load parquet metadata (sync — wrap in thread)
+    metadata_map = await asyncio.to_thread(load_parquet_metadata, parquet_path)
     stem_index: dict[str, str] = {}
     for key in metadata_map:
         stem = Path(str(key)).stem
