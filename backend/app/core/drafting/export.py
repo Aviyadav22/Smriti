@@ -20,7 +20,6 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer  # type: ign
 
 from app.core.drafting.templates import DocumentTemplate
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

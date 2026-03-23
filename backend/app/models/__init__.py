@@ -29,6 +29,6 @@ __all__ = [
     "DocumentAnalysis",
     "Statute",
     "TimestampMixin",
-    "User",
     "UUIDPrimaryKeyMixin",
+    "User",
 ]

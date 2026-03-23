@@ -8,18 +8,24 @@ import logging
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from app.security.rate_limiter import rate_limit_dependency
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.dependencies import get_embedder, get_llm, get_reranker, get_translator, get_vector_store
+from app.core.dependencies import (
+    get_embedder,
+    get_llm,
+    get_reranker,
+    get_translator,
+    get_vector_store,
+)
 from app.core.legal.extractor import normalize_act_name
 from app.core.search.hybrid import SearchResponse, hybrid_search
 from app.core.search.query import SearchFilters
 from app.db.postgres import get_db
 from app.db.redis_client import get_redis
 from app.security.auth import TokenPayload
+from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user_optional
 from app.security.sanitizer import detect_prompt_injection, sanitize_search_query
 

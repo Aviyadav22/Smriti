@@ -2,8 +2,8 @@
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -109,8 +109,9 @@ async def _validate_startup() -> None:
 
     # 1. PostgreSQL connectivity
     try:
-        from app.db.postgres import engine
         from sqlalchemy import text as sa_text
+
+        from app.db.postgres import engine
 
         async with engine.connect() as conn:
             await conn.execute(sa_text("SELECT 1"))
@@ -215,7 +216,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from sentry_sdk.integrations.fastapi import FastApiIntegration
         from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
-        def _before_send(event, hint):  # noqa: ANN001, ANN202
+        def _before_send(event, hint):
             """Strip sensitive headers before sending to Sentry."""
             if "request" in event and "headers" in event["request"]:
                 headers = event["request"]["headers"]
@@ -284,7 +285,7 @@ app = FastAPI(
 # Order: TrustedHost → SecurityHeaders → CORS → RequestID
 
 # Request ID middleware for tracing (innermost — runs last)
-from app.core.middleware import RequestIDMiddleware  # noqa: E402
+from app.core.middleware import RequestIDMiddleware
 
 app.add_middleware(RequestIDMiddleware)
 
@@ -359,21 +360,21 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
-from app.api.routes.health import router as health_router  # noqa: E402
-from app.api.routes.auth import router as auth_router  # noqa: E402
-from app.api.routes.cases import router as cases_router  # noqa: E402
-from app.api.routes.ingest import router as ingest_router  # noqa: E402
-from app.api.routes.search import router as search_router  # noqa: E402
-from app.api.routes.chat import router as chat_router  # noqa: E402
-from app.api.routes.graph import router as graph_router  # noqa: E402
-from app.api.routes.judges import router as judges_router  # noqa: E402
-from app.api.routes.documents import router as documents_router  # noqa: E402
-from app.api.routes.audio import router as audio_router  # noqa: E402
+from app.api.routes.admin_corrections import router as admin_corrections_router
+from app.api.routes.admin_review import router as admin_review_router
 from app.api.routes.agents import router as agents_router
-from app.api.routes.dpdp import router as dpdp_router  # noqa: E402
-from app.api.routes.admin_review import router as admin_review_router  # noqa: E402
-from app.api.routes.admin_corrections import router as admin_corrections_router  # noqa: E402
-from app.api.routes.data_quality import router as data_quality_router  # noqa: E402
+from app.api.routes.audio import router as audio_router
+from app.api.routes.auth import router as auth_router
+from app.api.routes.cases import router as cases_router
+from app.api.routes.chat import router as chat_router
+from app.api.routes.data_quality import router as data_quality_router
+from app.api.routes.documents import router as documents_router
+from app.api.routes.dpdp import router as dpdp_router
+from app.api.routes.graph import router as graph_router
+from app.api.routes.health import router as health_router
+from app.api.routes.ingest import router as ingest_router
+from app.api.routes.judges import router as judges_router
+from app.api.routes.search import router as search_router
 
 app.include_router(health_router, tags=["health"])
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])

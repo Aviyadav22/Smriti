@@ -16,17 +16,16 @@ import json
 import logging
 import re
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
-from app.db.postgres import async_session_factory
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
-
+from app.core.ingestion.anonymizer import anonymize_text, detect_sensitive_case
 from app.core.ingestion.chunker import Chunk, chunk_judgment, detect_judgment_sections
 from app.core.ingestion.graph_retry import record_graph_failure
 from app.core.ingestion.metadata import (
@@ -38,17 +37,24 @@ from app.core.ingestion.metadata import (
     validate_parquet_data,
     validate_with_regex,
 )
-from app.core.ingestion.pdf import MAX_OCR_PAGES, extract_and_score, extract_pdf_text, extract_with_ocr
+from app.core.ingestion.pdf import (
+    MAX_OCR_PAGES,
+    extract_and_score,
+)
 from app.core.ingestion.rate_limiter import AsyncRateLimiter
 from app.core.interfaces.embedder import EmbeddingProvider
 from app.core.interfaces.graph_store import GraphStore
 from app.core.interfaces.llm import LLMProvider
 from app.core.interfaces.storage import FileStorage
 from app.core.interfaces.vector_store import VectorStore
-from app.core.ingestion.anonymizer import anonymize_text, detect_sensitive_case
-from app.core.legal.extractor import extract_acts_cited, extract_citations, normalize_acts_cited_list
+from app.core.legal.extractor import (
+    extract_acts_cited,
+    extract_citations,
+    normalize_acts_cited_list,
+)
 from app.core.legal.statute_enrichment import enrich_statute_cross_references
 from app.core.legal.treatment import detect_treatment_in_text
+from app.db.postgres import async_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -413,8 +419,8 @@ async def ingest_judgment(
         if fast_llm is not None:
             try:
                 from app.core.ingestion.section_summarizer import (
-                    generate_section_summaries,
                     build_pinecone_summary_vectors,
+                    generate_section_summaries,
                 )
                 section_dicts = [
                     {"section_type": s.type, "content": s.text}

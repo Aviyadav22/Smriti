@@ -6,14 +6,14 @@ Provides data subject rights under the Digital Personal Data Protection Act:
 - Consent withdrawal (Section 6): Withdraw data processing consent
 """
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.postgres import get_db
+from app.security.auth import TokenPayload
 from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user
-from app.security.auth import TokenPayload
 
 router = APIRouter()
 

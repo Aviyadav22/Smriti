@@ -7,21 +7,27 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from app.security.rate_limiter import rate_limit_dependency
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.chat.rag import rag_respond
-from app.core.dependencies import get_embedder, get_graph_store, get_llm, get_reranker, get_vector_store
+from app.core.dependencies import (
+    get_embedder,
+    get_graph_store,
+    get_llm,
+    get_reranker,
+    get_vector_store,
+)
 from app.db.postgres import async_session_factory, get_db
 from app.db.redis_client import get_redis
-from app.security.auth import TokenPayload
 from app.security.audit import create_audit_log
+from app.security.auth import TokenPayload
 from app.security.encryption import safe_decrypt
+from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user
-from app.security.sanitizer import sanitize_search_query, detect_prompt_injection
+from app.security.sanitizer import detect_prompt_injection, sanitize_search_query
 
 logger = logging.getLogger(__name__)
 

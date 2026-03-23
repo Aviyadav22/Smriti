@@ -5,11 +5,8 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from app.security.rate_limiter import rate_limit_dependency
 
 from app.core.dependencies import get_graph_store
-from app.security.auth import TokenPayload
-from app.security.rbac import get_current_user_optional
 from app.core.graph.traversal import (
     get_authorities,
     get_citation_chain,
@@ -17,6 +14,9 @@ from app.core.graph.traversal import (
     get_neighborhood,
 )
 from app.db.redis_client import get_redis
+from app.security.auth import TokenPayload
+from app.security.rate_limiter import rate_limit_dependency
+from app.security.rbac import get_current_user_optional
 
 logger = logging.getLogger(__name__)
 

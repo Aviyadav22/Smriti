@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from app.security.rate_limiter import rate_limit_dependency
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.postgres import get_db
 from app.security.auth import TokenPayload
+from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user
 
 router = APIRouter()

@@ -722,10 +722,7 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> tuple[CaseMeta
 
     # -- Judge array (parquet may store as comma-separated string) --
     judge_raw = parquet_meta.get("judge", "")
-    if isinstance(judge_raw, str) and judge_raw.strip():
-        result.judge = _parse_judge_names(judge_raw)
-        provenance["judge"] = "parquet"
-    elif isinstance(judge_raw, list) and judge_raw:
+    if (isinstance(judge_raw, str) and judge_raw.strip()) or (isinstance(judge_raw, list) and judge_raw):
         result.judge = _parse_judge_names(judge_raw)
         provenance["judge"] = "parquet"
     elif llm_meta.judge:

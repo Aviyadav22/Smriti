@@ -13,18 +13,19 @@ import logging
 import re
 import uuid
 from collections.abc import Callable
-from typing import Any
 from difflib import SequenceMatcher
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.confidence import calculate_confidence, calculate_confidence_detailed
-from app.core.legal.precedent_strength import classify_precedent_strength
 from app.core.agents.nodes.common import (
     MAX_RESULTS_FOR_LLM,
+    collect_grounding_citations,
     deduplicate_with_diversity,
+    detect_overruled_cases,
     enrich_results_with_ratio,
     format_community_summaries,
     format_extracted_passages,
@@ -32,9 +33,7 @@ from app.core.agents.nodes.common import (
     format_search_results_for_llm_extended,
     parallel_hybrid_search,
     safe_json_parse_list,
-    collect_grounding_citations,
     verify_memo_citations,
-    detect_overruled_cases,
 )
 from app.core.agents.state import (
     EvidenceGap,
@@ -49,7 +48,12 @@ from app.core.agents.state import (
     WorkerResult,
 )
 from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
+from app.core.legal.precedent_strength import classify_precedent_strength
 from app.core.legal.prompts import (
+    ADVERSARIAL_MINI_CRAG_SCHEMA,
+    ADVERSARIAL_MINI_CRAG_SYSTEM,
+    ADVERSARIAL_SEARCH_SCHEMA,
+    ADVERSARIAL_SEARCH_SYSTEM,
     BATCH_COT_WITH_REFLECTION_SCHEMA,
     EVALUATE_AND_EXTRACT_SCHEMA,
     LEGAL_DISCLAIMER,
@@ -61,6 +65,7 @@ from app.core.legal.prompts import (
     RESEARCH_DECOMPOSE_SCHEMA,
     RESEARCH_DECOMPOSE_SYSTEM,
     RESEARCH_DECOMPOSE_USER,
+    RESEARCH_DISTINGUISH_SYSTEM,
     RESEARCH_EVALUATE_AND_EXTRACT_SYSTEM,
     RESEARCH_FAST_PATH_SYNTHESIS_SYSTEM,
     RESEARCH_GAP_ANALYSIS_SCHEMA,
@@ -73,11 +78,6 @@ from app.core.legal.prompts import (
     RESEARCH_WORKER_COT_SYSTEM,
     SPECULATIVE_DRAFT_SYSTEM,
     SPECULATIVE_MERGE_SYSTEM,
-    ADVERSARIAL_SEARCH_SYSTEM,
-    ADVERSARIAL_SEARCH_SCHEMA,
-    ADVERSARIAL_MINI_CRAG_SYSTEM,
-    ADVERSARIAL_MINI_CRAG_SCHEMA,
-    RESEARCH_DISTINGUISH_SYSTEM,
 )
 from app.security.sanitizer import sanitize_search_query
 
@@ -1717,7 +1717,7 @@ async def speculative_synthesis_with_contradictions_node(
     temporal_warnings = state.get("temporal_warnings", [])
     if temporal_warnings:
         tw_parts = [f"- {w['warning']}" for w in temporal_warnings]
-        temporal_section = f"\n\nTEMPORAL VALIDITY WARNINGS:\n" + "\n".join(tw_parts) + "\n"
+        temporal_section = "\n\nTEMPORAL VALIDITY WARNINGS:\n" + "\n".join(tw_parts) + "\n"
 
     # [V3] Mark adversarial results separately
     adversarial_section = ""
@@ -2869,7 +2869,7 @@ async def adversarial_search_node(
     user_prompt = (
         f"## Research Question\n{query}\n\n"
         f"## Current Findings\n" + "\n".join(findings_summary[:20]) + "\n\n"
-        f"## Worker Reasoning\n" + "\n".join(reasonings[:3]) + "\n\n"
+        "## Worker Reasoning\n" + "\n".join(reasonings[:3]) + "\n\n"
         "Generate counter-arguments."
     )
 

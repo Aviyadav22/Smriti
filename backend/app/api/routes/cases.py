@@ -7,7 +7,6 @@ import uuid as _uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from app.security.rate_limiter import rate_limit_dependency
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +21,7 @@ from app.core.ingestion.chunker import detect_judgment_sections
 from app.core.legal.extractor import get_acts_cited_display
 from app.db.postgres import get_db
 from app.security.auth import TokenPayload
+from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user, get_current_user_optional
 
 router = APIRouter()

@@ -138,7 +138,7 @@ async def verify_citations_against_db(
                 continue
 
             unverified.append(citation)
-        except (sqlalchemy.exc.SQLAlchemyError, ConnectionError, TimeoutError) as e:
+        except (sqlalchemy.exc.SQLAlchemyError, ConnectionError, TimeoutError):
             logger.warning(
                 "DB lookup failed for citation '%s', treating as unverified",
                 citation,

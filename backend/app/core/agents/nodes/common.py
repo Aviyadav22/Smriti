@@ -16,19 +16,19 @@ from app.core.agents.nodes.citation_verifier import (
     extract_citations_from_text,
     verify_citations_against_db,
 )
-from app.core.legal.amendment_service import build_lookup_from_constants
-from app.core.legal.constants import IPC_TO_BNS_MAP, CRPC_TO_BNSS_MAP, EVIDENCE_TO_BSA_MAP
-from app.core.legal.extractor import extract_acts_cited, extract_citations, normalize_act_name
-from app.core.legal.prompts import (
-    ELEMENT_DECOMPOSITION_SYSTEM,
-    ELEMENT_DECOMPOSITION_SCHEMA,
-)
 from app.core.interfaces import (
     EmbeddingProvider,
     GraphStore,
     LLMProvider,
     Reranker,
     VectorStore,
+)
+from app.core.legal.amendment_service import build_lookup_from_constants
+from app.core.legal.constants import CRPC_TO_BNSS_MAP, EVIDENCE_TO_BSA_MAP, IPC_TO_BNS_MAP
+from app.core.legal.extractor import extract_acts_cited, extract_citations, normalize_act_name
+from app.core.legal.prompts import (
+    ELEMENT_DECOMPOSITION_SCHEMA,
+    ELEMENT_DECOMPOSITION_SYSTEM,
 )
 from app.core.legal.treatment import has_overruling_language
 from app.core.search.hybrid import hybrid_search
@@ -110,7 +110,8 @@ async def _fetch_statute_from_db(
     Uses a single query with OR conditions instead of N+1 individual queries.
     Also batch-fetches new-code equivalents for repealed sections.
     """
-    from sqlalchemy import select, or_, and_
+    from sqlalchemy import and_, or_, select
+
     from app.models.statute import Statute
 
     if not refs:

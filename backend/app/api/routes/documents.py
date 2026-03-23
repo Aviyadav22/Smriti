@@ -9,8 +9,6 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
-from app.security.rate_limiter import rate_limit_dependency
-
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +16,7 @@ from app.core.dependencies import get_storage
 from app.db.postgres import get_db
 from app.security.audit import create_audit_log
 from app.security.auth import TokenPayload
+from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user
 
 logger = logging.getLogger(__name__)

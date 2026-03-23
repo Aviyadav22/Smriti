@@ -1,6 +1,5 @@
 """User model for authentication and authorization."""
 
-import uuid
 from datetime import datetime
 
 import sqlalchemy as sa

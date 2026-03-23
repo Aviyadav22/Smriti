@@ -1,7 +1,6 @@
 """Case model for Indian legal cases."""
 
-import uuid
-from datetime import date, datetime
+from datetime import date
 
 import sqlalchemy as sa
 from sqlalchemy import Boolean, CheckConstraint, Float, Index, Integer, String, Text

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import text
 
@@ -26,10 +25,10 @@ async def _analyze_document_async(document_id: str) -> dict:
     from app.core.analysis.document_analyzer import DocumentAnalyzerService
     from app.core.analysis.precedent_mapper import PrecedentMapperService
     from app.core.providers.document_parsers.pdf_parser import PDFParser
-    from app.core.providers.llm.gemini import GeminiLLM
     from app.core.providers.embeddings.gemini import GeminiEmbedder
-    from app.core.providers.vector.pinecone_store import PineconeStore
+    from app.core.providers.llm.gemini import GeminiLLM
     from app.core.providers.rerankers.cohere_reranker import CohereReranker
+    from app.core.providers.vector.pinecone_store import PineconeStore
     from app.db.postgres import get_async_session
 
     async with get_async_session() as db:

@@ -4,11 +4,11 @@ Provides token creation/verification using PyJWT and password hashing
 using bcrypt.
 """
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 import logging
 import time
 import uuid
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
@@ -183,7 +183,7 @@ async def _decode_token(token: str, secret: str, expected_type: str) -> TokenPay
         )
     except jwt.ExpiredSignatureError:
         raise AuthenticationError("Token has expired")
-    except jwt.InvalidTokenError as exc:
+    except jwt.InvalidTokenError:
         raise AuthenticationError("Invalid or expired token")
 
     token_type = decoded.get("type")

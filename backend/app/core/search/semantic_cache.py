@@ -17,7 +17,6 @@ import json
 import logging
 import struct
 import time
-from typing import Any
 
 import redis.asyncio as aioredis
 
@@ -100,7 +99,7 @@ class SemanticCache:
             # KNN search — find the single nearest neighbor
             results = await self.redis.execute_command(
                 "FT.SEARCH", SEMANTIC_CACHE_INDEX,
-                f"*=>[KNN 1 @embedding $vec AS score]",
+                "*=>[KNN 1 @embedding $vec AS score]",
                 "PARAMS", "2", "vec", vec_bytes,
                 "RETURN", "3", "query_text", "memo_hash", "score",
                 "DIALECT", "2",
@@ -130,7 +129,6 @@ class SemanticCache:
             original_query = field_dict.get("query_text", "")
 
             # Fetch the actual cached memo
-            from app.core.agents.research_cache import get_cached_memo as _get_memo
             # Reconstruct the memo cache key from hash
             memo_key = f"research:memo:{memo_hash}"
             cached_data = await self.redis.get(memo_key)

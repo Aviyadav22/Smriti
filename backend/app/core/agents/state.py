@@ -4,7 +4,6 @@ from __future__ import annotations
 import operator
 from typing import Annotated, TypedDict
 
-
 # ---------------------------------------------------------------------------
 # Research Agent V2 — TypedDicts for typed sub-structures
 # ---------------------------------------------------------------------------

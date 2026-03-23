@@ -12,8 +12,8 @@ from app.core.interfaces import (
     GraphStore,
     LLMProvider,
     Reranker,
-    TTSProvider,
     TranslationProvider,
+    TTSProvider,
     VectorStore,
     WebSearchProvider,
 )
@@ -131,8 +131,9 @@ def get_checkpointer() -> object:
     database. In development/testing, uses an in-memory MemorySaver.
     """
     if settings.app_env in ("production", "staging"):
-        from app.core.agents.checkpointer import get_checkpointer_connection_string
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+        from app.core.agents.checkpointer import get_checkpointer_connection_string
 
         return AsyncPostgresSaver.from_conn_string(get_checkpointer_connection_string())
     from langgraph.checkpoint.memory import MemorySaver

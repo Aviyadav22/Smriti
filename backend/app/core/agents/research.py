@@ -27,7 +27,7 @@ import logging
 import time
 from typing import Any
 
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, Send, interrupt
 
 from app.core.agents.nodes.common import (
@@ -35,9 +35,11 @@ from app.core.agents.nodes.common import (
     statute_lookup_node,
 )
 from app.core.agents.nodes.research_nodes import (
-    classify_query_node,
+    # V3 nodes
+    adversarial_search_node,
     # V2 nodes
     batch_worker_cot_with_reflection_node,
+    classify_query_node,
     evaluate_and_extract_node,
     fast_path_search_node,
     fast_path_synthesis_node,
@@ -49,10 +51,8 @@ from app.core.agents.nodes.research_nodes import (
     pre_warm_embeddings_node,
     rewrite_query_node,
     speculative_synthesis_with_contradictions_node,
-    verify_citations_v2_node,
-    # V3 nodes
-    adversarial_search_node,
     temporal_validation_node,
+    verify_citations_v2_node,
 )
 from app.core.agents.nodes.worker_nodes import (
     case_law_worker,
@@ -65,7 +65,6 @@ from app.core.agents.nodes.worker_nodes import (
 )
 from app.core.agents.routing_utils import (
     compile_graph,
-    make_checkpoint_node,
     make_feedback_router,
 )
 from app.core.agents.state import ResearchState, WorkerResult

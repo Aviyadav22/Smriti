@@ -37,7 +37,7 @@ Smriti audit is complete. The codebase is ~95% wired. This PRD targets the remai
 
 - [x] QUALITY-1: Add type hints to every Python function in backend/app/core/ that lacks them. Focus on function signatures (params and return types). Use proper typing imports (Optional, List, Dict, Union, etc).
 - [x] QUALITY-2: Add docstrings to every public function that lacks one. Each docstring should explain: what the function does, what legal workflow it serves, and any important constraints (e.g. "chunks must be < 2000 chars" or "expects canonical court name format").
-- [ ] QUALITY-3: Run ruff or flake8 on the entire backend. Fix all linting errors. Do NOT change any logic, only fix formatting, unused imports, and style issues.
+- [x] QUALITY-3: Run ruff or flake8 on the entire backend. Fix all linting errors. Do NOT change any logic, only fix formatting, unused imports, and style issues.
 - [ ] QUALITY-4: Run eslint/tsc on the entire frontend. Fix all type errors and linting issues. Do NOT change any logic.
 - [ ] QUALITY-5: Review requirements.txt / pyproject.toml — remove any dependency that is imported nowhere in the codebase. Add any dependency that is imported but not listed.
 - [ ] QUALITY-6: Review package.json — remove unused frontend dependencies, ensure all imported packages are listed.

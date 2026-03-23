@@ -8,12 +8,12 @@ import logging
 import urllib.parse
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from app.security.rate_limiter import rate_limit_dependency
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.analytics.judge_analytics import JudgeAnalyticsService
 from app.db.postgres import get_db
 from app.db.redis_client import get_redis
+from app.security.rate_limiter import rate_limit_dependency
 
 logger = logging.getLogger(__name__)
 

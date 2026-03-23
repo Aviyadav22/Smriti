@@ -4,15 +4,13 @@ Provides a sliding-window rate limiter using Redis and a FastAPI dependency
 factory that parses human-readable rate limit strings (e.g., "100/minute").
 """
 
+import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-import logging
-
 import redis.asyncio as aioredis
-from fastapi import Depends, Request
+from fastapi import Request
 
-from app.core.config import settings
 from app.security.exceptions import RateLimitExceededError
 
 logger = logging.getLogger(__name__)
@@ -125,8 +123,8 @@ async def _get_rate_limiter() -> RateLimiter:
 # In-memory fallback for when Redis is unavailable
 # ---------------------------------------------------------------------------
 
-import time as _time
 import threading
+import time as _time
 
 _mem_lock = threading.Lock()
 _mem_buckets: dict[str, list[float]] = {}

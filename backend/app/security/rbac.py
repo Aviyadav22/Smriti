@@ -4,15 +4,15 @@ Provides FastAPI-compatible dependency functions for extracting the current
 user from a JWT token and enforcing role-based authorization.
 """
 
-from collections.abc import Callable, Coroutine
 import logging
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 
-from app.security.auth import verify_access_token, TokenPayload
-from app.security.exceptions import AuthenticationError, AuthorizationError
+from app.security.auth import TokenPayload, verify_access_token
+from app.security.exceptions import AuthorizationError
 
 logger = logging.getLogger(__name__)
 

@@ -6,14 +6,15 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from app.security.rate_limiter import rate_limit_dependency
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.postgres import get_db
+from app.security.audit import create_audit_log
 from app.security.auth import (
+    TokenPayload,
     create_access_token,
     create_refresh_token,
     hash_password,
@@ -21,9 +22,8 @@ from app.security.auth import (
     verify_password,
     verify_refresh_token,
 )
-from app.security.audit import create_audit_log
+from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user
-from app.security.auth import TokenPayload
 
 logger = logging.getLogger(__name__)
 

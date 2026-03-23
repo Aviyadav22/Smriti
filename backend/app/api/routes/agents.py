@@ -6,10 +6,9 @@ import json
 import logging
 import re
 import uuid
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from app.security.rate_limiter import rate_limit_dependency
 from fastapi.responses import StreamingResponse
 from langgraph.types import Command
 from pydantic import BaseModel, Field, field_validator
@@ -19,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.agents.case_prep import build_case_prep_graph
 from app.core.agents.drafting import build_drafting_graph
 from app.core.agents.research import build_research_graph
-from app.core.agents.research_cache import get_cached_memo, get_memo_cache_hash, set_cached_memo
+from app.core.agents.research_cache import get_cached_memo
 from app.core.agents.strategy import build_strategy_graph
 from app.core.dependencies import (
     get_checkpointer,
@@ -44,8 +43,9 @@ from app.db.redis_client import get_redis
 from app.models.agent_execution import AgentExecution, AgentStatus, AgentType
 from app.security.audit import create_audit_log
 from app.security.auth import TokenPayload
+from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user
-from app.security.sanitizer import sanitize_search_query, detect_prompt_injection
+from app.security.sanitizer import detect_prompt_injection, sanitize_search_query
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def _categorize_error(exc: Exception) -> dict:
     msg = str(exc)
     lower = msg.lower()
 
-    if "rate" in lower and "limit" in lower or "429" in lower or "quota" in lower:
+    if ("rate" in lower and "limit" in lower) or "429" in lower or "quota" in lower:
         return {
             "type": "error",
             "category": "rate_limit",
@@ -172,7 +172,7 @@ class ResumeRequest(BaseModel):
 
 
 async def _stream_agent_events(
-    graph,  # noqa: ANN001
+    graph,
     initial_input: dict,
     config: dict,
     exec_id: uuid.UUID,

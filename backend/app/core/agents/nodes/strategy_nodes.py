@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import json
 import logging
+
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.confidence import calculate_confidence
 from app.core.agents.nodes.common import (
-    UUID_RE,
     MAX_RESULTS_FOR_LLM,
     apply_language_suffix,
     collect_grounding_citations,
@@ -24,7 +24,6 @@ from app.core.agents.nodes.common import (
     get_citation_neighbors,
     get_latest_feedback,
     parallel_hybrid_search,
-    verify_case_ids,
     verify_memo_citations,
 )
 from app.core.agents.state import StrategyState

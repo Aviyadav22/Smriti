@@ -15,7 +15,6 @@ from typing import Any
 
 import networkx as nx
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.nodes.common import (
     _search_by_title,

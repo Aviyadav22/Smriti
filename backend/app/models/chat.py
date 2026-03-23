@@ -1,7 +1,6 @@
 """Chat session and message models."""
 
 import uuid
-from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text

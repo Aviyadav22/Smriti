@@ -2,7 +2,6 @@
 
 import uuid
 
-import sqlalchemy as sa
 from sqlalchemy import ForeignKey, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column

@@ -18,14 +18,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
 from app.core.interfaces.graph_store import GraphStore
-from app.core.legal.prompts import CHAT_SYSTEM_PROMPT, CHAT_USER_WITH_CONTEXT, LEGAL_DISCLAIMER
+from app.core.legal.prompts import CHAT_SYSTEM_PROMPT, CHAT_USER_WITH_CONTEXT
 from app.core.legal.treatment import (
     classify_treatment_llm,
     detect_treatment_in_text,
     has_overruling_language,
 )
 from app.core.search.hybrid import hybrid_search
-from app.core.search.query import SearchFilters
 from app.security.encryption import encrypt_field, safe_decrypt
 from app.security.sanitizer import sanitize_search_query
 
@@ -315,7 +314,7 @@ async def rag_respond(
             data={"source_count": len(sources)},
         )
 
-    except Exception as exc:
+    except Exception:
         logger.exception("RAG pipeline error for session %s", session_id)
         yield RAGEvent(
             type="error",
@@ -362,7 +361,7 @@ async def _reformulate_query(
         reformulated = reformulated.strip().strip('"').strip("'")
         if reformulated:
             return reformulated
-    except (ConnectionError, TimeoutError, ValueError) as e:
+    except (ConnectionError, TimeoutError, ValueError):
         logger.warning("Query reformulation failed, using original query")
 
     return question

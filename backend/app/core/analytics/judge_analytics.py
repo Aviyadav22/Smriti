@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import func, select, literal_column, case as sa_case
+from sqlalchemy import case as sa_case
+from sqlalchemy import func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.case import Case

@@ -22,7 +22,7 @@ router = APIRouter()
 _CHECK_TIMEOUT = 5.0
 
 
-async def _timed_check(name: str, coro) -> dict[str, object]:  # noqa: ANN001
+async def _timed_check(name: str, coro) -> dict[str, object]:
     """Run a health check with a timeout guard."""
     try:
         return await asyncio.wait_for(coro, timeout=_CHECK_TIMEOUT)
@@ -35,8 +35,9 @@ async def _check_postgres() -> dict[str, object]:
     """Check PostgreSQL connectivity and measure response time."""
     start = time.perf_counter()
     try:
-        from app.db.postgres import engine
         from sqlalchemy import text
+
+        from app.db.postgres import engine
 
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
