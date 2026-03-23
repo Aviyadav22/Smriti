@@ -613,3 +613,50 @@ All 11 Protocol interfaces have concrete provider implementations. No orphaned i
 | `TranslationProvider` | `GeminiTranslator` (translation/gemini_translator.py) | `get_translator()` |
 | `WebSearchProvider` | `TavilySearchClient` (web_search/tavily.py) | `get_web_search()` |
 | `ExternalDocProvider` | `IndianKanoonClient` (external/indiankanoon.py) | `get_ik_client()` |
+
+---
+
+## V2 REFACTOR — Final Gap Status (March 2026)
+
+### WIRED (10 gaps resolved)
+
+| Gap | What was done | Files changed |
+|-----|--------------|---------------|
+| GAP-1: `build_lookup()` | Centralized bidirectional IPC↔BNS/CrPC↔BNSS/IEA↔BSA mappings via `build_lookup_from_constants()`. Wired into search/query.py and agents/nodes/common.py. | amendment_service.py, query.py, common.py |
+| GAP-2: `classify_treatment_llm()` | Wired as Stage 3 fallback in RAG treatment pipeline (Graph → Regex → LLM). Config-gated via `enable_treatment_llm_fallback`. | treatment.py, rag.py, config.py |
+| GAP-3: `section-filter.tsx` | Deprecated in favor of inline pill tabs in search page (superior UX: always visible, toggle, ARIA). | section-filter.tsx |
+| GAP-4: Admin routes auth | Verified all 18 admin/DPDP routes have proper auth (`require_role("admin")` or `get_current_user`). | None (verification) |
+| GAP-5: Legacy V1/V2 nodes | Added deprecation docstrings to 6 legacy nodes with replacement info and restore conditions. | research_nodes.py |
+| GAP-6: Search suggest | Wired `GET /search/suggest` to frontend with debounced typeahead, dropdown, keyboard nav. | api.ts, search/page.tsx |
+| GAP-7: Document memo | Verified already wired: Celery task → research_memo → getDocument() → ResearchMemoSection. | None (verification) |
+| GAP-8: Agent management | Added `getAgentExecution()`, `cancelExecution()`, `exportResearchMemo()` to frontend. Wired cancel/export buttons to history page. | api.ts, history/page.tsx |
+| GAP-9: Case summary | Wired `GET /cases/{id}/summary` with Hindi translation toggle on Ratio Decidendi card. | api.ts, case/[id]/page.tsx |
+| GAP-10: Search suggest flow | Verified end-to-end: type → debounce → API → dropdown → select → search. | None (verification) |
+
+### DEPRECATED (kept for rollback)
+
+| Function | Replaced by | File |
+|----------|------------|------|
+| `decompose_query_node` | `element_decomposition_node` (common.py) | research_nodes.py |
+| `parallel_search_node` | 7 typed workers via `Send()` dispatch | research_nodes.py |
+| `gather_results_node` | `gather_worker_results_node` | research_nodes.py |
+| `detect_contradictions_node` | Integrated into `speculative_synthesis_with_contradictions_node` | research_nodes.py |
+| `synthesize_memo_node` | `speculative_synthesis_with_contradictions_node` | research_nodes.py |
+| `verify_citations_node` | `verify_citations_v2_node` (still used by case_prep/strategy) | research_nodes.py |
+| `SectionFilter` component | Inline pill tabs in search/page.tsx | section-filter.tsx |
+
+### HARDENING APPLIED
+
+- 68 routes with rate limiting (11 previously missing, now fixed)
+- 4 Pydantic validation gaps fixed (search filters, ingest metadata, judge compare)
+- All 56 route handlers have proper try/except with meaningful HTTP codes
+- CORS: no wildcard, production validation rejects `*`
+- Zero hardcoded secrets (all from env vars via config.py)
+- IK circuit breaker: 3 consecutive 429s → 60s cooldown, rate limiter 2 req/sec
+
+### TEST COVERAGE
+
+- Backend: 2168 tests (up from 2102 at start)
+- Frontend: 311 tests
+- New tests added: 66 (amendment, treatment, search pipeline, ingestion, statute bidirectional, citation formats)
+- Total: 2479 tests all passing

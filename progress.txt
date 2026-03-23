@@ -580,4 +580,14 @@
 ### Files changed:
 - None (trace verification only)
 
+## Iteration 35: FINAL-5 — Update AUDIT_MAP.md with final gap status
+### What was done:
+- Added "V2 REFACTOR — Final Gap Status" section to AUDIT_MAP.md with:
+  - WIRED: 10 gaps resolved with files changed and what was done
+  - DEPRECATED: 7 functions/components kept for rollback with replacements listed
+  - HARDENING: 68 routes rate-limited, 4 validation gaps fixed, CORS, secrets scan, IK circuit breaker
+  - TEST COVERAGE: 2479 total (2168 backend + 311 frontend), 66 new tests added
+
+### Files changed:
+- AUDIT_MAP.md (added final gap status section)
 
