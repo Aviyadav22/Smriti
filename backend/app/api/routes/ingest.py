@@ -7,6 +7,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy import text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
@@ -244,10 +245,20 @@ async def list_review_queue(
     }
 
 
+class MetadataUpdateRequest(BaseModel):
+    """Validated request body for case metadata corrections."""
+
+    updates: dict[str, str | int | bool | list[str] | None] = Field(
+        ...,
+        description="Map of field names to new values. Only safe metadata fields allowed.",
+        max_length=20,
+    )
+
+
 @router.patch("/cases/{case_id}/metadata", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def update_case_metadata(
     case_id: str,
-    updates: dict = Body(...),
+    body: MetadataUpdateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: TokenPayload = Depends(require_role("admin")),
 ) -> dict:
@@ -277,6 +288,8 @@ async def update_case_metadata(
         "petitioner_type": Case.petitioner_type, "respondent_type": Case.respondent_type,
         "is_pil": Case.is_pil,
     }
+
+    updates = body.updates
 
     invalid_fields = set(updates.keys()) - _allowed_columns.keys()
     if invalid_fields:

@@ -94,7 +94,7 @@ async def list_judges(
 
 @router.get("/judges/compare", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def compare_judges(
-    names: str = Query(..., description="Comma-separated judge names (2-3)"),
+    names: str = Query(..., min_length=1, max_length=500, description="Comma-separated judge names (2-3)"),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Compare 2-3 judges side-by-side."""

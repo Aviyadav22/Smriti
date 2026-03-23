@@ -234,3 +234,25 @@
 - Health check route is exemplary: individual timeouts per dependency with graceful degradation
 - All 56 route handlers follow consistent patterns — previous refactor iterations already hardened these
 
+## Iteration 12: HARDEN-2 — Audit and fix Pydantic input validation
+### What was done:
+- Audited all 31 POST/PUT/PATCH endpoints and all GET endpoints with query params
+- Fixed 4 critical gaps:
+  1. search.py: Added max_length to court(200), case_type(100), bench_type(50), judge(200), act(100) filters. Changed year_from/year_to ge=1947 (Indian law context, not 1900).
+  2. ingest.py: Created MetadataUpdateRequest Pydantic model for PATCH /cases/{case_id}/metadata (was bare dict). Typed as dict[str, str|int|bool|list[str]|None] with max_length=20.
+  3. judges.py: Added min_length=1, max_length=500 to compare names query param.
+- All other endpoints already have proper validation: Pydantic models for all POST bodies, Query() constraints on params, UUID validation, pagination limits, file size/type checks.
+- All 2102 backend tests pass.
+
+### Files changed:
+- backend/app/api/routes/search.py (added max_length to filter params, tightened year range)
+- backend/app/api/routes/ingest.py (added MetadataUpdateRequest Pydantic model)
+- backend/app/api/routes/judges.py (added length constraints to names param)
+
+### Patterns learned:
+- Most validation was already solid from previous iterations — only 4 gaps in 56 handlers
+- The codebase uses consistent patterns: EmailStr for emails, UUID try/except, Query(ge/le) for numbers, pattern regex for enums
+- Agent endpoints have the strongest validation: min_length/max_length on all text fields, prompt injection detection, sanitization
+- year_from should be 1947 not 1900 for Indian law context (Supreme Court established 1950, but older HC judgments from 1947+)
+
+
