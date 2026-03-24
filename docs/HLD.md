@@ -36,8 +36,8 @@
 
 **Responsibilities**:
 - Parse and understand user queries using LLM
-- Execute parallel retrieval across vector, FTS, and metadata channels
-- Fuse results using Reciprocal Rank Fusion
+- Execute parallel retrieval across multi-vector (6 types), FTS, and metadata channels
+- Fuse results using Reciprocal Rank Fusion with type-based boosts (proposition/ratio 1.5x)
 - Rerank final candidates for precision
 - Enrich results with full case metadata
 
@@ -186,13 +186,15 @@ class ParsedQuery(BaseModel):
 
 **Responsibilities**:
 - Download and store PDFs in GCS
-- Extract text from PDFs (with OCR fallback)
-- Parse judgment sections (Facts, Arguments, Ratio Decidendi, Order)
-- Extract structured metadata using LLM + regex validation
-- Chunk text with section awareness
-- Generate embeddings and upsert to Pinecone
+- Extract text from PDFs (with OCR fallback, per-page alpha-ratio detection)
+- Parse judgment sections (Facts, Arguments, Ratio Decidendi, Order, Dissent, Concurrence, etc.)
+- Extract structured metadata using LLM + regex validation (16-rule system prompt, 60+ fields)
+- Chunk text with section awareness (standard 2000/200, dense 1800/400) + legal signal scoring
+- Generate multi-vector embeddings (chunk, proposition, ratio, headnote, section, statute) and upsert to Pinecone
+- Extract legal propositions, statute interpretations, and fact pattern summaries (V3)
 - Insert metadata into PostgreSQL with FTS tsvector
 - Build citation graph edges in Neo4j
+- Stale vector cleanup on re-ingestion
 
 **Key Classes**:
 
@@ -333,7 +335,8 @@ class LegalChunker:
     Parameters:
         chunk_size: 2000 characters (not tokens — char-level is more predictable
                     for mixed English/Hindi legal text)
-        overlap: 200 characters (ensures no context loss at boundaries)
+        overlap: 200 standard / 400 for dense sections
+        Dense sections (ANALYSIS/RATIO/ORDER/DISSENT/CONCURRENCE): 1800 chars
     """
 
     def __init__(self, chunk_size: int = 2000, overlap: int = 200):
@@ -1052,18 +1055,27 @@ Consent recording is handled inline during user registration in `auth.py`. The `
 
 | Agent | Description | Node Graph |
 |-------|------------|------------|
-| `research` | Precedent research | query_expand -> search_precedents -> analyze_results -> (checkpoint) -> synthesize |
+| `research` (V3) | Precedent research — 5-stage sequential-reactive pipeline | **Understand**: rewrite_query ∥ classify → statute_lookup → element_decomposition → **Route** → **Investigate**: plan → checkpoint → pre_warm → dispatch workers [fan-out] → gather → batch_cot → evaluate → gap_analysis (loop ×2) → checkpoint → **Challenge**: adversarial_search → temporal_validation → **Synthesize**: speculative_synthesis → format_footnotes → verify → quality_check → checkpoint |
 | `case_prep` | Issue analysis + deep search | extract_issues -> score_issues -> (checkpoint) -> deep_search per issue -> compile |
 | `strategy` | Legal strategy + risk analysis | analyze_position -> identify_risks -> (checkpoint) -> develop_arguments -> verify_citations |
 | `drafting` | Document generation + citation verification | select_template -> generate_draft -> (checkpoint) -> verify_citations -> finalize |
+
+**V3-specific nodes**: statute_lookup, element_decomposition, adversarial_search, temporal_validation
+**7 worker nodes**: case_law, named_case, statute, ik_search, web_search, graph, graph_community
 
 **Key Structure**:
 
 ```
 core/agents/
-├── graphs/              # LangGraph StateGraph definitions per agent type
+├── research.py          # LangGraph StateGraph for research agent V3
 ├── nodes/               # Pure async node functions (partial state dicts)
-│   └── research_nodes.py
+│   ├── research_nodes.py
+│   ├── worker_nodes.py
+│   ├── common.py
+│   ├── case_prep_nodes.py
+│   ├── strategy_nodes.py
+│   ├── drafting_nodes.py
+│   └── citation_verifier.py
 └── ...
 ```
 
@@ -1126,7 +1138,7 @@ Agent execution streams events using the same `data: JSON\n\n` format as chat:
 
 Agent executions are persisted to the `agent_executions` PostgreSQL table for history, auditing, and resume capability. Each execution records the agent type, input parameters, output, status, and timing.
 
-**Dependencies**: LangGraph, Gemini 2.5 Pro (LLM), HybridSearchOrchestrator, GraphStore (Neo4j), PostgreSQL (execution tracking), Tenacity (retry)
+**Dependencies**: LangGraph, Gemini 3.1 Pro Preview (LLM), HybridSearchOrchestrator, GraphStore (Neo4j), PostgreSQL (execution tracking), Tenacity (retry)
 
 ---
 
@@ -1549,7 +1561,7 @@ See [Admin Module](#11-admin-module-apiroutesadmin_correctionspy-admin_reviewpy-
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│                Next.js 16 Frontend                          │
+│                Next.js 15 Frontend                          │
 │  Separate Cloud Run container                               │
 │  SSR + client-side hydration                                │
 └─────────────────────────────────────────────────────────────┘
@@ -1706,7 +1718,7 @@ GET /api/v1/cases?cursor=eyJpZCI6MTIzfQ&limit=20
 │         │                                                               │
 │         ▼                                                               │
 │  ┌──────────────────────────────────────────────────────┐               │
-│  │  QueryUnderstanding (Gemini 2.5 Pro)                  │               │
+│  │  QueryUnderstanding (Gemini 3.1 Pro Preview)                  │               │
 │  │                                                        │               │
 │  │  Structured output:                                    │               │
 │  │  {                                                     │               │
@@ -1810,7 +1822,7 @@ GET /api/v1/cases?cursor=eyJpZCI6MTIzfQ&limit=20
 | Stage | Target | Notes |
 |-------|--------|-------|
 | Query Understanding | 200-400ms | Gemini structured output, cached for repeated queries |
-| Embedding | 50-100ms | Single vector, Gemini gemini-embedding-001 |
+| Embedding | 50-100ms | Multi-vector (6 types), Gemini gemini-embedding-2-preview, task-type-aware |
 | Vector Search (Pinecone) | 50-100ms | Serverless, ~20ms p50 |
 | FTS Search (PostgreSQL) | 20-50ms | GIN index on tsvector column |
 | Metadata Filter (PostgreSQL) | 10-20ms | B-tree indexes on court, year, case_type |
@@ -1829,7 +1841,7 @@ GET /api/v1/cases?cursor=eyJpZCI6MTIzfQ&limit=20
 |----------|-------|-----------|
 | Index name | `smriti-legal` | Single index for all legal documents |
 | Namespace | Not used (single namespace) | Simplicity; filtering via metadata sufficient |
-| Dimensions | 1536 | Gemini gemini-embedding-001 output dimensionality |
+| Dimensions | 1536 | Gemini gemini-embedding-2-preview output dimensionality |
 | Metric | Cosine | Standard for text similarity; normalized embeddings |
 | Pod type | Serverless (starter) | Cost-effective for MVP; scales automatically |
 

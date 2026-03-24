@@ -74,9 +74,9 @@ Four autonomous agents with human-in-the-loop checkpoints:
 | **Primary DB** | PostgreSQL 16 on Supabase (metadata, FTS via tsvector) |
 | **Vector DB** | Pinecone (1536-dim, Gemini embeddings) |
 | **Graph DB** | Neo4j AuraDB (citation graph) |
-| **LLM (reasoning)** | Gemini 2.5 Pro |
-| **LLM (fast)** | Gemini 2.5 Flash (ingestion, classification) |
-| **Embeddings** | Gemini gemini-embedding-001 (1536-dim, Matryoshka) |
+| **LLM (reasoning)** | Gemini 3.1 Pro Preview |
+| **LLM (fast)** | Gemini 3 Flash Preview (ingestion, classification) |
+| **Embeddings** | Gemini gemini-embedding-2-preview (1536-dim, Matryoshka) |
 | **Reranker** | Cohere rerank-v4.0-pro |
 | **Agent Framework** | LangGraph (StateGraph, HITL checkpoints) |
 | **TTS** | Sarvam AI / Google Cloud TTS fallback |

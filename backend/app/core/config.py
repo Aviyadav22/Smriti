@@ -46,9 +46,9 @@ class Settings(BaseSettings):
     # Gemini
     llm_provider: str = "gemini"
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-pro"
-    gemini_flash_model: str = "gemini-2.5-flash"
-    gemini_embedding_model: str = "gemini-embedding-001"
+    gemini_model: str = "gemini-3.1-pro-preview"
+    gemini_flash_model: str = "gemini-3-flash-preview"
+    gemini_embedding_model: str = "gemini-embedding-2-preview"
     gemini_embedding_dimension: int = 1536
     gemini_context_cache_enabled: bool = True  # [S10]
     gemini_context_cache_ttl: int = 3600  # [S10] seconds

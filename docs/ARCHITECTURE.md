@@ -34,7 +34,7 @@
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                              CLIENTS                                        │
-│         Browser (Next.js 16 SPA)  /  Mobile (future)  /  API consumers      │
+│         Browser (Next.js 15 SPA)  /  Mobile (future)  /  API consumers      │
 └──────────────────────────┬───────────────────────────────────────────────────┘
                            │ HTTPS (TLS 1.3)
                            ▼
@@ -42,7 +42,7 @@
 │                      GOOGLE CLOUD LOAD BALANCER                             │
 │                   (SSL termination, path-based routing)                      │
 │                                                                              │
-│        /*  ──────────► Cloud Run (Next.js 16 Frontend)                      │
+│        /*  ──────────► Cloud Run (Next.js 15 Frontend)                      │
 │        /api/v1/*  ───► Cloud Run (FastAPI Backend)                          │
 └──────────────────────────┬───────────────────────────────────────────────────┘
                            │
@@ -131,21 +131,24 @@
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                   CHUNKING (Section-Aware)                               │
 │                                                                          │
-│  Each section → split into chunks of ~2000 chars with 200-char overlap   │
-│  Each chunk carries: doc_id, section_type, chunk_index, metadata         │
+│  Standard: ~2000 chars / 200-char overlap                                │
+│  Dense sections (ANALYSIS/RATIO/ORDER/DISSENT): ~1800 chars / 400 overlap│
+│  Each chunk carries: doc_id, section_type, chunk_index, legal_signal     │
 └────────────────────────────────────┬─────────────────────────────────────┘
                                      │
                       ┌──────────────┼──────────────┐
                       ▼              ▼              ▼
              ┌──────────────┐ ┌───────────┐ ┌──────────────┐
+             ┌──────────────┐ ┌───────────┐ ┌──────────────┐
              │   Embedding  │ │ PostgreSQL│ │    Neo4j     │
              │   (Gemini    │ │  INSERT   │ │  Citation    │
-             │  embedding-  │ │ metadata  │ │  Graph       │
-             │    001)      │ │ + FTS     │ │  Edges       │
+             │  embedding-2 │ │ metadata  │ │  Graph       │
+             │  -preview)   │ │ + FTS     │ │  Edges       │
              │      │       │ │ tsvector  │ │              │
              │      ▼       │ │           │ │ (CITES)      │
              │  Pinecone    │ │           │ │ (CITED_BY)   │
-             │  upsert      │ │           │ │ (OVERRULES)  │
+             │  multi-vector│ │           │ │ (OVERRULES)  │
+             │  upsert      │ │           │ │              │
              └──────────────┘ └───────────┘ └──────────────┘
 ```
 
@@ -157,8 +160,8 @@
 | 2 | PDFExtractor | Extract text via pdfplumber; OCR fallback via Tesseract | Raw text string |
 | 3 | SectionDetector | Identify judgment sections using heading patterns | List of `(section_type, text)` |
 | 4 | MetadataExtractor | Gemini structured output + regex validation | `CaseMetadata` object |
-| 5 | LegalChunker | Section-aware chunking (2000 chars, 200 overlap) | List of `Chunk` objects |
-| 6 | EmbeddingProvider | Gemini gemini-embedding-001 (1536-dim) | List of float vectors |
+| 5 | LegalChunker | Section-aware chunking (2000/200 standard, 1800/400 dense) + legal signal scoring | List of `Chunk` objects |
+| 6 | EmbeddingProvider | Gemini gemini-embedding-2-preview (1536-dim) | List of float vectors |
 | 7 | VectorStore | Pinecone upsert with metadata filters | Indexed vectors |
 | 8 | PostgreSQL | Insert case metadata + tsvector column | Searchable row |
 | 9 | GraphStore | Create case node + citation edges in Neo4j | Graph updated |
@@ -188,12 +191,14 @@
               ▼              ▼              ▼
      ┌──────────────┐ ┌───────────┐ ┌──────────────┐
      │   Pinecone   │ │ PostgreSQL│ │  PostgreSQL   │
-     │   Vector     │ │   FTS     │ │  Metadata     │
+     │ Multi-Vector │ │   FTS     │ │  Metadata     │
      │   Search     │ │  Search   │ │  Filter       │
      │              │ │           │ │               │
      │embed_text(q) │ │ ts_rank_  │ │ WHERE court=  │
      │ → top 20     │ │ cd(query) │ │  AND year>=   │
      │ by cosine    │ │ → top 20  │ │  AND type=    │
+     │ (prop/ratio  │ │           │ │               │
+     │  1.5x boost) │ │           │ │               │
      └──────┬───────┘ └─────┬─────┘ └──────┬───────┘
             │               │              │
             └───────────────┼──────────────┘
@@ -579,7 +584,7 @@ CONTEXT:
 
 ```python
 response = await gemini.generate_stream(
-    model="gemini-2.5-pro",
+    model="gemini-3.1-pro-preview",
     messages=[system_prompt, context_block, conversation_history, user_message],
     temperature=0.2,      # Low for factual accuracy
     max_tokens=4096,
@@ -1011,7 +1016,7 @@ Internet ──► HTTPS ────►│  │  Cloud Load Balancer          �
                         │  │  (Global, SSL termination)    │   │
                         │  │                                │   │
                         │  │  /*       ──► Cloud Run        │   │
-                        │  │               (Next.js 16)     │   │
+                        │  │               (Next.js 15)     │   │
                         │  │               Frontend         │   │
                         │  │               - SSR / SSG      │   │
                         │  │               - 0→10 instances │   │
@@ -1045,7 +1050,7 @@ Internet ──► HTTPS ────►│  │  Cloud Load Balancer          �
                         │  ┌──────────────────────────────┐   │
                         │  │  Vertex AI                    │   │
                         │  │  - Gemini 2.5 Pro (LLM)      │   │
-                        │  │  - gemini-embedding-001 (embed)│   │
+                        │  │  - gemini-embedding-2-preview (embed)│   │
                         │  └──────────────────────────────┘   │
                         │                                     │
                         └─────────────────────────────────────┘
@@ -1195,18 +1200,19 @@ Smriti includes 4 AI agents built with LangGraph for complex legal research work
 
 | Agent | Purpose | Nodes | Checkpoints | Key Workflow |
 |-------|---------|-------|-------------|-------------|
-| **Research** | Precedent research | 10 | 3 | classify -> decompose -> **checkpoint_plan** -> search -> gather -> contradictions -> **checkpoint_findings** -> synthesize -> verify -> **checkpoint_memo** |
+| **Research V3** | Precedent research (5-stage sequential-reactive) | 20+ | 3 | rewrite_query ∥ classify → statute_lookup → element_decomposition → **checkpoint_plan** → pre_warm → dispatch workers [fan-out] → gather → batch_cot → evaluate → gap_analysis (loop ×2) → **checkpoint_findings** → adversarial_search → temporal_validation → speculative_synthesis → format_footnotes → verify → quality_check → **checkpoint_memo** |
 | **Case Prep** | Issue analysis + deep search | 9 | 3 | load_analysis -> prioritize -> **checkpoint_issues** -> deep_search -> argument_order -> **checkpoint_strategy** -> strategy_memo -> verify -> **checkpoint_memo** |
 | **Strategy** | Legal strategy + risk analysis | 11 | 3 | analyze_facts -> fetch_judge -> **checkpoint_analysis** -> search_precedents -> assess_strength -> generate_arguments -> **checkpoint_arguments** -> counter_and_judge -> synthesize_strategy -> verify -> **checkpoint_memo** |
 | **Drafting** | Document generation + citation verification | 10 | 3 | resolve_template -> gather_provisions -> verify_precedents -> **checkpoint_sources** -> draft_sections -> assemble -> **checkpoint_draft** -> [revise loop] -> verify_final -> **checkpoint_final** |
 
-**Total: 40 nodes across 4 agents, 12 HITL checkpoints.**
+**4 V3-specific nodes:** statute_lookup, element_decomposition, adversarial_search, temporal_validation
+**7 worker nodes:** case_law, named_case, statute, ik_search, web_search, graph, graph_community
 
 ### Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│                      FRONTEND (Next.js 16)                          │
+│                      FRONTEND (Next.js 15)                          │
 │                                                                      │
 │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────┐  │
 │  │  /agents/    │ │  /agents/    │ │  /agents/    │ │ /agents/   │  │
@@ -1275,7 +1281,7 @@ Smriti includes 4 AI agents built with LangGraph for complex legal research work
 
 ## Complete API Endpoint Inventory
 
-62 endpoints across 15 route files, mounted via `app/main.py`.
+~65 endpoints across 15 route files, mounted via `app/main.py`.
 
 ### Auth (`/api/v1/auth` — `auth.py`)
 

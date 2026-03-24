@@ -45,7 +45,7 @@ CORS_ORIGINS=http://localhost:3000     # Comma-separated allowed origins
 # ---------- Security ----------
 JWT_SECRET_KEY=                        # openssl rand -hex 32
 JWT_REFRESH_SECRET_KEY=                # openssl rand -hex 32 (different from above)
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=15
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60
 JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
 BCRYPT_COST_FACTOR=12
 ENCRYPTION_KEY=                        # openssl rand -hex 32 (AES-256 key for PII encryption)
@@ -63,9 +63,9 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/2
 # ---------- Gemini (LLM + Embeddings) ----------
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=                        # From https://aistudio.google.com/apikey
-GEMINI_MODEL=gemini-2.5-pro           # Model for chat, analysis, reasoning
-GEMINI_FLASH_MODEL=gemini-2.5-flash   # Fast/cheap model for ingestion, classification
-GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+GEMINI_MODEL=gemini-3.1-pro-preview   # Model for chat, analysis, reasoning
+GEMINI_FLASH_MODEL=gemini-3-flash-preview  # Fast/cheap model for ingestion, classification
+GEMINI_EMBEDDING_MODEL=gemini-embedding-2-preview
 GEMINI_EMBEDDING_DIMENSION=1536
 
 # ---------- Pinecone (Vector DB) ----------
@@ -100,6 +100,14 @@ GCS_BUCKET_NAME=smriti-documents       # Only needed if STORAGE_PROVIDER=gcs
 
 # ---------- Ingestion ----------
 INGESTION_TRACKER_DB=./data/ingestion_tracker.db  # SQLite for progress tracking
+
+# ---------- Indian Kanoon API ----------
+IK_API_TOKEN=                          # From IndianKanoon API dashboard
+IK_RATE_LIMIT=2.0                      # Requests per second
+
+# ---------- Tavily Web Search ----------
+TAVILY_API_KEY=                        # From https://tavily.com/ — used by web_search worker in Research Agent V3
+WEB_SEARCH_TIMEOUT=10                  # Seconds
 
 # ---------- Monitoring ----------
 LOG_LEVEL=INFO                         # DEBUG | INFO | WARNING | ERROR
@@ -165,7 +173,7 @@ source .venv/bin/activate     # Linux/Mac
 # Install dependencies
 pip install -e ".[dev]"
 
-# Run database migrations (001 through 014)
+# Run database migrations (001 through 035)
 alembic upgrade head
 
 # Seed court master data

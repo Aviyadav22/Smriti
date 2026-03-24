@@ -388,7 +388,7 @@ class TestS10ContextCache:
         GeminiLLM._synthesis_cache_name = None
 
         llm = MagicMock(spec=GeminiLLM)
-        llm._model = "gemini-2.5-pro"
+        llm._model = "gemini-3.1-pro-preview"
         llm._client = MagicMock()
 
         mock_cache = MagicMock()
@@ -412,7 +412,7 @@ class TestS10ContextCache:
         GeminiLLM._synthesis_cache_name = "caches/existing-cache"
 
         llm = MagicMock(spec=GeminiLLM)
-        llm._model = "gemini-2.5-pro"
+        llm._model = "gemini-3.1-pro-preview"
         llm._client = MagicMock()
         llm._client.aio.caches.create = AsyncMock()
 
@@ -452,7 +452,7 @@ class TestS10ContextCache:
         GeminiLLM._synthesis_cache_name = None
 
         llm = MagicMock(spec=GeminiLLM)
-        llm._model = "gemini-2.5-pro"
+        llm._model = "gemini-3.1-pro-preview"
         llm._client = MagicMock()
         llm._client.aio.caches.create = AsyncMock(side_effect=RuntimeError("API error"))
 

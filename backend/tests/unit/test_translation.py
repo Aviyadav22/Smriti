@@ -14,7 +14,7 @@ def translator():
     with patch.dict("sys.modules", {"google": MagicMock(), "google.genai": mock_genai_module}), \
          patch("app.core.config.settings") as mock_settings:
         mock_settings.gemini_api_key = "test-key"
-        mock_settings.gemini_flash_model = "gemini-2.0-flash"
+        mock_settings.gemini_flash_model = "gemini-3-flash-preview"
 
         # Re-import to pick up mocked settings and genai
         import importlib

@@ -173,7 +173,7 @@
 | **Cases table columns** | 52 (including case_number, is_reportable, headnotes, outcome_summary, ingestion_status) |
 | **Migrations** | 14 (001_initial through 014_fix_triggers_and_constraints) |
 | **PostgreSQL** | Supabase (PostgreSQL 16), FTS via weighted tsvector with GIN index |
-| **Pinecone** | 1536-dim vectors (gemini-embedding-001) |
+| **Pinecone** | 1536-dim vectors (gemini-embedding-2-preview) |
 | **Neo4j** | Citation graph with CITES, OVERRULES, AFFIRMS, DISTINGUISHES edges |
 
 ---

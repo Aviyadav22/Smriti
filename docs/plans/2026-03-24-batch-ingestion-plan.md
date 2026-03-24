@@ -741,7 +741,7 @@ async def submit_year(
             # Submit batch job
             batch_job = await asyncio.to_thread(
                 client.batches.create,
-                model="models/gemini-2.5-flash",
+                model="models/gemini-3-flash-preview",
                 src=jsonl_file.name,
                 config=genai_types.CreateBatchJobConfig(
                     display_name=f"smriti-{year}-w{wave_start // wave_size}-b{batch_start // BATCH_TOKEN_LIMIT}",

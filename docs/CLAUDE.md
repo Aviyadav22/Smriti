@@ -16,13 +16,13 @@ Smriti is a purpose-built Indian legal research platform — think Harvey AI but
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| Frontend | Next.js 16 (App Router) + TypeScript + Tailwind CSS + shadcn/ui | SSR, type-safe, fast DX |
+| Frontend | Next.js 15 (App Router) + TypeScript + Tailwind CSS + shadcn/ui | SSR, type-safe, fast DX |
 | Backend | FastAPI (Python 3.12) | AI/ML ecosystem, async, Pydantic validation |
 | Primary DB | PostgreSQL 16 | Metadata, FTS (tsvector + ts_rank_cd), users, audit |
 | Vector DB | Pinecone | Managed, metadata filtering, hybrid search |
 | Graph DB | Neo4j AuraDB | Citation graph, precedent tracking |
-| LLM | Gemini 2.5 Pro | 1M context, best reasoning, GCP native |
-| Embeddings | Gemini gemini-embedding-001 | 1536-dim (Matryoshka), free tier on GCP |
+| LLM | Gemini 3.1 Pro Preview | 1M context, best reasoning, GCP native |
+| Embeddings | Gemini gemini-embedding-2-preview | 1536-dim, task-type-aware (RETRIEVAL_DOCUMENT/RETRIEVAL_QUERY/SEMANTIC_SIMILARITY), 8K context |
 | Reranker | Cohere rerank-v4.0-pro | Native reranker API, free tier |
 | Agent Framework | LangGraph (StateGraph) | Graph-based agent orchestration, HITL checkpoints |
 | Cache | Redis (Upstash) | Session, query caching, rate limiting |
@@ -38,13 +38,13 @@ Smriti is a purpose-built Indian legal research platform — think Harvey AI but
 ```
 smriti/
 ├── docs/                          # Project documentation
-├── frontend/                      # Next.js 16 App Router
+├── frontend/                      # Next.js 15 App Router
 │   ├── app/                       # Pages: search, case/[id], chat, graph, agents/*, register, login, documents
 │   ├── components/                # UI: header, footer, audio-player, file-upload, error-boundary, agent-checkpoint-prompt, ui/
 │   └── lib/                       # API client, types, utils
 ├── backend/                       # FastAPI Python
 │   ├── app/
-│   │   ├── api/routes/            # 15 route modules, 62 endpoints
+│   │   ├── api/routes/            # 15 route modules, ~65 endpoints
 │   │   │   ├── auth.py            # Register, login, refresh, logout, delete account
 │   │   │   ├── search.py          # Hybrid search, suggest, facets
 │   │   │   ├── cases.py           # Case detail, summary, PDF, citations, cited-by, similar
@@ -61,8 +61,8 @@ smriti/
 │   │   │   ├── admin_corrections.py # Metadata corrections with audit trail (admin)
 │   │   │   └── admin_review.py    # Review queue, approve/reject cases (admin)
 │   │   ├── core/
-│   │   │   ├── interfaces/        # 9 Protocol contracts (LLM, embedder, vector, graph, reranker, storage, translator, TTS, doc parser)
-│   │   │   ├── providers/         # 11 implementations (Gemini, Pinecone, Neo4j, Cohere, GCS, Sarvam, etc.)
+│   │   │   ├── interfaces/        # 11 Protocol contracts (LLM, embedder, vector, graph, reranker, storage, translator, TTS, doc parser, web search, external doc)
+│   │   │   ├── providers/         # 15 implementations (Gemini, Pinecone, PgVector, Neo4j, PgGraph, Cohere, GCS, Local, Sarvam, MockTTS, Tavily, IndianKanoon, etc.)
 │   │   │   ├── search/            # Hybrid search (RRF), fulltext (FTS), query understanding
 │   │   │   ├── ingestion/         # PDF extraction, chunking, metadata, citation extraction, pipeline
 │   │   │   ├── legal/             # Courts, citations, acts, prompts, precedent strength, treatment
@@ -76,11 +76,11 @@ smriti/
 │   │   │   └── middleware.py      # RequestID middleware, request logging
 │   │   ├── tasks/                 # Celery: document analysis (6-step), audio generation
 │   │   ├── security/              # Auth (JWT), RBAC, rate limiter, encryption, audit, consent, sanitizer
-│   │   ├── models/                # 12 SQLAlchemy models (User, Case, ChatSession, etc.)
+│   │   ├── models/                # 14 SQLAlchemy models (User, Case, Statute, ChatSession, CaseStatuteInterpretation, etc.)
 │   │   └── db/                    # Database connections (PostgreSQL, Redis)
-│   ├── scripts/                   # ingest_s3, populate_neo4j, daily_ingest, verify_ingestion, benchmark
-│   ├── migrations/                # 18 Alembic migrations (001-018)
-│   └── tests/                     # 1,398 unit + 46 integration + 13 quality tests
+│   ├── scripts/                   # ingest_s3 (queue-based workers, circuit breaker), populate_neo4j, ingest_statutes, backfill_contextual_embeddings, build_citation_communities, benchmark
+│   ├── migrations/                # 35 Alembic migrations (001-035)
+│   └── tests/                     # ~2185 unit + integration + quality tests
 ├── docker-compose.yml             # Local dev services
 └── .env.example                   # Environment template
 ```
@@ -137,17 +137,15 @@ To add a new LLM provider:
 ---
 
 ## What NOT to Do (Anti-Patterns)
-
-1. **Never copy code from the old AnythingLLM codebase**. Reference it for domain patterns (citation regex, court names) but rewrite everything fresh in Python.
-2. **Never call external services directly from routes**. Always go through an interface.
-3. **Never store secrets in code or config files**. Use `.env` locally, GCP Secret Manager in production.
-4. **Never construct SQL strings manually**. Use SQLAlchemy ORM or parameterized queries.
-5. **Never log PII** (emails, names, passwords). Use structured logging with PII redaction.
-6. **Never skip input validation**. Every route handler receives a Pydantic model, never raw `dict`.
-7. **Never use `any` in TypeScript** or bare `Exception` in Python.
-8. **Never add features outside current phase scope**. Check PHASE_PLAN.md.
-9. **Never embed LLM prompts inline in code**. All prompts live in `PROMPT_LIBRARY.md` and `core/legal/prompts.py`.
-10. **Never commit `.env` files**. Only `.env.example` with placeholder values.
+1. **Never call external services directly from routes**. Always go through an interface.
+2. **Never store secrets in code or config files**. Use `.env` locally, GCP Secret Manager in production.
+3. **Never construct SQL strings manually**. Use SQLAlchemy ORM or parameterized queries.
+4. **Never log PII** (emails, names, passwords). Use structured logging with PII redaction.
+5. **Never skip input validation**. Every route handler receives a Pydantic model, never raw `dict`.
+6. **Never use `any` in TypeScript** or bare `Exception` in Python.
+7. **Never add features outside current phase scope**. Check PHASE_PLAN.md.
+8. **Never embed LLM prompts inline in code**. All prompts live in `PROMPT_LIBRARY.md` and `core/legal/prompts.py`.
+9. **Never commit `.env` files**. Only `.env.example` with placeholder values.
 
 ---
 
@@ -204,11 +202,20 @@ celery -A app.worker:celery_app worker --loglevel=info
 
 ## Current Phase
 
-**Phases 1-8 COMPLETE. Phase 9: Scalability & Scale (starting)**
+**Phases 1-8 COMPLETE + Research Agent V2/V3 + 10x Audit Fix + Embedding Upgrade + Ingestion V3 (in progress)**
 
-All core features built and tested: hybrid search (FTS + vector + RRF + Cohere reranking), citation graph (Neo4j), RAG chat with SSE streaming and citation verification, 4 LangGraph agents (Research, Case Prep, Strategy, Drafting) with HITL checkpoints, judge analytics, audio digests (Sarvam AI), document upload + analysis, DPDP Act compliance, admin tools (data quality dashboard, review queue, corrections). 1,398 backend unit tests, 46 integration tests, 298 frontend tests. 796 cases loaded, preparing for 50K ingestion. Hindi support partial (next-intl setup, language toggle, 100+ term glossary). Database at migration 014 with 52 columns, 32 indexes, FTS triggers.
+All core features built and tested: hybrid search (FTS + multi-vector + RRF + Cohere reranking), citation graph (Neo4j), RAG chat with SSE streaming and citation verification, 4 LangGraph agents (Research V3, Case Prep, Strategy, Drafting) with HITL checkpoints, judge analytics, audio digests (Sarvam AI), document upload + analysis, DPDP Act compliance, admin tools. ~2185 backend tests, ~311 frontend tests. 2,932 statute sections ingested from 8 acts. Database at migration 035 with 60+ columns. Hindi support partial (next-intl setup, language toggle, 100+ term glossary).
 
-**Production readiness audit completed** (March 2026): 20-agent comprehensive audit identified and fixed critical issues across security headers, fail-closed auth, ILIKE escaping, SSE session isolation, ingestion pipeline hardening, error sanitization, PII redaction, and CSP. See `PHASE_9_SCALABILITY_AUDIT.md` for remaining scale items.
+**Key completed milestones (March 2026):**
+- **Research Agent V3**: 5-stage sequential-reactive pipeline (Understand → Route → Investigate → Challenge → Synthesize), 4 new nodes (statute_lookup, element_decomposition, adversarial_search, temporal_validation)
+- **10x Audit Fix**: All CRITICAL + HIGH findings fixed across research agent quality
+- **Gemini embedding-2-preview upgrade**: Task-type-aware embeddings (RETRIEVAL_DOCUMENT/RETRIEVAL_QUERY/SEMANTIC_SIMILARITY), 8K context
+- **Multi-vector Pinecone**: 6 vector types (chunk, proposition, ratio, headnote, section, statute) with 1.5x RRF boost for proposition/ratio
+- **Ingestion V3**: Proposition extraction, statute interpretation, fact pattern summaries, legal signal scoring
+- **Frontend hardening**: JWT proactive refresh, session expiry event bus, stream disconnect detection, account lockout (10 attempts / 5 min)
+- **Production readiness audit**: Security headers, fail-closed auth, ILIKE escaping, SSE session isolation, error sanitization, PII redaction, CSP
+
+**Chunking**: Standard 2000-char / 200-char overlap; dense sections (ANALYSIS, RATIO, ORDER, DISSENT, CONCURRENCE) use 1800-char / 400-char overlap with legal signal scoring.
 
 ---
 

@@ -23,7 +23,7 @@ class TestGenerateStructuredFromPdf:
 
         llm = GeminiLLM.__new__(GeminiLLM)
         llm._client = mock_client
-        llm._model = "gemini-2.5-pro"
+        llm._model = "gemini-3.1-pro-preview"
 
         with patch("pathlib.Path.read_bytes", return_value=b"%PDF-1.4 fake pdf content"):
             result = await llm.generate_structured_from_pdf(
@@ -52,7 +52,7 @@ class TestGenerateStructuredFromPdf:
 
         llm = GeminiLLM.__new__(GeminiLLM)
         llm._client = mock_client
-        llm._model = "gemini-2.5-pro"
+        llm._model = "gemini-3.1-pro-preview"
 
         with patch("pathlib.Path.read_bytes", return_value=b"%PDF-1.4"):
             result = await llm.generate_structured_from_pdf(

@@ -53,7 +53,7 @@ python -m scripts.batch_ingest submit \
 3. Build batch request JSONL:
    - Key: `doc_key` (normalized to forward slashes everywhere)
    - Request: `{contents: [{parts: [{file_data: {file_uri: "files/..."}}, {text: METADATA_EXTRACTION_USER}]}], systemInstruction: METADATA_EXTRACTION_SYSTEM, generationConfig: {responseMimeType: "application/json", responseSchema: METADATA_OUTPUT_SCHEMA, temperature: 0.1}}`
-4. Submit via `client.batches.create(model="gemini-2.5-flash", src=jsonl_file)`
+4. Submit via `client.batches.create(model="gemini-3-flash-preview", src=jsonl_file)`
 5. Store batch_job_name in `batch_jobs` table
 6. Round-robin across API key projects
 

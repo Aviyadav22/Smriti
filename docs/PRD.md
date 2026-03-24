@@ -200,10 +200,10 @@ A search engine that combines semantic understanding (vector similarity), keywor
 | HS-11 | User can sort results by: relevance (default), date (newest/oldest), citation count (most cited) | P1 |
 | HS-12 | Empty state: when no results found, system suggests alternative queries or broader filters | P2 |
 
-**Implementation Status:** Built (Phases 1-3). Hybrid search combines Pinecone vector search (Gemini gemini-embedding-001, 1536-dim) with PostgreSQL full-text search (tsvector + ts_rank_cd), merged via RRF (k=60), reranked by Cohere rerank-v4.0-pro. Faceted filtering, suggest/autocomplete, and exact citation lookup all implemented. Query understanding via Gemini 2.5 Pro.
+**Implementation Status:** Built (Phases 1-3, upgraded Mar 2026). Hybrid search combines multi-vector Pinecone search (6 vector types: chunk, proposition, ratio, headnote, section, statute — Gemini gemini-embedding-2-preview, 1536-dim, task-type-aware) with PostgreSQL full-text search (tsvector + ts_rank_cd), merged via RRF (k=60) with 1.5x boost for proposition/ratio vectors, reranked by Cohere rerank-v4.0-pro. Faceted filtering, suggest/autocomplete, and exact citation lookup all implemented. Query understanding via Gemini 3.1 Pro Preview. Statute lookup available for direct statute text retrieval.
 
 **Technical Notes:**
-- Vector search via Pinecone (Gemini gemini-embedding-001 embeddings, 1536-dim)
+- Vector search via Pinecone (Gemini gemini-embedding-2-preview embeddings, 1536-dim)
 - Keyword search via PostgreSQL tsvector + websearch_to_tsquery (FTS)
 - Hybrid ranking: Reciprocal Rank Fusion (k=60) combining vector and FTS scores, followed by Cohere reranking
 - Metadata stored in structured fields for fast filtering (court, year, case_type, bench_type, jurisdiction, statutes_cited)
@@ -306,14 +306,14 @@ A conversational AI assistant that answers legal research questions grounded in 
 | RC-14 | Rate limiting: reasonable usage limits per user tier to manage LLM costs | P0 |
 
 **Technical Notes:**
-**Implementation Status:** Built (Phase 4). SSE streaming with Gemini 2.5 Pro, citation verification (3-layer: UUID, human-readable, grounding check), session management with chat history persistence. Renders via react-markdown + remark-gfm.
+**Implementation Status:** Built (Phase 4). SSE streaming with Gemini 3.1 Pro Preview, citation verification (3-layer: UUID, human-readable, grounding check), session management with chat history persistence. Renders via react-markdown + remark-gfm.
 
 **Technical Notes:**
-- RAG pipeline: query embedding -> Pinecone vector search -> RRF fusion with FTS -> Cohere reranking -> Gemini 2.5 Pro generation with retrieved context
-- LLM: Gemini 2.5 Pro (1M context window)
+- RAG pipeline: query embedding -> Pinecone vector search -> RRF fusion with FTS -> Cohere reranking -> Gemini 3.1 Pro Preview generation with retrieved context
+- LLM: Gemini 3.1 Pro Preview (1M context window)
 - Citation verification: 3-layer post-generation check (UUID verification, human-readable citation check, grounding against search results)
 - Chunk strategy: 2000-char chunks with 200-char overlap, section-tagged, sentence-boundary-aware
-- Embedding model: Gemini gemini-embedding-001 (1536-dim, Matryoshka)
+- Embedding model: Gemini gemini-embedding-2-preview (1536-dim, Matryoshka)
 
 ---
 
@@ -381,7 +381,7 @@ Four specialized AI agents built on LangGraph (StateGraph) for structured, multi
 
 | Agent | Purpose | Key Capabilities |
 |-------|---------|-----------------|
-| **Research Agent** | Deep legal research on any topic | Query classification, decomposition into 3-7 sub-queries, parallel hybrid search, contradiction detection, synthesis into structured research memo |
+| **Research Agent V3** | Deep legal research on any topic | 5-stage sequential-reactive pipeline (Understand → Route → Investigate → Challenge → Synthesize), statute lookup, element decomposition, multi-worker fan-out, adversarial search, temporal validation, speculative synthesis with footnotes, quality check |
 | **Case Prep Agent** | Prepare for a specific case hearing | Load document analysis, prioritize issues (4-dimension scoring), deep precedent search with 2-hop citation graph neighbors, argument ordering, strategy memo generation |
 | **Strategy Agent** | Develop litigation strategy | Structured fact analysis, judge profile fetching, precedent search with strength classification, case strength assessment, argument generation, counter-argument anticipation, judge-specific considerations |
 | **Drafting Agent** | Draft legal documents | Template resolution (7 document templates), statutory provision gathering, precedent verification, section-by-section drafting with IRAC structure, document assembly, DOCX/PDF export |
@@ -410,7 +410,7 @@ Each template is an immutable `DocumentTemplate` dataclass defining: `doc_type`,
 - Export functions: `core/drafting/export.py` (async, returns raw bytes)
 - Framework: LangGraph StateGraph with MemorySaver checkpointing (AsyncPostgresSaver for prod)
 - Streaming: SSE with event types (status/progress/checkpoint/memo/done/error)
-- All prompts in `core/legal/prompts.py`, structured output schemas with Gemini 2.5 Pro
+- All prompts in `core/legal/prompts.py`, structured output schemas with Gemini 3.1 Pro Preview
 - 3-layer citation verification on all generated memos
 - Precedent strength classification (BINDING/PERSUASIVE/DISTINGUISHABLE)
 - Legal disclaimer appended to all AI-generated output
@@ -552,7 +552,7 @@ Production-ready pipeline for bulk ingestion of Indian court judgments from the 
 
 **Key Features:**
 - PDF extraction with NFKC normalization, OCR fallback, smart page joining
-- 21-rule metadata extraction with Gemini 2.5 Flash, regex supplementation
+- 21-rule metadata extraction with Gemini 3 Flash Preview, regex supplementation
 - Legal-aware chunking (2000-char, 200-char overlap, section-tagged)
 - Batch vectorization with stale vector cleanup
 - Queue-based workers with circuit breaker (10 failures) and graceful shutdown
