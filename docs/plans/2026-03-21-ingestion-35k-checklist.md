@@ -6,7 +6,7 @@
 >
 > **Plan file**: `docs/plans/2026-03-21-ingestion-35k-hardening.md` (full implementation details)
 > **Test command**: `cd backend && python -m pytest tests/unit/ --tb=short -q`
-> **Migration command**: `cd backend && DATABASE_URL="postgresql+asyncpg://***REMOVED***:***REMOVED***@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres" PYTHONPATH=. alembic upgrade head`
+> **Migration command**: `cd backend && DATABASE_URL="$DATABASE_URL" PYTHONPATH=. alembic upgrade head`
 
 ---
 

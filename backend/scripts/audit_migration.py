@@ -8,8 +8,8 @@ from dotenv import load_dotenv
 
 load_dotenv(".env")
 
-SUPABASE_URL = "postgresql://***REMOVED***:***REMOVED***@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres"
-VPS_URL = "postgresql://smriti:***REMOVED***@76.13.185.172:5432/smriti"
+SUPABASE_URL = os.environ["SUPABASE_DATABASE_URL"]
+VPS_URL = os.environ["VPS_DATABASE_URL"]
 
 
 async def audit():

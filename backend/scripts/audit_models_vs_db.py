@@ -20,7 +20,7 @@ from sqlalchemy import create_engine, inspect, text
 from app.models import Base  # triggers all model imports
 
 
-DB_URL = "postgresql://smriti:***REMOVED***@76.13.185.172:5432/smriti"
+DB_URL = os.environ["DATABASE_URL"]
 
 
 def normalize_type(sa_type_str: str) -> str:
