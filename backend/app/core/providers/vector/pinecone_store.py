@@ -17,6 +17,7 @@ from tenacity import (
 
 from app.core.config import settings
 from app.core.interfaces.vector_store import SearchResult
+from app.core.providers.circuit_breaker import CircuitBreakerOpen
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +49,29 @@ class PineconeStore:
         else:
             self._index = self._client.Index(settings.pinecone_index_name)
 
-    @_pinecone_retry
+        # Lazy import to avoid circular deps at module level
+        from app.core.dependencies import pinecone_breaker
+
+        self._breaker = pinecone_breaker
+
     async def upsert(self, vectors: list[dict]) -> None:
         """Insert or update vectors.
 
         Each dict must contain: id, values, metadata.
         """
+        if not await self._breaker.check():
+            raise CircuitBreakerOpen(0, service="pinecone")
+        try:
+            await self._upsert_inner(vectors)
+            await self._breaker.record_success()
+        except CircuitBreakerOpen:
+            raise
+        except Exception:
+            await self._breaker.record_failure()
+            raise
+
+    @_pinecone_retry
+    async def _upsert_inner(self, vectors: list[dict]) -> None:
         try:
             await asyncio.wait_for(
                 asyncio.to_thread(self._index.upsert, vectors=vectors),
@@ -71,7 +89,6 @@ class PineconeStore:
             logger.error("Unexpected error during Pinecone upsert: %s", exc)
             raise RuntimeError(f"Pinecone upsert failed unexpectedly: {exc}") from exc
 
-    @_pinecone_retry
     async def search(
         self,
         query_vector: list[float],
@@ -85,6 +102,30 @@ class PineconeStore:
         Supports metadata filters (court, year, acts_cited, judgment_section)
         and optional user_scope for multi-tenant isolation.
         """
+        if not await self._breaker.check():
+            logger.warning("Pinecone circuit breaker OPEN — returning empty results")
+            return []
+        try:
+            result = await self._search_inner(
+                query_vector, top_k=top_k, filters=filters, user_scope=user_scope
+            )
+            await self._breaker.record_success()
+            return result
+        except CircuitBreakerOpen:
+            raise
+        except Exception:
+            await self._breaker.record_failure()
+            raise
+
+    @_pinecone_retry
+    async def _search_inner(
+        self,
+        query_vector: list[float],
+        *,
+        top_k: int = 20,
+        filters: dict | None = None,
+        user_scope: str | None = None,
+    ) -> list[SearchResult]:
         if user_scope:
             filters = dict(filters) if filters else {}
             filters["user_id"] = user_scope
@@ -113,9 +154,21 @@ class PineconeStore:
             logger.error("Unexpected error during Pinecone search: %s", exc)
             return []
 
-    @_pinecone_retry
     async def delete(self, ids: list[str]) -> None:
         """Delete vectors by their IDs."""
+        if not await self._breaker.check():
+            raise CircuitBreakerOpen(0, service="pinecone")
+        try:
+            await self._delete_inner(ids)
+            await self._breaker.record_success()
+        except CircuitBreakerOpen:
+            raise
+        except Exception:
+            await self._breaker.record_failure()
+            raise
+
+    @_pinecone_retry
+    async def _delete_inner(self, ids: list[str]) -> None:
         try:
             await asyncio.to_thread(self._index.delete, ids=ids)
         except PineconeException as exc:
@@ -125,7 +178,6 @@ class PineconeStore:
             logger.error("Unexpected error during Pinecone delete: %s", exc)
             raise RuntimeError(f"Pinecone delete failed unexpectedly: {exc}") from exc
 
-    @_pinecone_retry
     async def delete_by_metadata(
         self,
         filter: dict,
@@ -138,6 +190,24 @@ class PineconeStore:
             filter: Pinecone metadata filter dict.
             exclude_ids: Optional list of vector IDs to keep (skip deletion).
         """
+        if not await self._breaker.check():
+            raise CircuitBreakerOpen(0, service="pinecone")
+        try:
+            await self._delete_by_metadata_inner(filter, exclude_ids=exclude_ids)
+            await self._breaker.record_success()
+        except CircuitBreakerOpen:
+            raise
+        except Exception:
+            await self._breaker.record_failure()
+            raise
+
+    @_pinecone_retry
+    async def _delete_by_metadata_inner(
+        self,
+        filter: dict,
+        *,
+        exclude_ids: list[str] | None = None,
+    ) -> None:
         try:
             if not exclude_ids:
                 # Fast path: server-side filter delete

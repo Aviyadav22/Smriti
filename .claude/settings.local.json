@@ -17,7 +17,9 @@
       "WebFetch(domain:www.pinecone.io)",
       "WebFetch(domain:neo4j.com)",
       "WebFetch(domain:www.saasworthy.com)",
-      "WebFetch(domain:supabase.com)"
+      "WebFetch(domain:supabase.com)",
+      "Skill(ralph-loop:ralph-loop)",
+      "Skill(ralph-loop:ralph-loop:*)"
     ]
   }
 }

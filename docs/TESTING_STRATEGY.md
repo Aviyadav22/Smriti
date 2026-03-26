@@ -8,11 +8,11 @@
 
 | Category | Count | Location | Runner |
 |----------|------:|----------|--------|
-| Backend unit tests | 1,443 | `backend/tests/unit/` | pytest |
+| Backend unit tests | ~2,154 | `backend/tests/unit/` | pytest |
 | Backend integration tests | 31 | `backend/tests/integration/` | pytest |
 | Backend search accuracy | 15 (6 pass, 9 data-dependent) | `backend/tests/quality/` | pytest |
-| Frontend tests | 298 | `frontend/src/__tests__/` | vitest + React Testing Library |
-| **Total** | **~1,772** | | |
+| Frontend tests | 311 | `frontend/src/__tests__/` | vitest + React Testing Library |
+| **Total** | **~2,511** | | |
 
 Zero TypeScript errors in frontend build.
 
@@ -199,7 +199,7 @@ def test_rrf_merge():
 
 **Location**: `frontend/src/__tests__/`
 **Runner**: `npx vitest` (or `npm test`)
-**Count**: 298 tests across 30 test files
+**Count**: 311 tests across 30 test files
 
 ### 4.1 Test File Inventory
 

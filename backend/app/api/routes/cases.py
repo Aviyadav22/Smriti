@@ -307,7 +307,9 @@ async def get_similar(
 
     query_vector = await embedder.embed_text(ratio)
     vector_results = await vector_store.search(
-        query_vector, top_k=limit + 5  # fetch extra to filter self
+        query_vector,
+        top_k=limit + 5,  # fetch extra to filter self
+        filters={"vector_type": {"$in": ["chunk", "proposition", "ratio", "headnote"]}},
     )
 
     # Deduplicate by case_id and exclude self

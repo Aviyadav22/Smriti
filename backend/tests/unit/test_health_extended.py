@@ -56,6 +56,7 @@ def _unhealthy_dep(error: str = "connection refused") -> dict[str, object]:
 class TestHealthAllHealthy:
     """Health returns 200 when all deps are healthy."""
 
+    @patch("app.api.routes.health._check_gemini", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_neo4j", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_pinecone", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_redis", new_callable=AsyncMock)
@@ -66,11 +67,13 @@ class TestHealthAllHealthy:
         mock_redis: AsyncMock,
         mock_pinecone: AsyncMock,
         mock_neo4j: AsyncMock,
+        mock_gemini: AsyncMock,
     ) -> None:
         mock_pg.return_value = _healthy_dep()
         mock_redis.return_value = _healthy_dep()
         mock_pinecone.return_value = _healthy_dep()
         mock_neo4j.return_value = _healthy_dep()
+        mock_gemini.return_value = _healthy_dep()
 
         client = TestClient(_build_app(user=_AUTH_USER))
         resp = client.get("/health")
@@ -85,6 +88,7 @@ class TestHealthAllHealthy:
 class TestHealthPostgresDown:
     """Health returns 503 when Postgres (critical) is down."""
 
+    @patch("app.api.routes.health._check_gemini", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_neo4j", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_pinecone", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_redis", new_callable=AsyncMock)
@@ -95,11 +99,13 @@ class TestHealthPostgresDown:
         mock_redis: AsyncMock,
         mock_pinecone: AsyncMock,
         mock_neo4j: AsyncMock,
+        mock_gemini: AsyncMock,
     ) -> None:
         mock_pg.return_value = _unhealthy_dep("connection refused")
         mock_redis.return_value = _healthy_dep()
         mock_pinecone.return_value = _healthy_dep()
         mock_neo4j.return_value = _healthy_dep()
+        mock_gemini.return_value = _healthy_dep()
 
         client = TestClient(_build_app(user=_AUTH_USER))
         resp = client.get("/health")
@@ -112,6 +118,7 @@ class TestHealthPostgresDown:
 class TestHealthNonCriticalDown:
     """Health returns 200 with 'degraded' when non-critical dep is down."""
 
+    @patch("app.api.routes.health._check_gemini", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_neo4j", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_pinecone", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_redis", new_callable=AsyncMock)
@@ -122,11 +129,13 @@ class TestHealthNonCriticalDown:
         mock_redis: AsyncMock,
         mock_pinecone: AsyncMock,
         mock_neo4j: AsyncMock,
+        mock_gemini: AsyncMock,
     ) -> None:
         mock_pg.return_value = _healthy_dep()
         mock_redis.return_value = _healthy_dep()
         mock_pinecone.return_value = _healthy_dep()
         mock_neo4j.return_value = _unhealthy_dep("timeout")
+        mock_gemini.return_value = _healthy_dep()
 
         client = TestClient(_build_app(user=_AUTH_USER))
         resp = client.get("/health")
@@ -139,6 +148,7 @@ class TestHealthNonCriticalDown:
 class TestHealthTiming:
     """Health response includes timing for each dependency."""
 
+    @patch("app.api.routes.health._check_gemini", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_neo4j", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_pinecone", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_redis", new_callable=AsyncMock)
@@ -149,11 +159,13 @@ class TestHealthTiming:
         mock_redis: AsyncMock,
         mock_pinecone: AsyncMock,
         mock_neo4j: AsyncMock,
+        mock_gemini: AsyncMock,
     ) -> None:
         mock_pg.return_value = _healthy_dep(2.5)
         mock_redis.return_value = _healthy_dep(1.2)
         mock_pinecone.return_value = _healthy_dep(15.3)
         mock_neo4j.return_value = _healthy_dep(8.7)
+        mock_gemini.return_value = _healthy_dep(3.1)
 
         client = TestClient(_build_app(user=_AUTH_USER))
         resp = client.get("/health")
@@ -168,6 +180,7 @@ class TestHealthTiming:
 class TestHealthUnauthenticated:
     """Health returns minimal info for unauthenticated callers."""
 
+    @patch("app.api.routes.health._check_gemini", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_neo4j", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_pinecone", new_callable=AsyncMock)
     @patch("app.api.routes.health._check_redis", new_callable=AsyncMock)
@@ -178,11 +191,13 @@ class TestHealthUnauthenticated:
         mock_redis: AsyncMock,
         mock_pinecone: AsyncMock,
         mock_neo4j: AsyncMock,
+        mock_gemini: AsyncMock,
     ) -> None:
         mock_pg.return_value = _healthy_dep()
         mock_redis.return_value = _healthy_dep()
         mock_pinecone.return_value = _healthy_dep()
         mock_neo4j.return_value = _healthy_dep()
+        mock_gemini.return_value = _healthy_dep()
 
         client = TestClient(_build_app(user=None))
         resp = client.get("/health")

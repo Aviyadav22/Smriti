@@ -120,6 +120,7 @@ def build_pinecone_summary_vectors(
         metadata = {
             **meta_base,
             "document_type": "case_law",
+            "vector_type": "summary",
             "summary_level": summary["summary_level"],
             "section_type": summary["section_type"],
             "case_id": case_id,

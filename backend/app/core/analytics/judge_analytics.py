@@ -275,8 +275,10 @@ class JudgeAnalyticsService:
         self, judge_name: str
     ) -> list[dict[str, Any]]:
         """Fallback method for bench combinations using a simpler query."""
-        cases_query = select(Case.judge).where(
-            Case.judge.any(judge_name)
+        cases_query = (
+            select(Case.judge)
+            .where(Case.judge.any(judge_name))
+            .limit(5000)
         )
         cases_result = await self._session.execute(cases_query)
         rows = cases_result.all()

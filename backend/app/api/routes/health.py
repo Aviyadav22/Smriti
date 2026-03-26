@@ -50,7 +50,7 @@ async def _check_postgres() -> dict[str, object]:
         return {
             "status": "unhealthy",
             "response_ms": round((time.perf_counter() - start) * 1000, 1),
-            "error": str(exc),
+            "error": "Check failed",
         }
 
 
@@ -71,7 +71,7 @@ async def _check_redis() -> dict[str, object]:
         return {
             "status": "unhealthy",
             "response_ms": round((time.perf_counter() - start) * 1000, 1),
-            "error": str(exc),
+            "error": "Check failed",
         }
 
 
@@ -93,7 +93,7 @@ async def _check_pinecone() -> dict[str, object]:
         return {
             "status": "unhealthy",
             "response_ms": round((time.perf_counter() - start) * 1000, 1),
-            "error": str(exc),
+            "error": "Check failed",
         }
 
 
@@ -114,7 +114,7 @@ async def _check_neo4j() -> dict[str, object]:
         return {
             "status": "unhealthy",
             "response_ms": round((time.perf_counter() - start) * 1000, 1),
-            "error": str(exc),
+            "error": "Check failed",
         }
 
 
@@ -136,7 +136,7 @@ async def _check_gemini() -> dict[str, object]:
         return {
             "status": "unhealthy",
             "response_ms": round((time.perf_counter() - start) * 1000, 1),
-            "error": str(exc),
+            "error": "Check failed",
         }
 
 

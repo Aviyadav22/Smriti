@@ -209,6 +209,10 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "tts_provider must not be 'mock' in production"
                 )
+            if self.app_debug:
+                raise ValueError(
+                    "app_debug must be False in production"
+                )
         else:
             # Development: warn but allow empty
             import warnings

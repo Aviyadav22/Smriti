@@ -518,3 +518,55 @@ Use `ts_rank_cd` because:
 ### Consequences
 - (+) Rewards term proximity, ideal for legal phrase queries
 - (-) FTS alone may slightly under-rank documents where terms appear frequently but spread apart. The Cohere reranker mitigates this in the final ranking stage.
+
+---
+
+## ADR-020: Gemini Batch API Not Suitable for Metadata Extraction
+
+**Status:** Accepted
+**Date:** 2026-03-24
+
+### Context
+We evaluated the Gemini Batch API for bulk metadata extraction (43K SC judgments) expecting 50% cost savings. A 10-PDF comparison (2023 cases) was conducted: Batch (gemini-2.5-pro, schema-in-prompt) vs Pipeline (gemini-2.5-flash, responseSchema enforced).
+
+### Decision
+**Do not use Gemini Batch API for metadata extraction.** Use the standard pipeline (`ingest_s3.py` with individual Flash calls + responseSchema).
+
+Batch API limitations found:
+1. **No `responseSchema` support in JSONL requests** — forces schema-in-prompt, which produces less structured output
+2. **On Tier 1, only Pro models process batch jobs** — Flash models have 0 batch queue tokens and stay PENDING forever
+3. **Lower quality output** — missing neutral citations (7/10), `is_reportable` always null, 29-52% fewer extracted entities
+4. **Higher cost** — Pro at $2/M input vs Flash at $0.50/M (4x more expensive, negating the 50% batch discount)
+
+### Alternatives Considered
+- Wait for Batch API to support `responseSchema` — timeline unknown
+- Use schema-in-prompt with stricter instructions — tested, still inferior
+
+### Consequences
+- (+) Standard pipeline produces higher quality metadata for retrieval
+- (+) Flash is 4x cheaper per PDF than Pro
+- (-) Standard pipeline limited to ~1,000 RPD per project (5K/day across 5 keys)
+- (-) Batch scripts (`batch_ingest.py`, `batch_llm.py`, `batch_state.py`) kept but deprecated
+
+---
+
+## ADR-021: Rate Limiter Falls Back to In-Memory on Redis Failure
+
+**Status**: Accepted
+**Date**: 2026-03-25
+
+### Context
+The Redis-backed rate limiter previously returned HTTP 503 to all callers when Redis was unreachable. This caused a hard availability failure on a dependency that is not critical to correctness — rate limiting is a best-effort control, not a gating one.
+
+### Decision
+**Fall back to in-memory sliding window when Redis is unavailable.** The in-memory fallback is bounded to 10,000 keys to prevent memory exhaustion; it clears all buckets when the bound is exceeded. Callers receive normal responses; a warning is logged at each fallback event. Fail-closed behavior is **retained for token revocation checks** (separate code path in `security/auth.py`).
+
+### Alternatives Considered
+1. **Keep 503 on Redis failure**: Simple, but punishes all users for an infrastructure hiccup unrelated to their request.
+2. **Skip rate limiting entirely on failure**: Simpler, but leaves the door open to abuse during Redis outages.
+
+### Consequences
+- (+) Service remains available during transient Redis failures
+- (+) Rate limiting degrades gracefully rather than failing hard
+- (-) In-memory state is per-process; under multi-instance Cloud Run deployments, limits are not globally enforced during fallback
+- (-) Bounded key eviction (10K cap) may briefly allow burst traffic from long-tail IPs during large outages

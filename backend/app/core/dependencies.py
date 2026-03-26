@@ -17,6 +17,15 @@ from app.core.interfaces import (
     VectorStore,
     WebSearchProvider,
 )
+from app.core.providers.circuit_breaker import CircuitBreaker
+
+# ---------------------------------------------------------------------------
+# Singleton circuit breakers for external service providers
+# ---------------------------------------------------------------------------
+
+pinecone_breaker = CircuitBreaker(threshold=5, cooldown=30.0, service="pinecone")
+neo4j_breaker = CircuitBreaker(threshold=5, cooldown=60.0, service="neo4j")
+cohere_breaker = CircuitBreaker(threshold=3, cooldown=30.0, service="cohere")
 
 
 @lru_cache

@@ -803,6 +803,23 @@ async def ingest_year(
     graph_store = get_graph_store()
     storage = get_storage()
 
+    # Pre-flight check: verify embedding dimension matches Pinecone index
+    try:
+        test_embedding = await embedder_pool[0].embed_text("dimension check")
+        embed_dim = len(test_embedding)
+        pc_stats = await asyncio.to_thread(vector_store._index.describe_index_stats)
+        pc_dim = pc_stats.get("dimension", None)
+        if pc_dim and embed_dim != pc_dim:
+            logger.error(
+                "DIMENSION MISMATCH: embedder produces %d-dim vectors but "
+                "Pinecone index expects %d-dim — aborting to prevent index corruption",
+                embed_dim, pc_dim,
+            )
+            return {"error": f"dimension_mismatch_{embed_dim}_vs_{pc_dim}"}
+        logger.info("Pre-flight OK: embedding dim=%d, Pinecone dim=%s", embed_dim, pc_dim or "empty index")
+    except Exception as exc:
+        logger.warning("Pre-flight dimension check failed (non-fatal): %s", exc)
+
     # Apply limit
     pdfs_to_process = pdf_paths[:limit] if limit else pdf_paths
 
@@ -851,7 +868,7 @@ async def ingest_year(
                         embed_rate_limiter=embed_limiter,
                         warnings_out=ingestion_warnings,
                     ),
-                    timeout=600.0,
+                    timeout=900.0,
                 )
             if case_id is None:
                 await asyncio.to_thread(tracker.mark_failed, doc_key, "Text extraction failed")
@@ -891,8 +908,8 @@ async def ingest_year(
                     rate, eta_str, stats["skipped"], stats["failed"],
                 )
         except asyncio.TimeoutError:
-            logger.error("Timeout after 600s for %s", doc_key)
-            await asyncio.to_thread(tracker.mark_failed, doc_key, "timeout_600s", increment_retry=True)
+            logger.error("Timeout after 900s for %s", doc_key)
+            await asyncio.to_thread(tracker.mark_failed, doc_key, "timeout_900s", increment_retry=True)
             stats["failed"] += 1
             total_attempted += 1
             await breaker.record_failure()
@@ -914,34 +931,54 @@ async def ingest_year(
         await queue.put(None)
 
     async def _worker(worker_id: int) -> None:
+        _breaker_wait_start: float | None = None  # per-worker breaker wait tracker
+        _MAX_BREAKER_WAIT = 300.0  # 5 min max wait before giving up
         while True:
             item = await queue.get()
             if item is None:
                 queue.task_done()
                 break
-            # Check shutdown signals before processing
-            if shutdown_event.is_set() or breaker.is_tripped:
-                # When breaker is tripped, check if cooldown elapsed (half-open)
-                if breaker.is_tripped and not await breaker.check():
-                    pdf_path, _llm, _embedder, _api_key = item
-                    skip_key = f"year={year}/{pdf_path.name}"
-                    await asyncio.to_thread(
-                        tracker.mark_failed, skip_key, "circuit_breaker_skip",
-                        increment_retry=False,
-                    )
-                    stats["skipped"] += 1
+            # Check shutdown — mark skipped only on intentional shutdown
+            if shutdown_event.is_set():
+                pdf_path, _llm, _embedder, _api_key = item
+                skip_key = f"year={year}/{pdf_path.name}"
+                await asyncio.to_thread(
+                    tracker.mark_failed, skip_key, "shutdown_skip",
+                    increment_retry=False,
+                )
+                stats["skipped"] += 1
+                queue.task_done()
+                continue
+            # Circuit breaker tripped — wait for cooldown instead of losing items
+            if breaker.is_tripped:
+                can_proceed = await breaker.check()
+                if not can_proceed:
+                    # Track how long breaker has been continuously open
+                    now = time.monotonic()
+                    if _breaker_wait_start is None:
+                        _breaker_wait_start = now
+                    elif (now - _breaker_wait_start) > _MAX_BREAKER_WAIT:
+                        # Breaker open too long — give up on this item
+                        pdf_path, _llm, _embedder, _api_key = item
+                        skip_key = f"year={year}/{pdf_path.name}"
+                        await asyncio.to_thread(
+                            tracker.mark_failed, skip_key, "circuit_breaker_timeout",
+                            increment_retry=False,
+                        )
+                        stats["skipped"] += 1
+                        queue.task_done()
+                        logger.warning("Worker %d: breaker open >5min, skipping %s", worker_id, skip_key)
+                        continue
+                    # Re-queue the item and wait for cooldown before retrying
+                    await queue.put(item)
                     queue.task_done()
+                    logger.debug("Worker %d: breaker open, re-queued item, waiting 10s", worker_id)
+                    await asyncio.sleep(10.0)
                     continue
-                if shutdown_event.is_set():
-                    pdf_path, _llm, _embedder, _api_key = item
-                    skip_key = f"year={year}/{pdf_path.name}"
-                    await asyncio.to_thread(
-                        tracker.mark_failed, skip_key, "shutdown_skip",
-                        increment_retry=False,
-                    )
-                    stats["skipped"] += 1
-                    queue.task_done()
-                    continue
+                # Breaker recovered — reset wait timer
+                _breaker_wait_start = None
+            else:
+                _breaker_wait_start = None
             try:
                 pdf_path, llm, embedder, api_key = item
                 await _process_one(pdf_path, llm, embedder, api_key)
@@ -1066,6 +1103,8 @@ async def main() -> None:
         years = [args.year]
     elif args.year_from and args.year_to:
         years = list(range(args.year_from, args.year_to + 1))
+        # Process latest years first (most relevant cases first)
+        years.reverse()
     elif args.resume:
         existing = sorted(
             int(d.name.replace("year=", ""))
@@ -1139,6 +1178,20 @@ async def main() -> None:
     for year in years:
         detailed = tracker.detailed_stats(year=year)
         logger.info("Year %d detailed: %s", year, detailed)
+
+    # Clean up external service connections to avoid resource leaks
+    try:
+        graph = get_graph_store()
+        await graph.close()
+        logger.info("Neo4j driver closed.")
+    except Exception as exc:
+        logger.warning("Neo4j cleanup failed (non-fatal): %s", exc)
+    try:
+        from app.db.postgres import engine as _pg_engine
+        await _pg_engine.dispose()
+        logger.info("PostgreSQL engine disposed.")
+    except Exception as exc:
+        logger.warning("PostgreSQL cleanup failed (non-fatal): %s", exc)
 
     tracker.close()
 

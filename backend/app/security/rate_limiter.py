@@ -231,14 +231,13 @@ def rate_limit_dependency(
         except RateLimitExceededError:
             raise
         except Exception as exc:
-            # Redis unavailable — fail fast with 503 instead of unreliable
-            # in-memory fallback (each Cloud Run instance would have independent
-            # limits, making rate limiting ineffective at scale).
-            logger.error("Rate limiter Redis unavailable: %s", exc)
-            from fastapi import HTTPException
-            raise HTTPException(
-                status_code=503,
-                detail="Rate limiting service temporarily unavailable. Please retry shortly.",
-            )
+            # Redis unavailable — fall back to in-memory rate limiting.
+            # Per-instance limits are imperfect but better than dropping all traffic.
+            logger.warning("Rate limiter Redis unavailable, using in-memory fallback: %s", exc)
+            if not _in_memory_check(key, max_requests, window_seconds):
+                raise RateLimitExceededError(
+                    detail=f"Rate limit exceeded: {limit}",
+                    retry_after=window_seconds,
+                )
 
     return _check_rate

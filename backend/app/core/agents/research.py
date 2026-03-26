@@ -115,7 +115,7 @@ def build_research_graph(
     checkpointer: Any | None = None,
     memo_stream_callback: Any | None = None,
 ) -> Any:
-    """Build and compile the Research Agent V2 LangGraph graph.
+    """Build and compile the Research Agent V3 LangGraph graph.
 
     Parameters
     ----------

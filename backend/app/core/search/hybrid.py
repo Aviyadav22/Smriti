@@ -68,6 +68,7 @@ class SearchResponse:
     query_understanding: QueryUnderstanding
     facets: dict = field(default_factory=dict)
     outcome_bias_warning: str | None = None
+    search_degraded: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +188,8 @@ async def hybrid_search(
 
     strategy = qu.search_strategy
 
+    search_degraded = False
+
     # --- exact_match strategy: try citation lookup first ---
     if strategy == "exact_match":
         exact_results = await _exact_citation_search(query, db)
@@ -254,10 +257,13 @@ async def hybrid_search(
                 if not isinstance(gather_results[1], Exception)
                 else []
             )
-            if isinstance(gather_results[0], Exception):
+            vector_failed = isinstance(gather_results[0], Exception)
+            fts_failed = isinstance(gather_results[1], Exception)
+            if vector_failed:
                 logger.warning("Vector search failed, using FTS only: %s", gather_results[0])
-            if isinstance(gather_results[1], Exception):
+            if fts_failed:
                 logger.warning("FTS failed, using vector only: %s", gather_results[1])
+            search_degraded = vector_failed or fts_failed
 
         # 4. RRF merge with strategy-specific weights
         vector_ranked = [(r[0], r[1]) for r in vector_results]
@@ -349,6 +355,7 @@ async def hybrid_search(
         query_understanding=qu,
         facets=facets,
         outcome_bias_warning=outcome_bias,
+        search_degraded=search_degraded,
     )
 
     # 9. Cache result
@@ -525,7 +532,6 @@ def _merge_filters(
         bench_type=explicit.bench_type or llm_extracted.bench_type,
         judge=explicit.judge or llm_extracted.judge,
         act=explicit.act or llm_extracted.act,
-        section=explicit.section or llm_extracted.section,
         judgment_section=explicit.judgment_section or llm_extracted.judgment_section,
         disposal_nature=explicit.disposal_nature or llm_extracted.disposal_nature,
         vector_types=explicit.vector_types or llm_extracted.vector_types,
@@ -543,72 +549,94 @@ async def _enrich_results(
     if not case_ids:
         return []
 
-    # Filter out Pinecone statute IDs (e.g. "statute:CrPC:438") that aren't case UUIDs
+    # Separate statute IDs (e.g. "statute:CrPC:438") from case UUIDs
+    statute_ids = [cid for cid in case_ids if ":" in cid]
     case_ids = [cid for cid in case_ids if ":" not in cid]
-    if not case_ids:
+
+    if not case_ids and not statute_ids:
         return []
 
-    placeholders = ", ".join(f":id_{i}" for i in range(len(case_ids)))
-    params = {f"id_{i}": cid for i, cid in enumerate(case_ids)}
-
-    sql = text(
-        f"SELECT id, title, citation, court, year, decision_date, "
-        f"case_type, judge, bench_type, disposal_nature "
-        f"FROM cases WHERE id IN ({placeholders})"
-    )
-
-    result = await db.execute(sql, params)
-    rows = {str(row["id"]): row for row in result.mappings().all()}
-
-    # Fetch equivalent citations
-    equiv_map: dict[str, list[str]] = {}
-    try:
-        equiv_result = await db.execute(
-            text(
-                f"SELECT case_id, citation_text FROM case_citation_equivalents "
-                f"WHERE case_id IN ({placeholders})"
-            ),
-            params,
-        )
-        equiv_rows = equiv_result.mappings().all()
-        for er in equiv_rows:
-            equiv_map.setdefault(str(er["case_id"]), []).append(er["citation_text"])
-    except Exception:
-        pass  # Table may not exist in all environments
-
     enriched: list[SearchResultItem] = []
-    for cid in case_ids:
-        row = rows.get(cid)
-        if row is None:
-            continue
 
-        # Check snippet and chunk text for overruling language
-        snippet = snippets_map.get(cid)
-        chunk = (vector_chunk_map or {}).get(cid)
-        treatment_warning: str | None = None
-        check_text = (snippet or "") + " " + (chunk or "")
-        if check_text.strip() and has_overruling_language(check_text):
-            treatment_warning = (
-                "This case may have been overruled or declared per incuriam. "
-                "Verify current status before relying on it."
+    # Enrich case UUIDs from PostgreSQL
+    if case_ids:
+        placeholders = ", ".join(f":id_{i}" for i in range(len(case_ids)))
+        params = {f"id_{i}": cid for i, cid in enumerate(case_ids)}
+
+        sql = text(
+            f"SELECT id, title, citation, court, year, decision_date, "
+            f"case_type, judge, bench_type, disposal_nature "
+            f"FROM cases WHERE id IN ({placeholders})"
+        )
+
+        result = await db.execute(sql, params)
+        rows = {str(row["id"]): row for row in result.mappings().all()}
+
+        # Fetch equivalent citations
+        equiv_map: dict[str, list[str]] = {}
+        try:
+            equiv_result = await db.execute(
+                text(
+                    f"SELECT case_id, citation_text FROM case_citation_equivalents "
+                    f"WHERE case_id IN ({placeholders})"
+                ),
+                params,
+            )
+            equiv_rows = equiv_result.mappings().all()
+            for er in equiv_rows:
+                equiv_map.setdefault(str(er["case_id"]), []).append(er["citation_text"])
+        except Exception:
+            pass  # Table may not exist in all environments
+
+        for cid in case_ids:
+            row = rows.get(cid)
+            if row is None:
+                continue
+
+            # Check snippet and chunk text for overruling language
+            snippet = snippets_map.get(cid)
+            chunk = (vector_chunk_map or {}).get(cid)
+            treatment_warning: str | None = None
+            check_text = (snippet or "") + " " + (chunk or "")
+            if check_text.strip() and has_overruling_language(check_text):
+                treatment_warning = (
+                    "This case may have been overruled or declared per incuriam. "
+                    "Verify current status before relying on it."
+                )
+
+            enriched.append(
+                SearchResultItem(
+                    case_id=cid,
+                    score=scores.get(cid, 0.0),
+                    title=row.get("title"),
+                    citation=row.get("citation"),
+                    court=row.get("court"),
+                    year=row.get("year"),
+                    date=str(row["decision_date"]) if row.get("decision_date") else None,
+                    case_type=row.get("case_type"),
+                    judge=row.get("judge"),
+                    snippet=snippet,
+                    chunk_text=chunk,
+                    bench_type=row.get("bench_type"),
+                    equivalent_citations=equiv_map.get(cid, []),
+                    treatment_warning=treatment_warning,
+                )
             )
 
+    # Build results for statute IDs from Pinecone metadata (no PostgreSQL row)
+    for sid in statute_ids:
+        chunk = (vector_chunk_map or {}).get(sid, "")
+        # Parse human-readable title from ID like "statute:CrPC:438"
+        parts = sid.replace("statute:", "", 1).split(":")
+        title = f"{parts[0]} Section {parts[1]}" if len(parts) >= 2 else sid
         enriched.append(
             SearchResultItem(
-                case_id=cid,
-                score=scores.get(cid, 0.0),
-                title=row.get("title"),
-                citation=row.get("citation"),
-                court=row.get("court"),
-                year=row.get("year"),
-                date=str(row["decision_date"]) if row.get("decision_date") else None,
-                case_type=row.get("case_type"),
-                judge=row.get("judge"),
-                snippet=snippet,
-                chunk_text=chunk,
-                bench_type=row.get("bench_type"),
-                equivalent_citations=equiv_map.get(cid, []),
-                treatment_warning=treatment_warning,
+                case_id=sid,
+                score=scores.get(sid, 0.0),
+                title=title,
+                snippet=chunk[:500] if chunk else None,
+                chunk_text=chunk or None,
+                case_type="statute",
             )
         )
 

@@ -122,6 +122,16 @@ async def register(
 
     await db.commit()
 
+    # Audit log for registration
+    await create_audit_log(
+        db=db,
+        action="user.registered",
+        user_id=user_id,
+        resource_type="user",
+        resource_id=user_id,
+        metadata={"consent_version": body.consent_version},
+    )
+
     # Auto-login: generate tokens just like the login endpoint
     access_token = create_access_token(user_id, "researcher")
     refresh_token = create_refresh_token(user_id)

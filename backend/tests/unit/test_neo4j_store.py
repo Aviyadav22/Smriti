@@ -20,7 +20,8 @@ def test_validate_label_rejects_injection():
 
 def test_validate_relationship_accepts_known():
     assert _validate_relationship("CITES") == "CITES"
-    assert _validate_relationship("CITED_BY") == "CITED_BY"
+    assert _validate_relationship("EQUIVALENT_TO") == "EQUIVALENT_TO"
+    assert _validate_relationship("APPLIES_PRINCIPLE") == "APPLIES_PRINCIPLE"
 
 
 def test_validate_relationship_rejects_injection():

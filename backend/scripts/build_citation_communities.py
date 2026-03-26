@@ -173,6 +173,7 @@ async def embed_community_summaries(
             "values": emb,
             "metadata": {
                 "document_type": "community",
+                "vector_type": "community",
                 "community_id": comm_id,
                 "title": summary["title"],
                 "text": summary["summary"][:2000],

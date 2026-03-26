@@ -143,7 +143,7 @@ async def case_law_worker(
     # [V3] Proposition-level semantic search (skip FTS — propositions are vector-only)
     try:
         search_filters = search_kwargs.get("filters")
-        prop_filter: dict = {"vector_type": {"$in": ["proposition", "ratio"]}}
+        prop_filter: dict = {"vector_type": {"$in": ["proposition", "ratio", "headnote"]}}
         if search_filters and search_filters.court:
             prop_filter["court"] = {"$eq": search_filters.court[0]}
         if search_filters and search_filters.year_from:
@@ -384,7 +384,7 @@ async def statute_worker(
         for r in pinecone_results:
             meta = r.metadata if hasattr(r, "metadata") else {}
             results.append({
-                "case_id": f"statute:{r.id}",
+                "case_id": r.id if r.id.startswith("statute:") else f"statute:{r.id}",
                 "title": meta.get("title", ""),
                 "section_text": meta.get("text", "")[:2000],
                 "act_name": meta.get("act_name", ""),
@@ -759,7 +759,7 @@ async def graph_worker(
         query = task["nl_query"]
 
         # [B11] 2-hop bidirectional query: seeds → cited → cited-by
-        # Traverses CITES, OVERRULES, and APPLIES edges for richer graph results
+        # Traverses CITES edges; treatment (overruled/followed/etc.) is a property on CITES
         graph_results = await graph_store.query(
             """
             CALL db.index.fulltext.queryNodes('case_search', $query)
@@ -768,10 +768,10 @@ async def graph_worker(
             WHERE score > 0.5
             ORDER BY score DESC
             LIMIT 5
-            // Hop 1: seed cites/overrules → target
-            OPTIONAL MATCH (seed)-[r1:CITES|OVERRULES|APPLIES]->(hop1:Case)
+            // Hop 1: seed cites → target
+            OPTIONAL MATCH (seed)-[r1:CITES]->(hop1:Case)
             // Hop 2: target cites → hop2
-            OPTIONAL MATCH (hop1)-[r2:CITES|OVERRULES]->(hop2:Case)
+            OPTIONAL MATCH (hop1)-[r2:CITES]->(hop2:Case)
             WHERE hop2 <> seed
             // Also get cited_by count for authority ranking
             WITH seed, score, hop1, r1, hop2
@@ -830,17 +830,20 @@ async def graph_worker(
                     "source": "citation_graph_hop2",
                 })
 
-        # [E1] Also query doctrine nodes if the query mentions a doctrine
+        # [E1] Query legal principles via principle_text fulltext index
+        # Note: case_search index only covers Case nodes, not Doctrine/LegalPrinciple,
+        # so we use the principle_text index directly.
         try:
             doctrine_results = await graph_store.query(
                 """
-                CALL db.index.fulltext.queryNodes('case_search', $query)
+                CALL db.index.fulltext.queryNodes('principle_text', $query)
                 YIELD node, score
-                WITH node AS seed, score
-                WHERE score > 0.5 AND 'Doctrine' IN labels(seed)
+                WITH node AS principle, score
+                WHERE score > 0.5
                 LIMIT 3
-                OPTIONAL MATCH (case:Case)-[:APPLIES_DOCTRINE]->(seed)
-                RETURN seed.name AS doctrine_name, seed.description AS doctrine_desc,
+                MATCH (case:Case)-[:APPLIES_PRINCIPLE]->(principle)
+                RETURN principle.name AS doctrine_name,
+                       '' AS doctrine_desc,
                        case.id AS case_id, case.title AS case_title,
                        case.citation AS case_citation
                 LIMIT 10

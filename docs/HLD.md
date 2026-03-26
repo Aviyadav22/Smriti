@@ -189,8 +189,8 @@ class ParsedQuery(BaseModel):
 - Extract text from PDFs (with OCR fallback, per-page alpha-ratio detection)
 - Parse judgment sections (Facts, Arguments, Ratio Decidendi, Order, Dissent, Concurrence, etc.)
 - Extract structured metadata using LLM + regex validation (16-rule system prompt, 60+ fields)
-- Chunk text with section awareness (standard 2000/200, dense 1800/400) + legal signal scoring
-- Generate multi-vector embeddings (chunk, proposition, ratio, headnote, section, statute) and upsert to Pinecone
+- Chunk text with section awareness (standard 2000/200, dense 1200/300) + legal signal scoring
+- Generate multi-vector embeddings (chunk, proposition, ratio, headnote, statute, summary) and upsert to Pinecone
 - Extract legal propositions, statute interpretations, and fact pattern summaries (V3)
 - Insert metadata into PostgreSQL with FTS tsvector
 - Build citation graph edges in Neo4j
@@ -758,12 +758,13 @@ class CitationGraphBuilder:
     """
     Builds the citation graph from ingested case metadata.
 
-    Node: Case {id, case_name, citation, court, year, case_type}
+    Node: Case {id, case_name, citation, court, year, case_type, keywords, acts_cited, ratio}
     Edge types:
-      - CITES: this case cites another case
-      - OVERRULES: this case overrules another (detected from text)
-      - FOLLOWS: this case follows the reasoning of another
-      - DISTINGUISHES: this case distinguishes itself from another
+      - CITES: this case cites another (treatment stored as edge property: overruled/followed/distinguished)
+      - EQUIVALENT_TO: bidirectional link between equivalent citations of the same case
+      - APPLIES_PRINCIPLE: this case applies a legal principle
+      - APPLIES_DOCTRINE: this case applies a constitutional doctrine
+      - ADDRESSES: this case addresses a legal issue
     """
 
     def __init__(self, graph_store: GraphStore, citation_parser: CitationParser):
@@ -820,14 +821,15 @@ class CitationGraphBuilder:
 
         surrounding = text[max(0, idx - context_window): idx + len(cite_str) + context_window].lower()
 
+        # Treatment is stored as a property on the CITES edge, not as separate relationship types
         if any(word in surrounding for word in ["overrule", "overruled", "no longer good law"]):
-            return "OVERRULES"
+            return "overruled"
         elif any(word in surrounding for word in ["distinguished", "distinguishable", "distinguishes"]):
-            return "DISTINGUISHES"
+            return "distinguished"
         elif any(word in surrounding for word in ["followed", "follows", "following the ratio"]):
-            return "FOLLOWS"
+            return "followed"
         else:
-            return "CITES"
+            return "cited"
 ```
 
 #### `GraphQuerier`
@@ -862,9 +864,10 @@ class GraphQuerier:
         return await self.graph_store.get_citation_chain(case_id, max_depth)
 
     async def is_overruled(self, case_id: str) -> bool:
-        """Check if any subsequent case has overruled this one."""
-        overruling = await self.graph_store.find_relationship(
-            to_id=case_id, rel_type="OVERRULES"
+        """Check if any subsequent case has overruled this one via CITES treatment property."""
+        overruling = await self.graph_store.query(
+            "MATCH (c:Case)-[r:CITES {treatment: 'overruled'}]->(:Case {id: $id}) RETURN c",
+            params={"id": case_id},
         )
         return len(overruling) > 0
 
@@ -1811,7 +1814,8 @@ GET /api/v1/cases?cursor=eyJpZCI6MTIzfQ&limit=20
 │  │    ],                                                  │               │
 │  │    "query_understanding": { ... },                     │               │
 │  │    "total_candidates": 847,                            │               │
-│  │    "latency_ms": 620                                   │               │
+│  │    "latency_ms": 620,                                  │               │
+│  │    "search_degraded": false                            │               │
 │  │  }                                                     │               │
 │  └──────────────────────────────────────────────────────┘               │
 └─────────────────────────────────────────────────────────────────────────┘

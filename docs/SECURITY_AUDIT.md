@@ -79,6 +79,7 @@ Smriti handles legal research data for Indian lawyers. While case law itself is 
 | Attack Vector | Mitigation | File Reference |
 |---------------|-----------|----------------|
 | SQL injection | All queries use SQLAlchemy `text()` with parameter binding. Zero raw SQL string construction. | All route handlers and search modules |
+| SQL injection (ORDER BY) | Dynamic sort columns use an allowlisted static mapping, not f-string interpolation | `api/routes/admin_review.py` |
 | SQL pattern injection | ILIKE wildcard characters (`%`, `_`) escaped in user-provided filter values | `core/search/fulltext.py` -- `_escape_ilike()` |
 | XSS (server-side) | HTML tags stripped from all user input | `security/sanitizer.py` -- `sanitize_input()` |
 | XSS (client-side) | CSP headers via Next.js, React's built-in escaping | `frontend/next.config.ts` |
@@ -130,9 +131,11 @@ Smriti handles legal research data for Indian lawyers. While case law itself is 
 |---------------|-------------------|----------------|
 | CORS origins | Explicit allowed origins list (no `*` wildcard) | `core/config.py` -- `validate_critical_settings()` |
 | API docs | Swagger/ReDoc disabled (`docs_url=None`, `redoc_url=None`) | `main.py` -- FastAPI constructor |
-| Security headers | X-Content-Type-Options: nosniff, X-Frame-Options: DENY, HSTS, X-XSS-Protection: 0 | `main.py` -- `SecurityHeadersMiddleware` |
+| Security headers | X-Content-Type-Options: nosniff, X-Frame-Options: DENY, HSTS, X-XSS-Protection: 0, Content-Security-Policy | `main.py` -- `SecurityHeadersMiddleware` |
 | Cache-Control | `no-store` on all `/api/` responses | `main.py:196` |
 | Trusted hosts | `TrustedHostMiddleware` enabled in production | `main.py:303-308` |
+| Request size limit | `RequestSizeLimitMiddleware` rejects bodies > 10 MB with HTTP 413 | `main.py` -- `RequestSizeLimitMiddleware` |
+| Health endpoint error sanitization | Unauthenticated callers receive "Check failed" instead of raw exception strings | `api/routes/health.py` |
 | Secret management | GCP Secret Manager in production (not env files) | Deployment configuration |
 | JWT secret length | Minimum 32 characters enforced at startup | `core/config.py` -- model validator |
 | Encryption key length | Minimum 32 characters enforced at startup | `core/config.py:139` |
@@ -226,7 +229,7 @@ Smriti handles legal research data for Indian lawyers. While case law itself is 
 | Sentry error tracking | Runtime exceptions captured with context | `main.py:208` |
 | Rate limit logging | Redis fallback events logged as warnings | `security/rate_limiter.py:233` |
 
-**Logged events include**: login, logout, search, document.view, document.upload, chat.message, agent.execute, admin.*, erasure_completed, consent_withdrawn.
+**Logged events include**: register, login, logout, search, document.view, document.upload, chat.message, agent.execute, admin.*, erasure_completed, consent_withdrawn.
 
 **Test coverage**: `test_audit_logging.py`, `test_logging_config.py`
 
@@ -292,10 +295,12 @@ All responses include the following headers (via `SecurityHeadersMiddleware` in 
 | `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | Enforce HTTPS |
 | `X-XSS-Protection` | `0` | Disable legacy XSS filter (modern CSP preferred) |
 | `Cache-Control` | `no-store` (API routes only) | Prevent caching of sensitive API responses |
+| `Content-Security-Policy` | `default-src 'self'; ...` | Restrict resource loading origins |
 
 Additional production middleware:
 - **TrustedHostMiddleware**: Rejects requests with unexpected `Host` headers
 - **CORSMiddleware**: Restricts to explicit origins, credentials enabled, specific allowed headers
+- **RequestSizeLimitMiddleware**: Rejects request bodies larger than 10 MB (HTTP 413)
 
 ---
 
@@ -314,7 +319,7 @@ Additional production middleware:
 | DPDP data-summary | 20/minute | Per-user |
 | Admin routes | 30/minute | Per-user |
 
-Key design: `_in_memory_check()` clears all buckets when exceeding 10K keys (prevents unbounded memory growth). Fail-open on Redis error for general routes (with fallback), fail-closed for token revocation checks.
+Key design: `_in_memory_check()` clears all buckets when exceeding 10K keys (prevents unbounded memory growth). On Redis error, rate limiter transparently falls back to in-memory sliding window (no 503 returned to callers); fail-closed applies only to token revocation checks.
 
 ---
 
@@ -326,6 +331,7 @@ Key design: `_in_memory_check()` clears all buckets when exceeding 10K keys (pre
 | Redis-backed rate limiting for all environments | In production, in-memory fallback for dev | Medium |
 | E2E security tests (Playwright) | Planned | Medium |
 | Penetration testing by third party | Not yet scheduled | High (pre-launch) |
+| CSP header | Implemented via `SecurityHeadersMiddleware` | Done |
 | CSP header reporting (`report-uri`) | Not yet configured | Medium |
 | Subresource Integrity (SRI) for CDN assets | Not applicable (self-hosted) | Low |
 | Web Application Firewall (WAF) | Cloud Run built-in, no custom WAF | Low |

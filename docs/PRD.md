@@ -200,7 +200,7 @@ A search engine that combines semantic understanding (vector similarity), keywor
 | HS-11 | User can sort results by: relevance (default), date (newest/oldest), citation count (most cited) | P1 |
 | HS-12 | Empty state: when no results found, system suggests alternative queries or broader filters | P2 |
 
-**Implementation Status:** Built (Phases 1-3, upgraded Mar 2026). Hybrid search combines multi-vector Pinecone search (6 vector types: chunk, proposition, ratio, headnote, section, statute — Gemini gemini-embedding-2-preview, 1536-dim, task-type-aware) with PostgreSQL full-text search (tsvector + ts_rank_cd), merged via RRF (k=60) with 1.5x boost for proposition/ratio vectors, reranked by Cohere rerank-v4.0-pro. Faceted filtering, suggest/autocomplete, and exact citation lookup all implemented. Query understanding via Gemini 3.1 Pro Preview. Statute lookup available for direct statute text retrieval.
+**Implementation Status:** Built (Phases 1-3, upgraded Mar 2026). Hybrid search combines multi-vector Pinecone search (7 vector types: chunk, proposition, ratio, headnote, statute, summary, community — Gemini gemini-embedding-2-preview, 1536-dim, task-type-aware) with PostgreSQL full-text search (tsvector + ts_rank_cd), merged via RRF (k=60) with 1.5x boost for proposition/ratio/headnote vectors in agent worker, reranked by Cohere rerank-v4.0-pro. Faceted filtering, suggest/autocomplete, and exact citation lookup all implemented. Query understanding via Gemini 3.1 Pro Preview. Statute lookup available for direct statute text retrieval.
 
 **Technical Notes:**
 - Vector search via Pinecone (Gemini gemini-embedding-2-preview embeddings, 1536-dim)

@@ -36,11 +36,11 @@ dependencies = [
     "cohere==5.13.3",
     "neo4j==5.27.0",
 
-    # Agent framework
-    "langgraph>=0.3,<1.0",
-    "langgraph-checkpoint-postgres>=2.0,<3.0",
-    "psycopg[binary]>=3.2,<4.0",
-    "psycopg-pool>=3.2,<4.0",
+    # Agent framework (pinned — pre-1.0 LangGraph has breaking minor releases)
+    "langgraph==0.6.11",
+    "langgraph-checkpoint-postgres==2.0.25",
+    "psycopg[binary]==3.3.3",
+    "psycopg-pool==3.3.0",
 
     # PDF Processing
     "pdfplumber==0.11.4",

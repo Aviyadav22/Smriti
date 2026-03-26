@@ -129,6 +129,7 @@ class TestRegister:
             select_result,  # email check
             None,           # INSERT users
             None,           # INSERT consents
+            None,           # INSERT audit_logs (registration)
         ]
 
         resp = client.post(

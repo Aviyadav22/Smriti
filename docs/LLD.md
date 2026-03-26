@@ -531,11 +531,12 @@ Seeded with 28 common Indian legal abbreviations including:
 })
 
 // Edge types
-(:Judgment)-[:CITES {context: String, paragraph: Integer}]->(:Judgment)
-(:Judgment)-[:OVERRULES {context: String}]->(:Judgment)
-(:Judgment)-[:AFFIRMS {context: String}]->(:Judgment)
-(:Judgment)-[:DISTINGUISHES {context: String}]->(:Judgment)
-(:Judgment)-[:APPLIES {section: String, context: String}]->(:Statute)
+(:Judgment)-[:CITES {context: String, paragraph: Integer, treatment: String}]->(:Judgment)
+(:Judgment)-[:EQUIVALENT_TO]->(:Judgment)
+(:Judgment)-[:APPLIES_PRINCIPLE]->(:LegalPrinciple)
+(:Judgment)-[:APPLIES_DOCTRINE]->(:Doctrine)
+(:Judgment)-[:ADDRESSES]->(:Issue)
+(:Judgment)-[:REPRESENTED_BY {party: String}]->(:Counsel)
 (:Judgment)-[:DECIDED_BY {role: String}]->(:Judge)   // role: "author", "bench_member"
 (:Judgment)-[:DELIVERED_AT]->(:Court)
 ```

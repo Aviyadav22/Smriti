@@ -8,7 +8,7 @@ Technical reference for rebuilding or adapting the Smriti UI. Covers every page,
 
 | Layer | Technology | Version | Notes |
 |---|---|---|---|
-| Framework | Next.js (App Router) | 16.1.x | All pages are `"use client"` (CSR). No SSR/RSC used. |
+| Framework | Next.js (App Router) | 16.2.x | All pages are `"use client"` (CSR). No SSR/RSC used. |
 | Language | TypeScript | 5.x | Strict mode. No `any` allowed. |
 | Styling | Tailwind CSS | 4.x | With `tw-animate-css` for animations |
 | Component Library | shadcn/ui | 3.8.x | Built on Radix UI primitives |
@@ -515,7 +515,7 @@ Handled automatically inside `apiFetch()`:
 3. If refresh fails, clear all tokens and throw `ApiError(401, "UNAUTHORIZED", "Session expired")`.
 
 Token lifetimes (set by backend):
-- Access token: 15 minutes (`expires_in: 900`).
+- Access token: 60 minutes (`expires_in: 3600`).
 - Refresh token: rotation on each use (old token invalidated).
 
 ### 4.4 Auth Guards
@@ -881,7 +881,7 @@ SearchFilters { court?, year_from?, year_to?, case_type?, bench_type?, judge?, a
 QueryUnderstanding { intent, original_query, expanded_query, search_strategy, filters, entities }
 SearchResultItem { case_id, score, title, citation, court, year, date, case_type, judge, snippet,
                    bench_type, equivalent_citations, treatment_warning?, precedent_strength?, section_type? }
-SearchResponse { results: SearchResultItem[], total_count, page, page_size, query_understanding, facets }
+SearchResponse { results: SearchResultItem[], total_count, page, page_size, query_understanding, facets, search_degraded }
 FacetsResponse { courts: string[], case_types: string[], bench_types: string[], years: { min, max } }
 ```
 

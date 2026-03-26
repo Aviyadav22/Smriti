@@ -361,10 +361,10 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
             logger.warning("Unknown disposal_nature '%s', clearing field", metadata.disposal_nature)
             metadata.disposal_nature = None
 
-    # -- Clear empty-string enum fields --
+    # -- Clear empty-string and literal "None" enum fields --
     for field_name in ("bench_type", "jurisdiction", "disposal_nature"):
         val = getattr(metadata, field_name, None)
-        if isinstance(val, str) and not val.strip():
+        if isinstance(val, str) and (not val.strip() or val.strip().lower() == "none"):
             setattr(metadata, field_name, None)
 
     # -- Ensure list fields are actually lists --
@@ -796,12 +796,15 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> tuple[CaseMeta
             setattr(result, field, llm_val)
             provenance[field] = "llm"
 
-    # -- case_type: prefer parquet nc_display, fall back to LLM --
-    raw_case_type = parquet_meta.get("nc_display") or llm_meta.case_type
+    # -- case_type: LLM extraction only (parquet nc_display is a case ID, not a type) --
+    # Store nc_display as case_id field instead
+    nc_display = parquet_meta.get("nc_display")
+    if nc_display and not result.case_number:
+        result.case_number = nc_display
+        provenance["case_number"] = provenance.get("case_number", "parquet_nc_display")
+    raw_case_type = llm_meta.case_type
     result.case_type = normalize_case_type(raw_case_type) if raw_case_type else raw_case_type
-    if parquet_meta.get("nc_display"):
-        provenance["case_type"] = "parquet"
-    elif llm_meta.case_type:
+    if llm_meta.case_type:
         provenance["case_type"] = "llm"
 
     return result, provenance

@@ -18,11 +18,14 @@ _DEFAULT_BATCH_SIZE = 500
 _QUERY_TIMEOUT_SECONDS = 30
 
 # Same validation allowlists as Neo4j store for consistency.
-_VALID_LABELS = frozenset({"Case", "Statute", "Section", "Judge", "Court", "Act"})
+_VALID_LABELS = frozenset({
+    "Case", "Statute", "Judge", "Act", "Doctrine",
+    "Counsel", "LegalPrinciple", "Issue", "Community",
+})
 _VALID_RELATIONSHIPS = frozenset({
-    "CITES", "CITED_BY", "OVERRULES", "OVERRULED_BY",
-    "DISTINGUISHES", "FOLLOWS", "REFERS_TO", "APPLIES",
-    "DECIDED_BY", "HEARD_IN", "EQUIVALENT_TO",
+    "CITES", "EQUIVALENT_TO", "APPLIES_DOCTRINE", "DECIDED_BY",
+    "REPRESENTED_BY", "APPLIES_PRINCIPLE", "ADDRESSES",
+    "BELONGS_TO", "INTERPRETS", "AUTHORED_BY",
 })
 
 

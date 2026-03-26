@@ -184,6 +184,23 @@ async def _validate_startup() -> None:
         )
 
 
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    """Reject requests with bodies exceeding the configured size limit."""
+
+    MAX_BODY_SIZE = 10 * 1024 * 1024  # 10 MB
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > self.MAX_BODY_SIZE:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Request body too large. Maximum size is 10 MB."},
+            )
+        return await call_next(request)
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to all responses."""
 
@@ -197,6 +214,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "max-age=31536000; includeSubDomains"
         )
         response.headers["X-XSS-Protection"] = "0"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "font-src 'self'; "
+            "connect-src 'self' https://*.googleapis.com https://*.pinecone.io; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
+        )
         # Apply no-store only to API responses, not static assets
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
@@ -298,7 +326,10 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "Accept", "X-CSRF-Token"],
 )
 
-# Security headers (adds X-Content-Type-Options, HSTS, etc.)
+# Request body size limit (rejects >10MB bodies early)
+app.add_middleware(RequestSizeLimitMiddleware)
+
+# Security headers (adds X-Content-Type-Options, HSTS, CSP, etc.)
 app.add_middleware(SecurityHeadersMiddleware)
 
 # Trusted Host middleware in production (outermost — runs first, rejects bad hosts early)

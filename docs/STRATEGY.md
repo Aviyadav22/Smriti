@@ -251,7 +251,7 @@ An investor told you: *"Not many VCs are interested in legal tech — Jhana is t
 
 The base data is public. Your moat is **derived intelligence**:
 
-- **Typed citation relationships**: CITES → OVERRULES / DISTINGUISHES / AFFIRMS / FOLLOWS (requires legal reasoning, not just regex)
+- **Typed citation relationships**: CITES with treatment classification (overruled / distinguished / followed / affirmed) as edge properties (requires legal reasoning, not just regex)
 - **Authority scores**: PageRank-style scoring weighted by bench strength + recency
 - **Precedent chains**: Follow a legal principle through decades of cases
 - **Overruling cascades**: When Case X is overruled, flag every case that relied on it
@@ -466,7 +466,7 @@ Need ~500 Pro users OR 2-3 enterprise clients to cover.
 
 ### Strengths (What You Have)
 - **Superior architecture**: Hybrid RRF search + Neo4j citation graph + section-aware chunking. Neither Jhana nor Harvey+SCC has confirmed this combination.
-- **Citation intelligence**: Typed relationship classification (OVERRULES/DISTINGUISHES/AFFIRMS) is a genuine moat nobody else has built for Indian law.
+- **Citation intelligence**: Typed citation treatment classification (overruled/distinguished/followed/affirmed as CITES edge properties) is a genuine moat nobody else has built for Indian law.
 - **Price point**: ₹999/mo makes you 100x cheaper than Harvey+SCC and competitive with Jhana.
 - **Open-source data foundation**: CC-BY-4.0 dataset means zero data acquisition cost for SC.
 - **Modern tech stack**: Built for 2026, not bolted onto 2005 infrastructure.

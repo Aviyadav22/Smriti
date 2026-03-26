@@ -30,7 +30,8 @@ const AuthContext = createContext<AuthState | null>(null);
 function isTokenExpired(token: string): boolean {
     try {
         const payload = JSON.parse(atob(token.split(".")[1]));
-        return payload.exp * 1000 < Date.now();
+        // 60s buffer to match api.ts — avoid mid-request expiration race
+        return payload.exp * 1000 < Date.now() + 60_000;
     } catch {
         return true;
     }

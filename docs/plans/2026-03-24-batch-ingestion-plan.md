@@ -1,8 +1,8 @@
 # Batch Ingestion Orchestrator — Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **Status:** DEPRECATED — Batch pipeline produces lower quality metadata than standard pipeline. See design doc for details.
 
-**Goal:** New `batch_ingest.py` script using Gemini Batch API (50% cheaper, higher throughput) to ingest 43K SC judgments without modifying any existing pipeline files.
+**Original Goal:** New `batch_ingest.py` script using Gemini Batch API (50% cheaper, higher throughput) to ingest 43K SC judgments without modifying any existing pipeline files.
 
 **Architecture:** Mock LLM provider (`BatchCachedLLM`) returns pre-fetched batch results. 3-phase CLI: `submit` (extract text + upload PDFs + submit batch jobs), `poll` (collect results), `process` (feed into existing `ingest_judgment()` unchanged).
 

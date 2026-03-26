@@ -67,14 +67,24 @@ async def list_review_queue(
     )
     total = count_result.scalar() or 0
 
+    # Use parameterized ORDER BY via allowlisted column mapping (no f-string SQL)
+    order_clauses = {
+        ("created_at", "ASC"): "created_at ASC",
+        ("created_at", "DESC"): "created_at DESC",
+        ("extraction_confidence", "ASC"): "extraction_confidence ASC",
+        ("extraction_confidence", "DESC"): "extraction_confidence DESC",
+        ("year", "ASC"): "year ASC",
+        ("year", "DESC"): "year DESC",
+    }
+    order_clause = order_clauses[(sort_col, sort_dir)]
     result = await db.execute(
         text(
-            f"SELECT id, title, citation, court, year, ingestion_status, "
-            f"extraction_confidence, metadata_provenance, created_at "
-            f"FROM cases "
-            f"WHERE ingestion_status = :status "
-            f"ORDER BY {sort_col} {sort_dir} "
-            f"LIMIT :limit OFFSET :offset"
+            "SELECT id, title, citation, court, year, ingestion_status, "
+            "extraction_confidence, metadata_provenance, created_at "
+            "FROM cases "
+            "WHERE ingestion_status = :status "
+            f"ORDER BY {order_clause} "
+            "LIMIT :limit OFFSET :offset"
         ),
         {"status": status, "limit": page_size, "offset": offset},
     )

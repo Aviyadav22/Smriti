@@ -375,6 +375,7 @@ async def ingest_judgment(
         # --------------------------------------------------------------
         # 8. UPSERT TO VECTOR STORE
         # --------------------------------------------------------------
+        proposition_vectors_failed = False
         # Upsert new vectors FIRST, then delete stale ones (excluding the
         # newly upserted IDs). This avoids the data-loss window where old
         # vectors are deleted but new ones haven't been written yet.
@@ -414,6 +415,8 @@ async def ingest_judgment(
             logger.warning("Proposition vector upsert failed for %s: %s", case_id, exc)
             if warnings_out is not None:
                 warnings_out.append(f"proposition_vectors_failed: {exc}")
+            # Flag case for review — proposition search will be incomplete
+            proposition_vectors_failed = True
 
         # Fire stale-vector cleanup as a background task — it's independent
         # of RAPTOR and chunk_count update, so run concurrently.
@@ -459,6 +462,10 @@ async def ingest_judgment(
                         "citation": metadata.citation or "",
                         "court": metadata.court or "",
                         "year": metadata.year or 0,
+                        "case_type": metadata.case_type or "",
+                        "bench_type": metadata.bench_type or "",
+                        "disposal_nature": metadata.disposal_nature or "",
+                        "jurisdiction": metadata.jurisdiction or "",
                     }
                     summary_vectors = build_pinecone_summary_vectors(
                         str(case_id), summaries, summary_embeddings, base_meta
@@ -478,12 +485,14 @@ async def ingest_judgment(
         await stale_cleanup_task
 
         # Update chunk_count and mark ingestion status
-        # Low confidence extractions are flagged for human review
+        # Low confidence extractions or proposition failures are flagged for review
         _REVIEW_THRESHOLD = 0.5
-        final_status = (
-            "needs_review" if extraction_confidence < _REVIEW_THRESHOLD
-            else "complete"
-        )
+        if extraction_confidence < _REVIEW_THRESHOLD:
+            final_status = "needs_review"
+        elif proposition_vectors_failed:
+            final_status = "needs_review"
+        else:
+            final_status = "complete"
         await db.execute(
             text(
                 "UPDATE cases SET chunk_count = :count, ingestion_status = :status, "
@@ -809,7 +818,7 @@ async def _insert_case(
                 keywords = COALESCE(EXCLUDED.keywords, cases.keywords),
                 bench_type = COALESCE(EXCLUDED.bench_type, cases.bench_type),
                 jurisdiction = COALESCE(EXCLUDED.jurisdiction, cases.jurisdiction),
-                searchable_text = EXCLUDED.searchable_text,
+                searchable_text = COALESCE(EXCLUDED.searchable_text, cases.searchable_text),
                 case_number = COALESCE(EXCLUDED.case_number, cases.case_number),
                 is_reportable = COALESCE(EXCLUDED.is_reportable, cases.is_reportable),
                 headnotes = COALESCE(EXCLUDED.headnotes, cases.headnotes),
@@ -1070,6 +1079,14 @@ async def _upsert_proposition_vectors(
         "citation": metadata.citation or "",
         "acts_cited": list(metadata.acts_cited[:25]) if metadata.acts_cited else [],
         "document_type": "case_law",
+        # Parity with chunk vectors — needed for Pinecone filter queries
+        "disposal_nature": metadata.disposal_nature or "",
+        "author_judge": metadata.author_judge or "",
+        "judge": list(metadata.judge[:20]) if metadata.judge else [],
+        "jurisdiction": metadata.jurisdiction or "",
+        "judicial_tone": metadata.judicial_tone or "",
+        "fact_pattern_tags": list(metadata.fact_pattern_tags[:5]) if metadata.fact_pattern_tags else [],
+        "issue_classification": list(metadata.issue_classification[:5]) if metadata.issue_classification else [],
     }
 
     # --- Proposition vectors ---
@@ -1219,6 +1236,10 @@ async def _build_citation_graph(
                 "case_type": metadata.case_type or "",
                 "disposal_nature": metadata.disposal_nature or "",
                 "judge": ", ".join(metadata.judge) if metadata.judge else "",
+                # Needed by case_search fulltext index
+                "keywords": ", ".join(metadata.keywords[:30]) if metadata.keywords else "",
+                "acts_cited": ", ".join(metadata.acts_cited[:25]) if metadata.acts_cited else "",
+                "ratio": (metadata.ratio_decidendi or "")[:2000],
             },
         )
     except (OSError, ConnectionError, RuntimeError) as exc:
@@ -1524,7 +1545,9 @@ async def bulk_upsert_cases(
             procedural_history, interim_orders, filing_date, urgency_indicators,
             party_counsel, issue_classification, fact_pattern_tags,
             operative_order, conditions_imposed, costs_awarded,
-            page_map, enrichment_status
+            page_map, enrichment_status,
+            legal_propositions, statute_sections_interpreted,
+            fact_pattern_summary, source_dataset
         ) VALUES (
             :id, :title, :citation, :case_id, :cnr, :court, :year, :case_type,
             :jurisdiction, :bench_type, :judge, :author_judge, :petitioner,
@@ -1548,7 +1571,9 @@ async def bulk_upsert_cases(
             :procedural_history, :interim_orders, :filing_date, :urgency_indicators,
             :party_counsel, :issue_classification, :fact_pattern_tags,
             :operative_order, :conditions_imposed, :costs_awarded,
-            :page_map, :enrichment_status
+            :page_map, :enrichment_status,
+            :legal_propositions, :statute_sections_interpreted,
+            :fact_pattern_summary, :source_dataset
         )
         ON CONFLICT (citation) WHERE citation IS NOT NULL DO UPDATE SET
             full_text = EXCLUDED.full_text,
@@ -1559,7 +1584,7 @@ async def bulk_upsert_cases(
             keywords = COALESCE(EXCLUDED.keywords, cases.keywords),
             bench_type = COALESCE(EXCLUDED.bench_type, cases.bench_type),
             jurisdiction = COALESCE(EXCLUDED.jurisdiction, cases.jurisdiction),
-            searchable_text = EXCLUDED.searchable_text,
+            searchable_text = COALESCE(EXCLUDED.searchable_text, cases.searchable_text),
             case_number = COALESCE(EXCLUDED.case_number, cases.case_number),
             is_reportable = COALESCE(EXCLUDED.is_reportable, cases.is_reportable),
             headnotes = COALESCE(EXCLUDED.headnotes, cases.headnotes),
@@ -1606,6 +1631,10 @@ async def bulk_upsert_cases(
             costs_awarded = COALESCE(EXCLUDED.costs_awarded, cases.costs_awarded),
             page_map = COALESCE(EXCLUDED.page_map, cases.page_map),
             enrichment_status = COALESCE(EXCLUDED.enrichment_status, cases.enrichment_status),
+            legal_propositions = COALESCE(EXCLUDED.legal_propositions, cases.legal_propositions),
+            statute_sections_interpreted = COALESCE(EXCLUDED.statute_sections_interpreted, cases.statute_sections_interpreted),
+            fact_pattern_summary = COALESCE(EXCLUDED.fact_pattern_summary, cases.fact_pattern_summary),
+            source_dataset = COALESCE(EXCLUDED.source_dataset, cases.source_dataset),
             updated_at = NOW()
         RETURNING id
         """
@@ -1697,6 +1726,11 @@ async def bulk_upsert_cases(
                 "costs_awarded": row.get("costs_awarded"),
                 "page_map": row.get("page_map"),
                 "enrichment_status": row.get("enrichment_status", "flash_only"),
+                # V3 columns
+                "legal_propositions": row.get("legal_propositions"),
+                "statute_sections_interpreted": row.get("statute_sections_interpreted"),
+                "fact_pattern_summary": row.get("fact_pattern_summary"),
+                "source_dataset": row.get("source_dataset", "aws_open_data_sc"),
             })
 
         # Batch execution: single round-trip for all rows in this batch.

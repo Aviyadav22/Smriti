@@ -67,7 +67,6 @@ QUERY_UNDERSTANDING_SCHEMA: dict = {
                 "bench_type": {"type": "string"},
                 "judge": {"type": "string"},
                 "act": {"type": "string"},
-                "section": {"type": "string"},
             },
         },
         "entities": {
@@ -107,10 +106,9 @@ class SearchFilters:
     bench_type: str | None = None
     judge: str | None = None
     act: str | None = None
-    section: str | None = None
-    judgment_section: str | None = None  # FACTS, HOLDINGS, REASONING, etc.
+    judgment_section: str | None = None  # FACTS, RATIO, ANALYSIS, etc.
     disposal_nature: str | None = None
-    vector_types: list[str] | None = None  # ["chunk", "proposition", "ratio", "headnote"]
+    vector_types: list[str] | None = None  # ["chunk", "proposition", "ratio", "headnote", "statute"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -272,7 +270,6 @@ def _parse_llm_result(raw_query: str, data: dict) -> QueryUnderstanding:
             bench_type=filters_raw.get("bench_type"),
             judge=filters_raw.get("judge"),
             act=filters_raw.get("act"),
-            section=filters_raw.get("section"),
         ),
         entities=QueryEntities(
             case_names=entities_raw.get("case_names", []),

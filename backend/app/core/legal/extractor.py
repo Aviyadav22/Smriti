@@ -537,6 +537,12 @@ def _is_valid_act_citation(name: str) -> bool:
         return True
     if len(stripped) < 3:
         return False
+    # Sentence fragments: real act names are rarely >80 chars
+    if len(stripped) > 80:
+        return False
+    # Contains multiple spaces + lowercase words = likely a sentence, not an act name
+    if len(stripped.split()) > 10:
+        return False
     lower = stripped.lower()
     if lower in _ACTS_CITED_BLOCKLIST:
         return False

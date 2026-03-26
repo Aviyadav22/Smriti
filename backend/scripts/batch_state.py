@@ -1,5 +1,9 @@
 """SQLite state tracking for batch ingestion phases.
 
+⚠️  DEPRECATED — Part of the batch ingestion pipeline (batch_ingest.py)
+which was evaluated and found to produce lower quality metadata than the
+standard pipeline. See batch_ingest.py docstring for details.
+
 Tracks individual documents through: uploaded → submitted → completed → processed
 Tracks batch jobs through: pending → succeeded → failed
 Separate DB from ingest_tracker.db to avoid any interference with the main pipeline.

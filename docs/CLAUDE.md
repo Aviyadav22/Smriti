@@ -210,12 +210,12 @@ All core features built and tested: hybrid search (FTS + multi-vector + RRF + Co
 - **Research Agent V3**: 5-stage sequential-reactive pipeline (Understand → Route → Investigate → Challenge → Synthesize), 4 new nodes (statute_lookup, element_decomposition, adversarial_search, temporal_validation)
 - **10x Audit Fix**: All CRITICAL + HIGH findings fixed across research agent quality
 - **Gemini embedding-2-preview upgrade**: Task-type-aware embeddings (RETRIEVAL_DOCUMENT/RETRIEVAL_QUERY/SEMANTIC_SIMILARITY), 8K context
-- **Multi-vector Pinecone**: 6 vector types (chunk, proposition, ratio, headnote, section, statute) with 1.5x RRF boost for proposition/ratio
+- **Multi-vector Pinecone**: 7 vector types (chunk, proposition, ratio, headnote, statute, summary, community) with 1.5x RRF boost for proposition/ratio/headnote in agent worker
 - **Ingestion V3**: Proposition extraction, statute interpretation, fact pattern summaries, legal signal scoring
 - **Frontend hardening**: JWT proactive refresh, session expiry event bus, stream disconnect detection, account lockout (10 attempts / 5 min)
-- **Production readiness audit**: Security headers, fail-closed auth, ILIKE escaping, SSE session isolation, error sanitization, PII redaction, CSP
+- **Production readiness audit**: Security headers (CSP added), fail-closed auth, ILIKE escaping, SSE session isolation, error sanitization, PII redaction; RequestSizeLimitMiddleware (10 MB), rate limiter in-memory fallback (no 503), health endpoint error sanitization, SQL injection fix in admin_review ORDER BY, bench combinations LIMIT 5000, search_degraded field on SearchResponse, registration audit logging, auth-context token expiry buffer aligned to 60s, Next.js upgraded to 16.2.1
 
-**Chunking**: Standard 2000-char / 200-char overlap; dense sections (ANALYSIS, RATIO, ORDER, DISSENT, CONCURRENCE) use 1800-char / 400-char overlap with legal signal scoring.
+**Chunking**: Standard 2000-char / 200-char overlap; dense sections (ANALYSIS, RATIO, ORDER, DISSENT, CONCURRENCE) use 1200-char / 300-char overlap with legal signal scoring.
 
 ---
 

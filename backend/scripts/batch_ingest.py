@@ -1,5 +1,26 @@
 """Batch ingestion orchestrator using Gemini Batch API.
 
+⚠️  DEPRECATED — DO NOT USE FOR PRODUCTION INGESTION  ⚠️
+
+This approach was evaluated against the standard pipeline (individual Flash
+calls with responseSchema enforcement) on 10 SC judgments (2023) and found
+to produce LOWER quality metadata:
+
+  - Neutral citations (INSC) missing in 7/10 cases (pipeline gets 8/10)
+  - is_reportable always null (pipeline correctly fills 7/10)
+  - 29% fewer cases_cited, 3.5x fewer citation_treatments
+  - 35% fewer legal_propositions, 52% fewer arguments_raised
+  - Root cause: Gemini Batch API does NOT support responseSchema in JSONL
+    requests, so structured output is schema-in-prompt (less reliable)
+  - Batch requires Pro model on Tier 1 (4x more expensive than Flash)
+
+Use the standard pipeline instead: scripts/ingest_s3.py
+
+Kept for reference only. See comparison data in:
+  - data/batch_results_10pdf.jsonl  (batch output)
+  - data/pipeline_results_10pdf.json (pipeline output)
+
+Original description:
 Three-phase CLI for 43K case ingestion at 50% cost:
   submit  — Extract text, upload PDFs, submit batch LLM jobs
   poll    — Poll batch jobs, collect results

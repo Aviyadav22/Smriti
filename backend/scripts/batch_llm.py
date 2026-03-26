@@ -1,5 +1,9 @@
 """Mock LLM provider that returns pre-fetched Gemini Batch API results.
 
+⚠️  DEPRECATED — Part of the batch ingestion pipeline (batch_ingest.py)
+which was evaluated and found to produce lower quality metadata than the
+standard pipeline. See batch_ingest.py docstring for details.
+
 Used by batch_ingest.py Phase 3 to feed cached metadata extraction results
 into the existing ingest_judgment() pipeline without modifications.
 

@@ -132,7 +132,7 @@
 │                   CHUNKING (Section-Aware)                               │
 │                                                                          │
 │  Standard: ~2000 chars / 200-char overlap                                │
-│  Dense sections (ANALYSIS/RATIO/ORDER/DISSENT): ~1800 chars / 400 overlap│
+│  Dense sections (ANALYSIS/RATIO/ORDER/DISSENT): ~1200 chars / 300 overlap│
 │  Each chunk carries: doc_id, section_type, chunk_index, legal_signal     │
 └────────────────────────────────────┬─────────────────────────────────────┘
                                      │
@@ -146,8 +146,8 @@
              │  -preview)   │ │ + FTS     │ │  Edges       │
              │      │       │ │ tsvector  │ │              │
              │      ▼       │ │           │ │ (CITES)      │
-             │  Pinecone    │ │           │ │ (CITED_BY)   │
-             │  multi-vector│ │           │ │ (OVERRULES)  │
+             │  Pinecone    │ │           │ │ (EQUIVALENT  │
+             │  multi-vector│ │           │ │  _TO)        │
              │  upsert      │ │           │ │              │
              └──────────────┘ └───────────┘ └──────────────┘
 ```
@@ -160,7 +160,7 @@
 | 2 | PDFExtractor | Extract text via pdfplumber; OCR fallback via Tesseract | Raw text string |
 | 3 | SectionDetector | Identify judgment sections using heading patterns | List of `(section_type, text)` |
 | 4 | MetadataExtractor | Gemini structured output + regex validation | `CaseMetadata` object |
-| 5 | LegalChunker | Section-aware chunking (2000/200 standard, 1800/400 dense) + legal signal scoring | List of `Chunk` objects |
+| 5 | LegalChunker | Section-aware chunking (2000/200 standard, 1200/300 dense) + legal signal scoring | List of `Chunk` objects |
 | 6 | EmbeddingProvider | Gemini gemini-embedding-2-preview (1536-dim) | List of float vectors |
 | 7 | VectorStore | Pinecone upsert with metadata filters | Indexed vectors |
 | 8 | PostgreSQL | Insert case metadata + tsvector column | Searchable row |
@@ -385,10 +385,10 @@ User Message
               │                       │
               │  Traversal types:     │
               │  ─ CITES (outgoing)   │
-              │  ─ CITED_BY (incoming)│
-              │  ─ OVERRULES          │
-              │  ─ FOLLOWS            │
-              │  ─ DISTINGUISHES      │
+              │  ─ EQUIVALENT_TO      │
+              │  ─ APPLIES_PRINCIPLE  │
+              │  ─ APPLIES_DOCTRINE   │
+              │  ─ ADDRESSES          │
               └───────────┬───────────┘
                           │
               ┌───────────┼───────────┐
@@ -2041,6 +2041,7 @@ All security-sensitive operations are logged to the `audit_logs` table:
 
 | Action | Trigger |
 |--------|---------|
+| `user.register` | New user registration |
 | `login.success` | Successful authentication |
 | `login.failure` | Failed login attempt (with attempt count) |
 | `token.refresh` | Token rotation |
@@ -2067,6 +2068,7 @@ Applied via `SecurityHeadersMiddleware` on all responses:
 | `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | Force HTTPS |
 | `X-XSS-Protection` | `0` | Disable legacy XSS filter (CSP preferred) |
 | `Cache-Control` | `no-store` (API routes only) | Prevent caching of API responses |
+| `Content-Security-Policy` | `default-src 'self'; ...` | Restrict resource loading origins |
 
 **Production-only**: `TrustedHostMiddleware` rejects requests with unexpected `Host` headers.
 
@@ -2081,7 +2083,10 @@ Incoming Request
 TrustedHostMiddleware (prod only) — reject bad Host headers
     │
     ▼
-SecurityHeadersMiddleware — add security response headers
+RequestSizeLimitMiddleware — reject bodies > 10 MB (413)
+    │
+    ▼
+SecurityHeadersMiddleware — add security response headers (incl. CSP)
     │
     ▼
 CORSMiddleware — handle CORS preflight and headers

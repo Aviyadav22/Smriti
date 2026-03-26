@@ -1,8 +1,17 @@
 # Batch Ingestion Orchestrator — Design
 
 **Date:** 2026-03-24
-**Status:** Approved
-**Goal:** Ingest 43K Supreme Court judgments using Gemini Batch API at 50% cost reduction and higher throughput than interactive RPD limits allow.
+**Status:** DEPRECATED — Do not use for production ingestion
+
+> **Why deprecated:** Evaluated on 10 SC judgments (2023). The Gemini Batch API
+> does not support `responseSchema` in JSONL requests, forcing schema-in-prompt
+> which produces lower quality metadata: missing neutral citations (7/10),
+> `is_reportable` always null, 29-52% fewer extracted entities across all list
+> fields. Also requires Pro model on Tier 1 (4x more expensive than Flash).
+> The standard pipeline (`ingest_s3.py` with individual Flash calls + responseSchema)
+> is preferred. See `data/batch_results_10pdf.jsonl` vs `data/pipeline_results_10pdf.json`.
+
+**Original Goal:** Ingest 43K Supreme Court judgments using Gemini Batch API at 50% cost reduction and higher throughput than interactive RPD limits allow.
 
 ## Problem
 

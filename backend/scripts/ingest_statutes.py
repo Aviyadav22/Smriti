@@ -365,6 +365,7 @@ async def ingest_statute_file(
                         "values": emb,
                         "metadata": {
                             "document_type": s["document_type"],
+                            "vector_type": "statute",
                             "act_name": s["act_name"],
                             "act_short_name": s["act_short_name"],
                             "section_number": s["section_number"],
@@ -372,6 +373,8 @@ async def ingest_statute_file(
                             "text": s["section_text"][:2000],
                             "replaced_by": s["replaced_by"],
                             "replaces": s["replaces"],
+                            "title": f"{s['act_short_name']} Section {s['section_number']}",
+                            "is_repealed": s.get("is_repealed", False),
                         },
                     })
                 await vector_store.upsert(vectors)

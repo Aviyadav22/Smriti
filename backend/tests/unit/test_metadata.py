@@ -120,11 +120,13 @@ class TestMergeMetadata:
         # _parse_judge_names strips "Justice" prefix for normalized storage
         assert result.judge == ["D.Y. Chandrachud", "Sanjiv Khanna"]
 
-    def test_nc_display_used_for_case_type(self):
-        parquet = {"nc_display": "Criminal Appeal"}
-        llm = CaseMetadata(case_type="Civil")
-        result, _ = merge_metadata(parquet, llm)
-        assert result.case_type == "Criminal Appeal"
+    def test_nc_display_stored_as_case_number_not_case_type(self):
+        """nc_display is a case identifier (e.g. 2024Insc446), not a case type."""
+        parquet = {"nc_display": "2024Insc446"}
+        llm = CaseMetadata(case_type="Civil Appeal")
+        result, prov = merge_metadata(parquet, llm)
+        assert result.case_type == "Civil Appeal"
+        assert result.case_number == "2024Insc446"
 
     def test_empty_parquet_and_llm(self):
         result, _ = merge_metadata({}, CaseMetadata())

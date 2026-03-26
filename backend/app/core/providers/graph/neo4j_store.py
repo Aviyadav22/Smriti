@@ -16,6 +16,7 @@ from tenacity import (
 )
 
 from app.core.config import settings
+from app.core.providers.circuit_breaker import CircuitBreakerOpen
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +32,14 @@ _neo4j_retry = retry(
 # Input validation allowlists
 # ---------------------------------------------------------------------------
 
-_VALID_LABELS = frozenset({"Case", "Statute", "Section", "Judge", "Court", "Act", "Doctrine"})
+_VALID_LABELS = frozenset({
+    "Case", "Statute", "Judge", "Act", "Doctrine",
+    "Counsel", "LegalPrinciple", "Issue", "Community",
+})
 _VALID_RELATIONSHIPS = frozenset({
-    "CITES", "CITED_BY", "OVERRULES", "OVERRULED_BY",
-    "DISTINGUISHES", "FOLLOWS", "REFERS_TO", "APPLIES",
-    "DECIDED_BY", "HEARD_IN", "EQUIVALENT_TO", "APPLIES_DOCTRINE",
+    "CITES", "EQUIVALENT_TO", "APPLIES_DOCTRINE", "DECIDED_BY",
+    "REPRESENTED_BY", "APPLIES_PRINCIPLE", "ADDRESSES",
+    "BELONGS_TO", "INTERPRETS", "AUTHORED_BY",
 })
 
 
@@ -79,9 +83,27 @@ class Neo4jGraph:
             raise RuntimeError(f"Neo4j connection failed: {exc}") from exc
         self._database = settings.neo4j_database
 
-    @_neo4j_retry
+        # Lazy import to avoid circular deps at module level
+        from app.core.dependencies import neo4j_breaker
+
+        self._breaker = neo4j_breaker
+
     async def create_node(self, label: str, properties: dict) -> str:
         """Create or merge a node. Uses MERGE for idempotency (safe to call multiple times)."""
+        if not await self._breaker.check():
+            raise CircuitBreakerOpen(0, service="neo4j")
+        try:
+            result = await self._create_node_inner(label, properties)
+            await self._breaker.record_success()
+            return result
+        except CircuitBreakerOpen:
+            raise
+        except Exception:
+            await self._breaker.record_failure()
+            raise
+
+    @_neo4j_retry
+    async def _create_node_inner(self, label: str, properties: dict) -> str:
         _validate_label(label)
         node_id = properties.get("id", "")
         try:
@@ -100,8 +122,21 @@ class Neo4jGraph:
             logger.error("Unexpected error in create_node: %s", exc)
             raise RuntimeError(f"Neo4j create_node failed unexpectedly: {exc}") from exc
 
-    @_neo4j_retry
     async def get_node(self, node_id: str) -> dict | None:
+        if not await self._breaker.check():
+            raise CircuitBreakerOpen(0, service="neo4j")
+        try:
+            result = await self._get_node_inner(node_id)
+            await self._breaker.record_success()
+            return result
+        except CircuitBreakerOpen:
+            raise
+        except Exception:
+            await self._breaker.record_failure()
+            raise
+
+    @_neo4j_retry
+    async def _get_node_inner(self, node_id: str) -> dict | None:
         try:
             async with self._driver.session(database=self._database) as session:
                 result = await session.run(
@@ -117,8 +152,26 @@ class Neo4jGraph:
             logger.error("Unexpected error in get_node (id=%s): %s", node_id, exc)
             raise RuntimeError(f"Neo4j get_node failed unexpectedly: {exc}") from exc
 
-    @_neo4j_retry
     async def query(
+        self,
+        cypher: str,
+        *,
+        params: dict | None = None,
+    ) -> list[dict]:
+        if not await self._breaker.check():
+            raise CircuitBreakerOpen(0, service="neo4j")
+        try:
+            result = await self._query_inner(cypher, params=params)
+            await self._breaker.record_success()
+            return result
+        except CircuitBreakerOpen:
+            raise
+        except Exception:
+            await self._breaker.record_failure()
+            raise
+
+    @_neo4j_retry
+    async def _query_inner(
         self,
         cypher: str,
         *,
@@ -142,8 +195,30 @@ class Neo4jGraph:
             logger.error("Unexpected error in Neo4j query: %s", exc)
             raise RuntimeError(f"Neo4j query failed unexpectedly: {exc}") from exc
 
-    @_neo4j_retry
     async def get_neighbors(
+        self,
+        node_id: str,
+        *,
+        relationship: str | None = None,
+        direction: str = "both",
+        depth: int = 1,
+    ) -> dict:
+        if not await self._breaker.check():
+            raise CircuitBreakerOpen(0, service="neo4j")
+        try:
+            result = await self._get_neighbors_inner(
+                node_id, relationship=relationship, direction=direction, depth=depth
+            )
+            await self._breaker.record_success()
+            return result
+        except CircuitBreakerOpen:
+            raise
+        except Exception:
+            await self._breaker.record_failure()
+            raise
+
+    @_neo4j_retry
+    async def _get_neighbors_inner(
         self,
         node_id: str,
         *,

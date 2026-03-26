@@ -54,10 +54,9 @@ Before launching Smriti to real users, we need to understand: how many concurren
 
 ### HIGH (Issues at ~100 users)
 
-#### H1. Rate limiter fallback is per-instance (not distributed)
-- **File:** `backend/app/security/rate_limiter.py:132-148`
-- **Risk:** When Redis is down, each Cloud Run instance has its own in-memory rate limit dict. 3 instances = 3x the allowed rate. Also uses `threading.Lock()` in async context (potential deadlock).
-- **Fix:** Accept degraded rate limiting when Redis is down (log warning). Remove threading.Lock, use asyncio.Lock.
+#### ~~H1. Rate limiter fallback is per-instance (not distributed)~~ — **FIXED**
+- **File:** `backend/app/security/rate_limiter.py`
+- Falls back to in-memory sliding window (asyncio.Lock) when Redis is unavailable; logs a warning. Per-instance limits during fallback are accepted as a trade-off (ADR-021). See `DECISIONS.md` ADR-021.
 
 #### H2. Sync Pinecone SDK wrapped in `asyncio.to_thread()`
 - **File:** `backend/app/core/providers/vector/pinecone_store.py:28-52`
@@ -146,7 +145,7 @@ Before launching Smriti to real users, we need to understand: how many concurren
 8. Upgrade Upstash Redis to paid tier
 9. Add circuit breaker to Cohere reranker
 10. Fix token refresh race condition in frontend
-11. Fix rate limiter: asyncio.Lock instead of threading.Lock
+11. ~~Fix rate limiter: asyncio.Lock instead of threading.Lock~~ — DONE (ADR-021)
 
 ### Phase C: Medium-priority (Day 3)
 12-16. Indexes, code splitting, caching, virtualization

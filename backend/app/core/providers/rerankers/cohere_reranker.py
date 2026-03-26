@@ -16,6 +16,7 @@ from tenacity import (
 
 from app.core.config import settings
 from app.core.interfaces.reranker import RerankResult
+from app.core.providers.circuit_breaker import CircuitBreakerOpen
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,11 @@ class CohereReranker:
         self._client = cohere.AsyncClientV2(api_key=settings.cohere_api_key)
         self._model = settings.cohere_rerank_model
 
-    @_cohere_retry
+        # Lazy import to avoid circular deps at module level
+        from app.core.dependencies import cohere_breaker
+
+        self._breaker = cohere_breaker
+
     async def rerank(
         self,
         query: str,
@@ -60,6 +65,28 @@ class CohereReranker:
         """
         if not documents:
             return []
+        if not await self._breaker.check():
+            logger.warning("Cohere circuit breaker OPEN — returning original order")
+            return [
+                RerankResult(index=i, score=1.0 - i * 0.01, text=doc)
+                for i, doc in enumerate(documents[:top_n])
+            ]
+        try:
+            result = await self._rerank_inner(query, documents, top_n=top_n)
+            await self._breaker.record_success()
+            return result
+        except Exception:
+            await self._breaker.record_failure()
+            raise
+
+    @_cohere_retry
+    async def _rerank_inner(
+        self,
+        query: str,
+        documents: list[str],
+        *,
+        top_n: int = 10,
+    ) -> list[RerankResult]:
         try:
             response = await asyncio.wait_for(
                 self._client.rerank(

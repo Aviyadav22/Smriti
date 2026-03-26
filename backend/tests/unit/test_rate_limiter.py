@@ -59,25 +59,23 @@ class TestParseRateLimit:
             _parse_rate_limit("100/fortnight")
 
 
-class TestRateLimiterFailFast:
-    """Verify rate limiter returns 503 when Redis is down (not in-memory fallback)."""
+class TestRateLimiterInMemoryFallback:
+    """Verify rate limiter falls back to in-memory when Redis is down."""
 
     @pytest.mark.asyncio
-    async def test_redis_down_returns_503(self) -> None:
+    async def test_redis_down_uses_in_memory_fallback(self) -> None:
         from app.security.rate_limiter import rate_limit_dependency
-        from fastapi import HTTPException
 
         dep = rate_limit_dependency("10/minute")
 
         mock_request = MagicMock()
         mock_request.client.host = "127.0.0.1"
+        mock_request.headers.get.return_value = None
         mock_request.url.path = "/test"
 
         with patch(
             "app.security.rate_limiter._get_rate_limiter",
             side_effect=ConnectionError("Redis down"),
         ):
-            with pytest.raises(HTTPException) as exc_info:
-                await dep(mock_request)
-            assert exc_info.value.status_code == 503
-            assert "unavailable" in exc_info.value.detail.lower()
+            # Should NOT raise — in-memory fallback allows the request
+            await dep(mock_request)

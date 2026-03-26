@@ -2422,7 +2422,7 @@ async def _deterministic_verify(
                     "WHERE r.treatment IS NOT NULL AND r.treatment <> 'cited' "
                     "RETURN r.treatment AS treatment, newer.title AS newer_title, "
                     "newer.citation AS newer_citation "
-                    "ORDER BY newer.date DESC LIMIT 5",
+                    "ORDER BY newer.year DESC LIMIT 5",
                     {"id": case_id},
                 )
                 if treatments:

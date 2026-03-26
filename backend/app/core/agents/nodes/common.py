@@ -216,8 +216,8 @@ async def statute_lookup_node(
                     "section_number": sec,
                     "section_title": meta.get("section_title", ""),
                     "section_text": meta.get("text", ""),
-                    "is_repealed": False,
-                    "replaced_by": "",
+                    "is_repealed": meta.get("is_repealed", False),
+                    "replaced_by": meta.get("replaced_by", ""),
                     "new_code_text": "",
                 })
                 existing_keys.add((act, sec))
