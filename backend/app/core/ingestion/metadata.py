@@ -254,6 +254,79 @@ def _validate_judge_tenure(
     return valid
 
 
+# Common English stopwords to exclude from token matching
+_STOPWORDS = frozenset({
+    "the", "a", "an", "is", "was", "are", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "shall",
+    "should", "may", "might", "can", "could", "must", "and", "but", "or",
+    "nor", "not", "no", "so", "if", "then", "than", "that", "this",
+    "which", "who", "whom", "what", "where", "when", "how", "all", "each",
+    "every", "both", "few", "more", "most", "other", "some", "such", "only",
+    "own", "same", "too", "very", "of", "in", "on", "at", "to", "for",
+    "with", "by", "from", "as", "into", "through", "during", "before",
+    "after", "above", "below", "between", "under", "upon", "about",
+    "it", "its", "he", "she", "they", "them", "his", "her", "their",
+    "case", "court", "judgment", "order", "act", "section", "india",
+    "supreme", "high", "appeal", "petition", "respondent", "appellant",
+})
+
+
+def _validate_metadata_against_text(
+    metadata: CaseMetadata,
+    full_text: str,
+    min_text_len: int = 200,
+) -> CaseMetadata:
+    """Post-extraction sanity checks — remove fields that contradict the text.
+
+    Validates:
+    - Keywords: each keyword must have at least one non-stopword token in full_text.
+    - Ratio decidendi: must share >=3 non-stopword tokens with full_text.
+
+    Args:
+        metadata: Extracted metadata to validate.
+        full_text: Full judgment text.
+        min_text_len: Skip validation if text is shorter than this.
+
+    Returns:
+        Metadata with invalidated fields nulled out.
+    """
+    if len(full_text) < min_text_len:
+        return metadata
+
+    text_lower = full_text.lower()
+
+    # --- Validate keywords ---
+    if metadata.keywords:
+        validated_kw: list[str] = []
+        for kw in metadata.keywords:
+            # Check if any non-stopword token (4+ chars) from the keyword appears in text
+            tokens = [t for t in re.split(r"\W+", kw.lower()) if len(t) >= 4 and t not in _STOPWORDS]
+            if not tokens:
+                # Short keyword — keep it (e.g., "PIL", "bail")
+                validated_kw.append(kw)
+            elif any(token in text_lower for token in tokens):
+                validated_kw.append(kw)
+            else:
+                logger.warning("Keyword not found in text, removing: %s", kw)
+        metadata.keywords = validated_kw if validated_kw else None
+
+    # --- Validate ratio_decidendi ---
+    if metadata.ratio_decidendi:
+        ratio_tokens = [
+            t for t in re.split(r"\W+", metadata.ratio_decidendi.lower())
+            if len(t) >= 4 and t not in _STOPWORDS
+        ]
+        matching = sum(1 for t in ratio_tokens if t in text_lower)
+        if ratio_tokens and matching < 3:
+            logger.warning(
+                "Ratio decidendi shares only %d/%d tokens with text — nulling",
+                matching, len(ratio_tokens),
+            )
+            metadata.ratio_decidendi = None
+
+    return metadata
+
+
 def _parse_judge_names(raw: str | list | None) -> list[str] | None:
     """Parse judge names from various formats.
 
