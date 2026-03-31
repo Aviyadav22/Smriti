@@ -585,6 +585,7 @@ class TestGetSession:
                 "id": _EXECUTION_ID,
                 "status": "completed",
                 "input_data": {"query": "basic structure"},
+                "result_data": {"memo": "test memo"},
                 "created_at": now,
                 "completed_at": now,
             },

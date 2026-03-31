@@ -1908,7 +1908,7 @@ async def get_session(
 
     exec_result = await db.execute(
         text(
-            "SELECT id, status, input_data, created_at, completed_at "
+            "SELECT id, status, input_data, result_data, created_at, completed_at "
             "FROM agent_executions WHERE session_id = :sid ORDER BY created_at ASC"
         ),
         {"sid": sess_uuid},
@@ -1918,6 +1918,7 @@ async def get_session(
             "id": str(e["id"]),
             "status": e["status"],
             "input_data": e["input_data"],
+            "result_data": e["result_data"],
             "created_at": str(e["created_at"]),
             "completed_at": str(e["completed_at"]) if e["completed_at"] else None,
         }
