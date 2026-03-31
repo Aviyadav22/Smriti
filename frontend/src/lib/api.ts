@@ -1137,4 +1137,20 @@ export async function getCounselMatchups(
     return apiFetch(`/counsel/${encodeURIComponent(name)}/matchups?limit=${limit}`);
 }
 
+// ---------------------------------------------------------------------------
+// User Preferences API
+// ---------------------------------------------------------------------------
+
+export async function getUserPreferences(): Promise<Record<string, unknown>> {
+    return apiFetch("/users/me/preferences");
+}
+
+export async function updateUserPreferences(prefs: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return apiFetch("/users/me/preferences", { method: "PUT", body: JSON.stringify(prefs) });
+}
+
+export async function refreshUserPreferences(): Promise<Record<string, unknown>> {
+    return apiFetch("/users/me/preferences/refresh", { method: "POST" });
+}
+
 export { ApiError };

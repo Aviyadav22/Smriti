@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
-import { search as apiSearch, searchFacets, searchSuggest } from "@/lib/api";
+import { search as apiSearch, searchFacets, searchSuggest, getUserPreferences } from "@/lib/api";
 import type { SearchSuggestion } from "@/lib/api";
 import type { SearchResponse, FacetsResponse, JudgmentSection } from "@/lib/types";
 import { Search, ChevronLeft, ChevronRight, Filter, X, AlertTriangle, Download } from "lucide-react";
@@ -108,6 +108,22 @@ function SearchContent() {
             console.error("Failed to load search facets:", err);
         });
     }, []);
+
+    // Pre-fill filter defaults from user preferences (only if user hasn't set them)
+    useEffect(() => {
+        if (isAuthenticated) {
+            getUserPreferences().then((prefs) => {
+                const prefCourts = prefs.preferred_courts;
+                const prefCaseTypes = prefs.common_case_types;
+                if (Array.isArray(prefCourts) && prefCourts.length > 0 && !court) {
+                    setCourt(prefCourts[0] as string);
+                }
+                if (Array.isArray(prefCaseTypes) && prefCaseTypes.length > 0 && !caseType) {
+                    setCaseType(prefCaseTypes[0] as string);
+                }
+            }).catch(() => {}); // Silent failure — preferences are optional
+        }
+    }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Fetch search suggestions with debounce (300ms, min 3 chars)
     const fetchSuggestions = useCallback((q: string) => {
