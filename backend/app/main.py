@@ -407,6 +407,7 @@ from app.api.routes.ingest import router as ingest_router
 from app.api.routes.counsel import router as counsel_router
 from app.api.routes.judges import router as judges_router
 from app.api.routes.search import router as search_router
+from app.api.routes.preferences import router as preferences_router
 from app.api.routes.sharing import router as sharing_router
 
 app.include_router(health_router, tags=["health"])
@@ -425,4 +426,5 @@ app.include_router(dpdp_router, prefix="/api/v1/dpdp", tags=["dpdp"])
 app.include_router(admin_review_router, prefix="/api/v1/admin/review", tags=["admin"])
 app.include_router(admin_corrections_router, prefix="/api/v1/admin/corrections", tags=["admin"])
 app.include_router(data_quality_router, prefix="/api/v1/admin/data-quality", tags=["admin"])
+app.include_router(preferences_router, prefix="/api/v1", tags=["preferences"])
 app.include_router(sharing_router, prefix="/api", tags=["sharing"])
