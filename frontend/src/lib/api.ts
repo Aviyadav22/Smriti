@@ -1083,4 +1083,35 @@ export async function getCitationEvolution(caseId: string, direction: "forward" 
     return apiFetch(`/graph/${caseId}/evolution?direction=${direction}`);
 }
 
+// ---------------------------------------------------------------------------
+// Counsel Analytics API
+// ---------------------------------------------------------------------------
+
+export async function searchCounsel(
+    query: string,
+    page = 1,
+    size = 20,
+): Promise<{ counsels: { name: string; total_cases: number; designation: string }[]; total: number }> {
+    return apiFetch(`/counsel?search=${encodeURIComponent(query)}&page=${page}&size=${size}`);
+}
+
+export async function getCounselProfile(name: string): Promise<Record<string, unknown>> {
+    return apiFetch(`/counsel/${encodeURIComponent(name)}`);
+}
+
+export async function getCounselCases(
+    name: string,
+    page = 1,
+    size = 20,
+): Promise<{ cases: unknown[]; total: number }> {
+    return apiFetch(`/counsel/${encodeURIComponent(name)}/cases?page=${page}&size=${size}`);
+}
+
+export async function getCounselMatchups(
+    name: string,
+    limit = 10,
+): Promise<{ matchups: { opponent: string; total: number; wins: number; losses: number; win_rate: number }[] }> {
+    return apiFetch(`/counsel/${encodeURIComponent(name)}/matchups?limit=${limit}`);
+}
+
 export { ApiError };
