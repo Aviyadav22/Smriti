@@ -180,7 +180,7 @@ class TestSpeculativeSynthesisNode:
 
     @pytest.mark.asyncio
     async def test_three_drafts_generated_with_different_strategies(self) -> None:
-        """Test 26: Verify 3 Flash drafts use different evidence subsets."""
+        """Test 26: Verify 3 Pro drafts use different evidence subsets."""
         from app.core.agents.nodes.research_nodes import (
             speculative_synthesis_with_contradictions_node,
         )
@@ -198,8 +198,8 @@ class TestSpeculativeSynthesisNode:
         strategies = {d["strategy"] for d in result["synthesis_drafts"]}
         assert strategies == {"relevance", "authority", "breadth"}
 
-        # Flash LLM should be called 3 times (one per draft)
-        assert flash_llm.generate.call_count == 3
+        # Pro LLM generates 3 drafts + 1 merge = at least 4 calls
+        assert llm.generate.call_count >= 4
 
     @pytest.mark.asyncio
     async def test_each_draft_is_structurally_valid(self) -> None:
@@ -259,8 +259,8 @@ class TestSpeculativeSynthesisNode:
 
         assert result["draft_memo"]
         assert "Executive Summary" in result["draft_memo"]
-        # Pro LLM called once for merge
-        assert llm.generate.call_count == 1
+        # Pro LLM called for 3 drafts + 1 merge = at least 4 calls
+        assert llm.generate.call_count >= 4
 
     @pytest.mark.asyncio
     async def test_empty_results_returns_gracefully(self) -> None:
@@ -366,8 +366,8 @@ class TestStreamingSynthesis:
         )
 
         assert result["draft_memo"]
-        # Regular generate should be called (not stream)
-        assert llm.generate.call_count == 1
+        # Regular generate should be called (not stream) — 3 drafts + 1 merge
+        assert llm.generate.call_count >= 4
 
 
 # ===========================================================================
@@ -527,7 +527,7 @@ class TestDualStageVerification:
 
         footnotes = [
             Footnote(number=1, citation="(2024) 1 SCC 100", source_type="case_law",
-                     source_url="/case/1", case_id="case-1", excerpt="test",
+                     source_url="/case/1", case_id="00000000-0000-0000-0000-000000000001", excerpt="test",
                      is_used=True, verification_status="pending", verified_against="none",
                      title="Test v State", court="Supreme Court of India", year=2024,
                      author="", bench="", ik_doc_id="", pdf_available=True, source_label="Case"),
@@ -538,10 +538,10 @@ class TestDualStageVerification:
                      ik_doc_id="", pdf_available=False, source_label="Case"),
         ]
 
-        # DB returns case-1 as existing via batch verify_case_ids query
+        # DB returns case UUID as existing via batch verify_case_ids query
         # [B9] verify_case_ids uses: SELECT id::text FROM cases WHERE id::text = ANY(:ids)
         mock_result = MagicMock()
-        mock_result.fetchall = MagicMock(return_value=[("case-1",)])
+        mock_result.fetchall = MagicMock(return_value=[("00000000-0000-0000-0000-000000000001",)])
         db = AsyncMock()
         async def _fake_execute(*args, **kwargs):
             return mock_result
@@ -564,7 +564,7 @@ class TestDualStageVerification:
         state = _make_base_state(
             footnotes=[
                 Footnote(number=1, citation="(2024) 1 SCC 100", source_type="case_law",
-                         source_url="/case/case-0", case_id="case-0", excerpt="test",
+                         source_url="/case/00000000-0000-0000-0000-000000000000", case_id="00000000-0000-0000-0000-000000000000", excerpt="test",
                          is_used=True, verification_status="pending", verified_against="none",
                          title="Test v State", court="Supreme Court of India", year=2024,
                          author="", bench="", ik_doc_id="", pdf_available=True, source_label="Case"),
@@ -573,10 +573,10 @@ class TestDualStageVerification:
             draft_memo="Test memo [^1] citation.\n\n[^1]: (2024) 1 SCC 100",
         )
 
-        # [B9] Mock returns case-0 as existing in batch query and scalar for other queries
+        # [B9] Mock returns case UUID as existing in batch query and scalar for other queries
         mock_result = MagicMock()
         mock_result.scalar = MagicMock(return_value=1)
-        mock_result.fetchall = MagicMock(return_value=[("case-0",)])
+        mock_result.fetchall = MagicMock(return_value=[("00000000-0000-0000-0000-000000000000",)])
         async def _fake_execute(*args, **kwargs):
             return mock_result
         db = MagicMock()
@@ -1059,8 +1059,8 @@ class TestProcessEventsInNodes:
             "footnotes": [
                 Footnote(
                     number=1, citation="(2024) 1 SCC 100",
-                    source_type="case_law", source_url="/case/case-0",
-                    case_id="case-0", excerpt="Test", is_used=True,
+                    source_type="case_law", source_url="/case/00000000-0000-0000-0000-000000000000",
+                    case_id="00000000-0000-0000-0000-000000000000", excerpt="Test", is_used=True,
                     verification_status="unverified", verified_against="none",
                     title="Test Case v. State", court="Supreme Court of India",
                     year=2024, author="Justice X", bench="Division Bench",

@@ -483,3 +483,99 @@ class TestGenericReporterCatchAll:
         text = "2020 Court 145 and 2020 State 200"
         citations = extract_citations(text)
         assert not any(c.reporter == "Unknown" for c in citations)
+
+
+# ---------------------------------------------------------------------------
+# Garbage filter: _is_valid_act_citation() hardening
+# ---------------------------------------------------------------------------
+
+from app.core.legal.extractor import _is_valid_act_citation, normalize_acts_cited_list
+
+
+class TestActsCitedGarbageFilter:
+    """Test that sentence fragments and garbage are rejected by _is_valid_act_citation."""
+
+    @pytest.mark.parametrize("garbage", [
+        "those candidates who went ahead",
+        "Erstwhile Act which governed the field",
+        "empowers the resolution professional",
+        "how accused",
+        "how the accused",
+        "Act of",
+        "Act plainly",
+        "society",
+        "subsequently",
+        "new Act so as to include even a petitioner",
+        "2013 Act deals with a scenario wherein",
+        "Erstwhile Act before the High Court",
+        "Erstwhile Act to the appellant company",
+        "an offence punishable under Section 4 of the PMLA",
+        "deposit of cash amount of Rs",
+        "PMLA punishable under Section 4",
+        "IBC by any of the petitioners",
+        "1963 Act as well",
+        "Act may be compared with Sections 4",
+    ])
+    def test_rejects_sentence_fragments(self, garbage):
+        assert not _is_valid_act_citation(garbage), f"Should reject: {garbage!r}"
+
+    @pytest.mark.parametrize("garbage", [
+        "Section 95",
+        "Section 302",
+        "Article 21",
+        "Section 313CrPC",
+        "Chapter III of Part III",
+        "Part II",
+        "Section 18",
+        "Sections 4 and 5",
+    ])
+    def test_rejects_standalone_section_article_references(self, garbage):
+        assert not _is_valid_act_citation(garbage), f"Should reject: {garbage!r}"
+
+    @pytest.mark.parametrize("garbage", [
+        "Madras5",
+        "Part III 57",
+    ])
+    def test_rejects_digit_glued_to_text(self, garbage):
+        assert not _is_valid_act_citation(garbage), f"Should reject: {garbage!r}"
+
+    @pytest.mark.parametrize("valid", [
+        "IPC",
+        "CrPC",
+        "CRPC",
+        "COI",
+        "BNS",
+        "NDPS ACT",
+        "Indian Penal Code",
+        "Motor Vehicles Act",
+        "Limitation Act",
+        "CA2013",
+        "Transfer of Property Act",
+        "Right to Fair Compensation Act",
+        "RFCTLARR ACT",
+    ])
+    def test_accepts_legitimate_act_names(self, valid):
+        assert _is_valid_act_citation(valid), f"Should accept: {valid!r}"
+
+
+class TestActsCitedCanonicalDedup:
+    """Test that normalize_acts_cited_list deduplicates variant short codes."""
+
+    def test_crpc_variants_collapse(self):
+        result = normalize_acts_cited_list(["CRPC", "CR.P.C.", "CrPC"])
+        # All variants of Code of Criminal Procedure should collapse to one entry
+        assert len(result) == 1
+
+    def test_ipc_variants_collapse(self):
+        result = normalize_acts_cited_list(["IPC", "I.P.C."])
+        assert len(result) == 1
+
+    def test_garbage_filtered_before_dedup(self):
+        result = normalize_acts_cited_list([
+            "IPC",
+            "those candidates who went ahead",
+            "Section 95",
+            "Madras5",
+        ])
+        assert "IPC" in result or any("Penal" in r for r in result)
+        assert len(result) == 1  # Only IPC survives

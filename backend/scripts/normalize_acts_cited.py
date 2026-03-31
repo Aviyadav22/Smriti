@@ -156,13 +156,13 @@ async def normalize_all_cases(
     async with async_session_factory() as db:
         # Fetch all cases with non-null acts_cited
         result = await db.execute(
-            text("SELECT id, title, acts_cited FROM cases WHERE acts_cited IS NOT NULL")
+            text("SELECT id, title, acts_cited, year FROM cases WHERE acts_cited IS NOT NULL")
         )
         rows = result.fetchall()
         logger.info("Found %d cases with acts_cited", len(rows))
 
         for row in rows:
-            case_id, title, old_acts = row[0], row[1], row[2]
+            case_id, title, old_acts, case_year = row[0], row[1], row[2], row[3]
 
             # Skip empty lists
             if not old_acts:
@@ -173,7 +173,10 @@ async def normalize_all_cases(
             # Normalize
             normalized = normalize_acts_cited_list(old_acts)
             # Enrich with cross-references (IPC <-> BNS, etc.)
-            enriched = enrich_statute_cross_references(normalized)
+            # Temporal guard: pre-2024 cases won't get new codes (BNS/BNSS/BSA)
+            enriched = enrich_statute_cross_references(
+                normalized, decision_year=case_year,
+            )
 
             old_set = set(old_acts)
             new_set = set(enriched)

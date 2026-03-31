@@ -848,8 +848,9 @@ class TestConfidenceFormula5E4:
         from app.core.agents.confidence import (
             _W_RELEVANCE, _W_COVERAGE, _W_AUTHORITY,
             _W_CONTRADICTION, _W_SOURCE_DIVERSITY, _W_GAP_COVERAGE,
+            _W_SYNTHESIS_QUALITY,
         )
-        total = _W_RELEVANCE + _W_COVERAGE + _W_AUTHORITY + _W_CONTRADICTION + _W_SOURCE_DIVERSITY + _W_GAP_COVERAGE
+        total = _W_RELEVANCE + _W_COVERAGE + _W_AUTHORITY + _W_CONTRADICTION + _W_SOURCE_DIVERSITY + _W_GAP_COVERAGE + _W_SYNTHESIS_QUALITY
         assert total == pytest.approx(1.0)
 
 

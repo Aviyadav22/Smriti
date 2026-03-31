@@ -55,6 +55,8 @@ class SearchResultItem:
     equivalent_citations: list[str] = field(default_factory=list)
     relevance_sources: list[str] = field(default_factory=list)
     treatment_warning: str | None = None
+    char_start: int = 0
+    char_end: int = 0
 
 
 @dataclass(slots=True)
@@ -331,9 +333,14 @@ async def hybrid_search(
         )
 
     # 7. Enrich from PostgreSQL
-    vector_chunk_map = {cid: text for cid, _score, text in vector_results if text}
+    vector_chunk_map = {cid: text for cid, _score, text, *_pos in vector_results if text}
+    char_pos_map = {
+        cid: (cs, ce)
+        for cid, _score, _text, cs, ce in vector_results
+        if cs and ce and ce > cs
+    }
     enriched = await _enrich_results(
-        page_ids, reranked_scores, snippets_map, db, vector_chunk_map
+        page_ids, reranked_scores, snippets_map, db, vector_chunk_map, char_pos_map
     )
 
     # 8. Build facets from full result set
@@ -477,15 +484,18 @@ async def _vector_search(
     )
 
     # Deduplicate by case_id (chunks map to same case), keeping best chunk text
-    seen: dict[str, tuple[float, str]] = {}
+    # Also preserve char_start/char_end for passage expansion
+    seen: dict[str, tuple[float, str, int, int]] = {}
     for r in results:
         case_id = r.metadata.get("case_id", r.id)
         chunk_text = r.metadata.get("text", "") or r.metadata.get("chunk_text", "")
+        char_start = int(r.metadata.get("char_start", 0) or 0)
+        char_end = int(r.metadata.get("char_end", 0) or 0)
         if case_id not in seen or r.score > seen[case_id][0]:
-            seen[case_id] = (r.score, chunk_text)
+            seen[case_id] = (r.score, chunk_text, char_start, char_end)
 
     return sorted(
-        [(cid, score, text) for cid, (score, text) in seen.items()],
+        [(cid, score, text, cs, ce) for cid, (score, text, cs, ce) in seen.items()],
         key=lambda x: x[1],
         reverse=True,
     )
@@ -493,7 +503,7 @@ async def _vector_search(
 
 def _build_snippets_map(
     fts_results: list[FTSResult],
-    vector_results: list[tuple[str, float, str]],
+    vector_results: list[tuple[str, float, str, int, int]],
 ) -> dict[str, str]:
     """Build a map of case_id -> text snippet for reranking.
 
@@ -507,7 +517,7 @@ def _build_snippets_map(
         elif r.title:
             snippets[r.case_id] = r.title
     # Fill in vector chunk text for cases not already covered by FTS
-    for case_id, _score, chunk_text in vector_results:
+    for case_id, _score, chunk_text, *_pos in vector_results:
         if case_id not in snippets and chunk_text:
             snippets[case_id] = chunk_text
     return snippets
@@ -544,6 +554,7 @@ async def _enrich_results(
     snippets_map: dict[str, str],
     db: AsyncSession,
     vector_chunk_map: dict[str, str] | None = None,
+    char_pos_map: dict[str, tuple[int, int]] | None = None,
 ) -> list[SearchResultItem]:
     """Fetch full metadata from PostgreSQL for the given case IDs."""
     if not case_ids:
@@ -604,6 +615,7 @@ async def _enrich_results(
                     "Verify current status before relying on it."
                 )
 
+            pos = (char_pos_map or {}).get(cid, (0, 0))
             enriched.append(
                 SearchResultItem(
                     case_id=cid,
@@ -620,6 +632,8 @@ async def _enrich_results(
                     bench_type=row.get("bench_type"),
                     equivalent_citations=equiv_map.get(cid, []),
                     treatment_warning=treatment_warning,
+                    char_start=pos[0],
+                    char_end=pos[1],
                 )
             )
 

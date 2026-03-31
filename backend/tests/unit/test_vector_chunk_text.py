@@ -203,18 +203,22 @@ class TestVectorSearchChunkText:
     """Test that _vector_search preserves chunk text from metadata."""
 
     @pytest.mark.asyncio
-    async def test_returns_three_tuples(self) -> None:
+    async def test_returns_five_tuples(self) -> None:
         from app.core.search.hybrid import _vector_search
 
         store = MockVectorStore([
-            MockVectorResult(id="chunk-1", score=0.95, metadata={"case_id": "c1", "text": "passage one"}),
+            MockVectorResult(id="chunk-1", score=0.95, metadata={
+                "case_id": "c1", "text": "passage one", "char_start": 100, "char_end": 500,
+            }),
         ])
         results = await _vector_search("test query", embedder=MockEmbedder(), vector_store=store, filters=None)
         assert len(results) == 1
-        case_id, score, chunk_text = results[0]
+        case_id, score, chunk_text, char_start, char_end = results[0]
         assert case_id == "c1"
         assert score == 0.95
         assert chunk_text == "passage one"
+        assert char_start == 100
+        assert char_end == 500
 
     @pytest.mark.asyncio
     async def test_deduplicates_keeping_best_chunk(self) -> None:

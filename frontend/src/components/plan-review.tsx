@@ -204,6 +204,13 @@ export function PlanReview({
   const [submitting, setSubmitting] = useState(false);
   const [customFeedback, setCustomFeedback] = useState("");
 
+  // Sync tasks when researchPlan prop updates (e.g. from SSE stream)
+  useEffect(() => {
+    if (researchPlan.length > 0) {
+      setTasks(researchPlan);
+    }
+  }, [researchPlan]);
+
   // Reset submitting state when an error restores the checkpoint
   useEffect(() => {
     if (error && submitting) {
@@ -445,7 +452,7 @@ export function PlanReview({
           <Button
             size="sm"
             onClick={handleApprove}
-            disabled={disabled || submitting || tasks.length === 0}
+            disabled={disabled || submitting}
           >
             {submitting ? "Submitting..." : "Approve Plan"}
           </Button>

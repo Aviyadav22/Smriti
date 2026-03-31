@@ -361,6 +361,7 @@ async def statute_worker(
                         results.append({
                             "case_id": f"statute:{s.id}",
                             "title": f"{s.act_short_name} Section {s.section_number}",
+                            "citation": f"{s.act_short_name} Section {s.section_number}",
                             "section_title": s.section_title or "",
                             "section_text": s.section_text[:2000],
                             "act_name": s.act_name,
@@ -386,6 +387,7 @@ async def statute_worker(
             results.append({
                 "case_id": r.id if r.id.startswith("statute:") else f"statute:{r.id}",
                 "title": meta.get("title", ""),
+                "citation": f"{meta.get('act_short_name', meta.get('act_name', ''))} Section {meta.get('section_number', '')}".strip() if meta.get("section_number") else meta.get("act_short_name", meta.get("act_name", "")),
                 "section_text": meta.get("text", "")[:2000],
                 "act_name": meta.get("act_name", ""),
                 "section_number": meta.get("section_number", ""),

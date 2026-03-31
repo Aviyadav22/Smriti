@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.case_prep import build_case_prep_graph
 from app.core.agents.drafting import build_drafting_graph
+from app.core.agents.follow_up import build_follow_up_graph
 from app.core.agents.research import build_research_graph
 from app.core.agents.research_cache import get_cached_memo
 from app.core.agents.strategy import build_strategy_graph
@@ -41,8 +42,10 @@ from app.core.drafting.templates import TEMPLATES, get_template
 from app.db.postgres import async_session_factory, get_db
 from app.db.redis_client import get_redis
 from app.models.agent_execution import AgentExecution, AgentStatus, AgentType
+from app.models.agent_session import AgentMessage, AgentSession
 from app.security.audit import create_audit_log
 from app.security.auth import TokenPayload
+from app.security.encryption import encrypt_field, safe_decrypt
 from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user
 from app.security.sanitizer import detect_prompt_injection, sanitize_search_query
@@ -162,6 +165,10 @@ class DraftingRequest(BaseModel):
         return v
 
 
+class FollowUpRequest(BaseModel):
+    message: str = Field(..., min_length=5, max_length=5000)
+
+
 class ResumeRequest(BaseModel):
     input: str = Field(..., min_length=1, max_length=5000)
 
@@ -237,6 +244,14 @@ async def _stream_agent_events(
 
             # Check if we are at an interrupt (HITL checkpoint)
             state = await graph.aget_state(config)
+            logger.warning(
+                "STREAM_DEBUG exec_id=%s: stream ended. state.next=%s values_keys=%s error=%s plan_len=%d memo_len=%d",
+                exec_id, state.next,
+                list(state.values.keys())[:15] if state.values else [],
+                str(state.values.get("error", ""))[:200] if state.values else "N/A",
+                len(state.values.get("research_plan", [])) if state.values else 0,
+                len(state.values.get("draft_memo", "") or "") if state.values else 0,
+            )
 
             if state.next:
                 is_checkpoint = True
@@ -276,20 +291,42 @@ async def _stream_agent_events(
             else:
                 # Graph completed normally
                 final_state = state.values
+                state_error = final_state.get("error", "") if final_state else ""
                 logger.info(
-                    "Agent %s completed. State keys: %s, footnotes count: %d",
+                    "Agent %s completed. State keys: %s, footnotes count: %d, error: %s",
                     exec_id,
                     list(final_state.keys()),
                     len(final_state.get("footnotes") or []),
+                    state_error[:200] if state_error else "none",
                 )
+
+                # If the graph ended with an error in state and no memo, report it
+                memo = (
+                    final_state.get("draft_memo")
+                    or final_state.get("enhanced_memo")
+                    or final_state.get("strategy_memo")
+                    or final_state.get("full_draft")
+                    or ""
+                )
+                if state_error and not memo:
+                    logger.error(
+                        "Agent %s ended with error in state and no memo: %s",
+                        exec_id, state_error[:500],
+                    )
+                    async with async_session_factory() as db:
+                        await db.execute(
+                            text(
+                                "UPDATE agent_executions SET status = 'failed', "
+                                "error_message = :msg WHERE id = :id"
+                            ),
+                            {"id": exec_id, "msg": state_error[:2000]},
+                        )
+                        await db.commit()
+                    await queue.put(f"data: {json.dumps({'type': 'error', 'execution_id': str(exec_id), 'message': state_error[:500]})}\n\n")
+                    return
+
                 result_data = {
-                    "memo": (
-                        final_state.get("draft_memo")
-                        or final_state.get("enhanced_memo")
-                        or final_state.get("strategy_memo")
-                        or final_state.get("full_draft")
-                        or ""
-                    ),
+                    "memo": memo,
                     "confidence": final_state.get("confidence", 0),
                 }
                 # [T1] Enrich with Phase 4 structured data
@@ -496,7 +533,7 @@ async def run_agent(
     vector_store = get_vector_store()
     reranker = get_reranker()
 
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
     graph_kwargs: dict | None = None  # Only set for research agent (memo streaming)
 
     if agent_type == "research":
@@ -813,7 +850,7 @@ async def resume_execution(
     vector_store = get_vector_store()
     reranker = get_reranker()
 
-    config = {"configurable": {"thread_id": str(execution.thread_id)}}
+    config = {"configurable": {"thread_id": str(execution.thread_id)}, "recursion_limit": 50}
     resume_graph_kwargs: dict | None = None  # Only set for research agent (memo streaming)
 
     if execution.agent_type == AgentType.research.value:
@@ -1268,3 +1305,724 @@ async def export_research_memo(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ===========================================================================
+# Agent Sessions — Conversation History
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# POST /{agent_type}/session — Create session + run first execution (SSE)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{agent_type}/session", dependencies=[Depends(rate_limit_dependency("10/minute"))])
+async def create_agent_session(
+    agent_type: str,
+    request_body: ResearchRequest | CasePrepRequest | StrategyRequest | DraftingRequest | None = None,
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Create a new agent session and run the first execution.
+
+    Returns an SSE stream. The first event is a ``session`` event containing
+    the new session_id, followed by the standard agent execution events.
+    """
+    if agent_type not in ("research", "case_prep", "strategy", "drafting"):
+        raise HTTPException(status_code=422, detail=f"Invalid agent_type '{agent_type}'.")
+    if request_body is None:
+        raise HTTPException(status_code=422, detail="Request body is required.")
+
+    # Input sanitization (same as run_agent)
+    if isinstance(request_body, ResearchRequest):
+        if detect_prompt_injection(request_body.query):
+            raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
+        request_body.query = sanitize_search_query(request_body.query)
+
+    if isinstance(request_body, StrategyRequest):
+        for field_name in ("case_facts", "desired_relief", "target_judge", "target_bench"):
+            value = getattr(request_body, field_name)
+            if value and detect_prompt_injection(value):
+                raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
+            if value:
+                setattr(request_body, field_name, sanitize_search_query(value))
+
+    if isinstance(request_body, DraftingRequest):
+        for field_name in ("case_facts", "target_court"):
+            value = getattr(request_body, field_name)
+            if value and detect_prompt_injection(value):
+                raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
+            if value:
+                setattr(request_body, field_name, sanitize_search_query(value))
+        if request_body.doc_type not in TEMPLATES:
+            raise HTTPException(status_code=422, detail=f"Unknown doc_type. Valid types: {list(TEMPLATES.keys())}")
+
+    # Generate session title from first query
+    if isinstance(request_body, ResearchRequest):
+        raw_title = request_body.query
+    elif isinstance(request_body, CasePrepRequest):
+        raw_title = f"Case Prep: {request_body.document_id[:20]}"
+    elif isinstance(request_body, StrategyRequest):
+        raw_title = request_body.case_facts[:60]
+    else:
+        raw_title = f"Draft: {request_body.doc_type}"
+    title = raw_title.replace("\n", " ").strip()[:60]
+
+    # Create session
+    session = AgentSession(
+        user_id=uuid.UUID(user.sub),
+        agent_type=agent_type,
+        title=title,
+    )
+    db.add(session)
+    await db.flush()  # Get session.id before creating execution
+
+    # Build input_data (same logic as run_agent)
+    request_language = getattr(request_body, "language", "en") or "en"
+    if isinstance(request_body, ResearchRequest):
+        input_data = {"query": request_body.query}
+    elif isinstance(request_body, CasePrepRequest):
+        input_data = {"document_id": request_body.document_id}
+    elif isinstance(request_body, StrategyRequest):
+        input_data = {
+            "case_facts": request_body.case_facts,
+            "desired_relief": request_body.desired_relief,
+            "target_judge": request_body.target_judge,
+            "target_bench": request_body.target_bench,
+        }
+    else:
+        input_data = {
+            "doc_type": request_body.doc_type,
+            "case_facts": request_body.case_facts,
+            "target_court": request_body.target_court,
+            "relevant_precedents": [p.model_dump() for p in request_body.relevant_precedents],
+            "additional_context": request_body.additional_context,
+        }
+    input_data["language"] = request_language
+
+    # Create execution linked to session
+    checkpointer = get_checkpointer()
+    thread_id = str(uuid.uuid4())
+
+    execution = AgentExecution(
+        user_id=uuid.UUID(user.sub),
+        agent_type=agent_type,
+        status=AgentStatus.running.value,
+        thread_id=uuid.UUID(thread_id),
+        input_data=input_data,
+        session_id=session.id,
+    )
+    db.add(execution)
+
+    # Save user's query as first agent message (encrypted)
+    user_content = input_data.get("query") or input_data.get("case_facts") or str(input_data)
+    user_msg = AgentMessage(
+        session_id=session.id,
+        execution_id=execution.id,
+        role="user",
+        content=encrypt_field(user_content),
+        message_type="query",
+    )
+    db.add(user_msg)
+    await db.commit()
+    await db.refresh(execution)
+
+    # Build graph (same as run_agent)
+    llm = get_llm()
+    embedder = get_embedder()
+    vector_store = get_vector_store()
+    reranker = get_reranker()
+    config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
+    graph_kwargs: dict | None = None
+
+    if agent_type == "research":
+        try:
+            _ik_client = get_ik_client()
+        except (ValueError, Exception):
+            _ik_client = None
+        try:
+            _web_search = get_web_search()
+        except (ValueError, Exception):
+            _web_search = None
+
+        graph_kwargs = dict(
+            llm=llm,
+            flash_llm=get_flash_llm(),
+            embedder=embedder,
+            vector_store=vector_store,
+            reranker=reranker,
+            graph_store=get_graph_store(),
+            web_search=_web_search,
+            ik_client=_ik_client,
+            checkpointer=checkpointer,
+        )
+        graph = None  # Built lazily
+        initial_input = {"query": request_body.query, "language": request_language}
+        if hasattr(request_body, "auto_approve") and request_body.auto_approve:
+            initial_input["auto_approve"] = True
+    elif agent_type == "case_prep":
+        graph_store_inst = get_graph_store()
+        graph = build_case_prep_graph(
+            llm=llm, embedder=embedder, vector_store=vector_store,
+            reranker=reranker, graph_store=graph_store_inst, checkpointer=checkpointer,
+        )
+        initial_input = {"document_id": request_body.document_id, "language": request_language}
+    elif agent_type == "strategy":
+        graph_store_inst = get_graph_store()
+        graph = build_strategy_graph(
+            llm=llm, flash_llm=get_flash_llm(), embedder=embedder,
+            vector_store=vector_store, reranker=reranker,
+            graph_store=graph_store_inst, checkpointer=checkpointer,
+        )
+        initial_input = {
+            "case_facts": request_body.case_facts,
+            "desired_relief": request_body.desired_relief,
+            "target_judge": request_body.target_judge,
+            "target_bench": request_body.target_bench,
+            "language": request_language,
+        }
+    else:
+        graph = build_drafting_graph(
+            llm=llm, flash_llm=get_flash_llm(), embedder=embedder,
+            vector_store=vector_store, reranker=reranker, checkpointer=checkpointer,
+        )
+        initial_input = {
+            "doc_type": request_body.doc_type,
+            "case_facts": request_body.case_facts,
+            "target_court": request_body.target_court,
+            "relevant_precedents": [p.model_dump() for p in request_body.relevant_precedents],
+            "additional_context": request_body.additional_context,
+            "language": request_language,
+        }
+
+    await create_audit_log(
+        db=db, action="agent_session.create", user_id=user.sub,
+        resource_type="agent_session", resource_id=str(session.id),
+        metadata={"agent_type": agent_type},
+    )
+
+    async def _session_stream() -> AsyncIterator[str]:
+        # Emit session event first (so frontend can store session_id)
+        yield f'data: {json.dumps({"type": "session", "session_id": str(session.id), "title": title})}\n\n'
+
+        # Then delegate to standard agent stream
+        async for event in _stream_agent_events(
+            graph, initial_input, config, execution.id, graph_kwargs=graph_kwargs,
+        ):
+            yield event
+
+        # After completion, save the memo as an assistant message
+        try:
+            async with async_session_factory() as post_db:
+                result = await post_db.execute(
+                    text("SELECT result_data FROM agent_executions WHERE id = :id"),
+                    {"id": execution.id},
+                )
+                row = result.mappings().one_or_none()
+                if row and row["result_data"]:
+                    rd = row["result_data"] if isinstance(row["result_data"], dict) else json.loads(row["result_data"])
+                    memo_content = rd.get("memo", "")
+                    if memo_content:
+                        asst_msg = AgentMessage(
+                            session_id=session.id,
+                            execution_id=execution.id,
+                            role="assistant",
+                            content=encrypt_field(memo_content),
+                            sources=rd.get("footnotes"),
+                            message_type="memo",
+                        )
+                        post_db.add(asst_msg)
+                        await post_db.execute(
+                            text("UPDATE agent_sessions SET updated_at = NOW() WHERE id = :id"),
+                            {"id": session.id},
+                        )
+                        await post_db.commit()
+        except Exception:
+            logger.exception("Failed to save memo as agent message for session %s", session.id)
+
+    return StreamingResponse(
+        _session_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /sessions/{session_id}/follow-up — Follow-up on completed memo (SSE)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sessions/{session_id}/follow-up", dependencies=[Depends(rate_limit_dependency("10/minute"))])
+async def session_follow_up(
+    session_id: str,
+    body: FollowUpRequest,
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Send a follow-up question on a completed agent session."""
+    # Validate UUID
+    try:
+        sess_uuid = uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid session_id format.")
+
+    # IDOR: ownership check
+    sess_result = await db.execute(
+        text("SELECT user_id, agent_type FROM agent_sessions WHERE id = :id"),
+        {"id": sess_uuid},
+    )
+    sess_row = sess_result.mappings().one_or_none()
+    if sess_row is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    if str(sess_row["user_id"]) != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+    agent_type = sess_row["agent_type"]
+
+    # Sanitize input
+    if detect_prompt_injection(body.message):
+        raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
+    sanitized_message = sanitize_search_query(body.message)
+
+    # Guard: no concurrent execution
+    running_check = await db.execute(
+        text(
+            "SELECT id FROM agent_executions "
+            "WHERE session_id = :sid AND status IN ('running', 'waiting_input') LIMIT 1"
+        ),
+        {"sid": sess_uuid},
+    )
+    if running_check.one_or_none():
+        raise HTTPException(status_code=409, detail="An execution is already in progress for this session.")
+
+    # Load last completed execution for context
+    last_exec_result = await db.execute(
+        text(
+            "SELECT result_data FROM agent_executions "
+            "WHERE session_id = :sid AND status = 'completed' "
+            "ORDER BY completed_at DESC LIMIT 1"
+        ),
+        {"sid": sess_uuid},
+    )
+    last_exec_row = last_exec_result.mappings().one_or_none()
+    if not last_exec_row or not last_exec_row["result_data"]:
+        raise HTTPException(status_code=400, detail="No completed research in this session.")
+
+    result_data = last_exec_row["result_data"]
+    if isinstance(result_data, str):
+        result_data = json.loads(result_data)
+
+    prior_memo = result_data.get("memo", "")
+    prior_footnotes = result_data.get("footnotes", [])
+
+    # Load conversation history
+    from app.core.config import settings
+    hist_result = await db.execute(
+        text(
+            "SELECT role, content, message_type FROM agent_messages "
+            "WHERE session_id = :sid ORDER BY created_at DESC LIMIT :limit"
+        ),
+        {"sid": sess_uuid, "limit": settings.agent_max_history},
+    )
+    hist_rows = hist_result.mappings().all()
+    conversation_history = [
+        {"role": r["role"], "content": safe_decrypt(r["content"])}
+        for r in reversed(hist_rows)
+    ]
+
+    # Save user's follow-up message
+    checkpointer = get_checkpointer()
+    thread_id = str(uuid.uuid4())
+
+    execution = AgentExecution(
+        user_id=uuid.UUID(user.sub),
+        agent_type=agent_type,
+        status=AgentStatus.running.value,
+        thread_id=uuid.UUID(thread_id),
+        input_data={"follow_up": sanitized_message},
+        session_id=sess_uuid,
+    )
+    db.add(execution)
+    await db.flush()
+
+    user_msg = AgentMessage(
+        session_id=sess_uuid,
+        execution_id=execution.id,
+        role="user",
+        content=encrypt_field(sanitized_message),
+        message_type="follow_up",
+    )
+    db.add(user_msg)
+    await db.commit()
+    await db.refresh(execution)
+
+    # Build follow-up graph
+    llm = get_llm()
+    flash_llm = get_flash_llm()
+    embedder = get_embedder()
+    vector_store = get_vector_store()
+    reranker = get_reranker()
+
+    try:
+        _redis = await get_redis()
+    except Exception:
+        _redis = None
+
+    config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
+    initial_input = {
+        "follow_up_query": sanitized_message,
+        "prior_memo": prior_memo,
+        "prior_footnotes": prior_footnotes,
+        "conversation_history": conversation_history,
+    }
+
+    graph_kwargs_fu = dict(
+        llm=llm,
+        flash_llm=flash_llm,
+        embedder=embedder,
+        vector_store=vector_store,
+        reranker=reranker,
+        redis_client=_redis,
+        checkpointer=checkpointer,
+    )
+
+    await create_audit_log(
+        db=db, action="agent_session.follow_up", user_id=user.sub,
+        resource_type="agent_session", resource_id=session_id,
+        metadata={"agent_type": agent_type},
+    )
+
+    async def _follow_up_stream() -> AsyncIterator[str]:
+        import asyncio
+
+        _KEEPALIVE_INTERVAL = 15
+        _GRAPH_TIMEOUT = 300  # 5 min for follow-ups
+        _SENTINEL = object()
+
+        queue: asyncio.Queue[str | object] = asyncio.Queue()
+
+        async def _memo_stream_cb(chunk: str) -> None:
+            await queue.put(
+                f'data: {json.dumps({"type": "memo_stream", "execution_id": str(execution.id), "chunk": chunk})}\n\n'
+            )
+
+        fu_graph = build_follow_up_graph(
+            **graph_kwargs_fu, memo_stream_callback=_memo_stream_cb,
+        )
+
+        async def _producer() -> None:
+            try:
+                async for event in fu_graph.astream(
+                    initial_input, config=config, stream_mode="updates",
+                ):
+                    for node_name, node_output in event.items():
+                        if isinstance(node_output, dict):
+                            for pe in node_output.get("process_events", []):
+                                await queue.put(
+                                    f"data: {json.dumps({**pe, 'execution_id': str(execution.id)})}\n\n"
+                                )
+                        await queue.put(
+                            f'data: {json.dumps({"type": "status", "execution_id": str(execution.id), "step": node_name, "message": f"Completed: {node_name}"})}\n\n'
+                        )
+
+                final_state = (await fu_graph.aget_state(config)).values
+                response = final_state.get("response", "")
+                footnotes = final_state.get("footnotes", [])
+                confidence = final_state.get("confidence", 0)
+
+                fu_result = {"memo": response, "confidence": confidence, "footnotes": footnotes}
+
+                async with async_session_factory() as post_db:
+                    await post_db.execute(
+                        text(
+                            "UPDATE agent_executions SET status = 'completed', "
+                            "result_data = :data, completed_at = now() WHERE id = :id"
+                        ),
+                        {"id": execution.id, "data": json.dumps(fu_result)},
+                    )
+                    asst_msg = AgentMessage(
+                        session_id=sess_uuid,
+                        execution_id=execution.id,
+                        role="assistant",
+                        content=encrypt_field(response),
+                        sources=footnotes if footnotes else None,
+                        message_type="follow_up_response",
+                    )
+                    post_db.add(asst_msg)
+                    await post_db.execute(
+                        text("UPDATE agent_sessions SET updated_at = NOW() WHERE id = :id"),
+                        {"id": sess_uuid},
+                    )
+                    await post_db.commit()
+
+                memo_data: dict = {"confidence": confidence}
+                if footnotes:
+                    memo_data["footnotes"] = footnotes
+                await queue.put(
+                    f'data: {json.dumps({"type": "memo", "execution_id": str(execution.id), "content": response, "data": memo_data})}\n\n'
+                )
+                await queue.put(
+                    f'data: {json.dumps({"type": "done", "execution_id": str(execution.id), "status": "completed"})}\n\n'
+                )
+
+            except Exception as exc:
+                logger.exception("Follow-up execution %s failed", execution.id)
+                try:
+                    async with async_session_factory() as err_db:
+                        await err_db.execute(
+                            text(
+                                "UPDATE agent_executions SET status = 'failed', "
+                                "error_message = :msg WHERE id = :id"
+                            ),
+                            {"id": execution.id, "msg": str(exc)[:2000]},
+                        )
+                        await err_db.commit()
+                except Exception:
+                    logger.exception("Failed to update follow-up execution status")
+                await queue.put(f"data: {json.dumps(_categorize_error(exc))}\n\n")
+            finally:
+                await queue.put(_SENTINEL)
+
+        async def _producer_with_timeout() -> None:
+            try:
+                await asyncio.wait_for(_producer(), timeout=_GRAPH_TIMEOUT)
+            except asyncio.TimeoutError:
+                logger.error("Follow-up %s timed out", execution.id)
+                await queue.put(
+                    f'data: {json.dumps({"type": "error", "message": "Follow-up timed out", "recoverable": False})}\n\n'
+                )
+                await queue.put(_SENTINEL)
+
+        task = asyncio.create_task(_producer_with_timeout())
+        try:
+            while True:
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=_KEEPALIVE_INTERVAL)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+                if item is _SENTINEL:
+                    break
+                yield item  # type: ignore[misc]
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        _follow_up_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /sessions — List user's agent sessions (paginated)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sessions", dependencies=[Depends(rate_limit_dependency("60/minute"))])
+async def list_sessions(
+    agent_type: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """List agent sessions for the current user."""
+    user_uuid = uuid.UUID(user.sub)
+
+    where_clause = "WHERE s.user_id = :uid"
+    params: dict = {"uid": user_uuid}
+    if agent_type:
+        where_clause += " AND s.agent_type = :atype"
+        params["atype"] = agent_type
+
+    count_result = await db.execute(
+        text(f"SELECT COUNT(*) FROM agent_sessions s {where_clause}"),
+        params,
+    )
+    total = count_result.scalar_one()
+
+    offset = (page - 1) * page_size
+    rows = await db.execute(
+        text(
+            f"SELECT s.id, s.agent_type, s.title, s.created_at, s.updated_at, "
+            f"(SELECT COUNT(*) FROM agent_executions e WHERE e.session_id = s.id) AS execution_count, "
+            f"(SELECT COUNT(*) FROM agent_messages m WHERE m.session_id = s.id) AS message_count "
+            f"FROM agent_sessions s {where_clause} "
+            f"ORDER BY s.updated_at DESC OFFSET :off LIMIT :lim"
+        ),
+        {**params, "off": offset, "lim": page_size},
+    )
+    sessions = rows.mappings().all()
+
+    return {
+        "sessions": [
+            {
+                "id": str(s["id"]),
+                "agent_type": s["agent_type"],
+                "title": s["title"],
+                "created_at": str(s["created_at"]),
+                "updated_at": str(s["updated_at"]),
+                "execution_count": s["execution_count"],
+                "message_count": s["message_count"],
+            }
+            for s in sessions
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /sessions/{session_id} — Session detail
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sessions/{session_id}", dependencies=[Depends(rate_limit_dependency("60/minute"))])
+async def get_session(
+    session_id: str,
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Get details of a specific agent session."""
+    try:
+        sess_uuid = uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid session_id format.")
+
+    sess_result = await db.execute(
+        text("SELECT id, user_id, agent_type, title, created_at, updated_at FROM agent_sessions WHERE id = :id"),
+        {"id": sess_uuid},
+    )
+    sess = sess_result.mappings().one_or_none()
+    if sess is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    if str(sess["user_id"]) != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+    exec_result = await db.execute(
+        text(
+            "SELECT id, status, input_data, created_at, completed_at "
+            "FROM agent_executions WHERE session_id = :sid ORDER BY created_at ASC"
+        ),
+        {"sid": sess_uuid},
+    )
+    executions = [
+        {
+            "id": str(e["id"]),
+            "status": e["status"],
+            "input_data": e["input_data"],
+            "created_at": str(e["created_at"]),
+            "completed_at": str(e["completed_at"]) if e["completed_at"] else None,
+        }
+        for e in exec_result.mappings().all()
+    ]
+
+    return {
+        "id": str(sess["id"]),
+        "agent_type": sess["agent_type"],
+        "title": sess["title"],
+        "created_at": str(sess["created_at"]),
+        "updated_at": str(sess["updated_at"]),
+        "executions": executions,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /sessions/{session_id}/messages — Message history
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sessions/{session_id}/messages", dependencies=[Depends(rate_limit_dependency("60/minute"))])
+async def get_session_messages(
+    session_id: str,
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Get decrypted message history for an agent session."""
+    try:
+        sess_uuid = uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid session_id format.")
+
+    sess_result = await db.execute(
+        text("SELECT user_id FROM agent_sessions WHERE id = :id"),
+        {"id": sess_uuid},
+    )
+    sess = sess_result.mappings().one_or_none()
+    if sess is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    if str(sess["user_id"]) != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+    msg_result = await db.execute(
+        text(
+            "SELECT id, role, content, sources, message_type, execution_id, created_at "
+            "FROM agent_messages WHERE session_id = :sid ORDER BY created_at ASC"
+        ),
+        {"sid": sess_uuid},
+    )
+    messages = [
+        {
+            "id": str(m["id"]),
+            "role": m["role"],
+            "content": safe_decrypt(m["content"]),
+            "sources": m["sources"],
+            "message_type": m["message_type"],
+            "execution_id": str(m["execution_id"]) if m["execution_id"] else None,
+            "created_at": str(m["created_at"]),
+        }
+        for m in msg_result.mappings().all()
+    ]
+
+    return {"messages": messages}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /sessions/{session_id} — Delete session (cascade messages)
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/sessions/{session_id}", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+async def delete_session(
+    session_id: str,
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Delete an agent session and cascade-delete its messages."""
+    try:
+        sess_uuid = uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid session_id format.")
+
+    sess_result = await db.execute(
+        text("SELECT user_id FROM agent_sessions WHERE id = :id"),
+        {"id": sess_uuid},
+    )
+    sess = sess_result.mappings().one_or_none()
+    if sess is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    if str(sess["user_id"]) != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+    # Unlink executions (SET NULL, don't delete them)
+    await db.execute(
+        text("UPDATE agent_executions SET session_id = NULL WHERE session_id = :sid"),
+        {"sid": sess_uuid},
+    )
+    # Delete session (CASCADE deletes messages)
+    await db.execute(
+        text("DELETE FROM agent_sessions WHERE id = :id"),
+        {"id": sess_uuid},
+    )
+    await db.commit()
+
+    await create_audit_log(
+        db=db, action="agent_session.delete", user_id=user.sub,
+        resource_type="agent_session", resource_id=session_id,
+    )
+
+    return {"status": "deleted", "session_id": session_id}

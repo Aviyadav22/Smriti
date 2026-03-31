@@ -1,25 +1,47 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { runResearchAgent, resumeAgentExecution, getAccessToken } from "@/lib/api";
-import type { AgentStreamEvent, AgentStep, ProcessEvent, ResearchFootnote, ResearchAudit } from "@/lib/types";
+import {
+    runResearchAgent,
+    resumeAgentExecution,
+    getAccessToken,
+    createAgentSession,
+    sendAgentFollowUp,
+    getAgentSessions,
+    getAgentSessionMessages,
+    deleteAgentSession,
+} from "@/lib/api";
+import type {
+    AgentStreamEvent,
+    AgentStep,
+    ProcessEvent,
+    ResearchFootnote,
+    ResearchAudit,
+    AgentSession,
+    AgentSessionMessage,
+} from "@/lib/types";
 import { AgentStepTimeline } from "@/components/agent-step-timeline";
 import { AgentCheckpointPrompt } from "@/components/agent-checkpoint-prompt";
 import { PlanReview } from "@/components/plan-review";
 import { AgentMemoViewer } from "@/components/agent-memo-viewer";
 import { ResearchProcessPanel } from "@/components/research-process-panel";
 import { ResearchProgressBar } from "@/components/research-progress-bar";
-// ResearchFootnotes removed — superseded by FootnotesPanel
 import { FootnotesPanel } from "@/components/footnotes-panel";
 import { VerificationBanner } from "@/components/verification-banner";
 import { ResearchAuditTrail } from "@/components/research-audit-trail";
+import { AgentSessionSidebar } from "@/components/agents/AgentSessionSidebar";
+import { AgentFollowUpThread } from "@/components/agents/AgentFollowUpThread";
+import { AgentFollowUpInput } from "@/components/agents/AgentFollowUpInput";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Loader2, ArrowLeft, RotateCcw, FileText, XCircle, Scale, ScrollText, Building2, BarChart3, Users, PanelRightOpen } from "lucide-react";
+import {
+    Loader2, ArrowLeft, RotateCcw, FileText, XCircle, Scale, ScrollText,
+    Building2, BarChart3, Users, PanelRightOpen, PanelLeftOpen, PanelLeftClose,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LegalDisclaimer } from "@/components/legal-disclaimer";
 import { Header } from "@/components/header";
@@ -30,11 +52,9 @@ import Link from "next/link";
 // Expected research agent steps for the timeline (V2 pipeline)
 // ---------------------------------------------------------------------------
 
-// Common steps shared by both paths
 const COMMON_START_STEPS = ["rewrite_query", "classify"];
 const COMMON_END_STEPS = ["speculative_synthesis", "format_footnotes", "verify_v2", "quality_check", "checkpoint_memo"];
 
-// Full pipeline steps (complex queries)
 const FULL_PIPELINE_STEPS = [
     ...COMMON_START_STEPS,
     "plan_research", "checkpoint_plan", "dispatch_workers", "gather_results",
@@ -42,18 +62,15 @@ const FULL_PIPELINE_STEPS = [
     ...COMMON_END_STEPS,
 ];
 
-// Fast path steps (simple queries)
 const FAST_PATH_STEPS = [
     ...COMMON_START_STEPS,
     "fast_path_search", "fast_path_synthesis",
     ...COMMON_END_STEPS,
 ];
 
-// Fast path indicator steps
 const FAST_PATH_INDICATORS = new Set(["fast_path_search", "fast_path_synthesis"]);
 const FULL_PATH_INDICATORS = new Set(["plan_research", "dispatch_workers"]);
 
-// T1 process event types
 const PROCESS_EVENT_TYPES = new Set([
     "plan", "searching", "found", "evaluating", "reflection",
     "gap", "drafting", "verification", "quality", "progress",
@@ -68,7 +85,6 @@ const DOMAIN_PRESETS = [
     { id: "family", label: "Family Law", Icon: Users, template: "Family law research on: " },
 ] as const;
 
-// Example queries to guide new users
 const EXAMPLE_QUERIES = [
     "Can an FIR be quashed under Section 482 CrPC after a compromise between parties?",
     "What is the scope of judicial review under Article 226 for contractual disputes?",
@@ -83,7 +99,21 @@ const EXAMPLE_QUERIES = [
 export default function ResearchAgentPage() {
     const { isAuthenticated, isLoading: authLoading } = useAuth();
     const router = useRouter();
+    const searchParams = useSearchParams();
 
+    // Session state
+    const [sessions, setSessions] = useState<AgentSession[]>([]);
+    const [sessionsLoading, setSessionsLoading] = useState(false);
+    const [sessionId, setSessionId] = useState<string | null>(null);
+    const [sessionMessages, setSessionMessages] = useState<AgentSessionMessage[]>([]);
+    const [sidebarOpen, setSidebarOpen] = useState(true);
+
+    // Follow-up state
+    const [isFollowUp, setIsFollowUp] = useState(false);
+    const [followUpStreaming, setFollowUpStreaming] = useState(false);
+    const [followUpStreamContent, setFollowUpStreamContent] = useState("");
+
+    // Original research state
     const [query, setQuery] = useState("");
     const [starting, setStarting] = useState(false);
     const [isRunning, setIsRunning] = useState(false);
@@ -95,7 +125,6 @@ export default function ResearchAgentPage() {
     } | null>(null);
     const [memo, setMemo] = useState("");
     const [streamingMemo, setStreamingMemo] = useState("");
-    // Typewriter buffer: queue incoming chunks and reveal gradually
     const streamQueueRef = useRef("");
     const rafIdRef = useRef<number | null>(null);
     const [confidence, setConfidence] = useState<number | undefined>();
@@ -107,7 +136,6 @@ export default function ResearchAgentPage() {
     const [error, setError] = useState<string | null>(null);
     const abortRef = useRef<AbortController | null>(null);
 
-    // Phase 4 state
     const [processEvents, setProcessEvents] = useState<ProcessEvent[]>([]);
     const [footnotes, setFootnotes] = useState<ResearchFootnote[]>([]);
     const [researchAudit, setResearchAudit] = useState<ResearchAudit | null>(null);
@@ -145,7 +173,7 @@ export default function ResearchAgentPage() {
         };
     }, []);
 
-    // Typewriter animation: consume queued text ~30 chars per frame
+    // Typewriter animation
     useEffect(() => {
         const CHARS_PER_FRAME = 30;
         const tick = () => {
@@ -162,14 +190,125 @@ export default function ResearchAgentPage() {
         };
     }, []);
 
+    // ---------------------------------------------------------------------------
+    // Session management
+    // ---------------------------------------------------------------------------
+
+    const fetchSessions = useCallback(async () => {
+        setSessionsLoading(true);
+        try {
+            const data = await getAgentSessions("research");
+            setSessions(data.sessions);
+        } catch {
+            // Silent — sidebar shows empty state
+        } finally {
+            setSessionsLoading(false);
+        }
+    }, []);
+
+    // Load sessions on mount
+    useEffect(() => {
+        if (isAuthenticated) fetchSessions();
+    }, [isAuthenticated, fetchSessions]);
+
+    // Handle ?session= query param (e.g. navigating from history page)
+    useEffect(() => {
+        const paramSessionId = searchParams.get("session");
+        if (paramSessionId && isAuthenticated) {
+            loadSession(paramSessionId);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams, isAuthenticated]);
+
+    const loadSession = useCallback(async (sid: string) => {
+        setSessionId(sid);
+        setIsFollowUp(true);
+        setError(null);
+        try {
+            const messages = await getAgentSessionMessages(sid);
+            setSessionMessages(messages);
+
+            // Extract memo + footnotes from the last assistant memo message
+            const lastMemo = [...messages].reverse().find(
+                (m) => m.role === "assistant" && m.message_type === "memo",
+            );
+            if (lastMemo) {
+                setMemo(lastMemo.content);
+                if (lastMemo.sources && lastMemo.sources.length > 0) {
+                    setFootnotes(lastMemo.sources);
+                }
+            }
+
+            // Set query from first user message
+            const firstQuery = messages.find(
+                (m) => m.role === "user" && m.message_type === "query",
+            );
+            if (firstQuery) setQuery(firstQuery.content);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Failed to load session";
+            setError(msg);
+        }
+    }, []);
+
+    const handleDeleteSession = useCallback(async (sid: string) => {
+        try {
+            await deleteAgentSession(sid);
+            setSessions((prev) => prev.filter((s) => s.id !== sid));
+            if (sessionId === sid) {
+                handleNewSession();
+            }
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Failed to delete session";
+            setError(msg);
+        }
+    }, [sessionId]);
+
+    const handleNewSession = useCallback(() => {
+        abortRef.current?.abort();
+        setSessionId(null);
+        setSessionMessages([]);
+        setIsFollowUp(false);
+        setQuery("");
+        setIsRunning(false);
+        setExecutionId(null);
+        setSteps([]);
+        setCheckpoint(null);
+        setMemo("");
+        setStreamingMemo("");
+        streamQueueRef.current = "";
+        setConfidence(undefined);
+        setConfidenceBreakdown(undefined);
+        setError(null);
+        setProcessEvents([]);
+        setFootnotes([]);
+        setResearchAudit(null);
+        setVerificationBanner(null);
+        setCitationsVerified(0);
+        setCitationsRemoved(0);
+        setFootnotesPanelOpen(false);
+        setSelectedFootnoteNum(null);
+        setDetectedPath(null);
+        setCurrentStepLabel("");
+        setCancelled(false);
+        setFollowUpStreaming(false);
+        setFollowUpStreamContent("");
+    }, []);
+
+    // ---------------------------------------------------------------------------
+    // SSE event handler (shared for initial run and session run)
+    // ---------------------------------------------------------------------------
+
     const handleEvent = useCallback((event: AgentStreamEvent) => {
-        // Capture execution_id from the first event that carries it,
-        // so it's available before "done" (e.g. at checkpoint time).
         if (event.execution_id) {
             setExecutionId(event.execution_id);
         }
 
-        // [T1] Handle process visualization events
+        // Capture session_id from session event
+        if (event.type === "session" && event.session_id) {
+            setSessionId(event.session_id);
+            setIsFollowUp(true);
+        }
+
         if (PROCESS_EVENT_TYPES.has(event.type)) {
             setProcessEvents((prev) => [
                 ...prev,
@@ -178,7 +317,6 @@ export default function ResearchAgentPage() {
             return;
         }
 
-        // [S5] Handle streaming memo chunks — queue for typewriter animation
         if (event.type === "memo_stream" && event.chunk) {
             streamQueueRef.current += event.chunk;
             return;
@@ -188,7 +326,6 @@ export default function ResearchAgentPage() {
             case "status": {
                 const stepName = event.step;
                 if (stepName) {
-                    // Detect pipeline path and filter steps dynamically
                     if (FAST_PATH_INDICATORS.has(stepName)) {
                         setDetectedPath((prev) => {
                             if (prev !== "fast") {
@@ -212,7 +349,6 @@ export default function ResearchAgentPage() {
                     }
                     setCurrentStepLabel(event.message || stepName);
                 }
-                // Mark completed step and activate next by name match
                 setSteps((prev) => {
                     const stepIdx = prev.findIndex((s) => s.name === stepName);
                     return prev.map((s, i) => ({
@@ -238,7 +374,6 @@ export default function ResearchAgentPage() {
                     question: event.question || "",
                     context: ctx,
                 });
-                // Extract memo + footnotes from checkpoint context (e.g. checkpoint_memo)
                 if (ctx.draft_memo) {
                     streamQueueRef.current = "";
                     setMemo(ctx.draft_memo as string);
@@ -264,15 +399,13 @@ export default function ResearchAgentPage() {
                 break;
             }
             case "memo": {
-                // Flush any remaining queued text and replace with final memo
                 streamQueueRef.current = "";
                 setMemo(event.content || "");
-                setStreamingMemo(""); // Replace streaming content with final
+                setStreamingMemo("");
                 const data = event.data as Record<string, unknown> | undefined;
                 if (data && "confidence" in data) {
                     setConfidence(data.confidence as number);
                 }
-                // Extract Phase 4 structured data
                 if (data?.footnotes) {
                     setFootnotes(data.footnotes as ResearchFootnote[]);
                     if ((data.footnotes as ResearchFootnote[]).length > 0) {
@@ -293,7 +426,6 @@ export default function ResearchAgentPage() {
             case "done": {
                 setExecutionId(event.execution_id || null);
                 setIsRunning(false);
-                // Parse confidence breakdown from done event data
                 const doneData = event.data as Record<string, unknown> | undefined;
                 if (doneData?.confidence_breakdown) {
                     setConfidenceBreakdown(doneData.confidence_breakdown as {
@@ -311,6 +443,8 @@ export default function ResearchAgentPage() {
                                 : s.status,
                     })),
                 );
+                // Refresh sessions list to show updated session
+                fetchSessions();
                 break;
             }
             case "error": {
@@ -325,7 +459,11 @@ export default function ResearchAgentPage() {
                 break;
             }
         }
-    }, []);
+    }, [fetchSessions]);
+
+    // ---------------------------------------------------------------------------
+    // Submit research — uses session endpoint
+    // ---------------------------------------------------------------------------
 
     const handleSubmit = useCallback(() => {
         if (!query.trim() || starting) return;
@@ -348,6 +486,7 @@ export default function ResearchAgentPage() {
         setDetectedPath(null);
         setCurrentStepLabel("");
         setCancelled(false);
+        setSessionMessages([]);
         setSteps(
             FULL_PIPELINE_STEPS.map((name, i) => ({
                 name,
@@ -355,8 +494,10 @@ export default function ResearchAgentPage() {
             })),
         );
         try {
-            abortRef.current = runResearchAgent(
-                query.trim(),
+            // Use session-based endpoint for new research
+            abortRef.current = createAgentSession(
+                "research",
+                { query: query.trim() },
                 handleEvent,
                 (err) => {
                     setError(err.message);
@@ -372,10 +513,7 @@ export default function ResearchAgentPage() {
 
     const handleResume = useCallback(
         (input: string) => {
-            if (!executionId) {
-                return;
-            }
-            // Keep checkpoint state so it can be re-shown on error
+            if (!executionId) return;
             const savedCheckpoint = checkpoint;
             setCheckpoint(null);
             setCheckpointError(null);
@@ -385,7 +523,6 @@ export default function ResearchAgentPage() {
                 input,
                 handleEvent,
                 (err) => {
-                    // Restore checkpoint prompt so user can retry
                     setCheckpoint(savedCheckpoint);
                     setCheckpointError(err.message);
                     setIsRunning(false);
@@ -442,7 +579,6 @@ export default function ResearchAgentPage() {
                     }
                 }
             }
-            // Update memo in-place
             if (revisedContent) {
                 setMemo((prev) => {
                     const memoLines = prev.split("\n");
@@ -474,37 +610,64 @@ export default function ResearchAgentPage() {
         }
     }, [executionId]);
 
+    // ---------------------------------------------------------------------------
+    // Follow-up handler
+    // ---------------------------------------------------------------------------
+
+    const handleFollowUp = useCallback(async (message: string) => {
+        if (!sessionId || followUpStreaming) return;
+        setFollowUpStreaming(true);
+        setFollowUpStreamContent("");
+        setError(null);
+
+        // Optimistically add user message to the thread
+        const tempUserMsg: AgentSessionMessage = {
+            id: `temp-${Date.now()}`,
+            role: "user",
+            content: message,
+            sources: null,
+            message_type: "follow_up",
+            execution_id: null,
+            created_at: new Date().toISOString(),
+        };
+        setSessionMessages((prev) => [...prev, tempUserMsg]);
+
+        abortRef.current = sendAgentFollowUp(
+            sessionId,
+            message,
+            (event) => {
+                if (event.type === "memo_stream" && event.chunk) {
+                    setFollowUpStreamContent((prev) => prev + event.chunk);
+                }
+                if (event.type === "memo" || event.type === "done") {
+                    setFollowUpStreaming(false);
+                    setFollowUpStreamContent("");
+                    // Reload messages from server to get properly stored messages
+                    getAgentSessionMessages(sessionId).then((msgs) => {
+                        setSessionMessages(msgs);
+                    }).catch(() => {
+                        // Keep optimistic messages on failure
+                    });
+                    fetchSessions();
+                }
+                if (event.type === "error") {
+                    setFollowUpStreaming(false);
+                    setFollowUpStreamContent("");
+                    setError(event.message || "Follow-up failed");
+                }
+            },
+            (err) => {
+                setFollowUpStreaming(false);
+                setFollowUpStreamContent("");
+                setError(err.message);
+            },
+        );
+    }, [sessionId, followUpStreaming, fetchSessions]);
+
     const handleCancel = useCallback(() => {
         abortRef.current?.abort();
         setIsRunning(false);
         setCancelled(true);
-    }, []);
-
-    const handleReset = useCallback(() => {
-        abortRef.current?.abort();
-        setQuery("");
-        setIsRunning(false);
-        setExecutionId(null);
-        setSteps([]);
-        setCheckpoint(null);
-        setMemo("");
-        setStreamingMemo("");
-        streamQueueRef.current = "";
-        setConfidence(undefined);
-        setConfidenceBreakdown(undefined);
-        setError(null);
-        setCheckpointError(null);
-        setProcessEvents([]);
-        setFootnotes([]);
-        setResearchAudit(null);
-        setVerificationBanner(null);
-        setCitationsVerified(0);
-        setCitationsRemoved(0);
-        setFootnotesPanelOpen(false);
-        setSelectedFootnoteNum(null);
-        setDetectedPath(null);
-        setCurrentStepLabel("");
-        setCancelled(false);
     }, []);
 
     if (authLoading || !isAuthenticated) {
@@ -518,366 +681,442 @@ export default function ResearchAgentPage() {
         );
     }
 
-    const showInputForm = !isRunning && !memo && !checkpoint && steps.length === 0;
+    const showInputForm = !isRunning && !memo && !checkpoint && steps.length === 0 && !isFollowUp;
     const showWorkspace = isRunning || memo || checkpoint || steps.length > 0;
     const displayMemo = memo || streamingMemo;
     const isStreaming = !memo && !!streamingMemo;
+    const showFollowUpArea = isFollowUp && !isRunning && !!memo && !checkpoint;
 
     return (
         <div className="min-h-screen flex flex-col">
             <Header />
 
-            <main className="flex-1">
-                <div className="mx-auto px-4 py-8 max-w-[1400px]">
-            <div className="flex items-center gap-3 mb-6">
-                <Button variant="ghost" size="sm" asChild>
-                    <Link href="/agents">
-                        <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Agents
-                    </Link>
-                </Button>
-            </div>
-
-            <h1 className="text-2xl font-semibold font-[family-name:var(--font-lora)] mb-2">
-                Research Agent
-            </h1>
-            <p className="text-sm text-muted-foreground mb-6">
-                Enter a legal research question. The agent will decompose it,
-                search case law, detect contradictions, and generate a
-                structured memo.
-            </p>
-
-            {/* Input form (shown when not running and no memo) */}
-            {/* D21: Offline banner */}
-            {isOffline && (
-                <div className="bg-destructive/10 border border-destructive/30 text-destructive rounded-md px-4 py-2 text-sm" role="alert">
-                    You are offline. Please check your internet connection.
+            <main className="flex-1 flex">
+                {/* Session sidebar — desktop */}
+                <div
+                    className={cn(
+                        "hidden md:flex flex-col transition-all duration-200",
+                        sidebarOpen ? "w-64 min-w-[16rem]" : "w-0 min-w-0 overflow-hidden",
+                    )}
+                >
+                    <AgentSessionSidebar
+                        sessions={sessions}
+                        activeSessionId={sessionId}
+                        onSelectSession={loadSession}
+                        onDeleteSession={handleDeleteSession}
+                        onNewSession={handleNewSession}
+                        loading={sessionsLoading}
+                    />
                 </div>
-            )}
 
-            {showInputForm && (
-                <Card>
-                    <CardContent className="pt-6 space-y-4">
-                        <label htmlFor="research-query" className="text-sm font-medium text-foreground">
-                            What legal question are you investigating?
-                        </label>
-                        <Textarea
-                            id="research-query"
-                            placeholder="Enter your legal research question..."
-                            value={query}
-                            onChange={(e) => {
-                                if (e.target.value.length <= 2000) setQuery(e.target.value);
-                            }}
-                            onKeyDown={(e) => {
-                                if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && query.trim() && !starting) {
-                                    e.preventDefault();
-                                    handleSubmit();
-                                }
-                            }}
-                            className="min-h-[120px] text-sm"
-                            maxLength={2000}
-                            aria-describedby="query-char-count"
-                        />
-                        {/* D26-D30: Domain preset chips */}
-                        <div className="flex flex-wrap gap-1.5">
-                            {DOMAIN_PRESETS.map((preset) => (
-                                <button
-                                    key={preset.id}
-                                    className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border border-border hover:bg-accent transition-colors focus-visible:ring-2 focus-visible:ring-ring"
-                                    onClick={() => setQuery(preset.template)}
-                                    type="button"
-                                >
-                                    <preset.Icon className="h-3 w-3" /> {preset.label}
-                                </button>
-                            ))}
-                        </div>
-                        {/* Example queries for guidance */}
-                        {!query && (
-                            <div className="space-y-2">
-                                <p className="text-xs text-muted-foreground font-medium">Try an example:</p>
-                                <div className="grid gap-1.5">
-                                    {EXAMPLE_QUERIES.map((eq) => (
-                                        <button
-                                            key={eq}
-                                            type="button"
-                                            className="text-left text-xs text-muted-foreground hover:text-foreground px-3 py-2 rounded-md border border-border/50 hover:border-border hover:bg-accent/50 transition-colors"
-                                            onClick={() => setQuery(eq)}
-                                        >
-                                            {eq}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <span id="query-char-count" className={`text-xs ${query.length > 1800 ? "text-amber-500" : "text-muted-foreground"}`}>
-                                    {query.length}/2000
-                                </span>
-                                <span className="text-xs text-muted-foreground hidden sm:inline">Ctrl+Enter to submit</span>
-                            </div>
+                {/* Main content area */}
+                <div className="flex-1 min-w-0">
+                    <div className="mx-auto px-4 py-8 max-w-[1400px]">
+                        <div className="flex items-center gap-3 mb-6">
+                            <Button variant="ghost" size="sm" asChild>
+                                <Link href="/agents">
+                                    <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Agents
+                                </Link>
+                            </Button>
+                            {/* Sidebar toggle */}
                             <Button
-                                onClick={handleSubmit}
-                                disabled={starting || !query.trim() || isOffline}
-                                aria-label="Start legal research"
+                                variant="ghost"
+                                size="sm"
+                                className="hidden md:flex"
+                                onClick={() => setSidebarOpen((prev) => !prev)}
                             >
-                                {starting ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                {sidebarOpen ? (
+                                    <PanelLeftClose className="h-4 w-4" />
                                 ) : (
-                                    "Start Research"
+                                    <PanelLeftOpen className="h-4 w-4" />
                                 )}
                             </Button>
                         </div>
-                    </CardContent>
-                </Card>
-            )}
 
-            {/* Running or completed state */}
-            {showWorkspace && (
-                <>
-                <div className={cn(
-                    "grid gap-6 md:grid-cols-[240px_1fr]",
-                    "transition-[margin] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
-                    footnotesPanelOpen ? "lg:mr-[400px]" : "",
-                )}>
-                    {/* Left: Step Timeline + Process Panel */}
-                    <div className="hidden md:block">
-                        <div className="sticky top-20 space-y-4">
-                            <div>
-                                <h3 className="text-xs uppercase tracking-wider font-medium text-muted-foreground mb-3">
-                                    Progress
-                                </h3>
-                                <AgentStepTimeline steps={steps} />
-                            </div>
-                            {/* [T1] Process Visualization Panel */}
-                            <ResearchProcessPanel events={processEvents} isRunning={isRunning} />
-                        </div>
-                    </div>
+                        <h1 className="text-2xl font-semibold font-[family-name:var(--font-lora)] mb-2">
+                            Research Agent
+                        </h1>
+                        <p className="text-sm text-muted-foreground mb-6">
+                            Enter a legal research question. The agent will decompose it,
+                            search case law, detect contradictions, and generate a
+                            structured memo.
+                        </p>
 
-                    {/* Right: Main content */}
-                    <div className="space-y-4">
-                        {/* Query display */}
-                        <Card>
-                            <CardContent className="pt-4">
-                                <p className="text-xs uppercase tracking-wider font-medium text-muted-foreground mb-1">
-                                    Query
-                                </p>
-                                <p className="text-sm">{query}</p>
-                            </CardContent>
-                        </Card>
-
-                        {/* [D8] Progress bar — 5-stage weighted progress */}
-                        {isRunning && (
-                            <ResearchProgressBar events={processEvents} isRunning={isRunning} />
-                        )}
-
-                        {/* Mobile step timeline + process panel */}
-                        <div className="md:hidden space-y-3">
-                            <AgentStepTimeline steps={steps} />
-                            <ResearchProcessPanel events={processEvents} isRunning={isRunning} />
-                        </div>
-
-                        {/* Checkpoint prompt — structured plan review or generic */}
-                        {checkpoint && checkpoint.context?.research_plan ? (
-                            <PlanReview
-                                question={checkpoint.question}
-                                researchPlan={checkpoint.context.research_plan as Array<{task_type: string; nl_query: string; rationale: string; named_cases?: Array<{name?: string; citation?: string}>; priority?: number}>}
-                                classification={checkpoint.context.classification as Record<string, unknown> | null}
-                                statuteContext={checkpoint.context.statute_context as Array<{act: string; section: string; title?: string; repealed?: boolean}>}
-                                legalElements={checkpoint.context.legal_elements as Array<{id: string; description: string; contested?: boolean}>}
-                                includeAdversarial={checkpoint.context.include_adversarial as boolean | undefined}
-                                onSubmit={handleResume}
-                                disabled={isRunning}
-                                error={checkpointError}
-                                onClearError={() => setCheckpointError(null)}
-                            />
-                        ) : checkpoint ? (
-                            <AgentCheckpointPrompt
-                                question={checkpoint.question}
-                                context={checkpoint.context}
-                                onSubmit={handleResume}
-                                disabled={isRunning}
-                                error={checkpointError}
-                                onClearError={() => setCheckpointError(null)}
-                            />
-                        ) : null}
-
-                        {/* [T4] Verification Banner */}
-                        {verificationBanner && !isRunning && (
-                            <VerificationBanner
-                                banner={verificationBanner}
-                                citationsVerified={citationsVerified}
-                                citationsRemoved={citationsRemoved}
-                            />
-                        )}
-
-                        {/* Skeleton shimmer while waiting for first chunk */}
-                        {isRunning && !displayMemo && (
-                            <div className="space-y-4 animate-pulse">
-                                <div className="h-6 w-3/4 bg-muted rounded" />
-                                <div className="h-4 w-full bg-muted rounded" />
-                                <div className="h-4 w-full bg-muted rounded" />
-                                <div className="h-4 w-5/6 bg-muted rounded" />
-                                <div className="h-6 w-2/3 bg-muted rounded mt-6" />
-                                <div className="h-4 w-full bg-muted rounded" />
-                                <div className="h-4 w-4/5 bg-muted rounded" />
+                        {/* D21: Offline banner */}
+                        {isOffline && (
+                            <div className="bg-destructive/10 border border-destructive/30 text-destructive rounded-md px-4 py-2 text-sm mb-4" role="alert">
+                                You are offline. Please check your internet connection.
                             </div>
                         )}
 
-                        {/* Memo result (final or streaming) */}
-                        {displayMemo && (
+                        {/* Input form (shown when not running and no memo) */}
+                        {showInputForm && (
                             <Card>
-                                <CardContent className="pt-6">
-                                    <AgentMemoViewer
-                                        content={displayMemo}
-                                        confidence={isStreaming ? 0 : confidence}
-                                        maxFootnote={footnotes.length}
-                                        onFootnoteClick={(num) => {
-                                            setSelectedFootnoteNum(num);
-                                            setFootnotesPanelOpen(true);
+                                <CardContent className="pt-6 space-y-4">
+                                    <label htmlFor="research-query" className="text-sm font-medium text-foreground">
+                                        What legal question are you investigating?
+                                    </label>
+                                    <Textarea
+                                        id="research-query"
+                                        placeholder="Enter your legal research question..."
+                                        value={query}
+                                        onChange={(e) => {
+                                            if (e.target.value.length <= 2000) setQuery(e.target.value);
                                         }}
-                                        confidenceBreakdown={isStreaming ? undefined : confidenceBreakdown}
-                                        footnoteVerification={
-                                            footnotes.length > 0
-                                                ? Object.fromEntries(
-                                                    footnotes.map((f) => [
-                                                        f.number,
-                                                        f.verification_status as "verified_pg" | "verified_ik" | "verified_neo4j" | "unverified" | "removed" | "flagged",
-                                                    ])
-                                                )
-                                                : undefined
-                                        }
-                                        executionId={executionId ?? undefined}
-                                        onReviseSection={isStreaming ? undefined : (!isRunning ? handleReviseSection : undefined)}
-                                        footnotes={footnotes}
+                                        onKeyDown={(e) => {
+                                            if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && query.trim() && !starting) {
+                                                e.preventDefault();
+                                                handleSubmit();
+                                            }
+                                        }}
+                                        className="min-h-[120px] text-sm"
+                                        maxLength={2000}
+                                        aria-describedby="query-char-count"
                                     />
-                                    {isStreaming && (
-                                        <span className="inline-block w-1.5 h-5 bg-[var(--gold)] animate-pulse ml-0.5 align-text-bottom" />
+                                    {/* D26-D30: Domain preset chips */}
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {DOMAIN_PRESETS.map((preset) => (
+                                            <button
+                                                key={preset.id}
+                                                className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border border-border hover:bg-accent transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+                                                onClick={() => setQuery(preset.template)}
+                                                type="button"
+                                            >
+                                                <preset.Icon className="h-3 w-3" /> {preset.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {/* Example queries */}
+                                    {!query && (
+                                        <div className="space-y-2">
+                                            <p className="text-xs text-muted-foreground font-medium">Try an example:</p>
+                                            <div className="grid gap-1.5">
+                                                {EXAMPLE_QUERIES.map((eq) => (
+                                                    <button
+                                                        key={eq}
+                                                        type="button"
+                                                        className="text-left text-xs text-muted-foreground hover:text-foreground px-3 py-2 rounded-md border border-border/50 hover:border-border hover:bg-accent/50 transition-colors"
+                                                        onClick={() => setQuery(eq)}
+                                                    >
+                                                        {eq}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
                                     )}
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <span id="query-char-count" className={`text-xs ${query.length > 1800 ? "text-amber-500" : "text-muted-foreground"}`}>
+                                                {query.length}/2000
+                                            </span>
+                                            <span className="text-xs text-muted-foreground hidden sm:inline">Ctrl+Enter to submit</span>
+                                        </div>
+                                        <Button
+                                            onClick={handleSubmit}
+                                            disabled={starting || !query.trim() || isOffline}
+                                            aria-label="Start legal research"
+                                        >
+                                            {starting ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                                "Start Research"
+                                            )}
+                                        </Button>
+                                    </div>
                                 </CardContent>
                             </Card>
                         )}
 
-                        {/* Mobile: Footnotes Sheet Drawer */}
-                        {footnotes.length > 0 && (
-                            <div className="lg:hidden">
-                                <Sheet>
-                                    <SheetTrigger asChild>
-                                        <Button variant="outline" size="sm" className="w-full">
-                                            <FileText className="h-4 w-4 mr-2" />
-                                            Footnotes & Sources ({footnotes.filter(f => f.is_used).length})
-                                        </Button>
-                                    </SheetTrigger>
-                                    <SheetContent side="bottom" className="h-[80vh] p-0">
-                                        <SheetTitle className="sr-only">Footnotes & Sources</SheetTitle>
-                                        <FootnotesPanel
-                                            footnotes={footnotes}
-                                            selectedFootnoteNumber={selectedFootnoteNum}
-                                            onFootnoteSelect={setSelectedFootnoteNum}
-                                            isOpen={true}
-                                            onToggle={() => {}}
-                                        />
-                                    </SheetContent>
-                                </Sheet>
-                            </div>
-                        )}
-
-                        {/* Research Audit Trail */}
-                        {researchAudit && !isRunning && (
-                            <ResearchAuditTrail audit={researchAudit} />
-                        )}
-
-                        {/* Error + Retry [M49] */}
-                        {error && (
-                            <div className="text-sm text-red-500 p-3 rounded-md bg-red-50 dark:bg-red-950/20 flex items-center justify-between" role="alert">
-                                <span>{error}</span>
-                                {!isRunning && query.trim() && (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handleSubmit}
-                                        className="ml-2 shrink-0"
-                                    >
-                                        Retry Research
-                                    </Button>
-                                )}
-                            </div>
-                        )}
-
-                        {/* D16: Typing indicator + D19: Cancel button */}
-                        {isRunning && !checkpoint && (
-                            <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    <span>{currentStepLabel || "Agent is working..."}</span>
-                                </div>
-                                <Button variant="outline" size="sm" onClick={handleCancel} className="text-destructive border-destructive/30 hover:bg-destructive/10">
-                                    <XCircle className="h-3.5 w-3.5 mr-1" />
-                                    Cancel
-                                </Button>
-                            </div>
-                        )}
-
-                        {/* Cancellation notice (info, not error) */}
-                        {cancelled && !isRunning && (
-                            <div className="text-sm text-blue-600 dark:text-blue-400 p-3 rounded-md bg-blue-50 dark:bg-blue-950/20 flex items-center justify-between">
-                                <span>Research cancelled.</span>
-                                {query.trim() && (
-                                    <Button variant="outline" size="sm" onClick={handleSubmit} className="ml-2 shrink-0">
-                                        Restart Research
-                                    </Button>
-                                )}
-                            </div>
-                        )}
-
-                        {/* New Research button after completion */}
-                        {!isRunning && (memo || error) && (
+                        {/* Running or completed state */}
+                        {showWorkspace && (
                             <>
-                                <LegalDisclaimer className="mt-2" />
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleReset}
+                            <div className={cn(
+                                "grid gap-6 md:grid-cols-[240px_1fr]",
+                                "transition-[margin] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+                                footnotesPanelOpen ? "lg:mr-[400px]" : "",
+                            )}>
+                                {/* Left: Step Timeline + Process Panel */}
+                                <div className="hidden md:block">
+                                    <div className="sticky top-20 space-y-4">
+                                        <div>
+                                            <h3 className="text-xs uppercase tracking-wider font-medium text-muted-foreground mb-3">
+                                                Progress
+                                            </h3>
+                                            <AgentStepTimeline steps={steps} />
+                                        </div>
+                                        <ResearchProcessPanel events={processEvents} isRunning={isRunning} />
+                                    </div>
+                                </div>
+
+                                {/* Right: Main content */}
+                                <div className="space-y-4">
+                                    {/* Query display */}
+                                    <Card>
+                                        <CardContent className="pt-4">
+                                            <p className="text-xs uppercase tracking-wider font-medium text-muted-foreground mb-1">
+                                                Query
+                                            </p>
+                                            <p className="text-sm">{query}</p>
+                                        </CardContent>
+                                    </Card>
+
+                                    {/* Progress bar */}
+                                    {isRunning && (
+                                        <ResearchProgressBar events={processEvents} isRunning={isRunning} />
+                                    )}
+
+                                    {/* Mobile step timeline + process panel */}
+                                    <div className="md:hidden space-y-3">
+                                        <AgentStepTimeline steps={steps} />
+                                        <ResearchProcessPanel events={processEvents} isRunning={isRunning} />
+                                    </div>
+
+                                    {/* Checkpoint prompt */}
+                                    {checkpoint && checkpoint.context?.research_plan ? (
+                                        <PlanReview
+                                            question={checkpoint.question}
+                                            researchPlan={checkpoint.context.research_plan as Array<{task_type: string; nl_query: string; rationale: string; named_cases?: Array<{name?: string; citation?: string}>; priority?: number}>}
+                                            classification={checkpoint.context.classification as Record<string, unknown> | null}
+                                            statuteContext={checkpoint.context.statute_context as Array<{act: string; section: string; title?: string; repealed?: boolean}>}
+                                            legalElements={checkpoint.context.legal_elements as Array<{id: string; description: string; contested?: boolean}>}
+                                            includeAdversarial={checkpoint.context.include_adversarial as boolean | undefined}
+                                            onSubmit={handleResume}
+                                            disabled={isRunning}
+                                            error={checkpointError}
+                                            onClearError={() => setCheckpointError(null)}
+                                        />
+                                    ) : checkpoint ? (
+                                        <AgentCheckpointPrompt
+                                            question={checkpoint.question}
+                                            context={checkpoint.context}
+                                            onSubmit={handleResume}
+                                            disabled={isRunning}
+                                            error={checkpointError}
+                                            onClearError={() => setCheckpointError(null)}
+                                        />
+                                    ) : null}
+
+                                    {/* Verification Banner */}
+                                    {verificationBanner && !isRunning && (
+                                        <VerificationBanner
+                                            banner={verificationBanner}
+                                            citationsVerified={citationsVerified}
+                                            citationsRemoved={citationsRemoved}
+                                        />
+                                    )}
+
+                                    {/* Skeleton shimmer while waiting */}
+                                    {isRunning && !displayMemo && (
+                                        <div className="space-y-4 animate-pulse">
+                                            <div className="h-6 w-3/4 bg-muted rounded" />
+                                            <div className="h-4 w-full bg-muted rounded" />
+                                            <div className="h-4 w-full bg-muted rounded" />
+                                            <div className="h-4 w-5/6 bg-muted rounded" />
+                                            <div className="h-6 w-2/3 bg-muted rounded mt-6" />
+                                            <div className="h-4 w-full bg-muted rounded" />
+                                            <div className="h-4 w-4/5 bg-muted rounded" />
+                                        </div>
+                                    )}
+
+                                    {/* Memo result */}
+                                    {displayMemo && (
+                                        <Card>
+                                            <CardContent className="pt-6">
+                                                <AgentMemoViewer
+                                                    content={displayMemo}
+                                                    confidence={isStreaming ? 0 : confidence}
+                                                    maxFootnote={footnotes.length}
+                                                    onFootnoteClick={(num) => {
+                                                        setSelectedFootnoteNum(num);
+                                                        setFootnotesPanelOpen(true);
+                                                    }}
+                                                    confidenceBreakdown={isStreaming ? undefined : confidenceBreakdown}
+                                                    footnoteVerification={
+                                                        footnotes.length > 0
+                                                            ? Object.fromEntries(
+                                                                footnotes.map((f) => [
+                                                                    f.number,
+                                                                    f.verification_status as "verified_pg" | "verified_ik" | "verified_neo4j" | "unverified" | "removed" | "flagged",
+                                                                ])
+                                                            )
+                                                            : undefined
+                                                    }
+                                                    executionId={executionId ?? undefined}
+                                                    onReviseSection={isStreaming ? undefined : (!isRunning ? handleReviseSection : undefined)}
+                                                    footnotes={footnotes}
+                                                />
+                                                {isStreaming && (
+                                                    <span className="inline-block w-1.5 h-5 bg-[var(--gold)] animate-pulse ml-0.5 align-text-bottom" />
+                                                )}
+                                            </CardContent>
+                                        </Card>
+                                    )}
+
+                                    {/* Mobile: Footnotes Sheet Drawer */}
+                                    {footnotes.length > 0 && (
+                                        <div className="lg:hidden">
+                                            <Sheet>
+                                                <SheetTrigger asChild>
+                                                    <Button variant="outline" size="sm" className="w-full">
+                                                        <FileText className="h-4 w-4 mr-2" />
+                                                        Footnotes & Sources ({footnotes.filter(f => f.is_used).length})
+                                                    </Button>
+                                                </SheetTrigger>
+                                                <SheetContent side="bottom" className="h-[80vh] p-0">
+                                                    <SheetTitle className="sr-only">Footnotes & Sources</SheetTitle>
+                                                    <FootnotesPanel
+                                                        footnotes={footnotes}
+                                                        selectedFootnoteNumber={selectedFootnoteNum}
+                                                        onFootnoteSelect={setSelectedFootnoteNum}
+                                                        isOpen={true}
+                                                        onToggle={() => {}}
+                                                    />
+                                                </SheetContent>
+                                            </Sheet>
+                                        </div>
+                                    )}
+
+                                    {/* Research Audit Trail */}
+                                    {researchAudit && !isRunning && (
+                                        <ResearchAuditTrail audit={researchAudit} />
+                                    )}
+
+                                    {/* Follow-up conversation thread */}
+                                    {showFollowUpArea && sessionMessages.length > 0 && (
+                                        <Card>
+                                            <CardContent className="p-0">
+                                                <div className="border-b px-4 py-2">
+                                                    <h3 className="text-xs uppercase tracking-wider font-medium text-muted-foreground">
+                                                        Follow-up Conversation
+                                                    </h3>
+                                                </div>
+                                                <AgentFollowUpThread
+                                                    messages={sessionMessages.filter(
+                                                        (m) => m.message_type === "follow_up" || m.message_type === "follow_up_response",
+                                                    )}
+                                                    isStreaming={followUpStreaming}
+                                                    streamingContent={followUpStreamContent}
+                                                />
+                                                <AgentFollowUpInput
+                                                    onSend={handleFollowUp}
+                                                    disabled={followUpStreaming || isRunning}
+                                                    placeholder="Ask a follow-up question about this research..."
+                                                />
+                                            </CardContent>
+                                        </Card>
+                                    )}
+
+                                    {/* Follow-up input when no follow-ups yet */}
+                                    {showFollowUpArea && sessionMessages.filter(m => m.message_type === "follow_up" || m.message_type === "follow_up_response").length === 0 && (
+                                        <Card>
+                                            <CardContent className="p-0">
+                                                <div className="px-4 py-2">
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Have a follow-up question? Ask below for a quick targeted response.
+                                                    </p>
+                                                </div>
+                                                <AgentFollowUpInput
+                                                    onSend={handleFollowUp}
+                                                    disabled={followUpStreaming || isRunning}
+                                                    placeholder="Ask a follow-up question about this research..."
+                                                />
+                                            </CardContent>
+                                        </Card>
+                                    )}
+
+                                    {/* Error + Retry */}
+                                    {error && (
+                                        <div className="text-sm text-red-500 p-3 rounded-md bg-red-50 dark:bg-red-950/20 flex items-center justify-between" role="alert">
+                                            <span>{error}</span>
+                                            {!isRunning && query.trim() && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={handleSubmit}
+                                                    className="ml-2 shrink-0"
+                                                >
+                                                    Retry Research
+                                                </Button>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Typing indicator + Cancel button */}
+                                    {isRunning && !checkpoint && (
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                <span>{currentStepLabel || "Agent is working..."}</span>
+                                            </div>
+                                            <Button variant="outline" size="sm" onClick={handleCancel} className="text-destructive border-destructive/30 hover:bg-destructive/10">
+                                                <XCircle className="h-3.5 w-3.5 mr-1" />
+                                                Cancel
+                                            </Button>
+                                        </div>
+                                    )}
+
+                                    {/* Cancellation notice */}
+                                    {cancelled && !isRunning && (
+                                        <div className="text-sm text-blue-600 dark:text-blue-400 p-3 rounded-md bg-blue-50 dark:bg-blue-950/20 flex items-center justify-between">
+                                            <span>Research cancelled.</span>
+                                            {query.trim() && (
+                                                <Button variant="outline" size="sm" onClick={handleSubmit} className="ml-2 shrink-0">
+                                                    Restart Research
+                                                </Button>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* New Research button after completion */}
+                                    {!isRunning && (memo || error) && (
+                                        <>
+                                            <LegalDisclaimer className="mt-2" />
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={handleNewSession}
+                                            >
+                                                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />{" "}
+                                                New Research
+                                            </Button>
+                                        </>
+                                    )}
+                                </div>
+
+                            </div>
+
+                            {/* Desktop slide-out footnotes panel */}
+                            <div
+                                className={cn(
+                                    "hidden lg:block fixed right-0 top-20 h-[calc(100vh-5rem)] w-[400px] z-40",
+                                    "border-l bg-background shadow-xl",
+                                    "transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+                                    footnotesPanelOpen ? "translate-x-0" : "translate-x-full",
+                                )}
+                            >
+                                <FootnotesPanel
+                                    footnotes={footnotes}
+                                    selectedFootnoteNumber={selectedFootnoteNum}
+                                    onFootnoteSelect={setSelectedFootnoteNum}
+                                    isOpen={true}
+                                    onToggle={() => setFootnotesPanelOpen(false)}
+                                />
+                            </div>
+
+                            {/* Floating reopen tab */}
+                            {footnotes.length > 0 && !footnotesPanelOpen && (
+                                <button
+                                    onClick={() => setFootnotesPanelOpen(true)}
+                                    className="hidden lg:flex fixed right-0 top-1/2 -translate-y-1/2 z-30 items-center gap-1.5 bg-background/95 border border-r-0 rounded-l-lg shadow-md px-2 py-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors backdrop-blur-sm"
+                                    style={{ writingMode: "vertical-rl" }}
                                 >
-                                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />{" "}
-                                    New Research
-                                </Button>
+                                    <PanelRightOpen className="h-3.5 w-3.5" />
+                                    Sources ({footnotes.filter(f => f.is_used).length})
+                                </button>
+                            )}
                             </>
                         )}
                     </div>
-
-                </div>
-
-                {/* Desktop slide-out footnotes panel — OUTSIDE the grid */}
-                <div
-                    className={cn(
-                        "hidden lg:block fixed right-0 top-20 h-[calc(100vh-5rem)] w-[400px] z-40",
-                        "border-l bg-background shadow-xl",
-                        "transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
-                        footnotesPanelOpen ? "translate-x-0" : "translate-x-full",
-                    )}
-                >
-                    <FootnotesPanel
-                        footnotes={footnotes}
-                        selectedFootnoteNumber={selectedFootnoteNum}
-                        onFootnoteSelect={setSelectedFootnoteNum}
-                        isOpen={true}
-                        onToggle={() => setFootnotesPanelOpen(false)}
-                    />
-                </div>
-
-                {/* Floating reopen tab when panel is closed */}
-                {footnotes.length > 0 && !footnotesPanelOpen && (
-                    <button
-                        onClick={() => setFootnotesPanelOpen(true)}
-                        className="hidden lg:flex fixed right-0 top-1/2 -translate-y-1/2 z-30 items-center gap-1.5 bg-background/95 border border-r-0 rounded-l-lg shadow-md px-2 py-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors backdrop-blur-sm"
-                        style={{ writingMode: "vertical-rl" }}
-                    >
-                        <PanelRightOpen className="h-3.5 w-3.5" />
-                        Sources ({footnotes.filter(f => f.is_used).length})
-                    </button>
-                )}
-                </>
-            )}
                 </div>
             </main>
 

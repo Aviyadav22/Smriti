@@ -130,14 +130,15 @@ class TestFormatSearchResultsEnriched:
 class TestEnrichResultsWithRatio:
     @pytest.mark.asyncio
     async def test_enriches_results_with_ratio(self) -> None:
+        _UUID1 = "00000000-0000-0000-0000-000000000001"
         mock_result = MagicMock()
         mock_result.fetchall.return_value = [
-            ("case-1", "Natural justice applies to all tribunals.", "division", 3),
+            (_UUID1, "Natural justice applies to all tribunals.", "division", 3),
         ]
         db = AsyncMock()
         db.execute.return_value = mock_result
 
-        results = [{"case_id": "case-1", "title": "Test Case"}]
+        results = [{"case_id": _UUID1, "title": "Test Case"}]
         enriched = await enrich_results_with_ratio(results, db)
 
         assert enriched[0]["ratio"] == "Natural justice applies to all tribunals."
@@ -146,14 +147,15 @@ class TestEnrichResultsWithRatio:
 
     @pytest.mark.asyncio
     async def test_enriches_bench_type(self) -> None:
+        _UUID2 = "00000000-0000-0000-0000-000000000002"
         mock_result = MagicMock()
         mock_result.fetchall.return_value = [
-            ("case-2", "", "constitutional", 5),
+            (_UUID2, "", "constitutional", 5),
         ]
         db = AsyncMock()
         db.execute.return_value = mock_result
 
-        results = [{"case_id": "case-2", "title": "Bench Case"}]
+        results = [{"case_id": _UUID2, "title": "Bench Case"}]
         enriched = await enrich_results_with_ratio(results, db)
 
         assert enriched[0]["bench_type"] == "constitutional"

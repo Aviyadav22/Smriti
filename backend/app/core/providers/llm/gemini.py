@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from collections.abc import AsyncIterator
+
+import httpx
 
 from google import genai
 from google.api_core.exceptions import GoogleAPIError
@@ -25,6 +28,7 @@ logger = logging.getLogger(__name__)
 # Build retry exception tuple with granular Google exceptions when available
 _GEMINI_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
     GoogleAPIError, asyncio.TimeoutError, ConnectionError, OSError, TimeoutError,
+    httpx.ReadTimeout, httpx.ConnectTimeout, httpx.TimeoutException,
 )
 
 try:
@@ -91,14 +95,32 @@ class GeminiLLM:
     # [S10] Class-level cache for synthesis system prompt
     _synthesis_cache_name: str | None = None
 
-    def __init__(self, *, api_key: str | None = None, model: str | None = None) -> None:
-        resolved_key = api_key or settings.gemini_api_key
-        if not resolved_key or not resolved_key.strip():
-            raise ValueError(
-                "Gemini API key is required. Set GEMINI_API_KEY environment variable "
-                "or pass api_key to GeminiLLM()."
+    def __init__(self, *, api_key: str | None = None, model: str | None = None,
+                 use_vertexai: bool = False, project: str | None = None,
+                 location: str | None = None) -> None:
+        if use_vertexai or settings.gemini_use_vertexai:
+            _project = project or settings.gemini_vertexai_project
+            _location = location or settings.gemini_vertexai_location
+            if not _project:
+                raise ValueError(
+                    "gemini_vertexai_project is required when using Vertex AI. "
+                    "Set GEMINI_VERTEXAI_PROJECT environment variable."
+                )
+            # Ensure GOOGLE_APPLICATION_CREDENTIALS env var is set for the SDK
+            if settings.google_application_credentials and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = settings.google_application_credentials
+            self._client = genai.Client(
+                vertexai=True, project=_project, location=_location,
             )
-        self._client = genai.Client(api_key=resolved_key)
+            logger.info("GeminiLLM using Vertex AI (project=%s, location=%s)", _project, _location)
+        else:
+            resolved_key = api_key or settings.gemini_api_key
+            if not resolved_key or not resolved_key.strip():
+                raise ValueError(
+                    "Gemini API key is required. Set GEMINI_API_KEY environment variable "
+                    "or pass api_key to GeminiLLM()."
+                )
+            self._client = genai.Client(api_key=resolved_key)
         self._model = model or settings.gemini_model
 
     async def _get_or_create_synthesis_cache(self, system_prompt: str) -> str | None:
@@ -268,12 +290,15 @@ class GeminiLLM:
         *,
         system: str | None = None,
         temperature: float = 0.1,
+        max_tokens: int | None = None,
         use_context_cache: bool = False,
     ) -> AsyncIterator[str]:
         config_kwargs: dict = {
             "system_instruction": system,
             "temperature": temperature,
         }
+        if max_tokens:
+            config_kwargs["max_output_tokens"] = max_tokens
         # [S10] Use context cache for synthesis calls
         if use_context_cache and system:
             cached_name = await self._get_or_create_synthesis_cache(system)

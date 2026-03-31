@@ -24,9 +24,10 @@ from app.core.search.hybrid import SearchResponse, hybrid_search
 from app.core.search.query import SearchFilters
 from app.db.postgres import get_db
 from app.db.redis_client import get_redis
+from app.db.postgres import async_session_factory
 from app.security.auth import TokenPayload
 from app.security.rate_limiter import rate_limit_dependency
-from app.security.rbac import get_current_user_optional
+from app.security.rbac import get_current_user, get_current_user_optional
 from app.security.sanitizer import detect_prompt_injection, sanitize_search_query
 
 logger = logging.getLogger(__name__)
@@ -172,6 +173,48 @@ async def search(
         # Preserve original Hindi query for display
         serialized["query_understanding"]["original_query"] = original_query
 
+    # Fire-and-forget: persist search query for authenticated users
+    if _current_user is not None:
+        try:
+            filter_data = {}
+            if court:
+                filter_data["court"] = court
+            if year_from:
+                filter_data["year_from"] = year_from
+            if year_to:
+                filter_data["year_to"] = year_to
+            if case_type:
+                filter_data["case_type"] = case_type
+            if bench_type:
+                filter_data["bench_type"] = bench_type
+            if judge:
+                filter_data["judge"] = judge
+            if act:
+                filter_data["act"] = act
+
+            async def _save_search_history() -> None:
+                try:
+                    async with async_session_factory() as hist_db:
+                        await hist_db.execute(
+                            text(
+                                "INSERT INTO search_history (id, user_id, query, filters, result_count) "
+                                "VALUES (gen_random_uuid(), :uid, :q, :filters, :count)"
+                            ),
+                            {
+                                "uid": _current_user.sub,
+                                "q": original_query,
+                                "filters": json.dumps(filter_data) if filter_data else None,
+                                "count": serialized.get("total_count"),
+                            },
+                        )
+                        await hist_db.commit()
+                except Exception:
+                    logger.debug("Failed to save search history", exc_info=True)
+
+            asyncio.create_task(_save_search_history())
+        except Exception:
+            pass  # best-effort
+
     return serialized
 
 
@@ -296,6 +339,131 @@ async def facets(
             logger.debug("Redis cache miss/error: %s", exc)
 
     return response
+
+
+# ---------------------------------------------------------------------------
+# GET /search/history — List user's recent searches
+# ---------------------------------------------------------------------------
+
+
+@router.get("/history", dependencies=[Depends(rate_limit_dependency("60/minute"))])
+async def search_history(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """List the authenticated user's recent search queries."""
+    import uuid as _uuid
+
+    user_uuid = _uuid.UUID(user.sub)
+
+    count_result = await db.execute(
+        text("SELECT COUNT(*) FROM search_history WHERE user_id = :uid"),
+        {"uid": user_uuid},
+    )
+    total = count_result.scalar_one()
+
+    offset = (page - 1) * page_size
+    rows = await db.execute(
+        text(
+            "SELECT id, query, filters, result_count, is_bookmarked, created_at "
+            "FROM search_history WHERE user_id = :uid "
+            "ORDER BY is_bookmarked DESC, created_at DESC OFFSET :off LIMIT :lim"
+        ),
+        {"uid": user_uuid, "off": offset, "lim": page_size},
+    )
+    entries = [
+        {
+            "id": str(r["id"]),
+            "query": r["query"],
+            "filters": r["filters"],
+            "result_count": r["result_count"],
+            "is_bookmarked": r["is_bookmarked"],
+            "created_at": str(r["created_at"]),
+        }
+        for r in rows.mappings().all()
+    ]
+
+    return {"history": entries, "total": total, "page": page, "page_size": page_size}
+
+
+# ---------------------------------------------------------------------------
+# POST /search/history/{id}/bookmark — Toggle bookmark
+# ---------------------------------------------------------------------------
+
+
+@router.post("/history/{history_id}/bookmark", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+async def toggle_search_bookmark(
+    history_id: str,
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Toggle the bookmark status of a search history entry."""
+    import uuid as _uuid
+
+    try:
+        hist_uuid = _uuid.UUID(history_id)
+    except ValueError:
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(status_code=422, detail="Invalid history_id format.")
+
+    row = await db.execute(
+        text("SELECT user_id, is_bookmarked FROM search_history WHERE id = :id"),
+        {"id": hist_uuid},
+    )
+    entry = row.mappings().one_or_none()
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Search history entry not found.")
+    if str(entry["user_id"]) != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+    new_status = not entry["is_bookmarked"]
+    await db.execute(
+        text("UPDATE search_history SET is_bookmarked = :val WHERE id = :id"),
+        {"id": hist_uuid, "val": new_status},
+    )
+    await db.commit()
+
+    return {"id": history_id, "is_bookmarked": new_status}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /search/history/{id} — Delete a search history entry
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/history/{history_id}", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+async def delete_search_history_entry(
+    history_id: str,
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Delete a single search history entry."""
+    import uuid as _uuid
+
+    try:
+        hist_uuid = _uuid.UUID(history_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid history_id format.")
+
+    row = await db.execute(
+        text("SELECT user_id FROM search_history WHERE id = :id"),
+        {"id": hist_uuid},
+    )
+    entry = row.mappings().one_or_none()
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Search history entry not found.")
+    if str(entry["user_id"]) != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+    await db.execute(
+        text("DELETE FROM search_history WHERE id = :id"),
+        {"id": hist_uuid},
+    )
+    await db.commit()
+
+    return {"status": "deleted", "id": history_id}
 
 
 # ---------------------------------------------------------------------------

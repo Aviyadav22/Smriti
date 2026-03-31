@@ -18,6 +18,8 @@ import { EquivalentCitations } from "@/components/equivalent-citations";
 import { ConfidenceMeter } from "@/components/confidence-meter";
 import { LegalDisclaimer } from "@/components/legal-disclaimer";
 import { SearchResultSkeleton } from "@/components/skeleton";
+import { SearchHistoryDropdown } from "@/components/search/SearchHistoryDropdown";
+import { useAuth } from "@/lib/auth-context";
 
 const SECTION_TABS: { value: JudgmentSection; label: string }[] = [
     { value: "FACTS", label: "Facts" },
@@ -31,6 +33,7 @@ const SECTION_TABS: { value: JudgmentSection; label: string }[] = [
 function SearchContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
+    const { isAuthenticated } = useAuth();
 
     const initialQuery = searchParams.get("q") || "";
     const [query, setQuery] = useState(initialQuery);
@@ -40,6 +43,7 @@ function SearchContent() {
     const [error, setError] = useState<string | null>(null);
     const [page, setPage] = useState(1);
     const [showFilters, setShowFilters] = useState(false);
+    const [showHistory, setShowHistory] = useState(false);
 
     // Active filters
     const [court, setCourt] = useState<string>("");
@@ -138,6 +142,19 @@ function SearchContent() {
         setSuggestions([]);
         executeSearch(suggestion.title, 1);
     }, [executeSearch]);
+
+    const handleHistorySelect = useCallback((histQuery: string, filters?: Record<string, unknown>) => {
+        setQuery(histQuery);
+        setShowHistory(false);
+        if (filters) {
+            if (typeof filters.court === "string") setCourt(filters.court);
+            if (typeof filters.year_from === "number") setYearFrom(String(filters.year_from));
+            if (typeof filters.year_to === "number") setYearTo(String(filters.year_to));
+            if (typeof filters.case_type === "string") setCaseType(filters.case_type);
+        }
+        router.push(`/search?q=${encodeURIComponent(histQuery)}`, { scroll: false });
+        executeSearch(histQuery, 1);
+    }, [executeSearch, router]);
 
     const handleInputKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (!showSuggestions || suggestions.length === 0) return;
@@ -244,6 +261,7 @@ function SearchContent() {
                                     onChange={(e) => {
                                         setQuery(e.target.value);
                                         fetchSuggestions(e.target.value);
+                                        if (e.target.value.trim().length >= 3) setShowHistory(false);
                                     }}
                                     onKeyDown={handleInputKeyDown}
                                     onBlur={() => {
@@ -251,7 +269,11 @@ function SearchContent() {
                                         setTimeout(() => setShowSuggestions(false), 200);
                                     }}
                                     onFocus={() => {
-                                        if (suggestions.length > 0) setShowSuggestions(true);
+                                        if (suggestions.length > 0) {
+                                            setShowSuggestions(true);
+                                        } else if (isAuthenticated && query.trim().length < 3) {
+                                            setShowHistory(true);
+                                        }
                                     }}
                                     placeholder="Search Indian case law…"
                                     maxLength={500}
@@ -286,6 +308,14 @@ function SearchContent() {
                                             </li>
                                         ))}
                                     </ul>
+                                )}
+                                {/* Search history dropdown (shown when authenticated + no suggestions visible) */}
+                                {isAuthenticated && !showSuggestions && (
+                                    <SearchHistoryDropdown
+                                        isOpen={showHistory}
+                                        onClose={() => setShowHistory(false)}
+                                        onSelectQuery={handleHistorySelect}
+                                    />
                                 )}
                             </div>
                             <Button type="submit" className="h-10 px-5 text-xs rounded-md">Search</Button>

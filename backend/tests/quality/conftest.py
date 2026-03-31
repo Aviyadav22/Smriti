@@ -123,7 +123,7 @@ class AgentRunner:
             checkpointer=None,
             memo_stream_callback=None,
         )
-        config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+        config = {"configurable": {"thread_id": str(uuid.uuid4())}, "recursion_limit": 50}
         state = await graph.ainvoke(
             {"query": query, "language": "en", "auto_approve": True},
             config=config,
@@ -149,7 +149,7 @@ class AgentRunner:
             graph_store=self._graph_store,
             checkpointer=None,
         )
-        config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+        config = {"configurable": {"thread_id": str(uuid.uuid4())}, "recursion_limit": 50}
         state = await graph.ainvoke(
             {
                 "case_facts": case_facts,
@@ -179,7 +179,7 @@ class AgentRunner:
             reranker=self._reranker,
             checkpointer=None,
         )
-        config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+        config = {"configurable": {"thread_id": str(uuid.uuid4())}, "recursion_limit": 50}
         state = await graph.ainvoke(
             {
                 "doc_type": doc_type,

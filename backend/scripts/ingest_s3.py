@@ -464,17 +464,23 @@ class IngestTracker:
 
 
 @retry(wait=wait_exponential(multiplier=1, min=2, max=30), stop=stop_after_attempt(3), reraise=True)
-def _download_with_timeout(url: str, dest: Path, timeout: int = 120) -> None:
+def _download_with_timeout(url: str, dest: Path, timeout: int = 300) -> None:
     """Download a URL to a file with timeout and retry.
 
     Downloads to a .tmp suffix first, then renames atomically so interrupted
     downloads don't leave partial files that pass the exists() check on resume.
+    Uses chunked streaming to avoid loading entire file into memory.
     """
     tmp_dest = dest.with_suffix(dest.suffix + ".tmp")
     req = urllib.request.Request(url)
+    # Use a longer timeout for connection, read in 1MB chunks to avoid MemoryError
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         with open(tmp_dest, "wb") as f:
-            shutil.copyfileobj(resp, f)
+            while True:
+                chunk = resp.read(1024 * 1024)  # 1MB chunks
+                if not chunk:
+                    break
+                f.write(chunk)
     tmp_dest.rename(dest)
 
 
@@ -758,38 +764,58 @@ async def ingest_year(
         stem = Path(str(key)).stem
         stem_index[stem] = key
 
-    # Initialize providers -- build a pool of LLM+embedder clients for key rotation
-    api_keys = _build_key_pool()
-    logger.info("Using %d Gemini API key(s) for parallel ingestion", len(api_keys))
+    # Initialize providers -- Vertex AI (single client) or API key pool
+    use_vertexai = settings.gemini_use_vertexai
 
     # Build per-key rate limiter pools: separate for LLM and embedding
     llm_limiter_pool: RateLimiterPool | None = None
     embed_limiter_pool: RateLimiterPool | None = None
-    if rpm_limit > 0:
-        llm_limiter_pool = RateLimiterPool(rpm_per_key=rpm_limit)
-        embed_limiter_pool = RateLimiterPool(rpm_per_key=rpm_limit * 5)  # Embeddings are cheaper, allow 5x
-        logger.info("Rate limiting enabled: LLM %d RPM, Embed %d RPM per key", rpm_limit, rpm_limit * 5)
-    else:
-        logger.info("Rate limiting disabled (--rpm-limit 0)")
 
     llm_pool: list[GeminiLLM] = []
     embedder_pool: list[GeminiEmbedder] = []
-    for key in api_keys:
-        llm_kwargs: dict[str, str] = {"api_key": key}
+
+    if use_vertexai:
+        logger.info("Using Vertex AI (project=%s, location=%s)",
+                     settings.gemini_vertexai_project, settings.gemini_vertexai_location)
+        llm_kwargs: dict[str, Any] = {"use_vertexai": True}
         if model_override:
             llm_kwargs["model"] = model_override
         else:
-            # Hybrid approach: use Flash for Pass 1 ingestion (cheaper, faster)
             llm_kwargs["model"] = settings.gemini_flash_model
+        # Single client for Vertex AI (rate limits are project-level)
         llm_pool.append(GeminiLLM(**llm_kwargs))
-        embedder_pool.append(GeminiEmbedder(api_key=key))
+        embedder_pool.append(GeminiEmbedder(use_vertexai=True))
+        api_keys = ["vertexai"]  # Dummy key for round-robin compatibility
+        if rpm_limit > 0:
+            llm_limiter_pool = RateLimiterPool(rpm_per_key=rpm_limit)
+            embed_limiter_pool = RateLimiterPool(rpm_per_key=rpm_limit * 5)
+            logger.info("Rate limiting enabled: LLM %d RPM, Embed %d RPM", rpm_limit, rpm_limit * 5)
+    else:
+        api_keys = _build_key_pool()
+        logger.info("Using %d Gemini API key(s) for parallel ingestion", len(api_keys))
+        if rpm_limit > 0:
+            llm_limiter_pool = RateLimiterPool(rpm_per_key=rpm_limit)
+            embed_limiter_pool = RateLimiterPool(rpm_per_key=rpm_limit * 5)  # Embeddings are cheaper, allow 5x
+            logger.info("Rate limiting enabled: LLM %d RPM, Embed %d RPM per key", rpm_limit, rpm_limit * 5)
+        else:
+            logger.info("Rate limiting disabled (--rpm-limit 0)")
+
+        for key in api_keys:
+            llm_kwargs_api: dict[str, str] = {"api_key": key}
+            if model_override:
+                llm_kwargs_api["model"] = model_override
+            else:
+                # Hybrid approach: use Flash for Pass 1 ingestion (cheaper, faster)
+                llm_kwargs_api["model"] = settings.gemini_flash_model
+            llm_pool.append(GeminiLLM(**llm_kwargs_api))
+            embedder_pool.append(GeminiEmbedder(api_key=key))
 
     # Validate API keys at startup
     bad_indices = await _validate_api_keys(llm_pool)
     if bad_indices:
         if len(bad_indices) == len(llm_pool):
             logger.error("ALL %d API keys are invalid — aborting", len(llm_pool))
-            return {"error": "all_keys_invalid"}
+            return {"skipped": len(pdfs_to_process) if 'pdfs_to_process' in dir() else 0, "error_keys": len(llm_pool)}
         logger.warning("Removing %d invalid API key(s), continuing with %d", len(bad_indices), len(llm_pool) - len(bad_indices))
         for idx in sorted(bad_indices, reverse=True):
             llm_pool.pop(idx)
@@ -815,7 +841,7 @@ async def ingest_year(
                 "Pinecone index expects %d-dim — aborting to prevent index corruption",
                 embed_dim, pc_dim,
             )
-            return {"error": f"dimension_mismatch_{embed_dim}_vs_{pc_dim}"}
+            return {"skipped": len(pdfs_to_process) if 'pdfs_to_process' in dir() else 0, "error_dimension": 1}
         logger.info("Pre-flight OK: embedding dim=%d, Pinecone dim=%s", embed_dim, pc_dim or "empty index")
     except Exception as exc:
         logger.warning("Pre-flight dimension check failed (non-fatal): %s", exc)
@@ -1157,7 +1183,8 @@ async def main() -> None:
             shutdown_event=shutdown_event,
         )
         for k, v in year_stats.items():
-            total_stats[k] = total_stats.get(k, 0) + v
+            if isinstance(v, (int, float)):
+                total_stats[k] = total_stats.get(k, 0) + v
 
     # Re-enable FTS trigger and batch-rebuild tsvectors
     if fts_disabled:

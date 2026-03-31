@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import re
+import uuid
 from dataclasses import asdict
 from typing import Any, Final
 
@@ -40,6 +41,16 @@ UUID_RE = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
     re.IGNORECASE,
 )
+
+
+def is_valid_uuid(val: str) -> bool:
+    """Check if a string is a valid UUID."""
+    try:
+        uuid.UUID(val)
+        return True
+    except (ValueError, AttributeError):
+        return False
+
 
 # ---------------------------------------------------------------------------
 # [V3] Statute lookup helpers — old↔new code expansion + DB fetch
@@ -298,7 +309,8 @@ def format_search_results_for_llm(
         return "No results found."
     parts: list[str] = []
     for i, r in enumerate(results, 1):
-        snippet = (r.get("snippet") or "")[:max_snippet_len]
+        # Prefer expanded_text (full passage from PostgreSQL) over truncated Pinecone snippet
+        snippet = (r.get("expanded_text") or r.get("snippet") or "")[:max_snippet_len]
         ratio = (r.get("ratio") or "")[:max_ratio_len]
 
         # Build court string with bench type and coram size if available
@@ -334,13 +346,14 @@ def format_search_results_for_llm(
 
 def format_search_results_for_llm_extended(
     results: list[dict],
-    max_snippet_len: int = 1500,
+    max_snippet_len: int = 4000,
     max_ratio_len: int = 3000,
 ) -> str:
     """Format search results with higher context limits for Research Agent V2.
 
     Uses larger snippet/ratio windows since Gemini Pro has 1M context — we're
-    only using <1% of it with the default limits.
+    only using <1% of it with the default limits.  With passage expansion,
+    expanded_text can be up to 5000 chars, so we allow 4000 for the snippet.
     """
     return format_search_results_for_llm(results, max_snippet_len, max_ratio_len)
 
@@ -527,7 +540,8 @@ async def enrich_results_with_ratio(
     seen: set[str] = set()
     for r in results:
         cid = r.get("case_id", "")
-        if cid and cid not in seen:
+        # Only query UUIDs — statute:, ik: and other non-UUID IDs skip PG enrichment
+        if cid and cid not in seen and is_valid_uuid(cid):
             seen.add(cid)
             case_ids.append(cid)
 
@@ -568,6 +582,138 @@ async def enrich_results_with_ratio(
             if not r.get("coram_size") and ratio_map[cid].get("coram_size"):
                 r["coram_size"] = ratio_map[cid]["coram_size"]
 
+    return results
+
+
+async def expand_passages_from_full_text(
+    results: list[dict],
+    db: AsyncSession,
+    passage_window: int = 5000,
+) -> list[dict]:
+    """Post-CRAG passage expansion: fetch full_text and extract longer passages.
+
+    Called only on CRAG-surviving results (typically 5-10 out of 20) to avoid
+    fetching 50-100KB full_text for every search result.  Uses the snippet text
+    to locate the chunk position in full_text, then extracts a wider window.
+    """
+    # Collect unique case_ids that are valid UUIDs
+    case_ids: list[str] = []
+    seen: set[str] = set()
+    for r in results:
+        cid = r.get("case_id", "")
+        if cid and cid not in seen and is_valid_uuid(cid):
+            seen.add(cid)
+            case_ids.append(cid)
+
+    if not case_ids:
+        return results
+
+    placeholders = ", ".join(f":id_{i}" for i in range(len(case_ids)))
+    params = {f"id_{i}": cid for i, cid in enumerate(case_ids)}
+
+    query = text(
+        f"SELECT id::text, full_text "
+        f"FROM cases WHERE id::text IN ({placeholders}) AND full_text IS NOT NULL"
+    )
+
+    try:
+        result = await db.execute(query, params)
+        rows = result.fetchall()
+    except Exception:
+        logger.warning("Failed to fetch full_text for passage expansion", exc_info=True)
+        return results
+
+    full_text_map: dict[str, str] = {}
+    for row in rows:
+        if row[1]:
+            full_text_map[row[0]] = row[1]
+
+    logger.info(
+        "Passage expansion: %d unique case_ids, %d full_texts fetched from PG",
+        len(case_ids), len(full_text_map),
+    )
+
+    expanded_count = 0
+    for r in results:
+        cid = r.get("case_id", "")
+        if cid not in full_text_map:
+            continue
+        ft = full_text_map[cid]
+
+        snippet_text = r.get("snippet") or r.get("chunk_text") or ""
+        snippet_len = len(snippet_text)
+
+        # Try char_start/char_end from Pinecone metadata first
+        char_start = r.get("char_start", 0)
+        char_end = r.get("char_end", 0)
+        if char_start and char_end and char_end > char_start:
+            chunk_mid = (char_start + char_end) // 2
+            half_window = passage_window // 2
+            win_start = max(0, chunk_mid - half_window)
+            win_end = min(len(ft), chunk_mid + half_window)
+            match_method = "char_pos"
+        else:
+            # Fallback: locate the snippet text within full_text
+            if not snippet_text or len(snippet_text) < 50:
+                logger.debug(
+                    "Passage expansion skipped for %s: snippet too short (%d chars)",
+                    cid[:8], len(snippet_text),
+                )
+                continue
+
+            # Try progressively shorter anchors + normalized matching
+            pos = -1
+            for anchor_len in (200, 100, 50):
+                anchor = snippet_text[:anchor_len]
+                pos = ft.find(anchor)
+                if pos >= 0:
+                    break
+                # Try with whitespace-normalized matching
+                import re as _re
+                norm_anchor = _re.sub(r"\s+", " ", anchor).strip()
+                norm_ft = _re.sub(r"\s+", " ", ft)
+                norm_pos = norm_ft.find(norm_anchor)
+                if norm_pos >= 0:
+                    # Map normalized position back to approximate original position
+                    # (close enough for windowing)
+                    ratio = norm_pos / max(len(norm_ft), 1)
+                    pos = int(ratio * len(ft))
+                    break
+
+            if pos < 0:
+                logger.info(
+                    "Passage expansion: no match for %s (snippet %d chars, "
+                    "full_text %d chars) — snippet[:60]=%r",
+                    cid[:8], snippet_len, len(ft), snippet_text[:60],
+                )
+                continue
+
+            win_start = max(0, pos - passage_window // 4)
+            win_end = min(len(ft), pos + len(snippet_text) + passage_window // 4)
+            match_method = "text_match"
+
+        # Extract and snap to sentence boundaries
+        expanded = ft[win_start:win_end]
+        if win_start > 0:
+            first_period = expanded.find(". ")
+            if 0 < first_period < 200:
+                expanded = expanded[first_period + 2:]
+        if win_end < len(ft):
+            last_period = expanded.rfind(". ")
+            if last_period > len(expanded) - 200:
+                expanded = expanded[:last_period + 1]
+
+        r["expanded_text"] = expanded
+        expanded_count += 1
+        logger.info(
+            "Passage expanded for %s via %s: %d → %d chars",
+            cid[:8], match_method, snippet_len, len(expanded),
+        )
+
+    logger.info(
+        "Passage expansion complete: %d/%d results expanded, %d full_texts fetched",
+        expanded_count, len(results), len(full_text_map),
+    )
     return results
 
 

@@ -1,0 +1,41 @@
+{
+  "project_name": "Smriti - Paralegal AI Research Tool",
+  "total_iterations": 100,
+  "min_runtime_hours": 8,
+  "delay_between_iterations_seconds": 288,
+  "codebase_root": ".",
+  "file_extensions_to_audit": [
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".json", ".yaml", ".yml",
+    ".html", ".css", ".env", ".toml", ".cfg", ".ini", ".md",
+    ".sh", ".bat", ".sql", ".graphql"
+  ],
+  "exclude_dirs": [
+    "node_modules", ".next", "__pycache__", ".git", "venv",
+    ".venv", "env", "dist", "build", ".cache", "coverage",
+    "ralph_loop_reports"
+  ],
+  "audit_categories": [
+    "FUNCTION_SIGNATURE_AUDIT",
+    "LOGIC_FLOW_TRACE",
+    "ERROR_HANDLING_GAPS",
+    "TYPE_SAFETY_ISSUES",
+    "SECURITY_VULNERABILITIES",
+    "API_CONTRACT_MISMATCH",
+    "DATABASE_QUERY_ISSUES",
+    "STATE_MANAGEMENT_BUGS",
+    "DEPENDENCY_CHAIN_RISKS",
+    "DEAD_CODE_DETECTION",
+    "RACE_CONDITIONS",
+    "MEMORY_LEAK_PATTERNS",
+    "INPUT_VALIDATION_GAPS",
+    "AUTH_FLOW_WEAKNESSES",
+    "CONFIGURATION_DRIFT",
+    "HARDCODED_SECRETS",
+    "PERFORMANCE_BOTTLENECKS",
+    "ACCESSIBILITY_ISSUES",
+    "LOGGING_GAPS",
+    "TEST_COVERAGE_HOLES"
+  ],
+  "severity_levels": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
+  "output_dir": "ralph_loop_reports"
+}

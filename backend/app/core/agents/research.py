@@ -330,10 +330,10 @@ def build_research_graph(
             stream_callback=memo_stream_callback,
         )
 
-    # [B10] Moderate complexity synthesis — uses Flash for speed
+    # [B10] Moderate complexity synthesis — uses Pro for legal reasoning quality
     async def moderate_synthesis(state: ResearchState) -> dict:
         return await speculative_synthesis_with_contradictions_node(
-            state, flash_llm, flash_llm,
+            state, llm, flash_llm,
             stream_callback=memo_stream_callback,
         )
 

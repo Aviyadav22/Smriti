@@ -414,7 +414,7 @@ export interface AgentStreamEvent {
     type: "status" | "checkpoint" | "memo" | "done" | "error"
         | "plan" | "searching" | "found" | "evaluating" | "reflection"
         | "gap" | "drafting" | "memo_stream" | "verification" | "quality"
-        | "progress";
+        | "progress" | "session";
     step?: string;
     message?: string;
     question?: string;
@@ -432,6 +432,7 @@ export interface AgentStreamEvent {
     content?: string;
     chunk?: string;
     execution_id?: string;
+    session_id?: string;
     status?: string;
     recoverable?: boolean;
     data?: {
@@ -507,4 +508,43 @@ export interface DocumentTemplate {
 
 export interface DocumentTemplatesResponse {
     templates: DocumentTemplate[];
+}
+
+// ---------------------------------------------------------------------------
+// Agent Sessions (Conversation History)
+// ---------------------------------------------------------------------------
+
+export interface AgentSession {
+    id: string;
+    agent_type: AgentType;
+    title: string;
+    created_at: string;
+    updated_at: string;
+    execution_count: number;
+    message_count: number;
+}
+
+export type AgentMessageType = "query" | "memo" | "follow_up" | "follow_up_response";
+
+export interface AgentSessionMessage {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    sources: ResearchFootnote[] | null;
+    message_type: AgentMessageType;
+    execution_id: string | null;
+    created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Search History
+// ---------------------------------------------------------------------------
+
+export interface SearchHistoryEntry {
+    id: string;
+    query: string;
+    filters: Record<string, unknown> | null;
+    result_count: number | null;
+    is_bookmarked: boolean;
+    created_at: string;
 }

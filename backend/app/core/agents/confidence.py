@@ -25,12 +25,13 @@ class ConfidenceBreakdown(TypedDict):
     consistency_confidence: float
 
 # Component weights (must sum to 1.0)
-_W_RELEVANCE = 0.30
-_W_COVERAGE = 0.15
+_W_RELEVANCE = 0.25
+_W_COVERAGE = 0.10
 _W_AUTHORITY = 0.15
-_W_CONTRADICTION = 0.15
-_W_SOURCE_DIVERSITY = 0.15
+_W_CONTRADICTION = 0.10
+_W_SOURCE_DIVERSITY = 0.10
 _W_GAP_COVERAGE = 0.10
+_W_SYNTHESIS_QUALITY = 0.20
 
 
 def _compute_source_diversity(worker_types: list[str]) -> float:
@@ -72,6 +73,7 @@ def calculate_confidence(
     worker_types: list[str] | None = None,
     initial_gap_count: int = 0,
     remaining_gap_count: int = 0,
+    synthesis_quality: float = 1.0,
 ) -> float:
     """Calculate a quality-weighted confidence score.
 
@@ -84,6 +86,7 @@ def calculate_confidence(
         worker_types: List of worker types that contributed results [5E.4].
         initial_gap_count: Number of evidence gaps before refinement [5E.4].
         remaining_gap_count: Number of evidence gaps remaining [5E.4].
+        synthesis_quality: Quality score from legal quality check (0-1).
 
     Returns:
         Confidence score between 0.0 and 1.0.
@@ -127,6 +130,7 @@ def calculate_confidence(
         + _W_CONTRADICTION * contradiction_factor
         + _W_SOURCE_DIVERSITY * source_diversity
         + _W_GAP_COVERAGE * gap_coverage
+        + _W_SYNTHESIS_QUALITY * min(1.0, max(0.0, synthesis_quality))
     )
 
     return min(1.0, max(0.0, confidence))
@@ -143,6 +147,7 @@ def calculate_confidence_detailed(
     worker_types: list[str] | None = None,
     initial_gap_count: int = 0,
     remaining_gap_count: int = 0,
+    synthesis_quality: float = 1.0,
 ) -> ConfidenceBreakdown:
     """Calculate confidence with a full sub-component decomposition.
 
@@ -163,6 +168,7 @@ def calculate_confidence_detailed(
         worker_types: List of worker types that contributed results [5E.4].
         initial_gap_count: Number of evidence gaps before refinement [5E.4].
         remaining_gap_count: Number of evidence gaps remaining [5E.4].
+        synthesis_quality: Quality score from legal quality check (0-1).
 
     Returns:
         A :class:`ConfidenceBreakdown` dict with ``overall``,
@@ -205,7 +211,7 @@ def calculate_confidence_detailed(
     source_diversity = _compute_source_diversity(worker_types or [])
     gap_coverage = _compute_gap_coverage(initial_gap_count, remaining_gap_count)
 
-    # Overall uses ALL 6 weights (must sum to 1.0)
+    # Overall uses ALL 7 weights (must sum to 1.0)
     overall = (
         _W_RELEVANCE * relevance
         + _W_COVERAGE * coverage
@@ -213,6 +219,7 @@ def calculate_confidence_detailed(
         + _W_CONTRADICTION * consistency_confidence
         + _W_SOURCE_DIVERSITY * source_diversity
         + _W_GAP_COVERAGE * gap_coverage
+        + _W_SYNTHESIS_QUALITY * min(1.0, max(0.0, synthesis_quality))
     )
     overall = min(1.0, max(0.0, overall))
 

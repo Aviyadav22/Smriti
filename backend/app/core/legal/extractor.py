@@ -231,8 +231,11 @@ GLR_PATTERN = HC_REPORTER_PATTERN
 _SHORT_ACT_NAMES: dict[str, str] = {
     "IPC": "Indian Penal Code",
     "I.P.C.": "Indian Penal Code",
+    "Penal Code": "Indian Penal Code",
     "CRPC": "Code of Criminal Procedure",
+    "CrPC": "Code of Criminal Procedure",
     "Cr.P.C.": "Code of Criminal Procedure",
+    "Criminal Procedure Code": "Code of Criminal Procedure",
     "CPC": "Code of Civil Procedure",
     "C.P.C.": "Code of Civil Procedure",
     "BNS": "Bharatiya Nyaya Sanhita",
@@ -263,7 +266,9 @@ _SHORT_ACT_NAMES: dict[str, str] = {
     "CGST ACT": "Central Goods and Services Tax Act",
     "SEBI ACT": "Securities and Exchange Board of India Act",
     "EVIDENCE ACT": "Indian Evidence Act",
+    "Evidence Act": "Indian Evidence Act",
     "CONTRACT ACT": "Indian Contract Act",
+    "Contract Act": "Indian Contract Act",
     "ARMS ACT": "Arms Act",
     "CP ACT": "Consumer Protection Act",
     "SRA": "Specific Relief Act",
@@ -483,6 +488,9 @@ def normalize_act_name(raw: str) -> str:
 _ACTS_CITED_BLOCKLIST: frozenset[str] = frozenset({
     "unknown act", "act", "code", "the act", "said act", "that act",
     "same act", "this act", "the code", "india", "protocols",
+    "society", "principal act", "erstwhile act", "new act", "old act",
+    "subsequently", "accordingly", "therefore", "however", "moreover",
+    "state", "method",
     # Single letters/fragments
     "cr", "m", "s", "p", "r", "a",
     # State names
@@ -532,13 +540,15 @@ _SECTION_SHORT_EXTRACT: re.Pattern[str] = re.compile(
 def _is_valid_act_citation(name: str) -> bool:
     """Return True if name looks like a real act citation, not garbage."""
     stripped = name.strip()
-    # Known short codes are always valid regardless of length
+    # Known short codes or full names are always valid regardless of length
     if stripped.upper() in _SHORT_ACT_NAMES:
+        return True
+    if stripped.lower() in _FULL_TO_SHORT:
         return True
     if len(stripped) < 3:
         return False
-    # Sentence fragments: real act names are rarely >80 chars
-    if len(stripped) > 80:
+    # Sentence fragments: real act names are rarely >60 chars (known codes exit early above)
+    if len(stripped) > 60:
         return False
     # Contains multiple spaces + lowercase words = likely a sentence, not an act name
     if len(stripped.split()) > 10:
@@ -558,7 +568,347 @@ def _is_valid_act_citation(name: str) -> bool:
     # CPC procedural refs like "Order VII Rule 11" are not act names
     if re.match(r"^Order\s+\w+\s+Rule\s+\d+", stripped, re.IGNORECASE):
         return False
+    # Standalone section/article/chapter/part references are not act names
+    # Catches: "Section 95", "Article 21", "Chapter III of Part III", "Part II"
+    if re.match(
+        r"^(?:Sections?|Sec\.?|Articles?|Art\.?|Chapter|Part)\s+[\dIVXLCDM]+",
+        stripped,
+        re.IGNORECASE,
+    ):
+        return False
+    # Digit glued to text end: "Madras5", "Part III 57" (but not known codes like "CA2013")
+    if re.search(r"[a-zA-Z]\d+$", stripped):
+        return False
+    # Trailing standalone digit: "West Bengal 4", "India13"
+    if re.search(r"\s\d{1,3}$", stripped):
+        return False
+    # Standalone incomplete references: "Act of", "Act in", "Code of", "Erstwhile Act"
+    if re.match(
+        r"^(?:Act|Code|Statute|Erstwhile\s+Act|Principal\s+Act)\s*(?:of|in|to|by|as|the)?\s*$",
+        stripped,
+        re.IGNORECASE,
+    ):
+        return False
+    # Single-letter prefix: "F Act in case of death", "E Consumer Protection Act defines..."
+    if re.match(r"^[A-Z]\s+", stripped) and len(stripped.split()) > 2:
+        return False
+    # Isolated single letter in the middle: "Arbitration A Act", "Maharashtra G Act"
+    # (OCR noise inserting a stray letter into an otherwise valid name)
+    if re.search(r"\b[A-Z]\b", stripped) and re.search(r"\s[A-Z]\s", stripped):
+        # Allow known patterns like "Type A Act" or "Schedule A"
+        if not re.search(r"(?:Type|Schedule|Class|Category|Form|Part|Appendix)\s+[A-Z]\b", stripped):
+            return False
+    # Starts with lowercase letter → sentence fragment, never an act name
+    if stripped[0].islower():
+        return False
+    # OCR garbage: contains digit clusters mixed with letters mid-word
+    # "Mah11Tashlra", "Central 7956 Provinces", "A0t"
+    if re.search(r"[a-zA-Z]\d+[a-zA-Z]", stripped):
+        return False
+    # Standalone 2-3 letter gibberish with mixed case: "A0t", "Sri _"
+    if re.search(r"[_~`]", stripped):
+        return False
+    # Bare "Act " at start → never a real act name (acts are "X Act", not "Act X")
+    # Catches: "Act and", "Act must be", "Act stands quashed", "Act referred to above"
+    if re.match(r"^Act\s+", stripped):
+        return False
+    # "[Year] Code" without full name → "1973 Code", "1898 Code" are sentence fragments
+    if re.match(r"^\d{4}\s+Code$", stripped, re.IGNORECASE):
+        return False
+    # "[Year] [single-letter] Act" → paragraph/margin markers: "1956 H Act", "1961 B Act"
+    if re.match(r"^\d{4}\s+[A-Z]\s+Act$", stripped):
+        return False
+    # Standalone numbers (1-3 digits) → "139", "272", "420" are section numbers, not acts
+    if re.match(r"^\d{1,3}$", stripped):
+        return False
+    # Starts with "[number] of" → section reference without "Section" prefix
+    # Catches: "13 of the Consumer Protection Act", "24 of the Act"
+    if re.match(r"^\d{1,4}\s+of\s+", stripped, re.IGNORECASE):
+        return False
+    # Trailing " and" or " but" or " or" → sentence fragment cut-off
+    # Catches: "SARFAESI Act and", "NI Act and", "Evidence Act but"
+    if re.search(r"\s+(?:and|but|or)$", stripped, re.IGNORECASE):
+        return False
+    # "[Year] [Act/Code] [word...]" where the continuation is a sentence fragment
+    # Catches: "1996 Act for setting aside", "1894 Act in accordance with law"
+    # But NOT: "2019 Amendment Act" (legitimate)
+    if re.match(r"^\d{4}\s+(?:Act|Code)\s+\w", stripped):
+        return False
+    # "[Number] [word]..." patterns that are clearly not acts
+    # Catches: "16 March", "60 years", "12 levels", "22 species"
+    if re.match(r"^\d{1,4}\s+(?:March|April|May|June|July|August|September|October|November|December|January|February|years?|months?|days?|levels?|species|bodies|houses?|candidates|complainants|appellants|individuals|lanes?|acres|marks|departments|ministries)\b", stripped, re.IGNORECASE):
+        return False
+    # Entries starting with "[number] [uppercase word]" that look like footnotes/references
+    # Catches: "1 For short", "1 Hereinafter", "3 Central Bureau", "4 lane"
+    if re.match(r"^\d{1,2}\s+(?:For|Hereinafter|Central|Reproduced|Supra)\b", stripped):
+        return False
+    # "[Act Name] [verb/preposition]..." pattern — catches "Act mandates...",
+    # "IPC declares...", "Customs Act speaks of...", "BNSS of cancellation..."
+    # Real act citations don't continue with verbs or sentence fragments.
+    if re.match(
+        r"^(?:.*?\b(?:Act|Code)\b|IPC|CRPC|CrPC|CPC|BNS|BNSS|BSA|IEA|POCSO|PMLA|"
+        r"NI Act|SARFAESI|IBC|NDPS|FEMA|RERA|SEBI|FA|LA|TADA|"
+        r"\d{4}\s+Act)\s+"
+        r"(?:mandates?|enables?|confers?|enacts?|prescribes?|stipulates?|declares?|"
+        r"prohibits?|authorizes?|imposes?|contemplates?|empowers?|recognizes?|"
+        r"requires?|specifies?|permits?|signifies?|invit\w+|pray\w+|seek\w+|"
+        r"satisfies|acknowledges?|overrides?|operates?|covers?|concerns?|"
+        r"allocat\w+|raises?|speak\w+|bars?|makes?\b|pertains?|"
+        r"in\s+(?:the|regard|relation|isolation|terms|view|essential|August|connection)|"
+        r"of\s+(?:cancellation|all|certain|this|the|its|\d{4})|"
+        r"gets?\s+attracted|along\s+with|for\s+(?:the|her|his|public|determining|granting|"
+        r"possession|pronouncing|disclos|being|checking)|"
+        r"being\s+|while\s+|whereas\s+|inasmuch\s+|"
+        r"to\s+(?:undergo|provide|advise|extend|meet|fix|grant|secure|ask|do|"
+        r"apply|decide|determine|lodge|file|get|place|regulate|condone|"
+        r"adopt|enforce|implement|interpret|invoke|maintain|examine)|"
+        r"referred\s+to\s+|as\s+(?:amended|extracted|noted|quoted|discussed|unconstitutional|void|such)|"
+        r"stands?\s+(?:quashed|satisfied|excluded|fulfilled|duly|revived|repealed|unamended|attracted)|"
+        r"came\s+(?:for|to\s+be)|on\s+(?:the\s+basis|being|levy|such|6th|26th|30|1st)|"
+        r"within\s+(?:a\s+period|the\s+(?:pension|territorial|prescribed)|three|ten|60|12)|"
+        r"challenging\s+|claiming\s+|alleging\s+|citing\s+|assailing\s+|"
+        r"at\s+(?:all|the\s+(?:start|Principal|enhanced)|once|11)|"
+        r"(?:remain|give|lend|need|carry|lay|cast)s?\s+)",
+        stripped,
+        re.IGNORECASE,
+    ):
+        return False
+    # Sentence fragments: real act names never contain verbs/conjunctions/prepositions
+    # Catches: "IPC is concerned", "shall also apply", "Evidence Act is not relevant",
+    #          "those candidates who went ahead", "empowers the resolution professional",
+    #          "Erstwhile Act which governed the field", "how accused"
+    if re.search(
+        r"\b(is|are|was|were|shall|should|will|would|has|have|had|not|cannot|can|must|need|"
+        r"dismissed|concerned|relevant|applied|applicable|lodged|set aside|"
+        r"at this stage|without insisting|outlines the|"
+        # Verbs commonly found in LLM-hallucinated fragments
+        r"went|governed|governs|empowers|empowered|include|includes|included|including|"
+        r"filed|alleged|contended|submitted|argued|claimed|stated|held|observed|"
+        r"directed|ordered|granted|rejected|made|passed|enacted|given|may|"
+        r"dealt|dealing|deals|provides|provided|providing|compared|"
+        r"mandates?|enables?|confers?|enacts?|prescribes?|stipulates?|declares?|"
+        r"prohibits?|authorizes?|contemplates?|signifies?|acknowledges?|"
+        r"recognizes?|requires?|specifies?|satisfies|permits?|covers?|"
+        r"operates?|overrides?|inviting|praying|seeking|allocating|raising|"
+        # Pronouns/relative words that never appear in act names
+        r"those|who|ahead|how|which|that|these|whose|whom|"
+        # Prepositions/conjunctions unlikely in act names (common in sentences)
+        r"against|upon|between|about|into|since|also|only|merely|even|before|after|by|any|as well|"
+        r"whether|whereby|herein|thereof|therein|thereupon|thereto|"
+        # Legal context words that indicate sentence fragments
+        r"respect|punishable|nature|scenario|plainly|"
+        r"declarant|accused|petitioner|respondent|appellant|"
+        r"citizens?|community|society|population|people|person|"
+        r"dated|amount|deposit|cash|suit|"
+        # Additional verbs/adjectives found in remaining garbage
+        r"defines?|stands?|vested?|lays?\s+down|carves?|casts?|"
+        r"remained?|uses?\b|employs?|creates?|adopts?|saves?|"
+        r"combines?|recognises?|accords?|affords?|brings?|"
+        r"ceased?|repealed?|amended?|dilutes?|revives?|revived?|"
+        r"applies?|attracted?|depends?|entails?|posits?|"
+        r"warrants?|obliges?|lends?|fails?|arises?|arrives?|"
+        r"surfaces?|interdicts?|elucidates?|enumerates?|"
+        # Sentence-ending words
+        r"supra|hereinabove|hereinafter|aforesaid|whereunder|nugatory|"
+        r"expeditiously|sparingly|efficacious|inefficacious|unconstitutional|"
+        r"ultra\s+vires|suo\s+motu|forthwith|mandatorily|"
+        # Party-role words (party names leaking into acts_cited)
+        r"plaintiff|defendant|complainant|prosecution|defence|"
+        # OCR-specific words that appear in garbled fragments
+        r"judgment|judgement|lordship|lordships|honour|"
+        r"question|consideration|contention|submission|argument)\b",
+        stripped,
+        re.IGNORECASE,
+    ):
+        return False
+    # Ends with a preposition — always a sentence fragment, never a valid act name
+    # "Foreigners Act on", "Customs Act be", "Code of Civil Procedure from"
+    if re.search(
+        r"\s+(?:on|be|from|with|for|at|by|to|in|as|is|if|so|no|do|an|up|it)$",
+        stripped,
+        re.IGNORECASE,
+    ):
+        return False
+    # Contains "v." or "versus" — it's a case name, not an act
+    if re.search(r"\bv\.?\s|\bversus\b", stripped, re.IGNORECASE):
+        return False
+    # Act name ending with Roman numerals + "of" pattern: "Travancore Act XIV of"
+    # These are incomplete statute references (missing the year)
+    if re.match(r".+\b[IVXLC]+\s+of\s*$", stripped):
+        return False
+    # Act name ending with year fragment: "Travancore Act XIV of 1124 M"
+    if re.search(r"\d{3,4}\s+[A-Z]$", stripped):
+        return False
     return True
+
+
+# ---------------------------------------------------------------------------
+# Cases-cited discriminator (GAN architecture: this is the Discriminator)
+# ---------------------------------------------------------------------------
+
+# Regex for bare reporter references (no case name attached)
+_BARE_REPORTER_RE: re.Pattern[str] = re.compile(
+    r"^[\[\(]?\d{4}[\]\)]?\s+"                    # year prefix
+    r"(?:"
+    r"\d+\s+SCC(?:\s+\([^)]+\))?\s+\d+"           # (2020) 3 SCC 145
+    r"|SCC\s+OnLine\s+\w+\s+\d+"                   # 2020 SCC OnLine SC 145
+    r"|AIR\s+\w+\s+\d+"                            # AIR 2020 SC 145
+    r"|INSC\s+\d+"                                 # 2020 INSC 145
+    r"|\d+\s+SCR\s+\d+"                            # [2020] 3 SCR 145
+    r"|CrLJ\s+\d+"                                 # 2020 CrLJ 145
+    r"|\d+\s+SCALE\s+\d+"                          # (2020) 3 SCALE 145
+    r"|LiveLaw\s+\(\w+\)\s+\d+"                    # 2024 LiveLaw (SC) 123
+    r"|\d+\s+ITR\s+\d+"                            # [2020] 123 ITR 456
+    r"|\d+\s+taxmann\.com\s+\d+"                   # [2020] 123 taxmann.com 456
+    r"|\d+\s+CompCas\s+\d+"                        # (2020) 123 CompCas 456
+    r"|LLJ\s+\d+"                                  # 2020 LLJ 123
+    r"|\d+\s+JT\s+(?:\(\w+\)\s+)?\d+"             # JT 2020 (3) SC 145
+    r")",
+    re.IGNORECASE,
+)
+
+# Neutral citation format: 2023:INSC:1234 or 2023:DELHC:1234
+_BARE_NEUTRAL_RE: re.Pattern[str] = re.compile(
+    r"^\d{4}:[A-Z]{2,10}:\d+$"
+)
+
+# MANU format: MANU/SC/1234/2020
+_BARE_MANU_RE: re.Pattern[str] = re.compile(
+    r"^MANU/\w+/\d+/\d{4}$", re.IGNORECASE,
+)
+
+# HC reporters (bare): "2020 ILR 145", "(2020) 3 BLR 145"
+_BARE_HC_REPORTER_RE: re.Pattern[str] = re.compile(
+    r"^[\[\(]?\d{4}[\]\)]?\s+(?:\d+\s+)?(?:ILR|MLJ|KLT|BLR|GLR|ALJ|DLT|ALD|CLT|PLR|"
+    r"DRJ|KHC|RLW|AIOL|AILJ|APLJ|GUJLH|KLTI|PLJR|WLN|MPWN|ELT|STR|STC|ECR)\s+\d+",
+    re.IGNORECASE,
+)
+
+
+def is_bare_citation_ref(text: str) -> bool:
+    """Return True if text is a bare reporter reference with no case name.
+
+    Bare refs like '(2020) 3 SCC 145' are valid citation references but not
+    useful as cases_cited entries (which should be 'Party v. Party, Reporter').
+    These are separated into citation_refs for graph linking.
+    """
+    stripped = text.strip()
+    if _BARE_REPORTER_RE.match(stripped):
+        return True
+    if _BARE_NEUTRAL_RE.match(stripped):
+        return True
+    if _BARE_MANU_RE.match(stripped):
+        return True
+    if _BARE_HC_REPORTER_RE.match(stripped):
+        return True
+    return False
+
+
+def _is_valid_case_citation(text: str) -> bool:
+    """Discriminator: return True if text is a valid named case citation.
+
+    Validates that a cases_cited entry looks like a real case reference
+    (e.g., 'Laxman v. State of Maharashtra, (2002) 6 SCC 710') and not
+    garbage, sentence fragments, or OCR noise.
+
+    This is the Discriminator in the GAN architecture — it rejects bad
+    candidates from the Generator (LLM + regex extraction).
+    """
+    stripped = text.strip()
+
+    # Too short to be a case citation
+    if len(stripped) < 5:
+        return False
+
+    # Too long — likely a sentence fragment or paragraph
+    if len(stripped) > 300:
+        return False
+
+    # Contains newlines (should have been cleaned)
+    if "\n" in stripped or "\r" in stripped:
+        return False
+
+    # Bare docket/petition numbers: "5095 Of 2025", "1040 of 2022"
+    if re.match(r"^\d{2,5}\s+[Oo]f\s+\d{4}$", stripped):
+        return False
+
+    # Bare year: "2013", "1995"
+    if re.match(r"^\d{4}$", stripped):
+        return False
+
+    # Page number artifacts: "1173 El\n3", "1620 MT\n4", "1952 It 1"
+    if re.match(r"^\d{3,4}\s+[A-Z][a-z]\s*\d*$", stripped):
+        return False
+
+    # Starts with lowercase — sentence fragment, not a case name
+    if stripped[0].islower():
+        return False
+
+    # OCR garbage: contains underscores, tildes, backticks
+    if re.search(r"[_~`]", stripped):
+        return False
+
+    # Pure numbers with spaces: "1 2 3 4"
+    if re.match(r"^[\d\s]+$", stripped):
+        return False
+
+    # Section/Article references mistakenly in cases_cited
+    if re.match(
+        r"^(?:Sections?|Sec\.?|Articles?|Art\.?|Order|Rule|Clause)\s+",
+        stripped,
+        re.IGNORECASE,
+    ):
+        return False
+
+    # Act names mistakenly in cases_cited
+    if re.search(r"\b(?:Act|Code|Rules?|Regulations?),?\s+\d{4}\s*$", stripped) and "v." not in stripped.lower():
+        return False
+
+    return True
+
+
+def classify_case_citations(
+    raw_list: list[str],
+) -> tuple[list[str], list[str]]:
+    """Split cases_cited into named citations and bare reporter refs.
+
+    This is the core GAN merge step: the Discriminator classifies each
+    candidate from the Generator into:
+    - named_citations: entries with case names (kept in cases_cited)
+    - bare_refs: reporter references without names (stored separately)
+
+    Returns:
+        (named_citations, bare_refs) — both sorted and deduplicated.
+    """
+    named: list[str] = []
+    bare: list[str] = []
+    seen_named: set[str] = set()
+    seen_bare: set[str] = set()
+
+    for entry in raw_list:
+        if not entry or not isinstance(entry, str):
+            continue
+        cleaned = re.sub(r"\s+", " ", entry).strip()
+        if not cleaned:
+            continue
+
+        # First: discriminator validity check
+        if not _is_valid_case_citation(cleaned):
+            continue
+
+        # Second: classify as named or bare
+        if is_bare_citation_ref(cleaned):
+            norm = cleaned.lower()
+            if norm not in seen_bare:
+                seen_bare.add(norm)
+                bare.append(cleaned)
+        else:
+            norm = cleaned.lower()
+            if norm not in seen_named:
+                seen_named.add(norm)
+                named.append(cleaned)
+
+    return sorted(named), sorted(bare)
 
 
 def normalize_acts_cited_list(raw_acts: list[str]) -> list[str]:
@@ -634,7 +984,19 @@ def normalize_acts_cited_list(raw_acts: list[str]) -> list[str]:
         if _is_valid_act_citation(normalized):
             result.add(normalized)
 
-    return sorted(result)
+    # Step 6: Canonical dedup — collapse variant short codes
+    # "CRPC", "CR.P.C.", "CrPC", "Cr.P.C." all map to same full name → pick canonical
+    # Build upper-case lookup once (handles mixed-case keys like "Cr.P.C.")
+    _upper_lookup: dict[str, str] = {k.upper(): v for k, v in _SHORT_ACT_NAMES.items()}
+    canonical: set[str] = set()
+    for entry in result:
+        full_name = _upper_lookup.get(entry.upper())
+        if full_name:
+            canon = _FULL_TO_SHORT.get(full_name.lower(), entry)
+            canonical.add(canon)
+        else:
+            canonical.add(entry)
+    return sorted(canonical)
 
 
 # Build alternation dynamically from dict keys -- longest first to avoid

@@ -1,0 +1,4520 @@
+{
+  "iteration": 50,
+  "elapsed_hours": 4.009083268642425,
+  "total_issues": 4166,
+  "summary": {
+    "iteration": 50,
+    "focus": "PERFORMANCE_SCAN \u2014 Complexity hotspots, N+1 queries, memory patterns",
+    "timestamp": "2026-03-27T07:48:45.956551",
+    "files_scanned": 643,
+    "total_lines": 1245236,
+    "new_issues_found": 0,
+    "total_functions": 4153,
+    "total_classes": 694,
+    "issues": [],
+    "file_details": {
+      ".mcp.json": {
+        "lines": 14,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "31213f86d207d675d9a78f48eccfd143"
+      },
+      ".pre-commit-config.yaml": {
+        "lines": 36,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "dace0c202df1abf82b01aca7ba145fe6"
+      },
+      "backend\\alembic.ini": {
+        "lines": 36,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "1e6d7351eb812ac23202c0b6061e40da"
+      },
+      "backend\\app\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\api\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\api\\routes\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\api\\routes\\admin_corrections.py": {
+        "lines": 234,
+        "functions": 3,
+        "classes": 1,
+        "issues": 3,
+        "hash": "2a0c2bdae03ce1a1d07bb2c552b471cf"
+      },
+      "backend\\app\\api\\routes\\admin_review.py": {
+        "lines": 193,
+        "functions": 5,
+        "classes": 0,
+        "issues": 2,
+        "hash": "1327e10f3e5be44f17b6ce115343c80c"
+      },
+      "backend\\app\\api\\routes\\agents.py": {
+        "lines": 1998,
+        "functions": 31,
+        "classes": 8,
+        "issues": 49,
+        "hash": "12a95e1a39cf611c212c4fcc633e86fc"
+      },
+      "backend\\app\\api\\routes\\audio.py": {
+        "lines": 130,
+        "functions": 5,
+        "classes": 0,
+        "issues": 2,
+        "hash": "fcfd6d4907190f7119f3c3d30bdabb67"
+      },
+      "backend\\app\\api\\routes\\auth.py": {
+        "lines": 393,
+        "functions": 6,
+        "classes": 5,
+        "issues": 7,
+        "hash": "70314505da1fd201505143214dd98f6e"
+      },
+      "backend\\app\\api\\routes\\cases.py": {
+        "lines": 426,
+        "functions": 9,
+        "classes": 0,
+        "issues": 3,
+        "hash": "e1d8e588e7347767007990ae38de76a6"
+      },
+      "backend\\app\\api\\routes\\chat.py": {
+        "lines": 338,
+        "functions": 8,
+        "classes": 1,
+        "issues": 10,
+        "hash": "1f7760874a198887c2da01c1e4e616a1"
+      },
+      "backend\\app\\api\\routes\\data_quality.py": {
+        "lines": 126,
+        "functions": 1,
+        "classes": 0,
+        "issues": 1,
+        "hash": "845f8cd7ad9ad7f25f3d7053079ec899"
+      },
+      "backend\\app\\api\\routes\\documents.py": {
+        "lines": 274,
+        "functions": 7,
+        "classes": 0,
+        "issues": 5,
+        "hash": "2199713d28289fad4af083c83cc9efb6"
+      },
+      "backend\\app\\api\\routes\\dpdp.py": {
+        "lines": 194,
+        "functions": 4,
+        "classes": 0,
+        "issues": 3,
+        "hash": "813a2e2bfc1c0cd93f2743984af9a9eb"
+      },
+      "backend\\app\\api\\routes\\graph.py": {
+        "lines": 103,
+        "functions": 4,
+        "classes": 0,
+        "issues": 0,
+        "hash": "0bb70e37cc44e40c1e7463a51e071334"
+      },
+      "backend\\app\\api\\routes\\health.py": {
+        "lines": 206,
+        "functions": 8,
+        "classes": 0,
+        "issues": 6,
+        "hash": "cc09c6c3d71090bfe10262fa3b46cb96"
+      },
+      "backend\\app\\api\\routes\\ingest.py": {
+        "lines": 399,
+        "functions": 8,
+        "classes": 1,
+        "issues": 5,
+        "hash": "6ccd6e107ed6bcabfb981fe7a0fbd87e"
+      },
+      "backend\\app\\api\\routes\\judges.py": {
+        "lines": 226,
+        "functions": 6,
+        "classes": 0,
+        "issues": 3,
+        "hash": "dff43ea88234e51ea0a3e256d2b0ac40"
+      },
+      "backend\\app\\api\\routes\\search.py": {
+        "lines": 509,
+        "functions": 9,
+        "classes": 0,
+        "issues": 14,
+        "hash": "7edf52c66f3a267c3fb1435069b86a9e"
+      },
+      "backend\\app\\core\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\agents\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\agents\\case_prep.py": {
+        "lines": 199,
+        "functions": 8,
+        "classes": 0,
+        "issues": 7,
+        "hash": "9d0c36d3dc7ef2b7debac3cea1f38a17"
+      },
+      "backend\\app\\core\\agents\\checkpointer.py": {
+        "lines": 16,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "34963e9e03613480efdfe7e6b2af0cb7"
+      },
+      "backend\\app\\core\\agents\\confidence.py": {
+        "lines": 224,
+        "functions": 4,
+        "classes": 1,
+        "issues": 3,
+        "hash": "91b1f72ff6066522a377944137aa543c"
+      },
+      "backend\\app\\core\\agents\\drafting.py": {
+        "lines": 220,
+        "functions": 9,
+        "classes": 0,
+        "issues": 8,
+        "hash": "2cd8b30481378a7634c6386eeec076b1"
+      },
+      "backend\\app\\core\\agents\\follow_up.py": {
+        "lines": 136,
+        "functions": 4,
+        "classes": 1,
+        "issues": 4,
+        "hash": "8c82c087a59e695b417d81d33d2e0164"
+      },
+      "backend\\app\\core\\agents\\nodes\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\agents\\nodes\\case_prep_nodes.py": {
+        "lines": 438,
+        "functions": 8,
+        "classes": 0,
+        "issues": 10,
+        "hash": "1f9f9ce9a78fa55a93eaab985a2513fb"
+      },
+      "backend\\app\\core\\agents\\nodes\\citation_verifier.py": {
+        "lines": 180,
+        "functions": 3,
+        "classes": 0,
+        "issues": 2,
+        "hash": "43ab95b4c969db8f9c3ab6afddedfc5f"
+      },
+      "backend\\app\\core\\agents\\nodes\\common.py": {
+        "lines": 1124,
+        "functions": 31,
+        "classes": 0,
+        "issues": 41,
+        "hash": "6187e11c07e8085497df90d859bb04a2"
+      },
+      "backend\\app\\core\\agents\\nodes\\drafting_nodes.py": {
+        "lines": 483,
+        "functions": 8,
+        "classes": 0,
+        "issues": 16,
+        "hash": "07992c0f4f1b7eed08b2304852c695e3"
+      },
+      "backend\\app\\core\\agents\\nodes\\follow_up_nodes.py": {
+        "lines": 273,
+        "functions": 6,
+        "classes": 0,
+        "issues": 2,
+        "hash": "f6c8692e296c5afe945efce9e316d5a1"
+      },
+      "backend\\app\\core\\agents\\nodes\\research_nodes.py": {
+        "lines": 2979,
+        "functions": 43,
+        "classes": 0,
+        "issues": 73,
+        "hash": "b9b7f552ae474877b3f09ba07bd00dbd"
+      },
+      "backend\\app\\core\\agents\\nodes\\strategy_nodes.py": {
+        "lines": 597,
+        "functions": 9,
+        "classes": 0,
+        "issues": 14,
+        "hash": "4aafea8caa9407f61c220a5221bae1df"
+      },
+      "backend\\app\\core\\agents\\nodes\\worker_nodes.py": {
+        "lines": 1056,
+        "functions": 10,
+        "classes": 0,
+        "issues": 40,
+        "hash": "830ff5b876bdc4230aebed025518fb5a"
+      },
+      "backend\\app\\core\\agents\\research.py": {
+        "lines": 857,
+        "functions": 39,
+        "classes": 0,
+        "issues": 30,
+        "hash": "9a884c39695a9ab6adc52356981e9224"
+      },
+      "backend\\app\\core\\agents\\research_cache.py": {
+        "lines": 255,
+        "functions": 14,
+        "classes": 0,
+        "issues": 12,
+        "hash": "5d7a90292ed40b361918bd2872ae2068"
+      },
+      "backend\\app\\core\\agents\\routing_utils.py": {
+        "lines": 164,
+        "functions": 6,
+        "classes": 0,
+        "issues": 7,
+        "hash": "6ccd9b8ad66b99a0ad50d5f579022b6a"
+      },
+      "backend\\app\\core\\agents\\state.py": {
+        "lines": 266,
+        "functions": 0,
+        "classes": 17,
+        "issues": 0,
+        "hash": "db49331e7602323c882cf5f432d1bfdb"
+      },
+      "backend\\app\\core\\agents\\strategy.py": {
+        "lines": 230,
+        "functions": 9,
+        "classes": 0,
+        "issues": 9,
+        "hash": "8408f69392df9def086ab939bafbe7d0"
+      },
+      "backend\\app\\core\\analysis\\__init__.py": {
+        "lines": 1,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "c231243f74c23c8e62c2e2ebe841c71d"
+      },
+      "backend\\app\\core\\analysis\\document_analyzer.py": {
+        "lines": 164,
+        "functions": 5,
+        "classes": 4,
+        "issues": 1,
+        "hash": "74d0720609e182eaed34bcf649e36edc"
+      },
+      "backend\\app\\core\\analysis\\precedent_mapper.py": {
+        "lines": 93,
+        "functions": 3,
+        "classes": 2,
+        "issues": 3,
+        "hash": "67c121414b34e57c844e9635ec4d909f"
+      },
+      "backend\\app\\core\\analytics\\__init__.py": {
+        "lines": 15,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "20ae04caa012b21c9d7a5de7e41d42df"
+      },
+      "backend\\app\\core\\analytics\\judge_analytics.py": {
+        "lines": 675,
+        "functions": 13,
+        "classes": 6,
+        "issues": 6,
+        "hash": "a5584da34dd04ff1b0d9661dc86eb6aa"
+      },
+      "backend\\app\\core\\chat\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\chat\\rag.py": {
+        "lines": 604,
+        "functions": 12,
+        "classes": 2,
+        "issues": 10,
+        "hash": "fa625610554065284073ceabd30f9fe4"
+      },
+      "backend\\app\\core\\config.py": {
+        "lines": 238,
+        "functions": 2,
+        "classes": 1,
+        "issues": 7,
+        "hash": "78928e9e8b23f85bf5813b7b5abc0537"
+      },
+      "backend\\app\\core\\dependencies.py": {
+        "lines": 202,
+        "functions": 13,
+        "classes": 0,
+        "issues": 13,
+        "hash": "9d28e5d847ad05e4fedd0b8e55fec27d"
+      },
+      "backend\\app\\core\\drafting\\__init__.py": {
+        "lines": 1,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "5de1980dee48c44fc3e850f3a8b673f6"
+      },
+      "backend\\app\\core\\drafting\\export.py": {
+        "lines": 455,
+        "functions": 7,
+        "classes": 0,
+        "issues": 6,
+        "hash": "98400740028def3c9badeb640d3fee19"
+      },
+      "backend\\app\\core\\drafting\\templates.py": {
+        "lines": 208,
+        "functions": 1,
+        "classes": 1,
+        "issues": 0,
+        "hash": "2bc7300ca683d55814116125e49f5ea0"
+      },
+      "backend\\app\\core\\graph\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\graph\\traversal.py": {
+        "lines": 284,
+        "functions": 4,
+        "classes": 0,
+        "issues": 16,
+        "hash": "d0a6b719943e567b690b0cb475056ce8"
+      },
+      "backend\\app\\core\\ingestion\\__init__.py": {
+        "lines": 27,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "cb1c6270ec5e202b70653969fb3a9893"
+      },
+      "backend\\app\\core\\ingestion\\anonymizer.py": {
+        "lines": 117,
+        "functions": 2,
+        "classes": 0,
+        "issues": 1,
+        "hash": "b2b30c51d395c6220659b4233c9511d1"
+      },
+      "backend\\app\\core\\ingestion\\chunker.py": {
+        "lines": 549,
+        "functions": 8,
+        "classes": 2,
+        "issues": 4,
+        "hash": "8db0a18a3789dd58b68b7899d97b9b08"
+      },
+      "backend\\app\\core\\ingestion\\contextual_embeddings.py": {
+        "lines": 180,
+        "functions": 5,
+        "classes": 0,
+        "issues": 4,
+        "hash": "27711bf2c30b21abee2e1a2326a7c940"
+      },
+      "backend\\app\\core\\ingestion\\graph_retry.py": {
+        "lines": 61,
+        "functions": 4,
+        "classes": 0,
+        "issues": 0,
+        "hash": "9c2c02446fbf868646b99b86e063b7ba"
+      },
+      "backend\\app\\core\\ingestion\\metadata.py": {
+        "lines": 810,
+        "functions": 10,
+        "classes": 1,
+        "issues": 19,
+        "hash": "dfef7075a207333e8ea12df17b0317f0"
+      },
+      "backend\\app\\core\\ingestion\\pdf.py": {
+        "lines": 781,
+        "functions": 15,
+        "classes": 1,
+        "issues": 17,
+        "hash": "1f3529a759019491e7a2be0a0aec2463"
+      },
+      "backend\\app\\core\\ingestion\\pipeline.py": {
+        "lines": 1908,
+        "functions": 24,
+        "classes": 1,
+        "issues": 53,
+        "hash": "a617f3c1fa750fda02cf8f2d9bbed835"
+      },
+      "backend\\app\\core\\ingestion\\rate_limiter.py": {
+        "lines": 127,
+        "functions": 9,
+        "classes": 2,
+        "issues": 2,
+        "hash": "de562b0f31b3a93317fa6b470145d8a5"
+      },
+      "backend\\app\\core\\ingestion\\section_summarizer.py": {
+        "lines": 135,
+        "functions": 2,
+        "classes": 0,
+        "issues": 1,
+        "hash": "bd966c680f5e414796623add508f00a5"
+      },
+      "backend\\app\\core\\interfaces\\__init__.py": {
+        "lines": 29,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "4935d1eaca65abc7664d78ff6ae788aa"
+      },
+      "backend\\app\\core\\interfaces\\document_parser.py": {
+        "lines": 14,
+        "functions": 2,
+        "classes": 1,
+        "issues": 0,
+        "hash": "a843fc0c40a471067b3881b73250ab91"
+      },
+      "backend\\app\\core\\interfaces\\embedder.py": {
+        "lines": 17,
+        "functions": 3,
+        "classes": 1,
+        "issues": 0,
+        "hash": "b071c59877528145bfb33e0cc3d4ae4b"
+      },
+      "backend\\app\\core\\interfaces\\external_doc.py": {
+        "lines": 36,
+        "functions": 5,
+        "classes": 1,
+        "issues": 0,
+        "hash": "d2356810f6cd8c67c76f6c0289a04349"
+      },
+      "backend\\app\\core\\interfaces\\graph_store.py": {
+        "lines": 52,
+        "functions": 8,
+        "classes": 1,
+        "issues": 0,
+        "hash": "d197cfbc36195ed54216cce41cc0f087"
+      },
+      "backend\\app\\core\\interfaces\\llm.py": {
+        "lines": 47,
+        "functions": 4,
+        "classes": 1,
+        "issues": 0,
+        "hash": "40c0e58ec8fcd2d8391a44a2a4ff8f76"
+      },
+      "backend\\app\\core\\interfaces\\reranker.py": {
+        "lines": 28,
+        "functions": 1,
+        "classes": 2,
+        "issues": 0,
+        "hash": "502a816998fa16d84ec7909bd4fa9526"
+      },
+      "backend\\app\\core\\interfaces\\storage.py": {
+        "lines": 27,
+        "functions": 5,
+        "classes": 1,
+        "issues": 0,
+        "hash": "f655f1e2f85ed81d7d315e93645a6da1"
+      },
+      "backend\\app\\core\\interfaces\\translator.py": {
+        "lines": 36,
+        "functions": 2,
+        "classes": 1,
+        "issues": 0,
+        "hash": "4c8bb1cbebc014b56dcc749c07ae659e"
+      },
+      "backend\\app\\core\\interfaces\\tts.py": {
+        "lines": 18,
+        "functions": 2,
+        "classes": 1,
+        "issues": 0,
+        "hash": "45ac4cb0a6447da8af137137e64a517c"
+      },
+      "backend\\app\\core\\interfaces\\vector_store.py": {
+        "lines": 48,
+        "functions": 3,
+        "classes": 2,
+        "issues": 0,
+        "hash": "e4bea45f5e85077dabd2cf49adfe5576"
+      },
+      "backend\\app\\core\\interfaces\\web_search.py": {
+        "lines": 22,
+        "functions": 1,
+        "classes": 1,
+        "issues": 0,
+        "hash": "9e1b1a6002e9dd7263c07bbfaa558b95"
+      },
+      "backend\\app\\core\\legal\\__init__.py": {
+        "lines": 25,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "5d86f12f878acdaae169862cc56765b3"
+      },
+      "backend\\app\\core\\legal\\amendment_service.py": {
+        "lines": 189,
+        "functions": 6,
+        "classes": 1,
+        "issues": 6,
+        "hash": "b6f048568eac1e8550b5e020389f152e"
+      },
+      "backend\\app\\core\\legal\\constants.py": {
+        "lines": 824,
+        "functions": 0,
+        "classes": 0,
+        "issues": 5,
+        "hash": "0b41df2b31dff40c18bb564d0915f563"
+      },
+      "backend\\app\\core\\legal\\courts.py": {
+        "lines": 340,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "d0f2cea6220b208e8a0a31d53aab1929"
+      },
+      "backend\\app\\core\\legal\\extractor.py": {
+        "lines": 1303,
+        "functions": 11,
+        "classes": 2,
+        "issues": 10,
+        "hash": "fe53bfa59c9482abe0e9cc98f1f0f29b"
+      },
+      "backend\\app\\core\\legal\\precedent_strength.py": {
+        "lines": 207,
+        "functions": 4,
+        "classes": 1,
+        "issues": 3,
+        "hash": "c2ac31c47d82cee6981f19137dfb3a65"
+      },
+      "backend\\app\\core\\legal\\prompts.py": {
+        "lines": 3227,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "e782cbd34764dc58ed01c0b965d6a6af"
+      },
+      "backend\\app\\core\\legal\\statute_enrichment.py": {
+        "lines": 55,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "05e995cc0bd33080b1cf87dea6911d00"
+      },
+      "backend\\app\\core\\legal\\treatment.py": {
+        "lines": 197,
+        "functions": 3,
+        "classes": 2,
+        "issues": 3,
+        "hash": "5b2f27b8f13397d2e263f13c095dc92a"
+      },
+      "backend\\app\\core\\logging_config.py": {
+        "lines": 92,
+        "functions": 5,
+        "classes": 2,
+        "issues": 2,
+        "hash": "d50106fff414d55ae4037dfc9f25857a"
+      },
+      "backend\\app\\core\\middleware.py": {
+        "lines": 62,
+        "functions": 2,
+        "classes": 2,
+        "issues": 3,
+        "hash": "467849117eac5ec4bf9f2229ec937db1"
+      },
+      "backend\\app\\core\\providers\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\providers\\circuit_breaker.py": {
+        "lines": 193,
+        "functions": 13,
+        "classes": 3,
+        "issues": 5,
+        "hash": "4cc34317011cc12b04447a2a3a443801"
+      },
+      "backend\\app\\core\\providers\\document_parsers\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\providers\\document_parsers\\pdf_parser.py": {
+        "lines": 51,
+        "functions": 2,
+        "classes": 1,
+        "issues": 0,
+        "hash": "e1b56ee8eca501a6e635fbabc337b0af"
+      },
+      "backend\\app\\core\\providers\\embeddings\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\providers\\embeddings\\gemini.py": {
+        "lines": 103,
+        "functions": 4,
+        "classes": 1,
+        "issues": 3,
+        "hash": "dd4a264fa2222ef600f885f7ca3ca8eb"
+      },
+      "backend\\app\\core\\providers\\external\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\providers\\external\\indiankanoon.py": {
+        "lines": 277,
+        "functions": 9,
+        "classes": 2,
+        "issues": 2,
+        "hash": "acd6ceb723bc2c4aa6cbac979615defd"
+      },
+      "backend\\app\\core\\providers\\graph\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\providers\\graph\\neo4j_store.py": {
+        "lines": 534,
+        "functions": 19,
+        "classes": 1,
+        "issues": 14,
+        "hash": "8ed0e2b5611842795ddc9f5d06dbe014"
+      },
+      "backend\\app\\core\\providers\\graph\\pg_graph_store.py": {
+        "lines": 338,
+        "functions": 10,
+        "classes": 1,
+        "issues": 4,
+        "hash": "f53a55c4535795acf838aa754f16d028"
+      },
+      "backend\\app\\core\\providers\\llm\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\providers\\llm\\circuit_breaker.py": {
+        "lines": 12,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "71aac5e84f8c1174e24a6cde7da1af86"
+      },
+      "backend\\app\\core\\providers\\llm\\gemini.py": {
+        "lines": 288,
+        "functions": 8,
+        "classes": 1,
+        "issues": 7,
+        "hash": "4b2ed692394a8a6e536208179275581a"
+      },
+      "backend\\app\\core\\providers\\rerankers\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\providers\\rerankers\\cohere_reranker.py": {
+        "lines": 119,
+        "functions": 4,
+        "classes": 1,
+        "issues": 2,
+        "hash": "2d7de6abef867f107707bc46d128d55d"
+      },
+      "backend\\app\\core\\providers\\storage\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\providers\\storage\\gcs_storage.py": {
+        "lines": 105,
+        "functions": 7,
+        "classes": 1,
+        "issues": 1,
+        "hash": "a7641b768453a3cc4b4e7f755e6bf636"
+      },
+      "backend\\app\\core\\providers\\storage\\local_storage.py": {
+        "lines": 72,
+        "functions": 7,
+        "classes": 1,
+        "issues": 4,
+        "hash": "a7488f798c74c05248decb7f66a46f90"
+      },
+      "backend\\app\\core\\providers\\translation\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\providers\\translation\\gemini_translator.py": {
+        "lines": 118,
+        "functions": 3,
+        "classes": 1,
+        "issues": 4,
+        "hash": "6e727d3216ba6a390b48d5cadbea2947"
+      },
+      "backend\\app\\core\\providers\\tts\\__init__.py": {
+        "lines": 1,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "4b731a41931019aa279d313ab1d27602"
+      },
+      "backend\\app\\core\\providers\\tts\\mock_tts.py": {
+        "lines": 24,
+        "functions": 2,
+        "classes": 1,
+        "issues": 0,
+        "hash": "f304480b4fd2c39f5210b72d80cd71f5"
+      },
+      "backend\\app\\core\\providers\\tts\\sarvam.py": {
+        "lines": 147,
+        "functions": 5,
+        "classes": 2,
+        "issues": 3,
+        "hash": "f70e5c8a094474ad1b5f3cfd3fff21f4"
+      },
+      "backend\\app\\core\\providers\\vector\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\providers\\vector\\pgvector_store.py": {
+        "lines": 235,
+        "functions": 6,
+        "classes": 1,
+        "issues": 4,
+        "hash": "ef07f12db8dec7af82499b0d8a68d957"
+      },
+      "backend\\app\\core\\providers\\vector\\pinecone_store.py": {
+        "lines": 248,
+        "functions": 9,
+        "classes": 1,
+        "issues": 5,
+        "hash": "f3c8c43ef89e5e68a75231a4cce34ea2"
+      },
+      "backend\\app\\core\\providers\\web_search\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\app\\core\\providers\\web_search\\tavily.py": {
+        "lines": 145,
+        "functions": 3,
+        "classes": 1,
+        "issues": 1,
+        "hash": "558d9865f32f4cbe06b8c8f81aceab4f"
+      },
+      "backend\\app\\core\\search\\__init__.py": {
+        "lines": 28,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "a37f37c068d82e1e25df50d2a3a3d22d"
+      },
+      "backend\\app\\core\\search\\fulltext.py": {
+        "lines": 285,
+        "functions": 5,
+        "classes": 1,
+        "issues": 4,
+        "hash": "20e7b0e02dc2baee4bbe7f7f1b3244be"
+      },
+      "backend\\app\\core\\search\\hybrid.py": {
+        "lines": 873,
+        "functions": 15,
+        "classes": 2,
+        "issues": 15,
+        "hash": "e3a1f4a0a6d3ca9d21c245e18eb724f3"
+      },
+      "backend\\app\\core\\search\\query.py": {
+        "lines": 294,
+        "functions": 4,
+        "classes": 3,
+        "issues": 1,
+        "hash": "f5a9d996320a90ebc5cae07d4862be8d"
+      },
+      "backend\\app\\core\\search\\semantic_cache.py": {
+        "lines": 169,
+        "functions": 6,
+        "classes": 1,
+        "issues": 7,
+        "hash": "a4e8cb51a14dd1c6b3975d6b64e48ef7"
+      },
+      "backend\\app\\db\\__init__.py": {
+        "lines": 1,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "7b25d5c213a37b93a3203680c7d746b2"
+      },
+      "backend\\app\\db\\postgres.py": {
+        "lines": 81,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "1e6b0b555013a385d94e596c11848184"
+      },
+      "backend\\app\\db\\redis_client.py": {
+        "lines": 39,
+        "functions": 2,
+        "classes": 0,
+        "issues": 3,
+        "hash": "c1056e40726fb1c4d00d3b560c193901"
+      },
+      "backend\\app\\main.py": {
+        "lines": 424,
+        "functions": 11,
+        "classes": 2,
+        "issues": 23,
+        "hash": "72dadbd079d210e442d5be7368d8484a"
+      },
+      "backend\\app\\models\\__init__.py": {
+        "lines": 41,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "822f35653832ab9a34f5168e05d7d446"
+      },
+      "backend\\app\\models\\agent_execution.py": {
+        "lines": 80,
+        "functions": 1,
+        "classes": 3,
+        "issues": 0,
+        "hash": "9706f99c6085c16cd0a2564e69b32ec7"
+      },
+      "backend\\app\\models\\agent_session.py": {
+        "lines": 93,
+        "functions": 2,
+        "classes": 2,
+        "issues": 0,
+        "hash": "31ab79037c8b919b55c692d37d9969c6"
+      },
+      "backend\\app\\models\\audio_digest.py": {
+        "lines": 42,
+        "functions": 1,
+        "classes": 1,
+        "issues": 0,
+        "hash": "3c178bedc207b3156e92988a4d5ad358"
+      },
+      "backend\\app\\models\\audit.py": {
+        "lines": 39,
+        "functions": 1,
+        "classes": 1,
+        "issues": 0,
+        "hash": "e20291f436ae1717ce74c1fe9a12c584"
+      },
+      "backend\\app\\models\\base.py": {
+        "lines": 34,
+        "functions": 0,
+        "classes": 3,
+        "issues": 1,
+        "hash": "7fb7916a282a0f4c99bc4169888f82d0"
+      },
+      "backend\\app\\models\\case.py": {
+        "lines": 248,
+        "functions": 1,
+        "classes": 1,
+        "issues": 0,
+        "hash": "219262e0c53c7748d307da4e5987d352"
+      },
+      "backend\\app\\models\\case_citation_equivalent.py": {
+        "lines": 32,
+        "functions": 0,
+        "classes": 1,
+        "issues": 0,
+        "hash": "239f934c816994a59360fc971cacd5f0"
+      },
+      "backend\\app\\models\\case_section.py": {
+        "lines": 33,
+        "functions": 0,
+        "classes": 1,
+        "issues": 0,
+        "hash": "92d964b65bc408578bdbd9ff167f7d8e"
+      },
+      "backend\\app\\models\\case_statute_interpretation.py": {
+        "lines": 26,
+        "functions": 0,
+        "classes": 1,
+        "issues": 0,
+        "hash": "d68d1aaeb2a59dd852713a5772055077"
+      },
+      "backend\\app\\models\\chat.py": {
+        "lines": 63,
+        "functions": 2,
+        "classes": 2,
+        "issues": 0,
+        "hash": "2920efb9bedd2d760ae40b3168924f8f"
+      },
+      "backend\\app\\models\\consent.py": {
+        "lines": 37,
+        "functions": 1,
+        "classes": 1,
+        "issues": 0,
+        "hash": "b4ead5acfb3a7d0aaadc5a1dd8b571f9"
+      },
+      "backend\\app\\models\\document.py": {
+        "lines": 55,
+        "functions": 1,
+        "classes": 1,
+        "issues": 0,
+        "hash": "58a2e50a6d47b526191546f50e9fc0f6"
+      },
+      "backend\\app\\models\\document_analysis.py": {
+        "lines": 30,
+        "functions": 1,
+        "classes": 1,
+        "issues": 0,
+        "hash": "f52e6373767ce7068b4f00e75544abfa"
+      },
+      "backend\\app\\models\\search_history.py": {
+        "lines": 34,
+        "functions": 1,
+        "classes": 1,
+        "issues": 0,
+        "hash": "803fa5fa2b9d75093c89895e35f975ef"
+      },
+      "backend\\app\\models\\statute.py": {
+        "lines": 48,
+        "functions": 1,
+        "classes": 1,
+        "issues": 0,
+        "hash": "e2bb9ce250f58eab798139d1f3346b1c"
+      },
+      "backend\\app\\models\\user.py": {
+        "lines": 45,
+        "functions": 1,
+        "classes": 1,
+        "issues": 0,
+        "hash": "e11df8e85c8eb6e9b404e715796d6f25"
+      },
+      "backend\\app\\security\\__init__.py": {
+        "lines": 43,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "f2c316c6283ab8c8c0c20874c89a6afc"
+      },
+      "backend\\app\\security\\audit.py": {
+        "lines": 91,
+        "functions": 1,
+        "classes": 0,
+        "issues": 2,
+        "hash": "58a27c03e113b7d6b7d77ea111725933"
+      },
+      "backend\\app\\security\\auth.py": {
+        "lines": 273,
+        "functions": 11,
+        "classes": 1,
+        "issues": 1,
+        "hash": "2dc99f8f9f1e294da3f981c3e36f1182"
+      },
+      "backend\\app\\security\\consent.py": {
+        "lines": 6,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "f50856450df4eaf572214cbfa935622e"
+      },
+      "backend\\app\\security\\encryption.py": {
+        "lines": 125,
+        "functions": 4,
+        "classes": 0,
+        "issues": 5,
+        "hash": "33335b9aeea6ddfe442c4872613b996e"
+      },
+      "backend\\app\\security\\exceptions.py": {
+        "lines": 46,
+        "functions": 3,
+        "classes": 3,
+        "issues": 0,
+        "hash": "40b5b114cc2e1799f43e2296de029efa"
+      },
+      "backend\\app\\security\\rate_limiter.py": {
+        "lines": 243,
+        "functions": 7,
+        "classes": 1,
+        "issues": 0,
+        "hash": "ca68aad4a14ec3831ef3d476775b92f4"
+      },
+      "backend\\app\\security\\rbac.py": {
+        "lines": 94,
+        "functions": 4,
+        "classes": 0,
+        "issues": 1,
+        "hash": "6fb86e6d023b2c98d437bb2b82fea294"
+      },
+      "backend\\app\\security\\sanitizer.py": {
+        "lines": 154,
+        "functions": 3,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d8ec6c64b8a5b7813b115b76738f7e31"
+      },
+      "backend\\app\\tasks\\__init__.py": {
+        "lines": 1,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "a53b07ce13bba94b71eab43372fac25b"
+      },
+      "backend\\app\\tasks\\audio_tasks.py": {
+        "lines": 169,
+        "functions": 3,
+        "classes": 0,
+        "issues": 5,
+        "hash": "b79c5c52816a03c0d73b9b811c6a4c6d"
+      },
+      "backend\\app\\tasks\\document_tasks.py": {
+        "lines": 297,
+        "functions": 5,
+        "classes": 0,
+        "issues": 3,
+        "hash": "f6feb7f5f349a1de1ed7193feaeecac2"
+      },
+      "backend\\app\\worker.py": {
+        "lines": 25,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "4b81c097f7d1fe961fda785bed1ce4a2"
+      },
+      "backend\\data\\pipeline_results_10pdf.json": {
+        "lines": 3633,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "21b079780192d3ab0b9b906d6012a0c8"
+      },
+      "backend\\data\\statutes\\.ingest_progress.json": {
+        "lines": 486,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "b5b971ff7b470d0812eaf1d2941a5d55"
+      },
+      "backend\\data\\statutes\\aadhaar.json": {
+        "lines": 1566,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "078c61aa653a96c67f15791e8e9d41ca"
+      },
+      "backend\\data\\statutes\\aca.json": {
+        "lines": 2637,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "a5f0c08a305721d96c1d7564c0575f21"
+      },
+      "backend\\data\\statutes\\att.json": {
+        "lines": 1855,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "83f8730c2c03e8e9bad8d438a9ede36e"
+      },
+      "backend\\data\\statutes\\benami.json": {
+        "lines": 1413,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "1d33ce9641aa72adb0a81622344e9ef0"
+      },
+      "backend\\data\\statutes\\bns.json": {
+        "lines": 5476,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "f5698bd09a1b35e86b8d12592b932ec4"
+      },
+      "backend\\data\\statutes\\bnss.json": {
+        "lines": 9097,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "ecb376c0324f0980cd4442de4f992d41"
+      },
+      "backend\\data\\statutes\\bra.json": {
+        "lines": 8655,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "5f919914c05049744c0465d52ef21137"
+      },
+      "backend\\data\\statutes\\bsa.json": {
+        "lines": 2637,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "6228cccabc40a4bd472a7f07340f59c5"
+      },
+      "backend\\data\\statutes\\ca2013.json": {
+        "lines": 17070,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "00ff22e0db210a569580ecdbfeb5c9ff"
+      },
+      "backend\\data\\statutes\\cea.json": {
+        "lines": 4184,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "5bff9125642bc46fc75ae6dc7ac9e8c7"
+      },
+      "backend\\data\\statutes\\cgst.json": {
+        "lines": 342,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "dfcb60c50d4db7447d9d1ce32d058b9c"
+      },
+      "backend\\data\\statutes\\competition.json": {
+        "lines": 4065,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "6457e41390cecb3d5ee775dd67795575"
+      },
+      "backend\\data\\statutes\\constitution.json": {
+        "lines": 7907,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3572a4266b33193fd0423578d0794e57"
+      },
+      "backend\\data\\statutes\\contempt.json": {
+        "lines": 427,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3542b62ce90ce77c7aeb3a6a1e6f160a"
+      },
+      "backend\\data\\statutes\\cpc.json": {
+        "lines": 2909,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "438b93c4338d4dcecaae2bb6af5630a6"
+      },
+      "backend\\data\\statutes\\crpc.json": {
+        "lines": 8927,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "bb89f77599a25a2514f1b8abeb78d001"
+      },
+      "backend\\data\\statutes\\customs.json": {
+        "lines": 12752,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "ab64825a55fc2829aff0a667d9613e9b"
+      },
+      "backend\\data\\statutes\\dpdp.json": {
+        "lines": 750,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "16dac846ab0c4c5129dce755a96aa2ed"
+      },
+      "backend\\data\\statutes\\dva.json": {
+        "lines": 631,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "5874de5971f95b50c23c3794e474f71b"
+      },
+      "backend\\data\\statutes\\easements.json": {
+        "lines": 1158,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "933d32e99112af85bf47e505e0d13724"
+      },
+      "backend\\data\\statutes\\epa.json": {
+        "lines": 87,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "e02b81aad66187e95bd0caaaf852a8ff"
+      },
+      "backend\\data\\statutes\\epfa.json": {
+        "lines": 4439,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "32c04ed780d0b11d5fc420affac19a4d"
+      },
+      "backend\\data\\statutes\\esia.json": {
+        "lines": 5952,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "4533e33ae3ed1029adca6e6398867e72"
+      },
+      "backend\\data\\statutes\\fa1948.json": {
+        "lines": 2263,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "969efec6729ea6a33c856bf57965adc0"
+      },
+      "backend\\data\\statutes\\fca.json": {
+        "lines": 19,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "6fb223bcb838648ef33d739ad7e5748d"
+      },
+      "backend\\data\\statutes\\fema.json": {
+        "lines": 1107,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "bb8c5ff698f1b06b278458fe16b71c49"
+      },
+      "backend\\data\\statutes\\gwa.json": {
+        "lines": 869,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "2dbcbd99433efdca87a2e8bf5995dece"
+      },
+      "backend\\data\\statutes\\hma.json": {
+        "lines": 1447,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "67c82cb64577979818d5c422479d8386"
+      },
+      "backend\\data\\statutes\\hsa.json": {
+        "lines": 172,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "a0d7d26d99fdaae42f81ca1ee3002d43"
+      },
+      "backend\\data\\statutes\\ibc.json": {
+        "lines": 7533,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "a1bfb7bbfd735f7b48c024acc91af0e5"
+      },
+      "backend\\data\\statutes\\ica.json": {
+        "lines": 2127,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3b8441526397186804fff849f9938210"
+      },
+      "backend\\data\\statutes\\ida.json": {
+        "lines": 4643,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "1600c00c7a9e082b1b59a908942d6bde"
+      },
+      "backend\\data\\statutes\\iea.json": {
+        "lines": 3130,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "e7f91a03dbae74654f7fc4f0e739d23d"
+      },
+      "backend\\data\\statutes\\insurance.json": {
+        "lines": 9794,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "1b17a198a540bd2d78eb72b26d8204b0"
+      },
+      "backend\\data\\statutes\\ipa.json": {
+        "lines": 1566,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "6f2e7bb69f0311a514452e824aaed70d"
+      },
+      "backend\\data\\statutes\\ipc.json": {
+        "lines": 9777,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d801af6408c62b4fdcb961d87e033c46"
+      },
+      "backend\\data\\statutes\\ita.json": {
+        "lines": 86821,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "e65cfafd4604915a75cd8861a9f89dff"
+      },
+      "backend\\data\\statutes\\ita2000.json": {
+        "lines": 3113,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "208f24a91ec609da39aa6b61488fd89b"
+      },
+      "backend\\data\\statutes\\jja.json": {
+        "lines": 2722,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "4e80454d3b0b7d374c405deccbad630e"
+      },
+      "backend\\data\\statutes\\llp.json": {
+        "lines": 2807,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "5c0d3fe355652ae9b7154ec08ec7f832"
+      },
+      "backend\\data\\statutes\\lokpal.json": {
+        "lines": 1175,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "844139742c8c321a8fb84c21cfb46692"
+      },
+      "backend\\data\\statutes\\msmed.json": {
+        "lines": 291,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "4247d7434d9e7c24626aad08e40c29a0"
+      },
+      "backend\\data\\statutes\\mwa.json": {
+        "lines": 733,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "cfa8df5de291f3908b345acd95a21ea9"
+      },
+      "backend\\data\\statutes\\ndps.json": {
+        "lines": 4116,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "1b9e784781fd4281d513c701531a3cec"
+      },
+      "backend\\data\\statutes\\nia.json": {
+        "lines": 784,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "bbaa2a25636954d55e79014ae1df9f51"
+      },
+      "backend\\data\\statutes\\nia1881.json": {
+        "lines": 3113,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "cec41dfb81dacd5ed44dc4ca0fc76fec"
+      },
+      "backend\\data\\statutes\\pmla.json": {
+        "lines": 3317,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "26a483cac17fa602f10e35621cbfb160"
+      },
+      "backend\\data\\statutes\\pwa.json": {
+        "lines": 2399,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "89d2abe00d4c16a71eb6231af14d87ea"
+      },
+      "backend\\data\\statutes\\ra1908.json": {
+        "lines": 1991,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "51e545b5ee9e174821322b5631e9ca94"
+      },
+      "backend\\data\\statutes\\rera.json": {
+        "lines": 1515,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "67966de85b6c18edee49c31d498b88ed"
+      },
+      "backend\\data\\statutes\\sarfaesi.json": {
+        "lines": 2790,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3a5c4ff7aefbfc240e32cbc1e3f5d0c9"
+      },
+      "backend\\data\\statutes\\sma.json": {
+        "lines": 971,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "ac799cbfaf4decfa0dcfa6ecafd0b0fe"
+      },
+      "backend\\data\\statutes\\soga.json": {
+        "lines": 1209,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "14d6230796a4caf47c7ef3085bbd8c57"
+      },
+      "backend\\data\\statutes\\stamp.json": {
+        "lines": 2739,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "c60707895b59dae37f0d3ae1187803f5"
+      },
+      "backend\\data\\statutes\\tpa.json": {
+        "lines": 2263,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "6cd6cf532e560599f9ba833456994e1c"
+      },
+      "backend\\data\\statutes\\tua.json": {
+        "lines": 1056,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "781e73ca460e09cf3c486df8aed5fdb2"
+      },
+      "backend\\data\\statutes\\uapa.json": {
+        "lines": 2280,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "c2ebc55d8002d85f819cbf80ffd7ed38"
+      },
+      "backend\\data\\statutes\\wca.json": {
+        "lines": 3232,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "4029ed094884e3a1506ba8749fbb698d"
+      },
+      "backend\\data\\statutes\\wpa.json": {
+        "lines": 7499,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "873f5cd0c845360fef6625b433a4a67d"
+      },
+      "backend\\migrations\\env.py": {
+        "lines": 84,
+        "functions": 5,
+        "classes": 0,
+        "issues": 4,
+        "hash": "50fc9f63d3026366bedf350649c414a6"
+      },
+      "backend\\migrations\\versions\\001_initial.py": {
+        "lines": 378,
+        "functions": 2,
+        "classes": 0,
+        "issues": 3,
+        "hash": "d55473c996624af377d7656be79615f7"
+      },
+      "backend\\migrations\\versions\\002_documents_audio.py": {
+        "lines": 125,
+        "functions": 2,
+        "classes": 0,
+        "issues": 3,
+        "hash": "2432be3ebbe644f63c671deceb34ca7e"
+      },
+      "backend\\migrations\\versions\\003_citation_equivalents.py": {
+        "lines": 38,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "d76fee6a26cf22aee438706561ca55a2"
+      },
+      "backend\\migrations\\versions\\004_case_sections.py": {
+        "lines": 38,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "93d3a06ff5d36c5ed36e122bf49f5844"
+      },
+      "backend\\migrations\\versions\\005_agent_executions.py": {
+        "lines": 86,
+        "functions": 2,
+        "classes": 0,
+        "issues": 3,
+        "hash": "d2f59dd23bdf9712f14b96ffac855479"
+      },
+      "backend\\migrations\\versions\\006_indexes_and_performance.py": {
+        "lines": 58,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "6e3cd70056f38ec2a90f5e1594f8b7d5"
+      },
+      "backend\\migrations\\versions\\007_dpdp_compliance.py": {
+        "lines": 35,
+        "functions": 2,
+        "classes": 0,
+        "issues": 4,
+        "hash": "24158d3f385de89183792b10ec7782a4"
+      },
+      "backend\\migrations\\versions\\008_strategy_drafting_agents.py": {
+        "lines": 30,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "6ce544c019f59ad4225e56c3be8219cc"
+      },
+      "backend\\migrations\\versions\\009_ingestion_improvements.py": {
+        "lines": 119,
+        "functions": 2,
+        "classes": 0,
+        "issues": 3,
+        "hash": "ca61f462e75205a58f294e90514abc3b"
+      },
+      "backend\\migrations\\versions\\010_weighted_fts.py": {
+        "lines": 82,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "1fbd4d4e84f965f99a13b69e47c3fa4e"
+      },
+      "backend\\migrations\\versions\\011_legal_completeness.py": {
+        "lines": 149,
+        "functions": 2,
+        "classes": 0,
+        "issues": 3,
+        "hash": "e3ba34c40321d6bd73391bc47af2058e"
+      },
+      "backend\\migrations\\versions\\012_search_excellence.py": {
+        "lines": 137,
+        "functions": 2,
+        "classes": 0,
+        "issues": 3,
+        "hash": "71457f24bbee6e5eb9f573918b53877a"
+      },
+      "backend\\migrations\\versions\\013_enterprise_readiness.py": {
+        "lines": 61,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "59d34cb9f7e20250452fa027ef1fd967"
+      },
+      "backend\\migrations\\versions\\014_fix_triggers_and_constraints.py": {
+        "lines": 123,
+        "functions": 2,
+        "classes": 0,
+        "issues": 3,
+        "hash": "6f31f68c0f53912a8ab5d584ace8c489"
+      },
+      "backend\\migrations\\versions\\015_graph_build_queue.py": {
+        "lines": 33,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "f1c747ba3a3c77f1008bd48a6b5cbbe8"
+      },
+      "backend\\migrations\\versions\\016_india_audit_fixes.py": {
+        "lines": 78,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "e2c3cd218f3a9d746db91fc4b7af0f73"
+      },
+      "backend\\migrations\\versions\\017_pgvector_and_citations.py": {
+        "lines": 101,
+        "functions": 2,
+        "classes": 0,
+        "issues": 3,
+        "hash": "a73f9d41d35ab4aca9d695f015bae51d"
+      },
+      "backend\\migrations\\versions\\018_low_audit_fixes.py": {
+        "lines": 30,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "e90799a204d5e38f05cd4555335df98f"
+      },
+      "backend\\migrations\\versions\\019_medium_audit_indexes.py": {
+        "lines": 52,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "b2b35eb01a5e65dcf8d69c6bea191fa8"
+      },
+      "backend\\migrations\\versions\\020_create_statutes_table.py": {
+        "lines": 73,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "21f91f6b2dc64d3e13db5e462eabcb39"
+      },
+      "backend\\migrations\\versions\\021_statutes_updated_at.py": {
+        "lines": 27,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "a493ef55fd1d7eaa51748e361196c651"
+      },
+      "backend\\migrations\\versions\\022_fix_constraints_and_types.py": {
+        "lines": 89,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "2e9868d5f36642a24a4786fcf4b8f6f7"
+      },
+      "backend\\migrations\\versions\\023_ingestion_v2_fields.py": {
+        "lines": 139,
+        "functions": 2,
+        "classes": 0,
+        "issues": 3,
+        "hash": "6da165b99e8decc349df223294147d11"
+      },
+      "backend\\migrations\\versions\\024_fix_fts_trigger_v2.py": {
+        "lines": 76,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "1d1329e188f6c876115ad0057c938d11"
+      },
+      "backend\\migrations\\versions\\025_fix_fts_trigger_v3.py": {
+        "lines": 78,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "176e8fa23b246bf357ab97e7ac0c06cc"
+      },
+      "backend\\migrations\\versions\\026_statutes_amendment_fields.py": {
+        "lines": 30,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "3db1223f5ba7c6024bf0ac886ed9cb8c"
+      },
+      "backend\\migrations\\versions\\027_pg_trgm_fuzzy_search.py": {
+        "lines": 28,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "437cc6f46c4da49946ca1679497354c9"
+      },
+      "backend\\migrations\\versions\\028_coram_size.py": {
+        "lines": 23,
+        "functions": 2,
+        "classes": 0,
+        "issues": 3,
+        "hash": "1ba9a5e6efa18cfc368d913cc412dd6b"
+      },
+      "backend\\migrations\\versions\\029_schema_hardening.py": {
+        "lines": 49,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "e72710e477a86eeae71e8644221da148"
+      },
+      "backend\\migrations\\versions\\030_amendment_maps.py": {
+        "lines": 43,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "691c9f3f28c5f741176722bfa5d5b3c1"
+      },
+      "backend\\migrations\\versions\\032_fts_trigger_optimization.py": {
+        "lines": 101,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "1efaea9c40ebceecf1c52812e006b226"
+      },
+      "backend\\migrations\\versions\\033_text_hash_unique_index.py": {
+        "lines": 45,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "3a82aeb982e3fdbd045cbc8378e91485"
+      },
+      "backend\\migrations\\versions\\034_ingestion_status_index.py": {
+        "lines": 39,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "f3983eb8fc8ff90cbb5a76002076c0ab"
+      },
+      "backend\\migrations\\versions\\035_ingestion_v3_fields.py": {
+        "lines": 42,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "a372e79471bd33b7e88ff52cd45525ad"
+      },
+      "backend\\migrations\\versions\\036_agent_conversation_history.py": {
+        "lines": 124,
+        "functions": 2,
+        "classes": 0,
+        "issues": 3,
+        "hash": "ad98beb8c8ea4d7df8259e936ff96947"
+      },
+      "backend\\pyproject.toml": {
+        "lines": 148,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "34c42b81322fc4b94dbb466080ac2d4f"
+      },
+      "backend\\scripts\\audit_migration.py": {
+        "lines": 431,
+        "functions": 2,
+        "classes": 0,
+        "issues": 77,
+        "hash": "ff5696ca5b33fda189d9edbc6c335fef"
+      },
+      "backend\\scripts\\audit_models_vs_db.py": {
+        "lines": 405,
+        "functions": 6,
+        "classes": 0,
+        "issues": 26,
+        "hash": "49c133926774a51d7330f389a8a0121a"
+      },
+      "backend\\scripts\\backfill_contextual_embeddings.py": {
+        "lines": 185,
+        "functions": 2,
+        "classes": 0,
+        "issues": 9,
+        "hash": "65a912d91a8110b0a8b15da0fc836de5"
+      },
+      "backend\\scripts\\backfill_pinecone_metadata.py": {
+        "lines": 78,
+        "functions": 1,
+        "classes": 0,
+        "issues": 5,
+        "hash": "26831f27bb8923bb30d9d5d524541cd3"
+      },
+      "backend\\scripts\\batch_ingest.py": {
+        "lines": 637,
+        "functions": 12,
+        "classes": 0,
+        "issues": 11,
+        "hash": "092a057bd65690b813001281849aa4ce"
+      },
+      "backend\\scripts\\batch_llm.py": {
+        "lines": 74,
+        "functions": 5,
+        "classes": 1,
+        "issues": 4,
+        "hash": "db4c5ea08cddcc97bd82f4aeeccb09a3"
+      },
+      "backend\\scripts\\batch_state.py": {
+        "lines": 167,
+        "functions": 12,
+        "classes": 1,
+        "issues": 11,
+        "hash": "1aaf5ccfad7a1a56347d192765a2a9c5"
+      },
+      "backend\\scripts\\benchmark_extraction.py": {
+        "lines": 295,
+        "functions": 10,
+        "classes": 2,
+        "issues": 24,
+        "hash": "1bb81bd5cd49b58a5e8468c3f9e5a2e0"
+      },
+      "backend\\scripts\\build_citation_communities.py": {
+        "lines": 268,
+        "functions": 6,
+        "classes": 0,
+        "issues": 2,
+        "hash": "dbd19d1c59fee8196b028438c0356475"
+      },
+      "backend\\scripts\\daily_ingest.py": {
+        "lines": 106,
+        "functions": 3,
+        "classes": 0,
+        "issues": 2,
+        "hash": "be382abff7ea6ab369ad495f966f3bec"
+      },
+      "backend\\scripts\\download_and_convert_statutes.py": {
+        "lines": 910,
+        "functions": 12,
+        "classes": 0,
+        "issues": 13,
+        "hash": "551d3c374f77795ed9620afe9b9aa46e"
+      },
+      "backend\\scripts\\e2e_research_pipeline.py": {
+        "lines": 240,
+        "functions": 1,
+        "classes": 0,
+        "issues": 45,
+        "hash": "25a039bfdc4c4d514cc7dbc566a629a7"
+      },
+      "backend\\scripts\\e2e_test_apis.py": {
+        "lines": 438,
+        "functions": 15,
+        "classes": 0,
+        "issues": 93,
+        "hash": "2d88491c6935b15f824bc545e41fa719"
+      },
+      "backend\\scripts\\enrich_pro.py": {
+        "lines": 167,
+        "functions": 3,
+        "classes": 0,
+        "issues": 7,
+        "hash": "b49e1902b027f59f98674d70f56b6245"
+      },
+      "backend\\scripts\\generate_statute_json.py": {
+        "lines": 282,
+        "functions": 8,
+        "classes": 0,
+        "issues": 10,
+        "hash": "8dec2b092a6b5f11766c525f428062d5"
+      },
+      "backend\\scripts\\ingest_s3.py": {
+        "lines": 1201,
+        "functions": 39,
+        "classes": 2,
+        "issues": 40,
+        "hash": "43aa9eadc6810818d8337705459b02ee"
+      },
+      "backend\\scripts\\ingest_statutes.py": {
+        "lines": 553,
+        "functions": 13,
+        "classes": 1,
+        "issues": 21,
+        "hash": "6479ac68319665d27fd1dcbc256be80d"
+      },
+      "backend\\scripts\\monitor_ingestion.py": {
+        "lines": 155,
+        "functions": 2,
+        "classes": 0,
+        "issues": 24,
+        "hash": "7258a100790cbe831b2dc8f40cb936ab"
+      },
+      "backend\\scripts\\normalize_acts_cited.py": {
+        "lines": 303,
+        "functions": 3,
+        "classes": 0,
+        "issues": 7,
+        "hash": "dc4ac8adfd679834946f10b7ca6b1dec"
+      },
+      "backend\\scripts\\poll_batch_test.py": {
+        "lines": 85,
+        "functions": 1,
+        "classes": 0,
+        "issues": 19,
+        "hash": "d55c896efbb47c89020330fc2b2f86c1"
+      },
+      "backend\\scripts\\populate_neo4j.py": {
+        "lines": 826,
+        "functions": 22,
+        "classes": 0,
+        "issues": 33,
+        "hash": "cbe39acadca225621d165caa2d664d1b"
+      },
+      "backend\\scripts\\quality_eval.py": {
+        "lines": 209,
+        "functions": 1,
+        "classes": 0,
+        "issues": 55,
+        "hash": "7b7e0a971896922e59217aa89c16c4eb"
+      },
+      "backend\\scripts\\reset_all_data.py": {
+        "lines": 156,
+        "functions": 6,
+        "classes": 0,
+        "issues": 41,
+        "hash": "09ff7313f26661eb7df4cec7c9fb6ae7"
+      },
+      "backend\\scripts\\test_resume_flow.py": {
+        "lines": 174,
+        "functions": 1,
+        "classes": 0,
+        "issues": 33,
+        "hash": "3170839e826887cd9528e15e67a0ef6f"
+      },
+      "backend\\scripts\\verify_ingestion.py": {
+        "lines": 128,
+        "functions": 2,
+        "classes": 0,
+        "issues": 6,
+        "hash": "eb2d95668f9403a4aed8abb24b454e5c"
+      },
+      "backend\\tests\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\tests\\conftest.py": {
+        "lines": 127,
+        "functions": 3,
+        "classes": 0,
+        "issues": 1,
+        "hash": "e6b2054d06aac2f191ea607d2b41a6fc"
+      },
+      "backend\\tests\\fixtures\\gold_standard_metadata.json": {
+        "lines": 115,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "9ba667ce6ababf9f87d0ad3122e24ec6"
+      },
+      "backend\\tests\\integration\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\tests\\integration\\test_ingestion.py": {
+        "lines": 637,
+        "functions": 24,
+        "classes": 3,
+        "issues": 12,
+        "hash": "171bab59bafb8931e772cdb012a0172c"
+      },
+      "backend\\tests\\integration\\test_search.py": {
+        "lines": 730,
+        "functions": 38,
+        "classes": 4,
+        "issues": 25,
+        "hash": "56378ea9e2c4c52999d731f657ead4f0"
+      },
+      "backend\\tests\\integration\\test_search_accuracy.py": {
+        "lines": 355,
+        "functions": 17,
+        "classes": 3,
+        "issues": 0,
+        "hash": "06ece30aba0619e2ff9d5c952db43b5f"
+      },
+      "backend\\tests\\load\\locustfile.py": {
+        "lines": 136,
+        "functions": 7,
+        "classes": 1,
+        "issues": 1,
+        "hash": "604fe5dc05fbc423bd057a916ffca334"
+      },
+      "backend\\tests\\quality\\conftest.py": {
+        "lines": 203,
+        "functions": 9,
+        "classes": 2,
+        "issues": 5,
+        "hash": "aa07df6c35241bdf9b88b71f574370b0"
+      },
+      "backend\\tests\\quality\\test_agent_quality.py": {
+        "lines": 183,
+        "functions": 6,
+        "classes": 3,
+        "issues": 0,
+        "hash": "80141c7128a6e1d1add62ac3bb74397b"
+      },
+      "backend\\tests\\quality\\test_metadata_benchmark.py": {
+        "lines": 84,
+        "functions": 5,
+        "classes": 3,
+        "issues": 4,
+        "hash": "9ac366ff9219d5054486d251c5876ea6"
+      },
+      "backend\\tests\\quality\\test_search_accuracy.py": {
+        "lines": 159,
+        "functions": 3,
+        "classes": 3,
+        "issues": 0,
+        "hash": "1a15ab450034d9ec849db3d3f8060c21"
+      },
+      "backend\\tests\\security\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\tests\\security\\test_jwt_claims.py": {
+        "lines": 103,
+        "functions": 7,
+        "classes": 1,
+        "issues": 4,
+        "hash": "5b511d4d723aa48ded8236c3ef9d9c06"
+      },
+      "backend\\tests\\security\\test_security.py": {
+        "lines": 85,
+        "functions": 9,
+        "classes": 3,
+        "issues": 15,
+        "hash": "c1bdce87e6a13f84a5bea4c35989d411"
+      },
+      "backend\\tests\\unit\\__init__.py": {
+        "lines": 0,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "backend\\tests\\unit\\test_35k_hardening.py": {
+        "lines": 227,
+        "functions": 25,
+        "classes": 5,
+        "issues": 50,
+        "hash": "65c3cfe988e468ddb0d28ccaa316f3e3"
+      },
+      "backend\\tests\\unit\\test_acts_normalization.py": {
+        "lines": 395,
+        "functions": 49,
+        "classes": 8,
+        "issues": 71,
+        "hash": "732bd03973fccb505c0fd461649470a2"
+      },
+      "backend\\tests\\unit\\test_admin_routes.py": {
+        "lines": 420,
+        "functions": 23,
+        "classes": 4,
+        "issues": 36,
+        "hash": "b6c9b0f33104c5bb390f5b7888c7667e"
+      },
+      "backend\\tests\\unit\\test_agent_execution_model.py": {
+        "lines": 92,
+        "functions": 9,
+        "classes": 3,
+        "issues": 9,
+        "hash": "d65e9d73785ed506dddc21edcff85e7c"
+      },
+      "backend\\tests\\unit\\test_agent_graph_execution.py": {
+        "lines": 227,
+        "functions": 15,
+        "classes": 5,
+        "issues": 14,
+        "hash": "1635e62fcbedb9df2fa5c87a4855a579"
+      },
+      "backend\\tests\\unit\\test_agent_nodes_common.py": {
+        "lines": 497,
+        "functions": 31,
+        "classes": 8,
+        "issues": 30,
+        "hash": "e86f1cfe45c0342a096ee7c144190420"
+      },
+      "backend\\tests\\unit\\test_agent_prompts.py": {
+        "lines": 318,
+        "functions": 31,
+        "classes": 7,
+        "issues": 34,
+        "hash": "c1697793cc997fb1bff093da9c1dbe29"
+      },
+      "backend\\tests\\unit\\test_agent_routes.py": {
+        "lines": 399,
+        "functions": 33,
+        "classes": 6,
+        "issues": 17,
+        "hash": "03b250fa2f5062e2d1d9abead7530256"
+      },
+      "backend\\tests\\unit\\test_agent_session_routes.py": {
+        "lines": 872,
+        "functions": 49,
+        "classes": 8,
+        "issues": 12,
+        "hash": "32c028a425544902f694258a4f169392"
+      },
+      "backend\\tests\\unit\\test_agent_state.py": {
+        "lines": 102,
+        "functions": 7,
+        "classes": 6,
+        "issues": 5,
+        "hash": "b36fe61891a465ec60103d08f01f3526"
+      },
+      "backend\\tests\\unit\\test_amendment_service.py": {
+        "lines": 133,
+        "functions": 10,
+        "classes": 2,
+        "issues": 10,
+        "hash": "49a1a5d90d043b23a6c526d7e51738db"
+      },
+      "backend\\tests\\unit\\test_anonymizer.py": {
+        "lines": 147,
+        "functions": 21,
+        "classes": 2,
+        "issues": 37,
+        "hash": "da9929d6c4604f31a63518bfd84c6093"
+      },
+      "backend\\tests\\unit\\test_audio_routes.py": {
+        "lines": 100,
+        "functions": 10,
+        "classes": 2,
+        "issues": 8,
+        "hash": "2ddd1a50f3851788324263346043e647"
+      },
+      "backend\\tests\\unit\\test_audio_tasks.py": {
+        "lines": 22,
+        "functions": 2,
+        "classes": 1,
+        "issues": 2,
+        "hash": "bbfdcef84238aa9d8a48786069ef16ad"
+      },
+      "backend\\tests\\unit\\test_audit_logging.py": {
+        "lines": 118,
+        "functions": 5,
+        "classes": 1,
+        "issues": 0,
+        "hash": "0b9adb9ff2586b6d6cba2f01399803d0"
+      },
+      "backend\\tests\\unit\\test_auth.py": {
+        "lines": 164,
+        "functions": 18,
+        "classes": 4,
+        "issues": 30,
+        "hash": "11cc288ec811537a1026bc6621f9e4cc"
+      },
+      "backend\\tests\\unit\\test_auth_routes.py": {
+        "lines": 647,
+        "functions": 29,
+        "classes": 7,
+        "issues": 11,
+        "hash": "d0fb87414d9907232aea765ecd8ceb1b"
+      },
+      "backend\\tests\\unit\\test_batch_llm.py": {
+        "lines": 69,
+        "functions": 8,
+        "classes": 1,
+        "issues": 13,
+        "hash": "4712f9dc90fe90768ff5a21447525f29"
+      },
+      "backend\\tests\\unit\\test_batch_state.py": {
+        "lines": 93,
+        "functions": 11,
+        "classes": 1,
+        "issues": 10,
+        "hash": "f0995e7696c7e44127e89984ea5d6155"
+      },
+      "backend\\tests\\unit\\test_bulk_upsert.py": {
+        "lines": 42,
+        "functions": 2,
+        "classes": 1,
+        "issues": 2,
+        "hash": "00ef0de3be2716a906260766ba3eaef4"
+      },
+      "backend\\tests\\unit\\test_case_model_v2.py": {
+        "lines": 21,
+        "functions": 1,
+        "classes": 1,
+        "issues": 1,
+        "hash": "ea6966305a9d33f2d83f9e43091e1efd"
+      },
+      "backend\\tests\\unit\\test_case_prep_agent.py": {
+        "lines": 241,
+        "functions": 21,
+        "classes": 4,
+        "issues": 18,
+        "hash": "5519721462cd32450f357d758e01ff26"
+      },
+      "backend\\tests\\unit\\test_case_prep_nodes.py": {
+        "lines": 971,
+        "functions": 42,
+        "classes": 15,
+        "issues": 30,
+        "hash": "1c1a5bc4e84060398c2cccb61bf55fb7"
+      },
+      "backend\\tests\\unit\\test_case_routes.py": {
+        "lines": 559,
+        "functions": 36,
+        "classes": 6,
+        "issues": 4,
+        "hash": "4021277a75f62400478b6a63309593d9"
+      },
+      "backend\\tests\\unit\\test_case_section_model.py": {
+        "lines": 37,
+        "functions": 4,
+        "classes": 1,
+        "issues": 7,
+        "hash": "b27859228ba9dbd546b1596b88d8bc68"
+      },
+      "backend\\tests\\unit\\test_celery_config.py": {
+        "lines": 20,
+        "functions": 4,
+        "classes": 1,
+        "issues": 4,
+        "hash": "12c52c42c1a6b74bd001ec145438dbd9"
+      },
+      "backend\\tests\\unit\\test_chat_routes.py": {
+        "lines": 425,
+        "functions": 27,
+        "classes": 7,
+        "issues": 12,
+        "hash": "c87f73e5f14c5e28fa864ff861edb39b"
+      },
+      "backend\\tests\\unit\\test_checkpointer.py": {
+        "lines": 20,
+        "functions": 2,
+        "classes": 1,
+        "issues": 2,
+        "hash": "62f1c2452dcede345941fc02877a851c"
+      },
+      "backend\\tests\\unit\\test_chunker.py": {
+        "lines": 600,
+        "functions": 64,
+        "classes": 11,
+        "issues": 91,
+        "hash": "d7158038602fdcb784a9f5b06724cd91"
+      },
+      "backend\\tests\\unit\\test_circuit_breaker.py": {
+        "lines": 186,
+        "functions": 13,
+        "classes": 4,
+        "issues": 13,
+        "hash": "da90a79b6deb626ac0d382fd6822bc85"
+      },
+      "backend\\tests\\unit\\test_citation_equivalence.py": {
+        "lines": 65,
+        "functions": 3,
+        "classes": 1,
+        "issues": 3,
+        "hash": "bd4861897b4cafde0d338dbf30ad27ae"
+      },
+      "backend\\tests\\unit\\test_citation_equivalent_model.py": {
+        "lines": 36,
+        "functions": 4,
+        "classes": 1,
+        "issues": 6,
+        "hash": "4bc868b2c1b2fff21d6aaf3383d7fa60"
+      },
+      "backend\\tests\\unit\\test_citation_formats.py": {
+        "lines": 158,
+        "functions": 18,
+        "classes": 6,
+        "issues": 18,
+        "hash": "6f5786002ffa9958ed624c15f75b3bd2"
+      },
+      "backend\\tests\\unit\\test_citation_verifier.py": {
+        "lines": 190,
+        "functions": 20,
+        "classes": 3,
+        "issues": 12,
+        "hash": "c40daa7f2781eeecc13c7fe85d35872b"
+      },
+      "backend\\tests\\unit\\test_cited_by_count.py": {
+        "lines": 38,
+        "functions": 3,
+        "classes": 1,
+        "issues": 6,
+        "hash": "f20f9f1bb72f45eb93c8c2d49f3f27eb"
+      },
+      "backend\\tests\\unit\\test_classify_treatment_llm.py": {
+        "lines": 155,
+        "functions": 12,
+        "classes": 1,
+        "issues": 12,
+        "hash": "2f09b1d820ee1e244a5411f256d78257"
+      },
+      "backend\\tests\\unit\\test_common_nodes.py": {
+        "lines": 290,
+        "functions": 37,
+        "classes": 11,
+        "issues": 37,
+        "hash": "3b1da3229d9805d9ada32fa2715442d0"
+      },
+      "backend\\tests\\unit\\test_concurrent_ingestion.py": {
+        "lines": 138,
+        "functions": 13,
+        "classes": 3,
+        "issues": 12,
+        "hash": "3b745e3acac5565715cc14f22cfea91e"
+      },
+      "backend\\tests\\unit\\test_confidence_scoring.py": {
+        "lines": 65,
+        "functions": 5,
+        "classes": 1,
+        "issues": 6,
+        "hash": "8c0db53c91f8f38e59d0cdc27ad93c7c"
+      },
+      "backend\\tests\\unit\\test_config_pool.py": {
+        "lines": 22,
+        "functions": 2,
+        "classes": 1,
+        "issues": 4,
+        "hash": "83db6a9ac0a40fa8bace0fd2b543f8a2"
+      },
+      "backend\\tests\\unit\\test_config_validation.py": {
+        "lines": 60,
+        "functions": 7,
+        "classes": 0,
+        "issues": 9,
+        "hash": "a8440fc0e7bf045154650b82dd5c6531"
+      },
+      "backend\\tests\\unit\\test_courts.py": {
+        "lines": 90,
+        "functions": 19,
+        "classes": 3,
+        "issues": 38,
+        "hash": "4e7302606290d48119e803ddd8fb9b73"
+      },
+      "backend\\tests\\unit\\test_devanagari_preservation.py": {
+        "lines": 89,
+        "functions": 9,
+        "classes": 2,
+        "issues": 9,
+        "hash": "b543643fb7918ced538573372506c642"
+      },
+      "backend\\tests\\unit\\test_document_analyzer.py": {
+        "lines": 126,
+        "functions": 7,
+        "classes": 3,
+        "issues": 6,
+        "hash": "df02574ef585c2bededa633298ad4872"
+      },
+      "backend\\tests\\unit\\test_document_routes.py": {
+        "lines": 42,
+        "functions": 4,
+        "classes": 1,
+        "issues": 4,
+        "hash": "89663777539a441dfb13a4954dcf4fbc"
+      },
+      "backend\\tests\\unit\\test_document_tasks.py": {
+        "lines": 42,
+        "functions": 3,
+        "classes": 1,
+        "issues": 3,
+        "hash": "2294612191a6c90cfe85beb2c21e99b5"
+      },
+      "backend\\tests\\unit\\test_dpdp_routes.py": {
+        "lines": 613,
+        "functions": 42,
+        "classes": 7,
+        "issues": 11,
+        "hash": "2745a1ee3880b05a8d2f825ccd009c0a"
+      },
+      "backend\\tests\\unit\\test_drafting_graph.py": {
+        "lines": 372,
+        "functions": 24,
+        "classes": 5,
+        "issues": 20,
+        "hash": "e6ee73edd998d0010d1dfb0f909d9628"
+      },
+      "backend\\tests\\unit\\test_drafting_nodes.py": {
+        "lines": 778,
+        "functions": 38,
+        "classes": 7,
+        "issues": 32,
+        "hash": "fcb233d07bbceabd583cebdd520df452"
+      },
+      "backend\\tests\\unit\\test_drafting_templates.py": {
+        "lines": 244,
+        "functions": 30,
+        "classes": 2,
+        "issues": 24,
+        "hash": "075ba1262c4421d7c1b196a57a5c28c9"
+      },
+      "backend\\tests\\unit\\test_editorial_filters.py": {
+        "lines": 114,
+        "functions": 11,
+        "classes": 4,
+        "issues": 18,
+        "hash": "9be1c211543a0fece335e3224385a5af"
+      },
+      "backend\\tests\\unit\\test_encryption.py": {
+        "lines": 88,
+        "functions": 11,
+        "classes": 2,
+        "issues": 20,
+        "hash": "8f693f14912c5f48f0406109996a5bfa"
+      },
+      "backend\\tests\\unit\\test_extractor.py": {
+        "lines": 485,
+        "functions": 53,
+        "classes": 14,
+        "issues": 103,
+        "hash": "94c984c67d43178caf8c127a5470967f"
+      },
+      "backend\\tests\\unit\\test_extractor_confidence.py": {
+        "lines": 103,
+        "functions": 9,
+        "classes": 0,
+        "issues": 9,
+        "hash": "c7f77d5d1e170f926481cbd0af80476b"
+      },
+      "backend\\tests\\unit\\test_follow_up_nodes.py": {
+        "lines": 757,
+        "functions": 48,
+        "classes": 8,
+        "issues": 47,
+        "hash": "eb9e8f1936a95658c033021b678c1683"
+      },
+      "backend\\tests\\unit\\test_fulltext.py": {
+        "lines": 80,
+        "functions": 10,
+        "classes": 1,
+        "issues": 7,
+        "hash": "bd84b6908b4eaf3e0703c8ca52908088"
+      },
+      "backend\\tests\\unit\\test_gcs_storage.py": {
+        "lines": 146,
+        "functions": 12,
+        "classes": 7,
+        "issues": 12,
+        "hash": "8e315826d8fa0dd2fc73e526a23d2681"
+      },
+      "backend\\tests\\unit\\test_gemini_pdf_multimodal.py": {
+        "lines": 123,
+        "functions": 6,
+        "classes": 3,
+        "issues": 7,
+        "hash": "5a8f500083e73d419f01310f1d7e5006"
+      },
+      "backend\\tests\\unit\\test_graceful_shutdown.py": {
+        "lines": 98,
+        "functions": 8,
+        "classes": 1,
+        "issues": 10,
+        "hash": "0742ce05280ec78bc8dd2d9a0b36e08c"
+      },
+      "backend\\tests\\unit\\test_graph_retry.py": {
+        "lines": 161,
+        "functions": 9,
+        "classes": 4,
+        "issues": 16,
+        "hash": "428e7f892ae1eedf184d9c117a7bcbc1"
+      },
+      "backend\\tests\\unit\\test_graph_routes.py": {
+        "lines": 451,
+        "functions": 23,
+        "classes": 6,
+        "issues": 3,
+        "hash": "2b0f506a9a4964bb0f7cca6f9ccd32bb"
+      },
+      "backend\\tests\\unit\\test_graph_traversal.py": {
+        "lines": 305,
+        "functions": 17,
+        "classes": 4,
+        "issues": 16,
+        "hash": "2fd1c4167480e92310b13404645c2a90"
+      },
+      "backend\\tests\\unit\\test_health_extended.py": {
+        "lines": 209,
+        "functions": 9,
+        "classes": 5,
+        "issues": 10,
+        "hash": "586a25e009c73668398ef754f375a41c"
+      },
+      "backend\\tests\\unit\\test_hindi_fts_skip.py": {
+        "lines": 38,
+        "functions": 3,
+        "classes": 1,
+        "issues": 3,
+        "hash": "1ae4379ba975a795656ae23de42faa71"
+      },
+      "backend\\tests\\unit\\test_hindi_search.py": {
+        "lines": 106,
+        "functions": 7,
+        "classes": 1,
+        "issues": 14,
+        "hash": "7386aeaf67ba0431f2d001f7e3002a9a"
+      },
+      "backend\\tests\\unit\\test_hybrid_search.py": {
+        "lines": 719,
+        "functions": 28,
+        "classes": 1,
+        "issues": 36,
+        "hash": "7a3ea7580195ea2851538228a72877cc"
+      },
+      "backend\\tests\\unit\\test_ik_worker.py": {
+        "lines": 266,
+        "functions": 19,
+        "classes": 2,
+        "issues": 2,
+        "hash": "4651d4ee52907965ef5687a89dcedde2"
+      },
+      "backend\\tests\\unit\\test_indiankanoon_client.py": {
+        "lines": 212,
+        "functions": 20,
+        "classes": 4,
+        "issues": 9,
+        "hash": "275a6f19f2c0b092f4d0fb6cdeb2a0be"
+      },
+      "backend\\tests\\unit\\test_ingestion_integration.py": {
+        "lines": 201,
+        "functions": 7,
+        "classes": 3,
+        "issues": 6,
+        "hash": "4acb3650abf687ad1987f19e8f9016c0"
+      },
+      "backend\\tests\\unit\\test_ingestion_pipeline.py": {
+        "lines": 486,
+        "functions": 20,
+        "classes": 3,
+        "issues": 15,
+        "hash": "a12eabc715da2802a1f248d6897f5935"
+      },
+      "backend\\tests\\unit\\test_ingestion_rate_limiter.py": {
+        "lines": 162,
+        "functions": 14,
+        "classes": 2,
+        "issues": 0,
+        "hash": "75f203cd654bddf912bb7033415ec189"
+      },
+      "backend\\tests\\unit\\test_ingestion_sections.py": {
+        "lines": 26,
+        "functions": 4,
+        "classes": 1,
+        "issues": 8,
+        "hash": "e7e088c38c5474bca7db03df7ba384b7"
+      },
+      "backend\\tests\\unit\\test_judge_analytics.py": {
+        "lines": 559,
+        "functions": 27,
+        "classes": 6,
+        "issues": 24,
+        "hash": "93e855500a44f36f476f4754613a48ff"
+      },
+      "backend\\tests\\unit\\test_judge_routes.py": {
+        "lines": 51,
+        "functions": 3,
+        "classes": 0,
+        "issues": 0,
+        "hash": "f4141ba24ee4d94eb7670bd1316b11ac"
+      },
+      "backend\\tests\\unit\\test_logging_config.py": {
+        "lines": 134,
+        "functions": 13,
+        "classes": 2,
+        "issues": 13,
+        "hash": "befa8211d9fdcc0d5ffca429ff5f34e0"
+      },
+      "backend\\tests\\unit\\test_metadata.py": {
+        "lines": 332,
+        "functions": 50,
+        "classes": 6,
+        "issues": 99,
+        "hash": "7c8300bfe4185442a22ee9fd553cc970"
+      },
+      "backend\\tests\\unit\\test_metadata_llm_retry.py": {
+        "lines": 123,
+        "functions": 9,
+        "classes": 1,
+        "issues": 9,
+        "hash": "fe0235a6027ae51aa2b511141b7c4a7e"
+      },
+      "backend\\tests\\unit\\test_metadata_v2.py": {
+        "lines": 64,
+        "functions": 4,
+        "classes": 1,
+        "issues": 8,
+        "hash": "84703f337ab6f7234b907134f849c08c"
+      },
+      "backend\\tests\\unit\\test_metadata_v2_prompts.py": {
+        "lines": 66,
+        "functions": 9,
+        "classes": 1,
+        "issues": 16,
+        "hash": "40fe6452f43b3f7b0944c1d3428848da"
+      },
+      "backend\\tests\\unit\\test_migration_011.py": {
+        "lines": 324,
+        "functions": 43,
+        "classes": 3,
+        "issues": 85,
+        "hash": "d2a7c131309babe93116193414b57219"
+      },
+      "backend\\tests\\unit\\test_multi_court_filter.py": {
+        "lines": 228,
+        "functions": 23,
+        "classes": 5,
+        "issues": 20,
+        "hash": "8e3139c6434418644129d2193f59f15b"
+      },
+      "backend\\tests\\unit\\test_neo4j_store.py": {
+        "lines": 34,
+        "functions": 6,
+        "classes": 0,
+        "issues": 12,
+        "hash": "6ffc7216366abd2dc62dd193f9c77377"
+      },
+      "backend\\tests\\unit\\test_pdf_extraction.py": {
+        "lines": 347,
+        "functions": 25,
+        "classes": 11,
+        "issues": 25,
+        "hash": "7602690a7ea2455a6265113250405edd"
+      },
+      "backend\\tests\\unit\\test_pdf_ocr_and_password.py": {
+        "lines": 155,
+        "functions": 8,
+        "classes": 2,
+        "issues": 8,
+        "hash": "f59ddd7d0cccec0544c01e66ef020afd"
+      },
+      "backend\\tests\\unit\\test_pdf_page_map.py": {
+        "lines": 63,
+        "functions": 6,
+        "classes": 2,
+        "issues": 12,
+        "hash": "7b8315bd260e4a06d9d95777818976ca"
+      },
+      "backend\\tests\\unit\\test_pdf_quality_scoring.py": {
+        "lines": 201,
+        "functions": 15,
+        "classes": 2,
+        "issues": 15,
+        "hash": "69094074f9a2938c091b5ae8f1be49fb"
+      },
+      "backend\\tests\\unit\\test_pg_graph_store.py": {
+        "lines": 246,
+        "functions": 19,
+        "classes": 6,
+        "issues": 38,
+        "hash": "61258bca098410c82d8ccab6697e0766"
+      },
+      "backend\\tests\\unit\\test_pgvector_store.py": {
+        "lines": 249,
+        "functions": 16,
+        "classes": 4,
+        "issues": 32,
+        "hash": "7fa62f74cbb9aa8968c8e7553f286440"
+      },
+      "backend\\tests\\unit\\test_phase5_models.py": {
+        "lines": 81,
+        "functions": 10,
+        "classes": 3,
+        "issues": 10,
+        "hash": "6badacc8624dc23d6e74af892624af91"
+      },
+      "backend\\tests\\unit\\test_phase5_prompts.py": {
+        "lines": 55,
+        "functions": 9,
+        "classes": 2,
+        "issues": 9,
+        "hash": "5a894fdfc3190fc4e0ed5e7cc981ce33"
+      },
+      "backend\\tests\\unit\\test_pinecone_store_tenant.py": {
+        "lines": 69,
+        "functions": 4,
+        "classes": 1,
+        "issues": 11,
+        "hash": "9fe56076d4db6fb8eb4388ef3926907d"
+      },
+      "backend\\tests\\unit\\test_pipeline_citation_equivalents.py": {
+        "lines": 130,
+        "functions": 10,
+        "classes": 2,
+        "issues": 10,
+        "hash": "c257e87521dabaaae9fd688d683dc8f4"
+      },
+      "backend\\tests\\unit\\test_pipeline_dedup.py": {
+        "lines": 17,
+        "functions": 1,
+        "classes": 1,
+        "issues": 1,
+        "hash": "2ce36218e613fae0c0423f019d09e11b"
+      },
+      "backend\\tests\\unit\\test_pipeline_pinecone_metadata.py": {
+        "lines": 76,
+        "functions": 5,
+        "classes": 0,
+        "issues": 0,
+        "hash": "e84d09f3056d3c3af8909f171cf186fa"
+      },
+      "backend\\tests\\unit\\test_pipeline_transaction.py": {
+        "lines": 206,
+        "functions": 10,
+        "classes": 1,
+        "issues": 7,
+        "hash": "cc890ba85bebdf5188f52d93626bd14c"
+      },
+      "backend\\tests\\unit\\test_pipeline_treatment.py": {
+        "lines": 204,
+        "functions": 7,
+        "classes": 0,
+        "issues": 5,
+        "hash": "ed3f012615b4b3e0b31857e40235dffe"
+      },
+      "backend\\tests\\unit\\test_precedent_mapper.py": {
+        "lines": 137,
+        "functions": 6,
+        "classes": 1,
+        "issues": 5,
+        "hash": "1aea680174b8cf391d3c79138e3e1652"
+      },
+      "backend\\tests\\unit\\test_precedent_strength.py": {
+        "lines": 176,
+        "functions": 21,
+        "classes": 3,
+        "issues": 21,
+        "hash": "b733a1e6b4c9eb1761b423afc8364df0"
+      },
+      "backend\\tests\\unit\\test_provider_contracts.py": {
+        "lines": 117,
+        "functions": 8,
+        "classes": 6,
+        "issues": 6,
+        "hash": "0b016068b588016811b523b224416b8b"
+      },
+      "backend\\tests\\unit\\test_provider_switching.py": {
+        "lines": 104,
+        "functions": 6,
+        "classes": 2,
+        "issues": 16,
+        "hash": "c4e0aed0005d6343bcc6ae02179f01db"
+      },
+      "backend\\tests\\unit\\test_query_understanding.py": {
+        "lines": 158,
+        "functions": 13,
+        "classes": 5,
+        "issues": 12,
+        "hash": "67ffb61e57a74af4d530877a99d37ccb"
+      },
+      "backend\\tests\\unit\\test_rag.py": {
+        "lines": 423,
+        "functions": 36,
+        "classes": 9,
+        "issues": 21,
+        "hash": "1671c16dd3bb4c10c86fff50e8d5f50d"
+      },
+      "backend\\tests\\unit\\test_rag_context.py": {
+        "lines": 117,
+        "functions": 12,
+        "classes": 1,
+        "issues": 0,
+        "hash": "99a3256bf918eff7f076f656f02ce535"
+      },
+      "backend\\tests\\unit\\test_rag_treatment_graph.py": {
+        "lines": 50,
+        "functions": 4,
+        "classes": 1,
+        "issues": 8,
+        "hash": "e3c325503bb997b55e14ab4d17be58ad"
+      },
+      "backend\\tests\\unit\\test_rate_limiter.py": {
+        "lines": 81,
+        "functions": 11,
+        "classes": 2,
+        "issues": 11,
+        "hash": "2e5b285283667aac6c85b21517434065"
+      },
+      "backend\\tests\\unit\\test_rbac.py": {
+        "lines": 78,
+        "functions": 9,
+        "classes": 1,
+        "issues": 8,
+        "hash": "e148e9232b54ada6da03d67b4171b044"
+      },
+      "backend\\tests\\unit\\test_research_agent.py": {
+        "lines": 676,
+        "functions": 37,
+        "classes": 11,
+        "issues": 32,
+        "hash": "39db212bc77fa3bb0585745ba9cb665f"
+      },
+      "backend\\tests\\unit\\test_research_nodes.py": {
+        "lines": 830,
+        "functions": 58,
+        "classes": 11,
+        "issues": 42,
+        "hash": "b31e26d3e36cffd9093b4c030bf30b4d"
+      },
+      "backend\\tests\\unit\\test_research_v2_nodes.py": {
+        "lines": 1259,
+        "functions": 50,
+        "classes": 14,
+        "issues": 30,
+        "hash": "29f5c1adbf2748627eef12e8fac59872"
+      },
+      "backend\\tests\\unit\\test_research_v2_phase2.py": {
+        "lines": 533,
+        "functions": 41,
+        "classes": 11,
+        "issues": 27,
+        "hash": "1b96af4ae6a4e99e8aaf761b89b726d4"
+      },
+      "backend\\tests\\unit\\test_research_v2_phase3.py": {
+        "lines": 698,
+        "functions": 33,
+        "classes": 10,
+        "issues": 6,
+        "hash": "8ca348fce4ab334339f46d210fee07a5"
+      },
+      "backend\\tests\\unit\\test_research_v2_phase4.py": {
+        "lines": 1340,
+        "functions": 69,
+        "classes": 17,
+        "issues": 20,
+        "hash": "c28c5fcb05b0666606e81a67918f118e"
+      },
+      "backend\\tests\\unit\\test_research_v2_phase5.py": {
+        "lines": 931,
+        "functions": 67,
+        "classes": 15,
+        "issues": 69,
+        "hash": "dc18ca07a98d688f6dfa00dbdd02f138"
+      },
+      "backend\\tests\\unit\\test_routing_utils.py": {
+        "lines": 150,
+        "functions": 15,
+        "classes": 2,
+        "issues": 12,
+        "hash": "fbb9ebb53ebc0b7a3d7618537980170d"
+      },
+      "backend\\tests\\unit\\test_rrf.py": {
+        "lines": 96,
+        "functions": 8,
+        "classes": 1,
+        "issues": 0,
+        "hash": "26b327e1bf91007edf4b167f18cbc573"
+      },
+      "backend\\tests\\unit\\test_sanitizer.py": {
+        "lines": 94,
+        "functions": 19,
+        "classes": 3,
+        "issues": 38,
+        "hash": "0d0fc20ffd277a0338767d0697de008a"
+      },
+      "backend\\tests\\unit\\test_search_history_routes.py": {
+        "lines": 550,
+        "functions": 28,
+        "classes": 4,
+        "issues": 4,
+        "hash": "05aceae703c6910bbc11e8e4af696af5"
+      },
+      "backend\\tests\\unit\\test_search_pipeline_integration.py": {
+        "lines": 292,
+        "functions": 9,
+        "classes": 1,
+        "issues": 5,
+        "hash": "2bdfd0548687254e9bec97c3c2e706b0"
+      },
+      "backend\\tests\\unit\\test_search_routes.py": {
+        "lines": 332,
+        "functions": 19,
+        "classes": 4,
+        "issues": 8,
+        "hash": "9c588b6b47b337a515f627ec257bbc57"
+      },
+      "backend\\tests\\unit\\test_section_search.py": {
+        "lines": 14,
+        "functions": 2,
+        "classes": 1,
+        "issues": 3,
+        "hash": "db814814b30ed89ee34198b6358b3e52"
+      },
+      "backend\\tests\\unit\\test_statute_bidirectional.py": {
+        "lines": 124,
+        "functions": 17,
+        "classes": 3,
+        "issues": 17,
+        "hash": "156eca96c09db432dfd38231aca9bac4"
+      },
+      "backend\\tests\\unit\\test_statute_enrichment.py": {
+        "lines": 80,
+        "functions": 14,
+        "classes": 1,
+        "issues": 27,
+        "hash": "4d8a785c8267fbf6d1e8f6c4218cecc1"
+      },
+      "backend\\tests\\unit\\test_statute_expansion.py": {
+        "lines": 323,
+        "functions": 52,
+        "classes": 10,
+        "issues": 48,
+        "hash": "96ccc36344d98850ff548908e4106c77"
+      },
+      "backend\\tests\\unit\\test_strategy_graph.py": {
+        "lines": 377,
+        "functions": 31,
+        "classes": 5,
+        "issues": 24,
+        "hash": "d786b0d4e3b4f82d6aedbcccd2a8bd41"
+      },
+      "backend\\tests\\unit\\test_strategy_nodes.py": {
+        "lines": 974,
+        "functions": 46,
+        "classes": 12,
+        "issues": 47,
+        "hash": "c1440311707aa79afd173d848bda73b6"
+      },
+      "backend\\tests\\unit\\test_tavily_client.py": {
+        "lines": 107,
+        "functions": 10,
+        "classes": 1,
+        "issues": 7,
+        "hash": "e55b9ab09f91bf22810ffca72c75a352"
+      },
+      "backend\\tests\\unit\\test_translation.py": {
+        "lines": 155,
+        "functions": 12,
+        "classes": 1,
+        "issues": 24,
+        "hash": "08057aadafe45ccc81c54ae78163485a"
+      },
+      "backend\\tests\\unit\\test_treatment.py": {
+        "lines": 239,
+        "functions": 29,
+        "classes": 3,
+        "issues": 29,
+        "hash": "b6fe9c520168feb7c7f3ee3590760d20"
+      },
+      "backend\\tests\\unit\\test_treatment_citation_association.py": {
+        "lines": 122,
+        "functions": 6,
+        "classes": 1,
+        "issues": 6,
+        "hash": "46fefefe8b9f17cf679146c0ec08c731"
+      },
+      "backend\\tests\\unit\\test_tts_provider.py": {
+        "lines": 38,
+        "functions": 7,
+        "classes": 1,
+        "issues": 7,
+        "hash": "2ca9b6e4dcc1829ead019121a21114c2"
+      },
+      "backend\\tests\\unit\\test_vector_chunk_text.py": {
+        "lines": 278,
+        "functions": 24,
+        "classes": 7,
+        "issues": 8,
+        "hash": "1ee883f9fff33e9268e1e7d75551d81e"
+      },
+      "backend\\tests\\unit\\test_web_search_worker.py": {
+        "lines": 105,
+        "functions": 8,
+        "classes": 1,
+        "issues": 2,
+        "hash": "b349e72b8710e1e21f7a482e27e2f032"
+      },
+      "backend\\tests\\unit\\test_weighted_rrf.py": {
+        "lines": 148,
+        "functions": 9,
+        "classes": 2,
+        "issues": 0,
+        "hash": "4509f0f8df95316de7626bf1a8fc3120"
+      },
+      "case.json": {
+        "lines": 1,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "6e008e0411d4e57746065e69c42be293"
+      },
+      "cases_export.sql": {
+        "lines": 765077,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "dd43cb2a1fdec3c87650cf94667639d6"
+      },
+      "docker-compose.prod.yml": {
+        "lines": 128,
+        "functions": 0,
+        "classes": 0,
+        "issues": 1,
+        "hash": "56f2218010ace87412b31360ff960501"
+      },
+      "docker-compose.yml": {
+        "lines": 45,
+        "functions": 0,
+        "classes": 0,
+        "issues": 1,
+        "hash": "89f213caa776ad432950f99acaae713e"
+      },
+      "docs\\ARCHITECTURE.md": {
+        "lines": 2116,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "817d05ff09c963268f2263dbe9aba6a7"
+      },
+      "docs\\CLAUDE.md": {
+        "lines": 241,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "ef849086161b7252113404bde5926920"
+      },
+      "docs\\CURSOR_FOR_LAW.md": {
+        "lines": 396,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "565234d9c0ebf100d093e4fd4f3c6100"
+      },
+      "docs\\DATA_SOURCES.md": {
+        "lines": 358,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3f660dfb83f0c0c9d0a135a8d2f83cff"
+      },
+      "docs\\DECISIONS.md": {
+        "lines": 572,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3b90adc897392697ed4e378d8c28e9db"
+      },
+      "docs\\ENV_SETUP.md": {
+        "lines": 485,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "234201c322f44667781d8ae8d3e3a1a2"
+      },
+      "docs\\FRONTEND_ARCHITECTURE.md": {
+        "lines": 1044,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "6e02b05a48bd31c1414d76041874c494"
+      },
+      "docs\\GCP_DEPLOYMENT_CREDENTIALS.md": {
+        "lines": 69,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "1468fee11ac8a64ca9fec15f5116c18a"
+      },
+      "docs\\HLD.md": {
+        "lines": 2076,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "cf8586f102dafc4e337c4cf7e0d9fce7"
+      },
+      "docs\\LEGAL_DOMAIN.md": {
+        "lines": 343,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "156994dae7ac97e4cd1b7fff6875e389"
+      },
+      "docs\\LLD.md": {
+        "lines": 1194,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "571c2ba2e26f6c848ad94cc70111f8f5"
+      },
+      "docs\\PHASE_9_SCALABILITY_AUDIT.md": {
+        "lines": 154,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "65879aa79ac3ac2371322914d23a0dca"
+      },
+      "docs\\PHASE_PLAN.md": {
+        "lines": 780,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "f16f54e44d819da52758d813fdb5e59a"
+      },
+      "docs\\plans\\2026-03-07-comprehensive-roadmap-design.md": {
+        "lines": 601,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "e9d30b6adf5262e600a3da586de9ca75"
+      },
+      "docs\\plans\\2026-03-07-phase4-judge-analytics.md": {
+        "lines": 2487,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "efa01fe700f1a94693e6d9bd14bc5263"
+      },
+      "docs\\plans\\2026-03-07-phase5-doc-upload-audio-design.md": {
+        "lines": 321,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3dc110809a297bc0f5d69f57172fe6ad"
+      },
+      "docs\\plans\\2026-03-07-phase5-implementation.md": {
+        "lines": 2943,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "6bb147cc7230da6f26fad4895159b2e7"
+      },
+      "docs\\plans\\2026-03-07-phase6-agent-framework-design.md": {
+        "lines": 380,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "35d7cf6bf7d06a8e0b8045258fb0882c"
+      },
+      "docs\\plans\\2026-03-07-phase6-implementation.md": {
+        "lines": 1058,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "bfa96eb264f2ab3888888dbbba4cb8ee"
+      },
+      "docs\\plans\\2026-03-07-phase6.5-implementation.md": {
+        "lines": 2676,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "eca3a8d36a73918d270bed50919a60b5"
+      },
+      "docs\\plans\\2026-03-07-phase6.5-quality-excellence-design.md": {
+        "lines": 299,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3f4828e86b75d7d37f49008567afb8f9"
+      },
+      "docs\\plans\\2026-03-07-phase6.6-quality-overhaul.md": {
+        "lines": 1428,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3ebb6f6723fc90fa8d7842a9ba65862f"
+      },
+      "docs\\plans\\2026-03-07-quality-overhaul-design.md": {
+        "lines": 303,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "76b2918f8ccd7021316cdaf089e500b2"
+      },
+      "docs\\plans\\2026-03-07-security-quality-remediation.md": {
+        "lines": 2589,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "070eea3a86e99269c09643739a6a6413"
+      },
+      "docs\\plans\\2026-03-17-audit-fixes.md": {
+        "lines": 747,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "feabca3957cf3dc4c1ae611f582c10e2"
+      },
+      "docs\\plans\\2026-03-17-india-audit-fixes-implementation.md": {
+        "lines": 1112,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "080570f9d2cc4fb75a22d5a7041d8240"
+      },
+      "docs\\plans\\2026-03-17-india-specific-audit-fixes-design.md": {
+        "lines": 185,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "a5bc926ee6f8d528227c221838cfa8a6"
+      },
+      "docs\\plans\\2026-03-17-tech-debt-audit-fixes.md": {
+        "lines": 819,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "5a2f9a176d37f78d3f4d5a7f06cef983"
+      },
+      "docs\\plans\\2026-03-20-ik-api-full-optimization.md": {
+        "lines": 1069,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "fc97d82ce81ff600809f5adecfbe50cd"
+      },
+      "docs\\plans\\2026-03-20-ik-tavily-optimization.md": {
+        "lines": 1386,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "578e5239bbf22876cb0a8fbbccad30b7"
+      },
+      "docs\\plans\\2026-03-20-ingestion-v2-design.md": {
+        "lines": 352,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "088be9ab65e9ff2fc3726657f35c81d7"
+      },
+      "docs\\plans\\2026-03-20-ingestion-v2-plan.md": {
+        "lines": 1426,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "8d8c2c77aaded5197df60c24873b9b1a"
+      },
+      "docs\\plans\\2026-03-20-research-agent-v3-design.md": {
+        "lines": 598,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "2854d0aec67eafe8903818496fdeacc0"
+      },
+      "docs\\plans\\2026-03-20-research-agent-v3-plan.md": {
+        "lines": 1761,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "de2c8af5e43b30f9731fc6729b9d497c"
+      },
+      "docs\\plans\\2026-03-20-research-footnotes-panel.md": {
+        "lines": 1209,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "c5ac0fe5ae6b7662792ab2366d2f7a53"
+      },
+      "docs\\plans\\2026-03-20-research-pipeline-audit-fixes.md": {
+        "lines": 276,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "ef00a2f508f4a1507e3d84fceb482867"
+      },
+      "docs\\plans\\2026-03-21-ingestion-35k-checklist.md": {
+        "lines": 284,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "60c9cf9b964cb5b7342bc9d1e5d7e412"
+      },
+      "docs\\plans\\2026-03-21-ingestion-35k-hardening.md": {
+        "lines": 840,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "eb43ac326f66b39d8cc86b6ce6b17d7f"
+      },
+      "docs\\plans\\2026-03-21-ingestion-35k-prompt.md": {
+        "lines": 62,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "8ce71adba8c5768e05d4a5cd5a5755de"
+      },
+      "docs\\plans\\2026-03-21-pipeline-audit-v2-checklist.md": {
+        "lines": 191,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "7f264ec368e48307eb158009f4200244"
+      },
+      "docs\\plans\\2026-03-21-pipeline-audit-v2-fixes.md": {
+        "lines": 477,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "f38d3d7765e36facf25943603d7d0bb6"
+      },
+      "docs\\plans\\2026-03-21-pipeline-audit-v2-prompt.md": {
+        "lines": 72,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "9b1a424ce85c1e5039c1ddf639581d8d"
+      },
+      "docs\\plans\\2026-03-21-research-agent-perfect-10-plan.md": {
+        "lines": 460,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "0f36c6e19c8a348c00d49574b28fa359"
+      },
+      "docs\\plans\\2026-03-21-research-agent-perfect-10-prompt.md": {
+        "lines": 76,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d73d28739e803ba704688658c40f9523"
+      },
+      "docs\\plans\\2026-03-21-research-agent-perfect-10-tracker.md": {
+        "lines": 499,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "f60a42620717c85e07749d07f67dc2e1"
+      },
+      "docs\\plans\\2026-03-22-acts-cited-normalization-audit.md": {
+        "lines": 452,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "e21abeb180cad1acbf24a0d5f44be96b"
+      },
+      "docs\\plans\\2026-03-22-ingestion-pipeline-audit.md": {
+        "lines": 303,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "21d34897dce7a06e6a6c2f00b74cda04"
+      },
+      "docs\\plans\\2026-03-22-research-agent-10x-audit.md": {
+        "lines": 349,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "05ed72f1d7dfe909a00a6b66aad4ee6a"
+      },
+      "docs\\plans\\2026-03-22-research-agent-10x-fix-plan.md": {
+        "lines": 1198,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "f71c2c4ea09b5817364434fabda309d0"
+      },
+      "docs\\plans\\2026-03-22-research-ui-premium-overhaul.md": {
+        "lines": 269,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "4969d64c93c6aff2073b11d03565c970"
+      },
+      "docs\\plans\\2026-03-22-research-ui-premium-plan.md": {
+        "lines": 826,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "e4a768ad200d338169f9577925a4351d"
+      },
+      "docs\\plans\\2026-03-23-doc-update-prompt.md": {
+        "lines": 45,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "a7d72addbefd8011a1a9ac1240a7941d"
+      },
+      "docs\\plans\\2026-03-23-doc-update-tracker.md": {
+        "lines": 180,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3b242a90edbf5a28f3fa375e204186c3"
+      },
+      "docs\\plans\\2026-03-23-gemini-embedding-2-upgrade-design.md": {
+        "lines": 232,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "65dcd8c07607b9fb9f1225fb9c688a4f"
+      },
+      "docs\\plans\\2026-03-23-gemini-embedding-2-upgrade-plan.md": {
+        "lines": 696,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "792717b688a01530fd2d0724da9c4e21"
+      },
+      "docs\\plans\\2026-03-23-gemini-embedding-2-upgrade-tracker.md": {
+        "lines": 23,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "483779f16b8502191828b17240947a79"
+      },
+      "docs\\plans\\2026-03-23-ingestion-v3-refactor.md": {
+        "lines": 1042,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "ea86e277cd2a218c3c10fd34bdff1b9f"
+      },
+      "docs\\plans\\2026-03-24-batch-ingestion-design.md": {
+        "lines": 264,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "6534e2d4d8239056aed3950650f0df42"
+      },
+      "docs\\plans\\2026-03-24-batch-ingestion-plan.md": {
+        "lines": 1215,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "e5824dfe39385d76af017093431b3127"
+      },
+      "docs\\plans\\research-agent-v2-bible.md": {
+        "lines": 3217,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "53a9b9b7199fbe2fce7b3693edb72382"
+      },
+      "docs\\plans\\research-agent-v2-build-prompt.md": {
+        "lines": 69,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "352b43ab0c4d4aabe4a4717f256288a5"
+      },
+      "docs\\plans\\research-agent-v2-tracker.md": {
+        "lines": 367,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "abe7cd8a0820bfd4dd025e1c65316201"
+      },
+      "docs\\PRD.md": {
+        "lines": 841,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "0e8caa5b46c2e0089270a03b6bcb75f3"
+      },
+      "docs\\PRODUCTION_READINESS_AUDIT.md": {
+        "lines": 260,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d3a24db4c6dac8493d67237000beb287"
+      },
+      "docs\\PROMPT_LIBRARY.md": {
+        "lines": 1574,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "65a0280635690c9b166671e02665c09b"
+      },
+      "docs\\SECURITY_AUDIT.md": {
+        "lines": 338,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "bf4df27185ff6c130e6e9c1cd48be827"
+      },
+      "docs\\STRATEGY.md": {
+        "lines": 523,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "0aea9f188af6018cc36b48a20be8a732"
+      },
+      "docs\\TESTING_STRATEGY.md": {
+        "lines": 502,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "27a592b569f72f154f93962a5ddf1199"
+      },
+      "frontend\\components.json": {
+        "lines": 23,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "9d220183f9dc57492600d841853d7ec6"
+      },
+      "frontend\\next-env.d.ts": {
+        "lines": 6,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "d0f8375ae1199dc7acd3977fc33b78b8"
+      },
+      "frontend\\next.config.ts": {
+        "lines": 44,
+        "functions": 2,
+        "classes": 0,
+        "issues": 2,
+        "hash": "8c68c1836de0642694fb8d787a8a2af3"
+      },
+      "frontend\\package-lock.json": {
+        "lines": 15219,
+        "functions": 0,
+        "classes": 0,
+        "issues": 12,
+        "hash": "d6e45715452959baa5362d5d66e3d587"
+      },
+      "frontend\\package.json": {
+        "lines": 53,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "1ba3ae9c77c8b5c25b3ff7600113c86c"
+      },
+      "frontend\\pnpm-lock.yaml": {
+        "lines": 9616,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "29e00d0aacfb8029f4278927feae0c85"
+      },
+      "frontend\\README.md": {
+        "lines": 117,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "0131b44acc3d67177dbfe760f8958576"
+      },
+      "frontend\\src\\__tests__\\agent-components.test.tsx": {
+        "lines": 208,
+        "functions": 2,
+        "classes": 0,
+        "issues": 0,
+        "hash": "e8ee18aa8db55992cd6fec5ef6cb2867"
+      },
+      "frontend\\src\\__tests__\\agent-history-page.test.tsx": {
+        "lines": 287,
+        "functions": 2,
+        "classes": 0,
+        "issues": 0,
+        "hash": "5203509b803d55967c715652d4b27b96"
+      },
+      "frontend\\src\\__tests__\\agents-hub.test.tsx": {
+        "lines": 94,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3faf645c2e71c4711d2c8d64263e04ca"
+      },
+      "frontend\\src\\__tests__\\api-client.test.ts": {
+        "lines": 132,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "37e384b65d6572124d49d206a43bf30e"
+      },
+      "frontend\\src\\__tests__\\audio-player.test.tsx": {
+        "lines": 104,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "67a3b3cf49dd3dab434855d20dacd510"
+      },
+      "frontend\\src\\__tests__\\case-detail-page.test.tsx": {
+        "lines": 314,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "1a233d83f748d597cf371dab310527e2"
+      },
+      "frontend\\src\\__tests__\\case-prep-workspace.test.tsx": {
+        "lines": 74,
+        "functions": 1,
+        "classes": 0,
+        "issues": 1,
+        "hash": "eda373eaa01ab795c7cf850a99d67bb4"
+      },
+      "frontend\\src\\__tests__\\chat-page.test.tsx": {
+        "lines": 239,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "2e49f1c95fc9182f793e059fa8726fa4"
+      },
+      "frontend\\src\\__tests__\\courts-page.test.tsx": {
+        "lines": 108,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "bbec4963f82085838259fa494bb8b8b4"
+      },
+      "frontend\\src\\__tests__\\document-detail-page.test.tsx": {
+        "lines": 123,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "2989989fd3d7aff751e091ceadd3dcdd"
+      },
+      "frontend\\src\\__tests__\\drafting-agent-workspace.test.tsx": {
+        "lines": 366,
+        "functions": 0,
+        "classes": 0,
+        "issues": 1,
+        "hash": "cec05f683d83a1b3514521045c890d57"
+      },
+      "frontend\\src\\__tests__\\error-boundary.test.tsx": {
+        "lines": 85,
+        "functions": 3,
+        "classes": 0,
+        "issues": 0,
+        "hash": "c67eec30bc7b0ab790efbefaddb07287"
+      },
+      "frontend\\src\\__tests__\\footer.test.tsx": {
+        "lines": 39,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "8ed5032e80de630e77f2280d61007cf7"
+      },
+      "frontend\\src\\__tests__\\graph-page.test.tsx": {
+        "lines": 118,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "596ea3182883221c45e5d645c2e1faec"
+      },
+      "frontend\\src\\__tests__\\header.test.tsx": {
+        "lines": 97,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "fd4ad5023f9d9db9d87d85f136fe5a1f"
+      },
+      "frontend\\src\\__tests__\\home-page.test.tsx": {
+        "lines": 111,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "1f3f8b825c5a25b3cffb8b173233057d"
+      },
+      "frontend\\src\\__tests__\\i18n-integration.test.tsx": {
+        "lines": 338,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "01a191f9267865b4a5e3f4898c45b257"
+      },
+      "frontend\\src\\__tests__\\judge-compare-page.test.tsx": {
+        "lines": 153,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "fa58827ef76abbcd7b1ac9d1fb82221d"
+      },
+      "frontend\\src\\__tests__\\judge-profile-page.test.tsx": {
+        "lines": 222,
+        "functions": 2,
+        "classes": 0,
+        "issues": 0,
+        "hash": "eaf114758a3e6c5534c3e66de5fccc89"
+      },
+      "frontend\\src\\__tests__\\judges-page.test.tsx": {
+        "lines": 133,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "eb3e6bbbad9a35c4f0970380800905ec"
+      },
+      "frontend\\src\\__tests__\\legal-components.test.tsx": {
+        "lines": 118,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "2c154c4bd23a32603016073a8a1a2b80"
+      },
+      "frontend\\src\\__tests__\\login-page.test.tsx": {
+        "lines": 168,
+        "functions": 0,
+        "classes": 0,
+        "issues": 1,
+        "hash": "56739c2d59e0e4d17f59dd0cc97e2b7f"
+      },
+      "frontend\\src\\__tests__\\precedent-badge.test.tsx": {
+        "lines": 23,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "32de4c4dc176b9ff111bb8948a5ea53a"
+      },
+      "frontend\\src\\__tests__\\quality-components.test.tsx": {
+        "lines": 28,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "233ce9688adf3cdcf192c7a568507d3d"
+      },
+      "frontend\\src\\__tests__\\register-page.test.tsx": {
+        "lines": 218,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "be149750fd2e16dfe0158a7e2923d4e3"
+      },
+      "frontend\\src\\__tests__\\research-workspace.test.tsx": {
+        "lines": 63,
+        "functions": 1,
+        "classes": 0,
+        "issues": 1,
+        "hash": "c01e76048ab4d4bb7b28cadd8a1ba1c1"
+      },
+      "frontend\\src\\__tests__\\search-integration.test.tsx": {
+        "lines": 61,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "e60decadda0f48eff6adafa4230f377c"
+      },
+      "frontend\\src\\__tests__\\search-page.test.tsx": {
+        "lines": 337,
+        "functions": 2,
+        "classes": 0,
+        "issues": 0,
+        "hash": "049690f2c8bd18dac68021da6075ef0d"
+      },
+      "frontend\\src\\__tests__\\setup.tsx": {
+        "lines": 112,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "2a88ef5f0e5da6d18c6830411afd87d5"
+      },
+      "frontend\\src\\__tests__\\strategy-agent-workspace.test.tsx": {
+        "lines": 221,
+        "functions": 0,
+        "classes": 0,
+        "issues": 1,
+        "hash": "a9ba46166b783937255bf1e75b319237"
+      },
+      "frontend\\src\\__tests__\\test-utils.tsx": {
+        "lines": 20,
+        "functions": 1,
+        "classes": 0,
+        "issues": 1,
+        "hash": "300bb6cd077e11fac70fb7c65782a594"
+      },
+      "frontend\\src\\__tests__\\upload-page.test.tsx": {
+        "lines": 54,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3e8132a47f402a6fc15f63f6d5b84131"
+      },
+      "frontend\\src\\app\\about\\page.tsx": {
+        "lines": 108,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "25715a4536e6fd1ef912557fa175a61d"
+      },
+      "frontend\\src\\app\\agents\\case-prep\\page.tsx": {
+        "lines": 453,
+        "functions": 10,
+        "classes": 0,
+        "issues": 19,
+        "hash": "6fc1d97abb02e2b777cb1943de22a604"
+      },
+      "frontend\\src\\app\\agents\\drafting\\page.tsx": {
+        "lines": 624,
+        "functions": 17,
+        "classes": 0,
+        "issues": 21,
+        "hash": "54a3436c1da9c967a7300a7c95698c9c"
+      },
+      "frontend\\src\\app\\agents\\history\\page.tsx": {
+        "lines": 566,
+        "functions": 22,
+        "classes": 0,
+        "issues": 33,
+        "hash": "b074e9a688f11e1e5b350acbe0f26022"
+      },
+      "frontend\\src\\app\\agents\\page.tsx": {
+        "lines": 89,
+        "functions": 2,
+        "classes": 0,
+        "issues": 1,
+        "hash": "2eb6f7bff622053437f5cfc96fa7d98b"
+      },
+      "frontend\\src\\app\\agents\\research\\error.tsx": {
+        "lines": 22,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3e9da804c3510b9350c2f70834ba7c5c"
+      },
+      "frontend\\src\\app\\agents\\research\\page.tsx": {
+        "lines": 1126,
+        "functions": 51,
+        "classes": 0,
+        "issues": 53,
+        "hash": "cc03ad174ae6abe21566d77d099621f6"
+      },
+      "frontend\\src\\app\\agents\\strategy\\page.tsx": {
+        "lines": 429,
+        "functions": 7,
+        "classes": 0,
+        "issues": 16,
+        "hash": "452eb61e157278c84d7a5d3f7f9bd559"
+      },
+      "frontend\\src\\app\\case\\[id]\\error.tsx": {
+        "lines": 22,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "f9c04f21fffd9041f49d0eaeb656d2e8"
+      },
+      "frontend\\src\\app\\case\\[id]\\loading.tsx": {
+        "lines": 9,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "faa04692a399c94abe7cb744ec253e16"
+      },
+      "frontend\\src\\app\\case\\[id]\\page.tsx": {
+        "lines": 483,
+        "functions": 6,
+        "classes": 0,
+        "issues": 22,
+        "hash": "578869f3e210354f9852cc20817a78be"
+      },
+      "frontend\\src\\app\\chat\\page.tsx": {
+        "lines": 842,
+        "functions": 40,
+        "classes": 0,
+        "issues": 32,
+        "hash": "a002f84461f7597b3449cd4354c17dab"
+      },
+      "frontend\\src\\app\\courts\\page.tsx": {
+        "lines": 235,
+        "functions": 5,
+        "classes": 0,
+        "issues": 5,
+        "hash": "992411e6655da452847cfc2f63e1815f"
+      },
+      "frontend\\src\\app\\documents\\[id]\\page.tsx": {
+        "lines": 418,
+        "functions": 19,
+        "classes": 0,
+        "issues": 17,
+        "hash": "68592666688e71ba587120e70d6bc5d2"
+      },
+      "frontend\\src\\app\\documents\\page.tsx": {
+        "lines": 182,
+        "functions": 9,
+        "classes": 0,
+        "issues": 6,
+        "hash": "44f41c212ae0938eb69e69810a6e7b5e"
+      },
+      "frontend\\src\\app\\globals.css": {
+        "lines": 166,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "454fe02107ae72a2da31357928e50458"
+      },
+      "frontend\\src\\app\\graph\\page.tsx": {
+        "lines": 447,
+        "functions": 9,
+        "classes": 0,
+        "issues": 18,
+        "hash": "ef26b8eb6e7eb2d0e79a9b38c42f8cc9"
+      },
+      "frontend\\src\\app\\judge\\[name]\\error.tsx": {
+        "lines": 22,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "a537e046ded4e9653d7b62da626e6f8c"
+      },
+      "frontend\\src\\app\\judge\\[name]\\loading.tsx": {
+        "lines": 9,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "faa04692a399c94abe7cb744ec253e16"
+      },
+      "frontend\\src\\app\\judge\\[name]\\page.tsx": {
+        "lines": 351,
+        "functions": 3,
+        "classes": 0,
+        "issues": 6,
+        "hash": "3a70a81da30b7410b60881ec8606e12d"
+      },
+      "frontend\\src\\app\\judges\\compare\\page.tsx": {
+        "lines": 367,
+        "functions": 9,
+        "classes": 0,
+        "issues": 8,
+        "hash": "c6d202deb1e4235e50d708838de5f98a"
+      },
+      "frontend\\src\\app\\judges\\page.tsx": {
+        "lines": 178,
+        "functions": 5,
+        "classes": 0,
+        "issues": 6,
+        "hash": "09bcf7b3080d5a53768aadd5ef4a443f"
+      },
+      "frontend\\src\\app\\layout.tsx": {
+        "lines": 64,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "70f64df69b3c93f44eef9d4868f6507c"
+      },
+      "frontend\\src\\app\\login\\page.tsx": {
+        "lines": 117,
+        "functions": 6,
+        "classes": 0,
+        "issues": 6,
+        "hash": "4a80c39629a43d7eff3c6a851eb8e93e"
+      },
+      "frontend\\src\\app\\page.tsx": {
+        "lines": 340,
+        "functions": 3,
+        "classes": 0,
+        "issues": 1,
+        "hash": "bc6a7f29a36a4f28559fcd6aa79ab027"
+      },
+      "frontend\\src\\app\\privacy\\page.tsx": {
+        "lines": 136,
+        "functions": 1,
+        "classes": 0,
+        "issues": 2,
+        "hash": "ca5adf2f5c34bc038d52982b629b62ae"
+      },
+      "frontend\\src\\app\\providers.tsx": {
+        "lines": 8,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "e12408cac4c668f84af3ca6c7c4146ce"
+      },
+      "frontend\\src\\app\\register\\page.tsx": {
+        "lines": 133,
+        "functions": 5,
+        "classes": 0,
+        "issues": 7,
+        "hash": "7c2f71a294abcf1a49eef6e26522f6a1"
+      },
+      "frontend\\src\\app\\robots.ts": {
+        "lines": 11,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "7cc9d95c3cf386ecd45bf67cc34445bb"
+      },
+      "frontend\\src\\app\\search\\error.tsx": {
+        "lines": 22,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "f75b6ee5c9ee25233acf7c522fb4c94a"
+      },
+      "frontend\\src\\app\\search\\loading.tsx": {
+        "lines": 9,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "faa04692a399c94abe7cb744ec253e16"
+      },
+      "frontend\\src\\app\\search\\page.tsx": {
+        "lines": 641,
+        "functions": 20,
+        "classes": 0,
+        "issues": 33,
+        "hash": "d985a97c6b0f5fac25893863db7a69dd"
+      },
+      "frontend\\src\\app\\sitemap.ts": {
+        "lines": 11,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "f855f24bc2861d9baae11e4194728202"
+      },
+      "frontend\\src\\app\\terms\\page.tsx": {
+        "lines": 165,
+        "functions": 1,
+        "classes": 0,
+        "issues": 4,
+        "hash": "e4c80426945ee316315597bf0b07eb66"
+      },
+      "frontend\\src\\app\\upload\\page.tsx": {
+        "lines": 109,
+        "functions": 4,
+        "classes": 0,
+        "issues": 2,
+        "hash": "0196e70b7cf0332d77277d5d9a1379e0"
+      },
+      "frontend\\src\\components\\__tests__\\footnote-list-item.test.tsx": {
+        "lines": 92,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "2bcba23d268d89db8177b3ec6d1a995b"
+      },
+      "frontend\\src\\components\\__tests__\\footnotes-panel.test.tsx": {
+        "lines": 109,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "f5b0228ec311fcab919c3cb2d1888ce6"
+      },
+      "frontend\\src\\components\\agent-checkpoint-prompt.tsx": {
+        "lines": 219,
+        "functions": 9,
+        "classes": 0,
+        "issues": 10,
+        "hash": "759b776c0e883f6895982c17a8f3f0a9"
+      },
+      "frontend\\src\\components\\agent-hub-card.tsx": {
+        "lines": 44,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "40de12667243af463ad7bfb6081f6c93"
+      },
+      "frontend\\src\\components\\agent-memo-viewer.tsx": {
+        "lines": 583,
+        "functions": 27,
+        "classes": 0,
+        "issues": 36,
+        "hash": "86c4c2864704d3cec27995b7139f2bfd"
+      },
+      "frontend\\src\\components\\agent-step-timeline.tsx": {
+        "lines": 104,
+        "functions": 3,
+        "classes": 0,
+        "issues": 9,
+        "hash": "253d70703aec5c3f91fa61efed1a8e7d"
+      },
+      "frontend\\src\\components\\agents\\AgentFollowUpInput.tsx": {
+        "lines": 79,
+        "functions": 4,
+        "classes": 0,
+        "issues": 2,
+        "hash": "ab236aab57a0ef890cc1c66e6366afbe"
+      },
+      "frontend\\src\\components\\agents\\AgentFollowUpThread.tsx": {
+        "lines": 155,
+        "functions": 4,
+        "classes": 0,
+        "issues": 6,
+        "hash": "a21efc8ba806c716ac109e118363b9b2"
+      },
+      "frontend\\src\\components\\agents\\AgentSessionSidebar.tsx": {
+        "lines": 121,
+        "functions": 1,
+        "classes": 0,
+        "issues": 2,
+        "hash": "95b45e9fa858fea09361d34e8c73b109"
+      },
+      "frontend\\src\\components\\audio-player.tsx": {
+        "lines": 344,
+        "functions": 25,
+        "classes": 0,
+        "issues": 11,
+        "hash": "cf3f8c9044088ecefb277b42b3ba6c19"
+      },
+      "frontend\\src\\components\\bench-strength.tsx": {
+        "lines": 35,
+        "functions": 2,
+        "classes": 0,
+        "issues": 1,
+        "hash": "d8525a4e97e3e98d52f0e00e056ddd86"
+      },
+      "frontend\\src\\components\\confidence-meter.tsx": {
+        "lines": 38,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "c8f9bd34775dc9d00475f897baa4c2a9"
+      },
+      "frontend\\src\\components\\cookie-consent.tsx": {
+        "lines": 51,
+        "functions": 3,
+        "classes": 0,
+        "issues": 4,
+        "hash": "ab4135889de97e4742370ba3492c6150"
+      },
+      "frontend\\src\\components\\draft-section-viewer.tsx": {
+        "lines": 178,
+        "functions": 7,
+        "classes": 0,
+        "issues": 3,
+        "hash": "3ba982ec5c6fb1ee162a6edd5faa5382"
+      },
+      "frontend\\src\\components\\equivalent-citations.tsx": {
+        "lines": 76,
+        "functions": 5,
+        "classes": 0,
+        "issues": 5,
+        "hash": "d9b694a3145918ff1fd01e78c6accde7"
+      },
+      "frontend\\src\\components\\error-boundary.tsx": {
+        "lines": 35,
+        "functions": 4,
+        "classes": 1,
+        "issues": 1,
+        "hash": "a64b129c2a5a52cab9a2fd4de3b17afb"
+      },
+      "frontend\\src\\components\\file-upload.tsx": {
+        "lines": 130,
+        "functions": 5,
+        "classes": 0,
+        "issues": 3,
+        "hash": "58fe4d33afecda15c2beadd43f2c5d82"
+      },
+      "frontend\\src\\components\\footer.tsx": {
+        "lines": 45,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "7734d4bd800c5b916117a44c53a217fc"
+      },
+      "frontend\\src\\components\\footnote-list-item.tsx": {
+        "lines": 123,
+        "functions": 3,
+        "classes": 0,
+        "issues": 2,
+        "hash": "2259016df90e96350b14de247a6e856c"
+      },
+      "frontend\\src\\components\\footnote-preview.tsx": {
+        "lines": 402,
+        "functions": 4,
+        "classes": 0,
+        "issues": 4,
+        "hash": "078e165e4bb702f6cdf592ec978c825e"
+      },
+      "frontend\\src\\components\\footnotes-panel.tsx": {
+        "lines": 194,
+        "functions": 5,
+        "classes": 0,
+        "issues": 11,
+        "hash": "b7a23216f1e9375498cbb8dfca9738da"
+      },
+      "frontend\\src\\components\\header.tsx": {
+        "lines": 191,
+        "functions": 5,
+        "classes": 0,
+        "issues": 7,
+        "hash": "82d16d03c63bad581f120d34f56f3092"
+      },
+      "frontend\\src\\components\\legal-disclaimer.tsx": {
+        "lines": 23,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "c659311c922fd8b0584d8a5cfcf927c3"
+      },
+      "frontend\\src\\components\\pdf-viewer.tsx": {
+        "lines": 29,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "c4732e363e108f56c2670ff1f09f2378"
+      },
+      "frontend\\src\\components\\plan-review.tsx": {
+        "lines": 456,
+        "functions": 5,
+        "classes": 0,
+        "issues": 15,
+        "hash": "d4a5c78cdba678fcbaabb6ab55214a02"
+      },
+      "frontend\\src\\components\\precedent-badge.tsx": {
+        "lines": 48,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "4a1ff781896f7f7d56b8b6abc9ed9ade"
+      },
+      "frontend\\src\\components\\processing-status.tsx": {
+        "lines": 93,
+        "functions": 5,
+        "classes": 0,
+        "issues": 4,
+        "hash": "ed622feab225c9067e7d38049614a5c0"
+      },
+      "frontend\\src\\components\\research-audit-trail.tsx": {
+        "lines": 71,
+        "functions": 1,
+        "classes": 0,
+        "issues": 3,
+        "hash": "3730aa07dfa1146533b145a9de31a2e9"
+      },
+      "frontend\\src\\components\\research-process-panel.tsx": {
+        "lines": 95,
+        "functions": 3,
+        "classes": 0,
+        "issues": 5,
+        "hash": "bb59120e402b09a2cd1c2d94fb3173a6"
+      },
+      "frontend\\src\\components\\research-progress-bar.tsx": {
+        "lines": 138,
+        "functions": 8,
+        "classes": 0,
+        "issues": 4,
+        "hash": "4960d9d5b1c1276544458769ee299035"
+      },
+      "frontend\\src\\components\\search\\SearchHistoryDropdown.tsx": {
+        "lines": 173,
+        "functions": 3,
+        "classes": 0,
+        "issues": 6,
+        "hash": "19e31d7be0d28992cb28013d0be4a4b9"
+      },
+      "frontend\\src\\components\\section-filter.tsx": {
+        "lines": 59,
+        "functions": 1,
+        "classes": 0,
+        "issues": 1,
+        "hash": "f25fb48d6b106d89d1e5a0dfe9bfeebb"
+      },
+      "frontend\\src\\components\\skeleton.tsx": {
+        "lines": 39,
+        "functions": 3,
+        "classes": 0,
+        "issues": 1,
+        "hash": "057f5a6b41a8a2b5b005b2c7bfda9740"
+      },
+      "frontend\\src\\components\\ui\\badge.tsx": {
+        "lines": 48,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "8510911fff59be294d64dbfc67f5c710"
+      },
+      "frontend\\src\\components\\ui\\button.tsx": {
+        "lines": 64,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "5eb5c23dfc552fe75b9beeffacede350"
+      },
+      "frontend\\src\\components\\ui\\card.tsx": {
+        "lines": 67,
+        "functions": 5,
+        "classes": 0,
+        "issues": 0,
+        "hash": "54e0b44b54771ff1ce36622d1971c64d"
+      },
+      "frontend\\src\\components\\ui\\dropdown-menu.tsx": {
+        "lines": 52,
+        "functions": 2,
+        "classes": 0,
+        "issues": 0,
+        "hash": "1294d243a69215cc728bf0413539718f"
+      },
+      "frontend\\src\\components\\ui\\hover-card.tsx": {
+        "lines": 51,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3dd2d6a2473cfc9619310e7c127760e5"
+      },
+      "frontend\\src\\components\\ui\\input.tsx": {
+        "lines": 21,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "186052fef4d6a678824a3ac70ec3bdec"
+      },
+      "frontend\\src\\components\\ui\\scroll-area.tsx": {
+        "lines": 52,
+        "functions": 0,
+        "classes": 0,
+        "issues": 2,
+        "hash": "5fd5663e49c8fbb08bbeae8fce367275"
+      },
+      "frontend\\src\\components\\ui\\select.tsx": {
+        "lines": 190,
+        "functions": 0,
+        "classes": 0,
+        "issues": 2,
+        "hash": "8f59eda15860f917b57c8c427e6a6960"
+      },
+      "frontend\\src\\components\\ui\\separator.tsx": {
+        "lines": 28,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "31309c8fad1e9a91db2a4bdfb4988b45"
+      },
+      "frontend\\src\\components\\ui\\sheet.tsx": {
+        "lines": 163,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "f078f27af1340f398c366d86b26a8b0f"
+      },
+      "frontend\\src\\components\\ui\\tabs.tsx": {
+        "lines": 91,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "3db2474e4c66b1e544bb514bf1024612"
+      },
+      "frontend\\src\\components\\ui\\textarea.tsx": {
+        "lines": 20,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "9430c54d4acdcba095ac49ba876d7d14"
+      },
+      "frontend\\src\\components\\ui\\tooltip.tsx": {
+        "lines": 60,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "4589b685fe2bc552d3b8f7132b315e16"
+      },
+      "frontend\\src\\components\\verification-banner.tsx": {
+        "lines": 36,
+        "functions": 1,
+        "classes": 0,
+        "issues": 2,
+        "hash": "32c412ac8bfa6f645a78585f5afd1d82"
+      },
+      "frontend\\src\\i18n\\request.ts": {
+        "lines": 13,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "c5b8b9f472bb5554738c3544e92a7ff1"
+      },
+      "frontend\\src\\lib\\api.ts": {
+        "lines": 1050,
+        "functions": 84,
+        "classes": 1,
+        "issues": 39,
+        "hash": "2aad7acd70586b834ffad680f28db4a0"
+      },
+      "frontend\\src\\lib\\auth-context.tsx": {
+        "lines": 145,
+        "functions": 15,
+        "classes": 0,
+        "issues": 5,
+        "hash": "837e44296ed6c5de154619445b6d90b9"
+      },
+      "frontend\\src\\lib\\types.ts": {
+        "lines": 550,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "04691dab0d06881f5e8c4f4950a98f94"
+      },
+      "frontend\\src\\lib\\utils.ts": {
+        "lines": 6,
+        "functions": 1,
+        "classes": 0,
+        "issues": 0,
+        "hash": "5a6fd53fdcf2be529e9cc0b718fde352"
+      },
+      "frontend\\src\\messages\\en.json": {
+        "lines": 73,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "aa3e3b50e4de97f6e97d6ef90429002e"
+      },
+      "frontend\\src\\messages\\hi.json": {
+        "lines": 73,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "e5acd223027d4b245ee39a826821f5cb"
+      },
+      "frontend\\src\\middleware.ts": {
+        "lines": 52,
+        "functions": 1,
+        "classes": 0,
+        "issues": 1,
+        "hash": "90b0dd4a6b8c54c99867857e2d95d4da"
+      },
+      "frontend\\tsconfig.json": {
+        "lines": 34,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "ee17fd1c97c735e9f3564e3f5251f125"
+      },
+      "frontend\\vitest.config.ts": {
+        "lines": 19,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "8d57e75e0db6d941ea96659372d20226"
+      },
+      "ralph_loop_config.json": {
+        "lines": 41,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "af28414d8c2cb292efa23c1d6548a684"
+      },
+      "RALPH_LOOP_README.md": {
+        "lines": 164,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "52ba73a0f681d886fae0360d729f5fda"
+      },
+      "ralph_loop_runner.sh": {
+        "lines": 142,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "96069d80da888a97f5329ff14841dc2d"
+      },
+      "ralph_loop_scanner.py": {
+        "lines": 1087,
+        "functions": 40,
+        "classes": 6,
+        "issues": 45,
+        "hash": "03a65cca57ed72e1e7703fd846e80efc"
+      },
+      "README.md": {
+        "lines": 269,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "4d339ed9272060f6376c587736648a97"
+      },
+      "s2.json": {
+        "lines": 1,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "556b524bb4648aee915c6f52f0f58e23"
+      },
+      "scripts\\cloud_deploy.sh": {
+        "lines": 59,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "a030da43151aaa2d27be6699cd4e391d"
+      },
+      "scripts\\deploy.sh": {
+        "lines": 170,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "54049c08e735808256d5a9fa6384ad65"
+      },
+      "scripts\\setup-secrets.sh": {
+        "lines": 96,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "1c2aeb32b47c1c69a1ad9a1eba39273e"
+      },
+      "search_result.json": {
+        "lines": 1,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "01f914e584c57a39611c622a15cf63a8"
+      },
+      "suggest.json": {
+        "lines": 1,
+        "functions": 0,
+        "classes": 0,
+        "issues": 0,
+        "hash": "bdd3b2cc2469c4035cd69fb46bbd5704"
+      }
+    },
+    "duration_seconds": 4.81
+  }
+}

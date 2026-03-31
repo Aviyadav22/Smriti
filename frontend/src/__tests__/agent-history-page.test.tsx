@@ -39,12 +39,16 @@ vi.mock("@/lib/auth-context", () => ({
 }));
 
 const getAgentExecutionsMock = vi.fn();
+const getAgentSessionsMock = vi.fn();
+const deleteAgentSessionMock = vi.fn();
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return {
     ...actual,
     getAgentExecutions: (...args: unknown[]) => getAgentExecutionsMock(...args),
+    getAgentSessions: (...args: unknown[]) => getAgentSessionsMock(...args),
+    deleteAgentSession: (...args: unknown[]) => deleteAgentSessionMock(...args),
     loadTokens: vi.fn(),
     getAccessToken: () => "test-token",
   };
@@ -74,6 +78,16 @@ function makeExecution(overrides: Partial<AgentExecution> = {}): AgentExecution 
   };
 }
 
+function setupDefaultMocks() {
+  getAgentSessionsMock.mockResolvedValue({ sessions: [], total: 0 });
+  getAgentExecutionsMock.mockResolvedValue({
+    executions: [],
+    total: 0,
+    page: 1,
+    page_size: 20,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -82,9 +96,50 @@ describe("AgentHistoryPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsAuthenticated = true;
+    setupDefaultMocks();
   });
 
-  it("renders execution history list", async () => {
+  it("defaults to Sessions tab and shows empty state", async () => {
+    renderWithProviders(<AgentHistoryPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/No agent sessions yet/),
+      ).toBeInTheDocument();
+    });
+
+    // Sessions tab should be active
+    const sessionsTab = screen.getByRole("button", { name: /Sessions/i });
+    expect(sessionsTab).toBeInTheDocument();
+  });
+
+  it("shows sessions list in Sessions tab", async () => {
+    getAgentSessionsMock.mockResolvedValue({
+      sessions: [
+        {
+          id: "s1",
+          agent_type: "research",
+          title: "Article 21 research",
+          created_at: "2026-03-01T10:00:00Z",
+          updated_at: "2026-03-01T10:05:00Z",
+          execution_count: 2,
+          message_count: 4,
+        },
+      ],
+      total: 1,
+    });
+
+    renderWithProviders(<AgentHistoryPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Article 21 research")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("4 messages")).toBeInTheDocument();
+  });
+
+  it("switches to Executions tab and shows execution list", async () => {
+    const user = userEvent.setup();
     const executions = [
       makeExecution({ id: "exec-1", input_data: { query: "Article 21 privacy" } }),
       makeExecution({ id: "exec-2", agent_type: "case_prep", input_data: { query: "Land acquisition" } }),
@@ -98,15 +153,19 @@ describe("AgentHistoryPage", () => {
 
     renderWithProviders(<AgentHistoryPage />);
 
+    // Switch to Executions tab
+    const execTab = screen.getByRole("button", { name: /Executions/i });
+    await user.click(execTab);
+
     await waitFor(() => {
-      expect(screen.getByText("Executions")).toBeInTheDocument();
+      expect(screen.getByText("Article 21 privacy")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Article 21 privacy")).toBeInTheDocument();
     expect(screen.getByText("Land acquisition")).toBeInTheDocument();
   });
 
   it("shows status badges for running, completed, and failed", async () => {
+    const user = userEvent.setup();
     const executions = [
       makeExecution({ id: "e1", status: "running", result_data: null }),
       makeExecution({ id: "e2", status: "completed" }),
@@ -121,6 +180,9 @@ describe("AgentHistoryPage", () => {
 
     renderWithProviders(<AgentHistoryPage />);
 
+    // Switch to Executions tab
+    await user.click(screen.getByRole("button", { name: /Executions/i }));
+
     await waitFor(() => {
       expect(screen.getByText("running")).toBeInTheDocument();
     });
@@ -132,7 +194,6 @@ describe("AgentHistoryPage", () => {
   it("pagination works — next/prev buttons call API", async () => {
     const user = userEvent.setup();
 
-    // First page
     getAgentExecutionsMock.mockResolvedValueOnce({
       executions: [makeExecution({ id: "e1", input_data: { query: "Page 1 query" } })],
       total: 40,
@@ -141,6 +202,9 @@ describe("AgentHistoryPage", () => {
     });
 
     renderWithProviders(<AgentHistoryPage />);
+
+    // Switch to Executions tab
+    await user.click(screen.getByRole("button", { name: /Executions/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 query")).toBeInTheDocument();
@@ -182,6 +246,9 @@ describe("AgentHistoryPage", () => {
 
     renderWithProviders(<AgentHistoryPage />);
 
+    // Switch to Executions tab
+    await user.click(screen.getByRole("button", { name: /Executions/i }));
+
     await waitFor(() => {
       expect(screen.getByText("View Results")).toBeInTheDocument();
     });
@@ -193,15 +260,13 @@ describe("AgentHistoryPage", () => {
     });
   });
 
-  it("shows empty state when no executions", async () => {
-    getAgentExecutionsMock.mockResolvedValue({
-      executions: [],
-      total: 0,
-      page: 1,
-      page_size: 20,
-    });
+  it("shows empty state in Executions tab when no executions", async () => {
+    const user = userEvent.setup();
 
     renderWithProviders(<AgentHistoryPage />);
+
+    // Switch to Executions tab
+    await user.click(screen.getByRole("button", { name: /Executions/i }));
 
     await waitFor(() => {
       expect(

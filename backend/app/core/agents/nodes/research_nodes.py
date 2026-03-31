@@ -27,10 +27,12 @@ from app.core.agents.nodes.common import (
     deduplicate_with_diversity,
     detect_overruled_cases,
     enrich_results_with_ratio,
+    expand_passages_from_full_text,
     format_community_summaries,
     format_extracted_passages,
     format_search_results_for_llm,
     format_search_results_for_llm_extended,
+    is_valid_uuid,
     parallel_hybrid_search,
     safe_json_parse_list,
     verify_memo_citations,
@@ -78,6 +80,7 @@ from app.core.legal.prompts import (
     RESEARCH_WORKER_COT_SYSTEM,
     SPECULATIVE_DRAFT_SYSTEM,
     SPECULATIVE_MERGE_SYSTEM,
+    SYNTHESIS_RETRY_SYSTEM,
 )
 from app.security.sanitizer import sanitize_search_query
 
@@ -103,7 +106,9 @@ def emit_status(event_type: str, data: dict) -> dict:
 # Patterns that indicate a degenerate/looping LLM refusal
 _REFUSAL_PATTERNS = re.compile(
     r"(I am unable to provide|I cannot provide|I'm sorry.*unable|"
-    r"I can provide a comprehensive|cannot fulfill|I am not able to)",
+    r"I can provide a comprehensive|cannot fulfill|I am not able to|"
+    r"I cannot create content of that nature|protecting children|"
+    r"I'm not able to assist|I cannot assist with)",
     re.IGNORECASE,
 )
 
@@ -129,6 +134,43 @@ def _is_degenerate_output(text: str, min_useful_length: int = 200) -> bool:
             chunk = sample[:window_size]
             if sample.count(chunk) >= 5:
                 return True
+    # Check alphabetic ratio — legal memos should be >25% letters
+    # Dash-heavy gibberish output typically has <5% alpha chars
+    if len(text) > 300:
+        alpha_count = sum(1 for c in text if c.isalpha())
+        if alpha_count / len(text) < 0.25:
+            return True
+    # Check unique character diversity — normal prose uses 40+ unique chars
+    # Gibberish (dashes, pipes, newlines) uses very few unique chars
+    if len(text) > 300 and len(set(text)) < 15:
+        return True
+    # Check word density — a 300-char memo should have at least 20 words
+    word_count = len(text.split())
+    min_words = max(20, min_useful_length // 15)
+    if word_count < min_words:
+        return True
+    return False
+
+
+def _is_truncated_output(text: str) -> bool:
+    """Detect if memo was truncated mid-generation.
+
+    Only flags genuinely truncated output (mid-sentence cutoff).  Does NOT
+    check for "Disclaimer" because the LLM frequently omits it — that would
+    cause a redundant 24K-token retry on every single memo.
+    """
+    if not text:
+        return True
+    stripped = text.rstrip()
+    if not stripped:
+        return True
+    # Check if text ends mid-sentence (no terminal punctuation at all)
+    if stripped[-1] not in '.!?*\n-\u2014)#':
+        # Double-check: if the memo has reasonable structure (headings, sections)
+        # and is long enough, it's likely complete even without a period at the end
+        if len(stripped) > 2000 and ("##" in stripped[-2000:]):
+            return False
+        return True
     return False
 
 
@@ -155,8 +197,12 @@ async def classify_query_node(
             output_schema=RESEARCH_CLASSIFY_SCHEMA,
         )
     except Exception as e:
-        logger.warning("LLM call failed in classify_query_node: %s", e)
-        return {"error": f"Failed to classify query: {e!s}"}
+        logger.warning("LLM call failed in classify_query_node: %s — using default classification", e)
+        classification = {
+            "topic": "general",
+            "complexity": "complex",
+            "entities": [],
+        }
 
     # Extract target court/bench from classification, falling back to defaults
     result: dict = {"messages": [{"type": "classification", "data": classification}]}
@@ -712,8 +758,12 @@ async def plan_research_node(
             output_schema=RESEARCH_PLAN_SCHEMA,
         )
     except Exception as exc:
-        logger.warning("Research planning failed: %s", exc)
-        return {"error": f"Failed to create research plan: {exc}"}
+        logger.warning("Research planning failed: %s — creating fallback plan", exc)
+        # Fallback: create a single case_law task with the original query
+        fallback_query = state.get("rewritten_query") or state["query"]
+        result = {"research_tasks": [
+            {"task_type": "case_law", "nl_query": fallback_query, "rationale": "Fallback after planning failure"},
+        ]}
 
     tasks: list[ResearchTask] = []
     for raw_task in result.get("research_tasks", []):
@@ -1178,6 +1228,18 @@ async def evaluate_and_extract_node(
         if r.get("case_id") not in incorrect_ids
     ]
 
+    # Post-CRAG passage expansion: fetch full_text from PostgreSQL only for
+    # surviving results (typically 5-10) and extract longer passages around
+    # the matched chunk.  This gives the synthesis stage quotable text instead
+    # of the 2000-char Pinecone snippet.
+    if filtered_search_results and db:
+        try:
+            filtered_search_results = await expand_passages_from_full_text(
+                filtered_search_results, db, passage_window=5000,
+            )
+        except Exception:
+            logger.warning("Post-CRAG passage expansion failed", exc_info=True)
+
     return {
         "relevance_scores": relevance_scores,
         "extracted_passages": extracted_passages,
@@ -1513,10 +1575,11 @@ async def speculative_synthesis_with_contradictions_node(
     flash_llm: LLMProvider,
     stream_callback: Callable[[str], Any] | None = None,
 ) -> dict:
-    """Speculative RAG: 3x Flash drafts → Pro verification/merge/contradiction-detection.
+    """Speculative RAG: 3x Pro drafts → Pro verification/merge/contradiction-detection.
 
     [S1] Contradictions detected inside Pro merge (no separate Pro call).
     [S5] Pro output streamed to frontend via stream_callback.
+    Note: All drafts use Pro model for legal reasoning quality.
     """
     # Use search_results (post-evaluation, filtered & deduplicated) instead of
     # raw worker_results (which accumulates via operator.add across dispatch cycles).
@@ -1610,7 +1673,7 @@ async def speculative_synthesis_with_contradictions_node(
     ) -> SynthesisDraft:
         strategy_hint = _STRATEGY_HINTS.get(strategy_name, f"Focus on {strategy_name}.")
         formatted_evidence = format_search_results_for_llm_extended(evidence_subset)
-        memo = await flash_llm.generate(
+        memo = await llm.generate(
             prompt=RESEARCH_SYNTHESIZE_USER.format(
                 query=shared_context["query"],
                 evidence=formatted_evidence,
@@ -1621,7 +1684,7 @@ async def speculative_synthesis_with_contradictions_node(
             ),
             system=SPECULATIVE_DRAFT_SYSTEM,
             temperature=0.3,
-            max_tokens=6000,
+            max_tokens=8192,
         )
         # Validate draft — retry once with higher temperature if degenerate
         if _is_degenerate_output(memo, min_useful_length=200):
@@ -1629,7 +1692,7 @@ async def speculative_synthesis_with_contradictions_node(
                 "Draft '%s' produced degenerate output (%d chars), retrying...",
                 strategy_name, len(memo or ""),
             )
-            memo = await flash_llm.generate(
+            memo = await llm.generate(
                 prompt=RESEARCH_SYNTHESIZE_USER.format(
                     query=shared_context["query"],
                     evidence=formatted_evidence,
@@ -1640,7 +1703,7 @@ async def speculative_synthesis_with_contradictions_node(
                 ),
                 system=SPECULATIVE_DRAFT_SYSTEM,
                 temperature=0.7,
-                max_tokens=6000,
+                max_tokens=8192,
             )
             if _is_degenerate_output(memo, min_useful_length=200):
                 logger.error("Draft '%s' still degenerate after retry", strategy_name)
@@ -1699,7 +1762,14 @@ async def speculative_synthesis_with_contradictions_node(
     for reg_idx, r in enumerate(all_results[:40], 1):
         citation_registry[reg_idx] = r
         title = r.get("title", "Untitled")
-        citation = r.get("citation", "No citation")
+        citation = r.get("citation") or ""
+        # Synthesize citation for statute results that have no citation
+        if not citation and str(r.get("case_id", "")).startswith("statute:"):
+            act = r.get("act_short_name") or r.get("act_name") or r.get("title", "")
+            section = r.get("section_number") or r.get("section", "")
+            citation = f"{act} Section {section}".strip() if section else act
+        if not citation:
+            citation = "No citation"
         court = r.get("court", "Unknown")
         year = r.get("year", "Unknown")
         bench = r.get("bench_type", "")
@@ -1788,6 +1858,7 @@ async def speculative_synthesis_with_contradictions_node(
         async for chunk in llm.stream(
             system=SPECULATIVE_MERGE_SYSTEM,
             prompt=verification_prompt,
+            max_tokens=16384,
         ):
             final_memo_chunks.append(chunk)
             result = stream_callback(chunk)
@@ -1799,8 +1870,34 @@ async def speculative_synthesis_with_contradictions_node(
             prompt=verification_prompt,
             system=SPECULATIVE_MERGE_SYSTEM,
             temperature=0.2,
-            max_tokens=8192,
+            max_tokens=16384,
         )
+
+    # Check for truncation — retry with higher token limit
+    if _is_truncated_output(final_memo):
+        logger.warning("Final memo appears truncated (%d chars), retrying with higher max_tokens...", len(final_memo or ""))
+        if stream_callback:
+            retry_chunks: list[str] = []
+            async for chunk in llm.stream(
+                system=SPECULATIVE_MERGE_SYSTEM,
+                prompt=verification_prompt,
+                max_tokens=24576,
+            ):
+                retry_chunks.append(chunk)
+                result = stream_callback(chunk)
+                if asyncio.iscoroutine(result):
+                    await result
+            retry_memo = "".join(retry_chunks)
+        else:
+            retry_memo = await llm.generate(
+                prompt=verification_prompt,
+                system=SPECULATIVE_MERGE_SYSTEM,
+                temperature=0.2,
+                max_tokens=24576,
+            )
+        # Use retry only if it's better (longer and not degenerate)
+        if retry_memo and len(retry_memo) > len(final_memo or "") and not _is_degenerate_output(retry_memo, 300):
+            final_memo = retry_memo
 
     # Validate final output — retry once if degenerate
     if _is_degenerate_output(final_memo, min_useful_length=300):
@@ -1814,9 +1911,9 @@ async def speculative_synthesis_with_contradictions_node(
         )
         final_memo = await llm.generate(
             prompt=simplified_prompt,
-            system=SPECULATIVE_MERGE_SYSTEM,
+            system=SYNTHESIS_RETRY_SYSTEM,
             temperature=0.4,
-            max_tokens=8192,
+            max_tokens=16384,
         )
         if _is_degenerate_output(final_memo, min_useful_length=300):
             logger.error("Final memo still degenerate after retry")
@@ -1866,6 +1963,10 @@ async def speculative_synthesis_with_contradictions_node(
     )
     confidence = breakdown["overall"]
 
+    # Penalty: if synthesis failed or produced insufficient content, tank confidence
+    if "Synthesis Failed" in final_memo or _is_degenerate_output(final_memo, 300):
+        confidence = min(confidence, 0.15)
+
     return {
         "draft_memo": final_memo,
         "synthesis_drafts": drafts,
@@ -1879,7 +1980,7 @@ async def speculative_synthesis_with_contradictions_node(
                 "case_id": v.get("case_id"),
                 "ik_doc_id": v.get("ik_doc_id", ""),
                 "title": v.get("title", ""),
-                "citation": v.get("citation", ""),
+                "citation": v.get("citation") or "",
                 "court": v.get("court", ""),
                 "year": v.get("year"),
                 "author": v.get("author", v.get("judge", "")),
@@ -2287,8 +2388,11 @@ async def verify_citations_v2_node(
             fn_ik_id = str(fn.get("ik_doc_id", "")) if fn.get("ik_doc_id") else ""
             fn_title_norm = _normalize_citation(fn.get("title", ""))
 
+            # Registry-sourced footnotes are automatically grounded
+            fn_num_str = str(fn.get("number", ""))
             is_grounded = (
-                (fn_case_id and fn_case_id in grounding_case_ids)
+                (citation_registry and fn_num_str in citation_registry)
+                or (fn_case_id and fn_case_id in grounding_case_ids)
                 or (fn_ik_id and fn_ik_id in grounding_ik_ids)
                 or (fn_title_norm and fn_title_norm in grounding_norm_titles)
             )
@@ -2412,7 +2516,7 @@ async def _deterministic_verify(
     if graph_store and hasattr(graph_store, "query"):
         cited_case_ids = [
             fn["case_id"] for fn in footnotes
-            if fn.get("case_id") and fn["is_used"]
+            if fn.get("case_id") and fn["is_used"] and is_valid_uuid(str(fn["case_id"]))
         ]
         for case_id in cited_case_ids:
             try:
@@ -2447,13 +2551,17 @@ async def _deterministic_verify(
                         ]
             except Exception:
                 logger.warning("Subsequent history check failed for %s", case_id)
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
 
     # 5. URL/case_id existence validation
     for fn in footnotes:
         if (
             fn.get("case_id")
             and fn["is_used"]
-            and not str(fn["case_id"]).startswith("ik:")
+            and is_valid_uuid(str(fn["case_id"]))
         ):
             try:
                 exists = await db.execute(
@@ -2469,6 +2577,10 @@ async def _deterministic_verify(
                     })
             except Exception:
                 logger.warning("Case existence check failed for %s", fn.get("case_id"))
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
 
     return issues
 
@@ -2492,7 +2604,7 @@ async def _verify_citations_against_sources(
     pg_case_ids: list[str] = []
     for fn in footnotes:
         cid = fn.get("case_id")
-        if cid and not str(cid).startswith("ik:"):
+        if cid and is_valid_uuid(str(cid)):
             pg_case_ids.append(str(cid))
 
     valid_pg_ids: set[str] = set()
@@ -2502,15 +2614,24 @@ async def _verify_citations_against_sources(
             valid_pg_ids = await verify_case_ids(pg_case_ids, db)
         except Exception:
             logger.warning("Batch PG verification failed", exc_info=True)
+            try:
+                await db.rollback()
+            except Exception:
+                pass
 
     sem = asyncio.Semaphore(5)  # Max 5 concurrent IK/Neo4j verifications
 
     async def _verify_one(fn: Footnote) -> Footnote:
         async with sem:
+            cid = fn.get("case_id", "")
+            # Statute footnotes are always valid (they come from our statutes table)
+            if str(cid).startswith("statute:"):
+                fn["verified_source"] = "statute_db"
+                return fn
+
             status = "unverified"
 
             # Check 1: PostgreSQL — use batch result
-            cid = fn.get("case_id")
             if cid and str(cid) in valid_pg_ids:
                 status = "verified_pg"
 
@@ -2582,7 +2703,7 @@ def _matches_indian_citation_pattern(citation: str) -> bool:
         r"Section\s+\d+",                          # Statute reference
         r"Article\s+\d+",                          # Constitutional article
     ]
-    return any(re.search(p, citation) for p in patterns)
+    return bool(citation) and any(re.search(p, citation) for p in patterns)
 
 
 def _fuzzy_match(quote: str, passage: str, threshold: int = 85) -> bool:
@@ -2693,10 +2814,33 @@ async def legal_quality_check_node(
         "attempt": attempts,
     })
 
+    # Recalculate confidence incorporating synthesis quality
+    state_scores = [r.get("score", 0) for r in all_evidence if r.get("score")]
+    worker_results_raw = state.get("worker_results", [])
+    _wt = [wr.get("task_type", "case_law") for wr in worker_results_raw if isinstance(wr, dict)]
+    evidence_gaps = state.get("evidence_gaps", [])
+    _ig = len(evidence_gaps)
+    _rg = sum(1 for g in evidence_gaps if not g.get("filled", False))
+    contradictions = state.get("contradictions", [])
+    precedent_strs = [r.get("bench_type", "PERSUASIVE") for r in all_evidence if r.get("bench_type")]
+
+    updated_confidence = calculate_confidence(
+        reranker_scores=state_scores[:10],
+        cross_ref_ratio=min(1.0, len(all_evidence) / max(len(state.get("research_plan", [])), 1)),
+        precedent_strengths=[s.upper() for s in precedent_strs] if precedent_strs else [],
+        contradiction_count=len(contradictions),
+        total_results=len(all_evidence),
+        worker_types=_wt,
+        initial_gap_count=_ig,
+        remaining_gap_count=_rg,
+        synthesis_quality=quality_result["overall_score"],
+    )
+
     result: dict = {
         "legal_quality_result": quality_result,
         "quality_attempts": attempts,
         "process_events": [quality_event],
+        "confidence": updated_confidence,
     }
 
     # [B3] On failure, append quality feedback for retry synthesis

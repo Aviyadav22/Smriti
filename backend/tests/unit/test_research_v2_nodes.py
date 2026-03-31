@@ -283,8 +283,10 @@ class TestPlanResearchNode:
         state = _make_v2_state()
         result = await plan_research_node(state, llm)
 
-        assert "error" in result
-        assert "Failed to create research plan" in result["error"]
+        # On LLM failure, function creates a fallback plan (graceful degradation)
+        assert "research_plan" in result
+        assert len(result["research_plan"]) >= 1
+        assert result["research_plan"][0]["task_type"] == "case_law"
 
 
 # ===========================================================================

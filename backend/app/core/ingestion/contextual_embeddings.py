@@ -71,7 +71,10 @@ async def generate_contextual_prefix(
             system = CONTEXTUAL_PREFIX_SYSTEM
             user = _build_case_law_prompt(chunk_text, document_metadata)
 
-        prefix: str = await flash_llm.generate(prompt=user, system=system)
+        prefix: str = await asyncio.wait_for(
+            flash_llm.generate(prompt=user, system=system),
+            timeout=60.0,
+        )
         return f"{prefix.strip()}\n\n{chunk_text}"
     except Exception:
         logger.warning(

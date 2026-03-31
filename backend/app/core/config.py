@@ -46,12 +46,18 @@ class Settings(BaseSettings):
     # Gemini
     llm_provider: str = "gemini"
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.1-pro-preview"
-    gemini_flash_model: str = "gemini-3-flash-preview"
+    gemini_model: str = "gemini-2.5-pro"
+    gemini_flash_model: str = "gemini-2.5-flash"
     gemini_embedding_model: str = "gemini-embedding-2-preview"
     gemini_embedding_dimension: int = 1536
     gemini_context_cache_enabled: bool = True  # [S10]
     gemini_context_cache_ttl: int = 3600  # [S10] seconds
+
+    # Vertex AI (alternative to API key auth — uses GCP service account)
+    gemini_use_vertexai: bool = False
+    gemini_vertexai_project: str = ""
+    gemini_vertexai_location: str = "us-central1"
+    google_application_credentials: str = ""
 
     # Pinecone
     vector_provider: str = "pinecone"
@@ -121,6 +127,11 @@ class Settings(BaseSettings):
     chat_max_context_results: int = 5
     chat_max_snippet_chars: int = 3000
 
+    # Agent follow-up conversations
+    agent_max_history: int = 10
+    agent_followup_max_results: int = 5
+    agent_followup_memo_chars: int = 15000
+
     # Treatment classification — LLM fallback for ambiguous citation treatment.
     # When enabled, uses Gemini Flash to classify treatment when regex confidence
     # is below threshold. Improves accuracy for overruled/distinguished detection.
@@ -175,10 +186,10 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "CORS origins must not contain '*' in production"
                 )
-            # Enforce external service API keys are set
-            if not self.gemini_api_key:
+            # Enforce external service API keys are set (unless using Vertex AI)
+            if not self.gemini_api_key and not self.gemini_use_vertexai:
                 raise ValueError(
-                    "gemini_api_key must not be empty in production"
+                    "gemini_api_key must not be empty in production (or set GEMINI_USE_VERTEXAI=true)"
                 )
             if not self.pinecone_api_key:
                 raise ValueError(

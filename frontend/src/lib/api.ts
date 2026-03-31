@@ -2,6 +2,8 @@
 
 import type {
     AgentExecution,
+    AgentSession,
+    AgentSessionMessage,
     AgentStreamEvent,
     AudioDigestStatus,
     CaseDetail,
@@ -23,6 +25,7 @@ import type {
     JudgeProfile,
     LoginRequest,
     RegisterRequest,
+    SearchHistoryEntry,
     SearchResponse,
     SimilarCase,
     StreamEvent,
@@ -957,6 +960,91 @@ export async function exportDraft(
     }
 
     return res.blob();
+}
+
+// ---------------------------------------------------------------------------
+// Agent Sessions (Conversation History)
+// ---------------------------------------------------------------------------
+
+export function createAgentSession(
+    agentType: string,
+    body: Record<string, unknown>,
+    onEvent: (event: AgentStreamEvent) => void,
+    onError?: (error: Error) => void,
+): AbortController {
+    return _streamSSE<AgentStreamEvent>(`/agents/${agentType}/session`, body, onEvent, onError);
+}
+
+export function sendAgentFollowUp(
+    sessionId: string,
+    message: string,
+    onEvent: (event: AgentStreamEvent) => void,
+    onError?: (error: Error) => void,
+): AbortController {
+    return _streamSSE<AgentStreamEvent>(
+        `/agents/sessions/${sessionId}/follow-up`,
+        { message },
+        onEvent,
+        onError,
+    );
+}
+
+export async function getAgentSessions(
+    agentType?: string,
+    page = 1,
+    pageSize = 20,
+): Promise<{ sessions: AgentSession[]; total: number }> {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (agentType) params.set("agent_type", agentType);
+    const data = await apiFetch<{ sessions: AgentSession[]; total: number }>(
+        `/agents/sessions?${params.toString()}`,
+    );
+    return data;
+}
+
+export async function getAgentSessionMessages(
+    sessionId: string,
+): Promise<AgentSessionMessage[]> {
+    const data = await apiFetch<{ messages: AgentSessionMessage[] }>(
+        `/agents/sessions/${sessionId}/messages`,
+    );
+    return data.messages;
+}
+
+export async function getAgentSessionDetail(
+    sessionId: string,
+): Promise<Record<string, unknown>> {
+    return apiFetch<Record<string, unknown>>(`/agents/sessions/${sessionId}`);
+}
+
+export async function deleteAgentSession(sessionId: string): Promise<void> {
+    await apiFetch<unknown>(`/agents/sessions/${sessionId}`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// Search History
+// ---------------------------------------------------------------------------
+
+export async function getSearchHistory(
+    page = 1,
+    pageSize = 20,
+): Promise<{ history: SearchHistoryEntry[]; total: number }> {
+    return apiFetch<{ history: SearchHistoryEntry[]; total: number }>(
+        `/search/history?page=${page}&page_size=${pageSize}`,
+    );
+}
+
+export async function toggleSearchBookmark(
+    historyId: string,
+): Promise<{ id: string; is_bookmarked: boolean }> {
+    return apiFetch<{ id: string; is_bookmarked: boolean }>(
+        `/search/history/${historyId}/bookmark`,
+        { method: "POST" },
+    );
+}
+
+export async function deleteSearchHistoryEntry(historyId: string): Promise<void> {
+    await apiFetch<unknown>(`/search/history/${historyId}`, { method: "DELETE" });
 }
 
 export { ApiError };

@@ -44,4 +44,5 @@ class LLMProvider(Protocol):
         *,
         system: str | None = None,
         temperature: float = 0.1,
+        max_tokens: int | None = None,
     ) -> AsyncIterator[str]: ...

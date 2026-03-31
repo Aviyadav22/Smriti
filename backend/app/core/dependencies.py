@@ -132,13 +132,18 @@ def get_tts() -> TTSProvider:
     return MockTTS()
 
 
-@lru_cache
+_dev_memory_saver: object | None = None
+
+
 def get_checkpointer() -> object:
     """Return the appropriate LangGraph checkpointer for the current environment.
 
     In production/staging, uses AsyncPostgresSaver backed by the main PostgreSQL
-    database. In development/testing, uses an in-memory MemorySaver.
+    database. In development/testing, uses a shared in-memory MemorySaver singleton
+    so that HITL interrupt/resume works across endpoint calls.
     """
+    global _dev_memory_saver
+
     if settings.app_env in ("production", "staging"):
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
@@ -147,7 +152,9 @@ def get_checkpointer() -> object:
         return AsyncPostgresSaver.from_conn_string(get_checkpointer_connection_string())
     from langgraph.checkpoint.memory import MemorySaver
 
-    return MemorySaver()
+    if _dev_memory_saver is None:
+        _dev_memory_saver = MemorySaver()
+    return _dev_memory_saver
 
 
 @lru_cache
