@@ -424,3 +424,108 @@ async def _enrich_similar_results(
         })
 
     return enriched
+
+
+# ---------------------------------------------------------------------------
+# GET /cases/{case_id}/timeline — Procedural timeline
+# ---------------------------------------------------------------------------
+
+
+def _build_timeline_events(case: dict) -> list[dict]:
+    """Build a chronological list of timeline events from case metadata."""
+    events: list[dict] = []
+    main_court = case.get("court") or "Supreme Court of India"
+
+    # Filing event
+    filing_date = case.get("filing_date")
+    if filing_date:
+        events.append({
+            "date": str(filing_date),
+            "type": "filing",
+            "court": case.get("lower_court") or main_court,
+            "detail": "Case filed",
+        })
+
+    # Procedural history entries
+    proc_history = case.get("procedural_history")
+    if isinstance(proc_history, list):
+        for entry in proc_history:
+            if isinstance(entry, dict):
+                events.append({
+                    "date": str(entry.get("date", "")) if entry.get("date") else "",
+                    "type": entry.get("type", "judgment"),
+                    "court": entry.get("court", main_court),
+                    "detail": entry.get("detail", ""),
+                })
+
+    # Interim orders
+    interim_orders = case.get("interim_orders")
+    if isinstance(interim_orders, list):
+        for entry in interim_orders:
+            if isinstance(entry, dict):
+                events.append({
+                    "date": str(entry.get("date", "")) if entry.get("date") else "",
+                    "type": "interim_order",
+                    "court": entry.get("court", main_court),
+                    "detail": entry.get("detail", ""),
+                })
+            elif isinstance(entry, str):
+                events.append({
+                    "date": "",
+                    "type": "interim_order",
+                    "court": main_court,
+                    "detail": entry,
+                })
+
+    # Final decision event
+    decision_date = case.get("decision_date")
+    if decision_date:
+        disposal = case.get("disposal_nature") or "Decided"
+        events.append({
+            "date": str(decision_date),
+            "type": "judgment",
+            "court": main_court,
+            "detail": disposal,
+        })
+
+    # Sort: events with dates first (chronologically), then events without dates
+    def _sort_key(evt: dict) -> tuple:
+        d = evt.get("date", "")
+        return (0 if d else 1, d)
+
+    events.sort(key=_sort_key)
+    return events
+
+
+@router.get("/{case_id}/timeline", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+async def get_case_timeline(
+    case_id: str,
+    user: TokenPayload = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return a procedural timeline of events for a case."""
+    try:
+        _uuid.UUID(case_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid case_id format")
+
+    result = await db.execute(
+        text(
+            "SELECT title, filing_date, decision_date, procedural_history, "
+            "interim_orders, lower_court, appeal_from, disposal_nature, court "
+            "FROM cases WHERE id = :id"
+        ),
+        {"id": case_id},
+    )
+    case = result.mappings().one_or_none()
+
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    case_dict = dict(case)
+    events = _build_timeline_events(case_dict)
+
+    return {
+        "case_title": case_dict.get("title") or "",
+        "events": events,
+    }
