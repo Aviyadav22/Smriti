@@ -352,6 +352,31 @@ async def _stream_agent_events(
                     )
                     await db.commit()
 
+                # Save memo as assistant message (reliable: runs before SSE completes)
+                try:
+                    _session_id = config.get("metadata", {}).get("session_id")
+                    if _session_id and memo:
+                        async with async_session_factory() as msg_db:
+                            asst_msg = AgentMessage(
+                                session_id=uuid.UUID(_session_id),
+                                execution_id=exec_id,
+                                role="assistant",
+                                content=encrypt_field(memo),
+                                sources=result_data.get("footnotes"),
+                                message_type="memo",
+                            )
+                            msg_db.add(asst_msg)
+                            await msg_db.execute(
+                                text("UPDATE agent_sessions SET updated_at = NOW() WHERE id = :id"),
+                                {"id": uuid.UUID(_session_id)},
+                            )
+                            await msg_db.commit()
+                except Exception:
+                    logger.exception(
+                        "Failed to save memo as agent message for session %s",
+                        config.get("metadata", {}).get("session_id"),
+                    )
+
                 memo_event_data: dict = {"confidence": result_data["confidence"]}
                 if result_data.get("footnotes"):
                     memo_event_data["footnotes"] = result_data["footnotes"]
@@ -1433,7 +1458,11 @@ async def create_agent_session(
     embedder = get_embedder()
     vector_store = get_vector_store()
     reranker = get_reranker()
-    config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
+    config = {
+        "configurable": {"thread_id": thread_id},
+        "metadata": {"session_id": str(session.id)},
+        "recursion_limit": 50,
+    }
     graph_kwargs: dict | None = None
 
     if agent_type == "research":
@@ -1512,34 +1541,8 @@ async def create_agent_session(
         ):
             yield event
 
-        # After completion, save the memo as an assistant message
-        try:
-            async with async_session_factory() as post_db:
-                result = await post_db.execute(
-                    text("SELECT result_data FROM agent_executions WHERE id = :id"),
-                    {"id": execution.id},
-                )
-                row = result.mappings().one_or_none()
-                if row and row["result_data"]:
-                    rd = row["result_data"] if isinstance(row["result_data"], dict) else json.loads(row["result_data"])
-                    memo_content = rd.get("memo", "")
-                    if memo_content:
-                        asst_msg = AgentMessage(
-                            session_id=session.id,
-                            execution_id=execution.id,
-                            role="assistant",
-                            content=encrypt_field(memo_content),
-                            sources=rd.get("footnotes"),
-                            message_type="memo",
-                        )
-                        post_db.add(asst_msg)
-                        await post_db.execute(
-                            text("UPDATE agent_sessions SET updated_at = NOW() WHERE id = :id"),
-                            {"id": session.id},
-                        )
-                        await post_db.commit()
-        except Exception:
-            logger.exception("Failed to save memo as agent message for session %s", session.id)
+        # NOTE: Memo-as-message save is now handled inside _stream_agent_events
+        # (after result_data commit) so it persists even if the client disconnects.
 
     return StreamingResponse(
         _session_stream(),
