@@ -13,6 +13,8 @@ import logging
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.postgres import async_session_factory
+
 from app.core.agents.confidence import calculate_confidence
 from app.core.agents.nodes.common import (
     MAX_RESULTS_FOR_LLM,
@@ -37,14 +39,22 @@ from app.core.interfaces import (
 from app.core.legal.precedent_strength import classify_precedent_strength
 from app.core.legal.prompts import (
     LEGAL_DISCLAIMER,
+    STRATEGY_ADVERSARIAL_SCHEMA,
+    STRATEGY_ADVERSARIAL_SYSTEM,
     STRATEGY_ANALYZE_FACTS_SCHEMA,
     STRATEGY_ANALYZE_FACTS_SYSTEM,
+    STRATEGY_ARGUMENT_MEMO_SYSTEM,
+    STRATEGY_ARGUMENT_MEMO_USER,
+    STRATEGY_ARGUMENT_ORDERING_SCHEMA,
+    STRATEGY_ARGUMENT_ORDERING_SYSTEM,
     STRATEGY_ARGUMENTS_SCHEMA,
     STRATEGY_ARGUMENTS_SYSTEM,
     STRATEGY_ASSESS_STRENGTH_SCHEMA,
     STRATEGY_ASSESS_STRENGTH_SYSTEM,
     STRATEGY_COUNTER_ARGS_SCHEMA,
     STRATEGY_COUNTER_ARGS_SYSTEM,
+    STRATEGY_IRAC_ARGUMENTS_SCHEMA,
+    STRATEGY_IRAC_ARGUMENTS_SYSTEM,
     STRATEGY_JUDGE_ANALYSIS_SCHEMA,
     STRATEGY_JUDGE_ANALYSIS_SYSTEM,
     STRATEGY_SYNTHESIZE_SYSTEM,
@@ -369,6 +379,189 @@ async def generate_arguments_node(
 
 
 # ---------------------------------------------------------------------------
+# Node 5b: generate_arguments_irac_node
+# ---------------------------------------------------------------------------
+
+
+async def generate_arguments_irac_node(
+    state: StrategyState,
+    llm: LLMProvider,
+) -> dict:
+    """Generate IRAC-structured legal arguments with authority ranking."""
+    fact_analysis = state.get("fact_analysis", {})
+    legal_elements = state.get("legal_elements", [])
+    precedent_map = state.get("precedent_map", [])
+    strength_assessment = state.get("strength_assessment", {})
+    desired_relief = state.get("desired_relief", "")
+
+    prompt = (
+        "Generate IRAC-structured legal arguments.\n\n"
+        f"Fact Analysis:\n{json.dumps(fact_analysis, indent=2)}\n\n"
+        f"Legal Elements:\n{json.dumps(legal_elements, indent=2)}\n\n"
+        f"Precedent Map ({len(precedent_map)} precedents):\n"
+        f"{json.dumps(precedent_map[:MAX_RESULTS_FOR_LLM], indent=2)}\n\n"
+        f"Strength Assessment:\n{json.dumps(strength_assessment, indent=2)}\n\n"
+    )
+    if desired_relief:
+        prompt += f"Desired Relief: {sanitize_search_query(desired_relief)}\n\n"
+
+    feedback = get_latest_feedback(state.get("messages", []), "arguments")
+    if feedback:
+        prompt += f"\n\nUser revision request: {sanitize_search_query(feedback)}\nPlease address."
+
+    try:
+        result = await llm.generate_structured(
+            prompt=prompt,
+            system=STRATEGY_IRAC_ARGUMENTS_SYSTEM,
+            output_schema=STRATEGY_IRAC_ARGUMENTS_SCHEMA,
+        )
+    except Exception as e:
+        logger.error("LLM error in generate_arguments_irac_node: %s", e, exc_info=True)
+        return {"error": f"LLM error in generate_arguments_irac_node: {e!s}"}
+
+    irac_args = result.get("irac_arguments", [])
+    if not isinstance(irac_args, list):
+        irac_args = []
+
+    # Also set legacy legal_arguments for backward compatibility with counter_arguments_node
+    legacy_args = [
+        {
+            "title": a.get("title", ""),
+            "statutory_basis": a.get("statutory_basis", ""),
+            "supporting_precedents": [auth.get("citation", "") for auth in a.get("rule_authorities", [])],
+            "effectiveness_score": a.get("effectiveness_score", 5),
+            "reasoning": a.get("application", ""),
+        }
+        for a in irac_args
+    ]
+
+    return {"irac_arguments": irac_args, "legal_arguments": legacy_args}
+
+
+# ---------------------------------------------------------------------------
+# Node 5c: adversarial_search_strategy_node
+# ---------------------------------------------------------------------------
+
+
+async def adversarial_search_strategy_node(
+    state: StrategyState,
+    llm: LLMProvider,
+    embedder: EmbeddingProvider,
+    vector_store: VectorStore,
+    reranker: Reranker,
+) -> dict:
+    """Search for cases OPPOSING the client's position."""
+    irac_arguments = state.get("irac_arguments", [])
+    fact_analysis = state.get("fact_analysis", {})
+
+    if not irac_arguments:
+        return {"adversarial_results": []}
+
+    # Summarize arguments for adversarial query generation
+    args_summary = "\n".join(
+        f"- {a.get('title', '')}: {a.get('conclusion', '')}"
+        for a in irac_arguments[:5]
+    )
+
+    prompt = (
+        f"## Client's Arguments\n{args_summary}\n\n"
+        f"## Fact Analysis\n{json.dumps(fact_analysis, indent=2)}\n\n"
+        "Generate counter-argument search queries."
+    )
+
+    try:
+        result = await llm.generate_structured(
+            prompt=prompt,
+            system=STRATEGY_ADVERSARIAL_SYSTEM,
+            output_schema=STRATEGY_ADVERSARIAL_SCHEMA,
+        )
+        counter_queries = result.get("counter_queries", [])
+    except Exception as e:
+        logger.warning("Adversarial search LLM failed: %s", e)
+        return {"adversarial_results": []}
+
+    if not counter_queries:
+        return {"adversarial_results": []}
+
+    # Run searches for each counter query
+    all_results: list[dict] = []
+    for cq in counter_queries[:5]:
+        query_text = cq.get("query", "")
+        if not query_text:
+            continue
+        try:
+            async with async_session_factory() as session:
+                results = await parallel_hybrid_search(
+                    queries=[query_text],
+                    llm=llm,
+                    embedder=embedder,
+                    vector_store=vector_store,
+                    reranker=reranker,
+                    db=session,
+                )
+            for r in results[:3]:
+                r["adversarial"] = True
+                r["target_weakness"] = cq.get("target_weakness", "")
+                all_results.append(r)
+        except Exception as e:
+            logger.warning("Adversarial search failed for query '%s': %s", query_text[:50], e)
+
+    return {"adversarial_results": all_results}
+
+
+# ---------------------------------------------------------------------------
+# Node 5d: argument_ordering_node
+# ---------------------------------------------------------------------------
+
+
+async def argument_ordering_node(
+    state: StrategyState,
+    llm: LLMProvider,
+) -> dict:
+    """Determine optimal argument presentation order."""
+    irac_arguments = state.get("irac_arguments", [])
+    judge_profile = state.get("judge_profile", {})
+    strength_assessment = state.get("strength_assessment", {})
+
+    if not irac_arguments:
+        return {"argument_order": []}
+
+    args_summary = json.dumps([
+        {
+            "index": i,
+            "title": a.get("title", ""),
+            "statutory_basis": a.get("statutory_basis", ""),
+            "effectiveness_score": a.get("effectiveness_score", 0),
+        }
+        for i, a in enumerate(irac_arguments)
+    ], indent=2)
+
+    prompt = (
+        f"## Arguments to Order\n{args_summary}\n\n"
+        f"## Judge Profile\n{json.dumps(judge_profile, indent=2)}\n\n"
+        f"## Strength Assessment\n{json.dumps(strength_assessment, indent=2)}\n\n"
+        "Determine the optimal presentation order."
+    )
+
+    try:
+        result = await llm.generate_structured(
+            prompt=prompt,
+            system=STRATEGY_ARGUMENT_ORDERING_SYSTEM,
+            output_schema=STRATEGY_ARGUMENT_ORDERING_SCHEMA,
+        )
+        ordered_indices = result.get("ordered_indices", list(range(len(irac_arguments))))
+    except Exception as e:
+        logger.warning("Argument ordering failed: %s — using effectiveness order", e)
+        ordered_indices = sorted(
+            range(len(irac_arguments)),
+            key=lambda i: irac_arguments[i].get("effectiveness_score", 0),
+            reverse=True,
+        )
+
+    return {"argument_order": ordered_indices}
+
+
+# ---------------------------------------------------------------------------
 # Node 6: counter_arguments_node
 # ---------------------------------------------------------------------------
 
@@ -490,21 +683,32 @@ async def synthesize_strategy_node(
     state: StrategyState,
     llm: LLMProvider,
 ) -> dict:
-    """Synthesize all analysis into a comprehensive strategy memo."""
+    """Synthesize all analysis into a comprehensive argument memo."""
     case_facts = sanitize_search_query(state.get("case_facts", ""))
+    legal_elements = state.get("legal_elements", [])
     strength_assessment = state.get("strength_assessment", {})
-    legal_arguments = state.get("legal_arguments", [])
+    irac_arguments = state.get("irac_arguments", [])
+    argument_order = state.get("argument_order", [])
     counter_arguments = state.get("counter_arguments", [])
+    adversarial_results = state.get("adversarial_results", [])
     judge_considerations = state.get("judge_considerations", [])
     procedural_suggestions = state.get("procedural_suggestions", [])
     search_results = state.get("search_results", [])
     precedent_map = state.get("precedent_map", [])
 
-    prompt = STRATEGY_SYNTHESIZE_USER.format(
+    # Order irac_arguments using argument_order
+    if argument_order:
+        ordered_args = [irac_arguments[i] for i in argument_order if i < len(irac_arguments)]
+    else:
+        ordered_args = irac_arguments
+
+    prompt = STRATEGY_ARGUMENT_MEMO_USER.format(
         case_facts=case_facts,
+        legal_elements=json.dumps(legal_elements, indent=2),
         strength_assessment=json.dumps(strength_assessment, indent=2),
-        legal_arguments=json.dumps(legal_arguments, indent=2),
+        irac_arguments=json.dumps(ordered_args, indent=2),
         counter_arguments=json.dumps(counter_arguments, indent=2),
+        adversarial_results=json.dumps(adversarial_results, indent=2),
         judge_considerations=json.dumps(judge_considerations, indent=2),
         procedural_suggestions=json.dumps(procedural_suggestions, indent=2),
     )
@@ -515,7 +719,7 @@ async def synthesize_strategy_node(
         prompt += f"\n\nUser revision request: {sanitized}\nPlease address this feedback."
 
     system = apply_language_suffix(
-        STRATEGY_SYNTHESIZE_SYSTEM,
+        STRATEGY_ARGUMENT_MEMO_SYSTEM,
         state.get("language", "en"),
     )
 
