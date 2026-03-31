@@ -1048,4 +1048,27 @@ export async function deleteSearchHistoryEntry(historyId: string): Promise<void>
     await apiFetch<unknown>(`/search/history/${historyId}`, { method: "DELETE" });
 }
 
+// ---------------------------------------------------------------------------
+// Memo Sharing
+// ---------------------------------------------------------------------------
+
+export async function createMemoShare(executionId: string): Promise<{ share_token: string; share_url: string; share_id: string }> {
+    return apiFetch(`/agents/research/${executionId}/share`, { method: "POST" });
+}
+
+export async function getMemoShareStatus(executionId: string): Promise<{ shared: boolean; share_url?: string; share_token?: string; view_count?: number }> {
+    return apiFetch(`/agents/research/${executionId}/share`);
+}
+
+export async function revokeMemoShare(executionId: string): Promise<{ revoked: boolean }> {
+    return apiFetch(`/agents/research/${executionId}/share`, { method: "DELETE" });
+}
+
+export async function getSharedMemo(token: string): Promise<{ title: string; memo: string; footnotes: unknown[]; confidence: number | null; agent_type: string }> {
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+    const res = await fetch(`${baseUrl}/api/shared/${token}`);
+    if (!res.ok) throw new Error("Memo not found or expired");
+    return res.json();
+}
+
 export { ApiError };

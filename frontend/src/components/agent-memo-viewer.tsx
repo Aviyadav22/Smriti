@@ -9,8 +9,9 @@ import { Button } from "@/components/ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Check, CheckCircle2, ChevronDown, Clipboard, Copy, Download, HelpCircle, Info, Pencil, Loader2 } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, Clipboard, Copy, Download, HelpCircle, Info, Link, Loader2, Pencil, Share2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createMemoShare, getMemoShareStatus, revokeMemoShare } from "@/lib/api";
 import type { ResearchFootnote } from "@/lib/types";
 
 /** Verification status for a footnote — maps to color. */
@@ -260,6 +261,57 @@ export function AgentMemoViewer({ content, confidence, onFootnoteClick, maxFootn
     const [revisionFeedback, setRevisionFeedback] = useState("");
     const [revisionLoading, setRevisionLoading] = useState(false);
     const [copiedSection, setCopiedSection] = useState<string | null>(null);
+    const [shareUrl, setShareUrl] = useState<string | null>(null);
+    const [sharing, setSharing] = useState(false);
+
+    // Check share status on mount
+    useEffect(() => {
+        if (!executionId) return;
+        getMemoShareStatus(executionId)
+            .then((status) => {
+                if (status.shared && status.share_url) {
+                    setShareUrl(status.share_url);
+                }
+            })
+            .catch(() => {
+                // Not shared or endpoint unavailable — ignore
+            });
+    }, [executionId]);
+
+    const handleShare = useCallback(async () => {
+        if (!executionId) return;
+        setSharing(true);
+        try {
+            const result = await createMemoShare(executionId);
+            const fullUrl = window.location.origin + result.share_url;
+            setShareUrl(result.share_url);
+            await navigator.clipboard.writeText(fullUrl);
+        } catch {
+            // Share failed — could surface error to user in future
+        } finally {
+            setSharing(false);
+        }
+    }, [executionId]);
+
+    const handleCopyShareUrl = useCallback(async () => {
+        if (!shareUrl) return;
+        const fullUrl = window.location.origin + shareUrl;
+        try {
+            await navigator.clipboard.writeText(fullUrl);
+        } catch {
+            // Clipboard API unavailable
+        }
+    }, [shareUrl]);
+
+    const handleRevokeShare = useCallback(async () => {
+        if (!executionId) return;
+        try {
+            await revokeMemoShare(executionId);
+            setShareUrl(null);
+        } catch {
+            // Revoke failed
+        }
+    }, [executionId]);
 
     const headings = useMemo(() => extractHeadings(content), [content]);
 
@@ -517,6 +569,31 @@ export function AgentMemoViewer({ content, confidence, onFootnoteClick, maxFootn
                                 ))}
                             </DropdownMenuContent>
                         </DropdownMenu>
+                    )}
+                    {executionId && !shareUrl && (
+                        <Button variant="outline" size="sm" onClick={handleShare} disabled={sharing}>
+                            {sharing ? (
+                                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                            ) : (
+                                <Share2 className="h-3.5 w-3.5 mr-1.5" />
+                            )}
+                            {sharing ? "Sharing..." : "Share"}
+                        </Button>
+                    )}
+                    {executionId && shareUrl && (
+                        <div className="flex items-center gap-1.5">
+                            <Badge variant="secondary" className="text-xs font-normal gap-1 py-1 px-2">
+                                <Link className="h-3 w-3" />
+                                Shared
+                            </Badge>
+                            <Button variant="outline" size="sm" onClick={handleCopyShareUrl} title="Copy share link">
+                                <Copy className="h-3.5 w-3.5 mr-1.5" />
+                                Copy Link
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={handleRevokeShare} title="Revoke share link">
+                                <X className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
                     )}
                 </div>
             </div>
