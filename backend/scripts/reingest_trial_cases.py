@@ -90,7 +90,7 @@ async def delete_from_neo4j(case_ids: list[str]) -> int:
 
     driver = AsyncGraphDatabase.driver(
         settings.neo4j_uri,
-        auth=(settings.neo4j_username, settings.neo4j_password),
+        auth=(settings.neo4j_user, settings.neo4j_password),
     )
     async with driver.session() as session:
         result = await session.run(
