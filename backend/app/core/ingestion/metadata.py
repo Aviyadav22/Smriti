@@ -327,6 +327,28 @@ def _validate_metadata_against_text(
     return metadata
 
 
+# Fields to null out when confidence is very low
+_UNRELIABLE_LLM_FIELDS = (
+    "ratio_decidendi", "keywords", "case_type", "jurisdiction",
+    "bench_type", "headnotes", "outcome_summary",
+    "legal_principles_applied", "issue_classification", "fact_pattern_tags",
+    "opinion_type", "judicial_tone", "key_observations",
+    "arguments_raised", "fact_pattern_summary",
+)
+
+
+def _strip_unreliable_llm_fields(metadata: CaseMetadata) -> CaseMetadata:
+    """Null out LLM-only semantic fields when extraction confidence is very low.
+
+    Preserves Parquet-sourced fields (title, citation, court, year, judge, etc.)
+    and structured fields (decision_date, petitioner, respondent).
+    """
+    for field_name in _UNRELIABLE_LLM_FIELDS:
+        if hasattr(metadata, field_name):
+            setattr(metadata, field_name, None)
+    return metadata
+
+
 def _parse_judge_names(raw: str | list | None) -> list[str] | None:
     """Parse judge names from various formats.
 

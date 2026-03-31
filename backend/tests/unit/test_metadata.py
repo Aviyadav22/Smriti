@@ -6,6 +6,7 @@ from datetime import datetime
 from app.core.ingestion.metadata import (
     CaseMetadata,
     _parse_judge_names,
+    _strip_unreliable_llm_fields,
     merge_metadata,
     normalize_case_type,
     validate_cross_fields,
@@ -649,3 +650,45 @@ class TestMergeMetadataValidatedJudges:
         result, prov = merge_metadata(parquet, llm)
         # Without text validation, LLM wins by count
         assert len(result.judge) == 2
+
+
+class TestStripUnreliableLlmFields:
+    """Tests for confidence-based field stripping."""
+
+    def test_strips_semantic_fields(self):
+        meta = CaseMetadata(
+            title="Correct Title",
+            ratio_decidendi="Hallucinated ratio",
+            keywords=["wrong", "keywords"],
+            case_type="Criminal Appeal",
+            jurisdiction="civil",
+            bench_type="division",
+            headnotes="Hallucinated headnotes",
+            outcome_summary="Wrong summary",
+        )
+        result = _strip_unreliable_llm_fields(meta)
+        assert result.title == "Correct Title"
+        assert result.ratio_decidendi is None
+        assert result.keywords is None
+        assert result.case_type is None
+        assert result.jurisdiction is None
+        assert result.bench_type is None
+        assert result.headnotes is None
+        assert result.outcome_summary is None
+
+    def test_preserves_parquet_sourced_fields(self):
+        meta = CaseMetadata(
+            title="Title",
+            citation="(2023) 1 SCC 100",
+            court="Supreme Court of India",
+            year=2023,
+            petitioner="A",
+            respondent="B",
+            judge=["Judge X"],
+        )
+        result = _strip_unreliable_llm_fields(meta)
+        assert result.title == "Title"
+        assert result.citation == "(2023) 1 SCC 100"
+        assert result.court == "Supreme Court of India"
+        assert result.year == 2023
+        assert result.judge == ["Judge X"]

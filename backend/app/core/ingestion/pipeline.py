@@ -31,6 +31,7 @@ from app.core.ingestion.graph_retry import record_graph_failure
 from app.core.ingestion.metadata import (
     CaseMetadata,
     compute_extraction_confidence,
+    _strip_unreliable_llm_fields,
     _validate_metadata_against_text,
     cross_validate_propositions,
     extract_metadata_llm,
@@ -246,6 +247,24 @@ async def ingest_judgment(
 
     # Post-extraction content validation (Bug 2 mitigation)
     metadata = _validate_metadata_against_text(metadata, full_text)
+
+    # Confidence gating — strip unreliable fields or flag for review
+    confidence = compute_extraction_confidence(metadata)
+    if confidence < 0.4:
+        logger.warning(
+            "Very low extraction confidence (%.3f) for %s — stripping LLM fields",
+            confidence, pdf_path,
+        )
+        metadata = _strip_unreliable_llm_fields(metadata)
+        provenance["confidence_action"] = "stripped_llm_fields"
+        provenance["_needs_review"] = provenance.get("_needs_review", "") + ",low_confidence"
+    elif confidence < 0.6:
+        logger.warning(
+            "Borderline extraction confidence (%.3f) for %s — flagging for review",
+            confidence, pdf_path,
+        )
+        provenance["confidence_action"] = "flagged_for_review"
+        provenance["_needs_review"] = provenance.get("_needs_review", "") + ",borderline_confidence"
 
     # Supplement LLM acts_cited with regex extraction
     regex_acts = extract_acts_cited(full_text)
