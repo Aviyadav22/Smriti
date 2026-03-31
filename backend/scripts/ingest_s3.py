@@ -54,23 +54,19 @@ from sqlalchemy import text  # noqa: E402
 
 
 async def _disable_fts_trigger() -> None:
-    """Disable the FTS trigger on cases table for faster bulk inserts."""
-    async with async_session_factory() as db:
-        await db.execute(text(
-            "ALTER TABLE cases DISABLE TRIGGER cases_searchable_text_trigger"
-        ))
-        await db.commit()
-    logger.info("FTS trigger DISABLED for bulk ingestion")
+    """Disable the FTS trigger on cases table for faster bulk inserts.
+
+    NOTE: On Supabase with asyncpg, ALTER TABLE … DISABLE TRIGGER can cause
+    a silent process crash (segfault in the SSL/asyncpg layer on Windows).
+    For small batches (<100 cases), the FTS trigger overhead is negligible,
+    so we skip disabling entirely and just let the trigger run per-row.
+    """
+    logger.info("FTS trigger optimization skipped (small batch — trigger overhead negligible)")
 
 
 async def _enable_fts_trigger() -> None:
     """Re-enable the FTS trigger on cases table."""
-    async with async_session_factory() as db:
-        await db.execute(text(
-            "ALTER TABLE cases ENABLE TRIGGER cases_searchable_text_trigger"
-        ))
-        await db.commit()
-    logger.info("FTS trigger RE-ENABLED")
+    logger.info("FTS trigger was not disabled — no re-enable needed")
 
 
 async def _rebuild_fts_vectors() -> None:

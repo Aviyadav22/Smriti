@@ -64,6 +64,16 @@ Use contextual understanding to interpret the correct text. Do not include OCR n
 "Original Suit", "Reference", "Curative Petition", "Miscellaneous Application", \
 "Arbitration Petition", "Suo Motu", "Election Petition", "Interlocutory Application", \
 "Letters Patent Appeal", "Other".
+CASE TYPE CLASSIFICATION — derive from the CASE NUMBER in the text, not the subject matter:
+- "Civil Appeal No." or "C.A. No." → "Civil Appeal"
+- "Criminal Appeal No." or "Crl.A. No." → "Criminal Appeal"
+- "SLP (C)" or "SLP(C)" or "S.L.P.(Civil)" → "Special Leave Petition"
+- "SLP (Crl)" or "SLP(Crl)" → "Special Leave Petition"
+- "W.P.(C)" or "Writ Petition (Civil)" or "W.P.(Crl)" → "Writ Petition"
+- "T.P.(C)" or "Transfer Petition" → "Transfer Petition"
+- Service/disciplinary/labour matters arising from SLP(C) are CIVIL, not Criminal.
+- If the case number says "Civil Appeal" but the subject is criminal law, still use "Civil Appeal" \
+— the case type reflects the PROCEDURAL classification, not the subject matter.
 13. CASE NUMBER: Extract the registry number exactly as it appears, e.g., \
 "Criminal Appeal No. 1234 of 2020", "W.P.(C) No. 494 of 2012".
 14. HEADNOTES: Extract 2-4 structured legal propositions (headnotes) summarizing the key \

@@ -976,6 +976,36 @@ def validate_cross_fields(metadata: CaseMetadata) -> CaseMetadata:
             "case_type 'Writ Petition' with jurisdiction 'criminal' is unusual"
         )
 
+    # case_type vs case_number: the case number is authoritative for civil/criminal
+    if metadata.case_number and metadata.case_type:
+        cn_lower = metadata.case_number.lower()
+        if "civil appeal" in cn_lower and metadata.case_type == "Criminal Appeal":
+            logger.warning(
+                "case_number '%s' says Civil but case_type is Criminal — correcting",
+                metadata.case_number,
+            )
+            metadata.case_type = "Civil Appeal"
+            metadata.case_number = metadata.case_number.replace(
+                "Criminal Appeal", "Civil Appeal"
+            ).replace("criminal appeal", "Civil Appeal")
+        elif "criminal appeal" in cn_lower and metadata.case_type == "Civil Appeal":
+            logger.warning(
+                "case_number '%s' says Criminal but case_type is Civil — correcting",
+                metadata.case_number,
+            )
+            metadata.case_type = "Criminal Appeal"
+        elif re.search(r"slp\s*\(\s*c\s*\)", cn_lower) or "w.p.(c)" in cn_lower:
+            # SLP(C) and W.P.(C) are civil — case_type should not be Criminal Appeal
+            if metadata.case_type == "Criminal Appeal":
+                logger.warning(
+                    "case_number '%s' is civil but case_type is Criminal Appeal — correcting",
+                    metadata.case_number,
+                )
+                if "slp" in cn_lower:
+                    metadata.case_type = "Special Leave Petition"
+                else:
+                    metadata.case_type = "Writ Petition"
+
     # -- cases_cited cleanup: remove self-citations, then run GAN discriminator --
     if metadata.cases_cited and metadata.citation:
         own_normalized = re.sub(r"\s+", " ", metadata.citation.strip().lower())

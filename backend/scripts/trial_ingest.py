@@ -287,6 +287,7 @@ async def run_trial_years(
     rpm_limit: int,
     concurrency: int,
     output_dir: Path,
+    year_step: int = 1,
 ) -> dict[int, list[str]]:
     """Run trial ingestion across multiple years using mega-batch approach.
 
@@ -302,12 +303,18 @@ async def run_trial_years(
     # Track which manifest entries belong to which year
     year_manifests: dict[int, tuple[str, list[ManifestEntry]]] = {}
 
+    years = list(range(year_from, year_to + 1, year_step))
+
     # ── Phase 1: Extract + sample ALL years ──────────────────────────
     logger.info("=" * 60)
-    logger.info("MEGA-BATCH PHASE 1: Extracting all years %d-%d", year_from, year_to)
+    logger.info("MEGA-BATCH PHASE 1: Extracting %d years (%d-%d, step=%d)",
+                len(years), year_from, year_to, year_step)
     logger.info("=" * 60)
 
-    for year in range(year_from, year_to + 1):
+    import gc
+    import shutil
+
+    for year in years:
         if _shutdown_event.is_set():
             logger.warning("Shutdown requested — stopping Phase 1 loop")
             break
@@ -316,6 +323,12 @@ async def run_trial_years(
         run_id, manifest = await trial_phase1_with_sampling(
             year, sample_size, seed=seed, dry_run=dry_run,
         )
+
+        # Free extracted PDFs from disk after each year to prevent OOM
+        year_pdf_dir = DATA_DIR / "s3_cache" / f"year={year}" / "pdfs"
+        if year_pdf_dir.exists():
+            shutil.rmtree(year_pdf_dir, ignore_errors=True)
+        gc.collect()
 
         if not manifest:
             logger.info("No cases for year %d, skipping", year)
@@ -389,6 +402,18 @@ async def run_trial_years(
     if _shutdown_event.is_set():
         _save_trial_state(trial_case_ids, output_dir)
         return trial_case_ids
+
+    # ── Free Phase 1/2 memory before Phase 3 (prevent OOM) ──────────
+    # Clear any remaining extracted PDF directories
+    s3_cache_dir = DATA_DIR / "s3_cache"
+    if s3_cache_dir.exists():
+        for year_dir in s3_cache_dir.iterdir():
+            pdf_dir = year_dir / "pdfs" if year_dir.is_dir() else None
+            if pdf_dir and pdf_dir.exists():
+                shutil.rmtree(pdf_dir, ignore_errors=True)
+        logger.info("Cleared extracted PDF directories from s3_cache")
+    gc.collect()
+    logger.info("GC collected before Phase 3 — freed memory from Phase 1/2")
 
     # ── Phase 3: Process all cases with concurrency ──────────────────
     logger.info("=" * 60)
@@ -815,6 +840,7 @@ async def async_main(args: argparse.Namespace) -> None:
             rpm_limit=args.rpm_limit,
             concurrency=args.concurrency,
             output_dir=output_dir,
+            year_step=args.year_step,
         )
 
         if args.dry_run:
@@ -833,6 +859,7 @@ async def async_main(args: argparse.Namespace) -> None:
         "year_from": args.year_from if not args.audit_only else min(trial_case_ids.keys()),
         "year_to": args.year_to if not args.audit_only else max(trial_case_ids.keys()),
         "sample_size": args.sample_size,
+        "year_step": args.year_step,
         "seed": args.seed,
     }
     print_report_table(reports, tag, args.sample_size)
@@ -846,6 +873,7 @@ def main() -> None:
     parser.add_argument("--year-from", type=int, help="Start year (inclusive)")
     parser.add_argument("--year-to", type=int, help="End year (inclusive)")
     parser.add_argument("--sample-size", type=int, default=10, help="Cases per year (default: 10)")
+    parser.add_argument("--year-step", type=int, default=1, help="Step between years, e.g. 5 = every 5th year (default: 1)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
     parser.add_argument("--audit-only", action="store_true", help="Skip ingestion, audit existing trial cases")
     parser.add_argument("--dry-run", action="store_true", help="Phase 1 only, no API calls")

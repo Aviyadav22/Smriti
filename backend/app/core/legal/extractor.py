@@ -685,7 +685,7 @@ def _is_valid_act_citation(name: str) -> bool:
         r"went|governed|governs|empowers|empowered|include|includes|included|including|"
         r"filed|alleged|contended|submitted|argued|claimed|stated|held|observed|"
         r"directed|ordered|granted|rejected|made|passed|enacted|given|may|"
-        r"dealt|dealing|deals|provides|provided|providing|compared|"
+        r"dealt|dealing|deals|provides|provided|providing|compared|hold|holds|holding|"
         r"mandates?|enables?|confers?|enacts?|prescribes?|stipulates?|declares?|"
         r"prohibits?|authorizes?|contemplates?|signifies?|acknowledges?|"
         r"recognizes?|requires?|specifies?|satisfies|permits?|covers?|"
@@ -729,8 +729,37 @@ def _is_valid_act_citation(name: str) -> bool:
         re.IGNORECASE,
     ):
         return False
-    # Contains "v." or "versus" — it's a case name, not an act
-    if re.search(r"\bv\.?\s|\bversus\b", stripped, re.IGNORECASE):
+    # Contains "v." or "v " or "versus" — it's a case name, not an act
+    if re.search(r"\bv\.?\s|\bversus\b|\bv$", stripped, re.IGNORECASE):
+        return False
+    # All-caps sentence fragments: "COURT In accordance...", "STATE OF MYSORE..."
+    # Real act names in all-caps are short codes (already matched above);
+    # long all-caps strings with prepositions are sentence fragments
+    if stripped.isupper() and len(stripped.split()) > 3:
+        return False
+    # Starts with all-caps non-act word: "COURT ...", "CRIMINAL ..."
+    if re.match(
+        r"^(?:COURT|CRIMINAL|STATE|CIVIL|CHIEF|LEARNED|HONOURABLE|HON'BLE)\s+",
+        stripped,
+    ):
+        return False
+    # "Code i", "Scheduled Tribes i" — truncated entries ending in single letter
+    if re.search(r"\s[a-z]$", stripped):
+        return False
+    # Bare "The" or "The [non-Act word]" — not an act name
+    if stripped.lower() == "the":
+        return False
+    if re.match(r"^The\s+(?!.*\bAct\b|.*\bCode\b|.*\bRules?\b|.*\bOrder\b)", stripped):
+        return False
+    # "[Act Name] bv/bY/hv [words]" — OCR-corrupted "by" followed by sentence fragment
+    if re.search(r"\b(?:bv|hv|hy)\b", stripped, re.IGNORECASE):
+        return False
+    # "[Name] Act No. [N] of" — incomplete statutory reference
+    if re.search(r"\bAct\s+No\.\s*\d+\s+of\s*$", stripped, re.IGNORECASE):
+        return False
+    # "[Year] [Name] Act" where year is in the middle — suspicious pattern
+    # Real: "Motor Vehicles Act, 1939" (year at end). Garbage: "Motor Vehicles 1959 Act"
+    if re.match(r"^[A-Z][\w\s]+\d{4}\s+Act\s*$", stripped):
         return False
     # Act name ending with Roman numerals + "of" pattern: "Travancore Act XIV of"
     # These are incomplete statute references (missing the year)
@@ -911,6 +940,50 @@ def classify_case_citations(
     return sorted(named), sorted(bare)
 
 
+def _repair_ocr_act_name(text: str) -> str:
+    """Attempt to repair common OCR corruptions in act names.
+
+    Fixes:
+    - Space-broken words: "Cen tral" -> "Central", "Con tract" -> "Contract"
+    - Letter corruptions: "Cootract" -> "Contract", "lnciia" -> "India"
+    - Digit corruptions in years: "z959" -> "1959"
+    """
+    _SPACE_BREAK_FIXES: dict[str, str] = {
+        "Cen tral": "Central", "Con tract": "Contract",
+        "Govern ment": "Government", "Limi tation": "Limitation",
+        "Consti tution": "Constitution", "Regu lation": "Regulation",
+        "Admini stration": "Administration", "Proba tion": "Probation",
+        "Arbi tration": "Arbitration", "Compen sation": "Compensation",
+        "Acqui sition": "Acquisition", "Preven tion": "Prevention",
+        "Protec tion": "Protection", "Infor mation": "Information",
+        "Repre sentation": "Representation", "Proce dure": "Procedure",
+        "Insol vency": "Insolvency", "Crimi nal": "Criminal",
+        "Sched uled": "Scheduled", "Offi cers": "Officers",
+        "Offend ers": "Offenders", "Amend ment": "Amendment",
+        "Munici pal": "Municipal", "Elec tricity": "Electricity",
+    }
+    for broken, fixed in _SPACE_BREAK_FIXES.items():
+        text = text.replace(broken, fixed)
+
+    _LETTER_FIXES: dict[str, str] = {
+        "Cootract": "Contract", "Cede": "Code", "Ptobation": "Probation",
+        "Linlitation": "Limitation", "Offendets": "Offenders",
+        "Offeuders": "Offenders", "lnciia": "India", "lndia": "India",
+        "Iudia": "India", "Iadian": "Indian", "Peuai": "Penal",
+        "Evideoce": "Evidence", "Crimiual": "Criminal",
+        "Cousumer": "Consumer", "Represeutation": "Representation",
+    }
+    for garbled, correct in _LETTER_FIXES.items():
+        if garbled in text:
+            text = text.replace(garbled, correct)
+
+    # Fix digit corruptions in years (z959 -> 1959, l960 -> 1960)
+    text = re.sub(r"\b[zZlI](\d{3})\b", r"1\1", text)
+    text = re.sub(r"\b(\d)[oO](\d{2})\b", r"\g<1>0\2", text)
+
+    return text
+
+
 def normalize_acts_cited_list(raw_acts: list[str]) -> list[str]:
     """Normalize a list of raw acts_cited strings to canonical short codes.
 
@@ -920,6 +993,8 @@ def normalize_acts_cited_list(raw_acts: list[str]) -> list[str]:
     - "Indian Penal Code" -> "IPC"
     - "IPC" -> "IPC" (already normalized)
     - "Code of Criminal\\nProcedure" -> "CrPC" (newline-broken)
+    - OCR space-breaks: "Cen tral Sales Tax Act" -> "Central Sales Tax Act"
+    - OCR corruptions: "Cootract Act" -> "Contract Act" -> "ICA"
     - Filters garbage: "Unknown Act", "M", state names, etc.
 
     Returns sorted, deduplicated list of canonical short codes.
@@ -930,10 +1005,11 @@ def normalize_acts_cited_list(raw_acts: list[str]) -> list[str]:
         if not raw or not isinstance(raw, str):
             continue
 
-        # Step 1: Replace newlines with spaces, strip
+        # Step 1: Replace newlines with spaces, strip, then repair OCR
         cleaned = re.sub(r"[\r\n]+", " ", raw).strip()
         if not cleaned:
             continue
+        cleaned = _repair_ocr_act_name(cleaned)
 
         # Step 2: Try to extract act name from various patterns
         act_name: str | None = None
