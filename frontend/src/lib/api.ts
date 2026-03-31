@@ -1071,4 +1071,16 @@ export async function getSharedMemo(token: string): Promise<{ title: string; mem
     return res.json();
 }
 
+// ---------------------------------------------------------------------------
+// Case Timeline & Citation Evolution
+// ---------------------------------------------------------------------------
+
+export async function getCaseTimeline(caseId: string): Promise<{ case_title: string; events: { date: string; type: string; court: string; detail: string }[] }> {
+    return apiFetch(`/cases/${caseId}/timeline`);
+}
+
+export async function getCitationEvolution(caseId: string, direction: "forward" | "backward" = "forward"): Promise<{ root_case: { id: string; title: string; year: number; citation: string }; evolution: { case_id: string; title: string; year: number; citation: string; court: string; treatment: string; ratio_snippet: string }[]; direction: string }> {
+    return apiFetch(`/graph/${caseId}/evolution?direction=${direction}`);
+}
+
 export { ApiError };

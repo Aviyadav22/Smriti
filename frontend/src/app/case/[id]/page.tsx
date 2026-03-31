@@ -12,7 +12,8 @@ import dynamic from "next/dynamic";
 import { getCase, getCaseCitations, getCaseCitedBy, getCaseSimilar, getCasePdfUrl, getCaseSummary, getGraphNeighborhood } from "@/lib/api";
 import type { CaseDetail, CitationItem, GraphData, SimilarCase } from "@/lib/types";
 import Link from "next/link";
-import { ArrowLeft, FileText, BookOpen, Link2, Scale, ExternalLink, Languages, Loader2, GitBranch, MessageSquare } from "lucide-react";
+import { ArrowLeft, FileText, BookOpen, Link2, Scale, ExternalLink, Languages, Loader2, GitBranch, MessageSquare, Clock } from "lucide-react";
+import { CaseTimeline } from "@/components/case-timeline";
 import AudioPlayer from "@/components/audio-player";
 import { CaseDetailSkeleton } from "@/components/skeleton";
 
@@ -193,6 +194,9 @@ export default function CaseDetailPage() {
                                             <GitBranch className="h-3 w-3 mr-1" /> Graph
                                         </TabsTrigger>
                                     )}
+                                    <TabsTrigger value="timeline" className="text-[11px] uppercase tracking-wider h-7 px-3 rounded-md">
+                                        <Clock className="h-3 w-3 mr-1" /> Timeline
+                                    </TabsTrigger>
                                 </TabsList>
 
                                 {/* Section content tabs */}
@@ -340,6 +344,11 @@ export default function CaseDetailPage() {
                                         </Card>
                                     </TabsContent>
                                 )}
+
+                                {/* Timeline tab */}
+                                <TabsContent value="timeline">
+                                    <CaseTimeline caseId={caseId} />
+                                </TabsContent>
                             </Tabs>
                         </div>
 
