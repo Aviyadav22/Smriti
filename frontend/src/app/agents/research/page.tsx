@@ -11,6 +11,7 @@ import {
     sendAgentFollowUp,
     getAgentSessions,
     getAgentSessionMessages,
+    getAgentSessionDetail,
     deleteAgentSession,
 } from "@/lib/api";
 import type {
@@ -225,21 +226,50 @@ export default function ResearchAgentPage() {
         setIsFollowUp(true);
         setError(null);
         try {
-            const messages = await getAgentSessionMessages(sid);
+            const [messages, detail] = await Promise.all([
+                getAgentSessionMessages(sid),
+                getAgentSessionDetail(sid),
+            ]);
             setSessionMessages(messages);
 
-            // Extract memo + footnotes from the last assistant memo message
+            // Try memo from messages first
             const lastMemo = [...messages].reverse().find(
                 (m) => m.role === "assistant" && m.message_type === "memo",
             );
+
             if (lastMemo) {
                 setMemo(lastMemo.content);
                 if (lastMemo.sources && lastMemo.sources.length > 0) {
-                    setFootnotes(lastMemo.sources);
+                    setFootnotes(lastMemo.sources as ResearchFootnote[]);
                 }
             }
 
-            // Set query from first user message
+            // Fallback: get memo from latest completed execution's result_data
+            const completedExec = [...(detail.executions || [])].reverse().find(
+                (e) => e.status === "completed" && e.result_data?.memo,
+            );
+
+            if (completedExec?.result_data) {
+                const rd = completedExec.result_data;
+                setExecutionId(completedExec.id);
+
+                if (!lastMemo && rd.memo) {
+                    setMemo(rd.memo);
+                }
+                if (rd.footnotes && rd.footnotes.length > 0 && (!lastMemo?.sources || lastMemo.sources.length === 0)) {
+                    setFootnotes(rd.footnotes as ResearchFootnote[]);
+                }
+                if (rd.confidence !== undefined) {
+                    setConfidence(rd.confidence);
+                }
+                if (rd.confidence_breakdown) {
+                    setConfidenceBreakdown(rd.confidence_breakdown);
+                }
+                if (rd.research_audit) {
+                    setResearchAudit(rd.research_audit as ResearchAudit);
+                }
+            }
+
             const firstQuery = messages.find(
                 (m) => m.role === "user" && m.message_type === "query",
             );

@@ -27,6 +27,7 @@ import type {
     RegisterRequest,
     SearchHistoryEntry,
     SearchResponse,
+    SessionDetail,
     SimilarCase,
     StreamEvent,
     TokenResponse,
@@ -1013,8 +1014,8 @@ export async function getAgentSessionMessages(
 
 export async function getAgentSessionDetail(
     sessionId: string,
-): Promise<Record<string, unknown>> {
-    return apiFetch<Record<string, unknown>>(`/agents/sessions/${sessionId}`);
+): Promise<SessionDetail> {
+    return apiFetch<SessionDetail>(`/agents/sessions/${sessionId}`);
 }
 
 export async function deleteAgentSession(sessionId: string): Promise<void> {

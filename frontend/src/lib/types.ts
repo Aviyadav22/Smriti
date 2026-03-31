@@ -536,6 +536,34 @@ export interface AgentSessionMessage {
     created_at: string;
 }
 
+export interface SessionDetailExecution {
+    id: string;
+    status: string;
+    input_data: Record<string, unknown>;
+    result_data: {
+        memo?: string;
+        confidence?: number;
+        confidence_breakdown?: {
+            data_confidence?: number;
+            legal_confidence?: number;
+            consistency_confidence?: number;
+        };
+        footnotes?: ResearchFootnote[];
+        research_audit?: ResearchAudit;
+    } | null;
+    created_at: string;
+    completed_at: string | null;
+}
+
+export interface SessionDetail {
+    id: string;
+    agent_type: string;
+    title: string;
+    created_at: string;
+    updated_at: string;
+    executions: SessionDetailExecution[];
+}
+
 // ---------------------------------------------------------------------------
 // Search History
 // ---------------------------------------------------------------------------
