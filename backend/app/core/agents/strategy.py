@@ -1,16 +1,18 @@
-"""Strategy Agent LangGraph graph.
+"""Strategy / Argument Builder Agent LangGraph graph.
 
-Builds a compiled LangGraph state graph that analyzes case facts, fetches
-judge profiles, searches for precedents, assesses argument strength,
-generates arguments with counter-arguments and judge-specific considerations,
-and synthesizes a litigation strategy memo -- with HITL checkpoints at key
-decision points.
+Builds a compiled LangGraph state graph that analyzes case facts, decomposes
+legal elements, fetches judge profiles, searches for precedents, assesses
+argument strength, generates IRAC-structured arguments, runs adversarial
+searches, determines optimal argument ordering, generates counter-arguments
+with judge-specific considerations, and synthesizes an argument memo -- with
+HITL checkpoints at key decision points.
 
 Graph flow:
-  START -> analyze_facts -> fetch_judge -> checkpoint_analysis ->
-  search_precedents -> assess_strength -> generate_arguments ->
-  checkpoint_arguments -> counter_and_judge ->
-  synthesize_strategy -> verify -> checkpoint_memo -> END
+  START -> analyze_facts -> element_decomposition -> fetch_judge ->
+  checkpoint_analysis -> search_precedents -> assess_strength ->
+  generate_arguments_irac -> checkpoint_arguments -> adversarial_search ->
+  counter_and_judge -> argument_ordering -> synthesize_strategy ->
+  verify -> checkpoint_memo -> END
 """
 from __future__ import annotations
 
@@ -21,11 +23,15 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from app.core.agents.nodes.common import element_decomposition_node
 from app.core.agents.nodes.strategy_nodes import (
+    adversarial_search_strategy_node,
     analyze_facts_node,
+    argument_ordering_node,
     assess_strength_node,
     counter_arguments_node,
     fetch_judge_profile_node,
+    generate_arguments_irac_node,
     generate_arguments_node,
     judge_considerations_node,
     search_precedents_node,
@@ -51,7 +57,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 route_after_analysis = make_feedback_router("analysis", "analyze_facts", "search_precedents", check_error=True)
-route_after_arguments = make_feedback_router("arguments", "generate_arguments", "counter_and_judge", check_error=True)
+route_after_arguments = make_feedback_router("arguments", "generate_arguments_irac", "adversarial_search", check_error=True)
 route_after_memo = make_feedback_router("memo", "synthesize_strategy", check_error=True)
 
 
@@ -124,15 +130,32 @@ def build_strategy_graph(
     async def assess_strength(state: StrategyState) -> dict:
         return await assess_strength_node(state, llm)
 
-    async def generate_arguments(state: StrategyState) -> dict:
-        result = await generate_arguments_node(state, llm)
-        # Count feedback messages for THIS step only (not shared across checkpoints)
+    async def element_decomposition(state: StrategyState) -> dict:
+        # Adapt StrategyState to the dict shape element_decomposition_node expects
+        adapted = {
+            "query": state.get("case_facts", ""),
+            "rewritten_query": "",
+            "statute_context": [],
+            "complexity": "complex",
+        }
+        return await element_decomposition_node(adapted, flash_llm)
+
+    async def generate_arguments_irac(state: StrategyState) -> dict:
+        result = await generate_arguments_irac_node(state, llm)
         step_feedback_count = sum(
             1 for m in state.get("messages", [])
             if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "arguments"
         )
         result["iteration"] = step_feedback_count
         return result
+
+    async def adversarial_search(state: StrategyState) -> dict:
+        return await adversarial_search_strategy_node(
+            state, llm, embedder, vector_store, reranker
+        )
+
+    async def argument_ordering(state: StrategyState) -> dict:
+        return await argument_ordering_node(state, llm)
 
     async def counter_and_judge(state: StrategyState) -> dict:
         counter_result, judge_result = await asyncio.gather(
@@ -178,13 +201,16 @@ def build_strategy_graph(
     # -- Register nodes -----------------------------------------------------
 
     graph.add_node("analyze_facts", analyze_facts)
+    graph.add_node("element_decomposition", element_decomposition)
     graph.add_node("fetch_judge", fetch_judge)
     graph.add_node("checkpoint_analysis", checkpoint_analysis)
     graph.add_node("search_precedents", search_precedents)
     graph.add_node("assess_strength", assess_strength)
-    graph.add_node("generate_arguments", generate_arguments)
+    graph.add_node("generate_arguments_irac", generate_arguments_irac)
     graph.add_node("checkpoint_arguments", checkpoint_arguments)
+    graph.add_node("adversarial_search", adversarial_search)
     graph.add_node("counter_and_judge", counter_and_judge)
+    graph.add_node("argument_ordering", argument_ordering)
     graph.add_node("synthesize_strategy", synthesize_strategy)
     graph.add_node("verify", verify)
     graph.add_node("checkpoint_memo", checkpoint_memo)
@@ -192,7 +218,8 @@ def build_strategy_graph(
     # -- Edges --------------------------------------------------------------
 
     graph.add_edge(START, "analyze_facts")
-    graph.add_edge("analyze_facts", "fetch_judge")
+    graph.add_edge("analyze_facts", "element_decomposition")
+    graph.add_edge("element_decomposition", "fetch_judge")
     graph.add_edge("fetch_judge", "checkpoint_analysis")
 
     graph.add_conditional_edges(
@@ -202,20 +229,22 @@ def build_strategy_graph(
     )
 
     graph.add_edge("search_precedents", "assess_strength")
-    graph.add_edge("assess_strength", "generate_arguments")
-    graph.add_edge("generate_arguments", "checkpoint_arguments")
+    graph.add_edge("assess_strength", "generate_arguments_irac")
+    graph.add_edge("generate_arguments_irac", "checkpoint_arguments")
 
     graph.add_conditional_edges(
         "checkpoint_arguments",
         route_after_arguments,
         {
-            "generate_arguments": "generate_arguments",
-            "counter_and_judge": "counter_and_judge",
+            "generate_arguments_irac": "generate_arguments_irac",
+            "adversarial_search": "adversarial_search",
             END: END,
         },
     )
 
-    graph.add_edge("counter_and_judge", "synthesize_strategy")
+    graph.add_edge("adversarial_search", "counter_and_judge")
+    graph.add_edge("counter_and_judge", "argument_ordering")
+    graph.add_edge("argument_ordering", "synthesize_strategy")
     graph.add_edge("synthesize_strategy", "verify")
     graph.add_edge("verify", "checkpoint_memo")
 

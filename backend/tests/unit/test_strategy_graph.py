@@ -143,7 +143,7 @@ class TestRouteAfterAnalysis:
 class TestRouteAfterArguments:
     def test_returns_counter_and_judge_when_no_feedback(self) -> None:
         state = _make_state(messages=[], iteration=0)
-        assert route_after_arguments(state) == "counter_and_judge"
+        assert route_after_arguments(state) == "adversarial_search"
 
     def test_returns_generate_arguments_when_feedback_present_and_iteration_under_3(self) -> None:
         state = _make_state(
@@ -156,7 +156,7 @@ class TestRouteAfterArguments:
             ],
             iteration=2,
         )
-        assert route_after_arguments(state) == "generate_arguments"
+        assert route_after_arguments(state) == "generate_arguments_irac"
 
     def test_returns_counter_and_judge_when_iteration_equals_3(self) -> None:
         state = _make_state(
@@ -167,7 +167,7 @@ class TestRouteAfterArguments:
             ],
             iteration=3,
         )
-        assert route_after_arguments(state) == "counter_and_judge"
+        assert route_after_arguments(state) == "adversarial_search"
 
     def test_returns_counter_and_judge_when_iteration_exceeds_3(self) -> None:
         state = _make_state(
@@ -179,7 +179,7 @@ class TestRouteAfterArguments:
             ],
             iteration=10,
         )
-        assert route_after_arguments(state) == "counter_and_judge"
+        assert route_after_arguments(state) == "adversarial_search"
 
     def test_ignores_feedback_for_other_steps(self) -> None:
         state = _make_state(
@@ -192,7 +192,7 @@ class TestRouteAfterArguments:
             ],
             iteration=1,
         )
-        assert route_after_arguments(state) == "counter_and_judge"
+        assert route_after_arguments(state) == "adversarial_search"
 
     def test_empty_feedback_content_does_not_loop(self) -> None:
         state = _make_state(
@@ -205,7 +205,7 @@ class TestRouteAfterArguments:
             ],
             iteration=1,
         )
-        assert route_after_arguments(state) == "counter_and_judge"
+        assert route_after_arguments(state) == "adversarial_search"
 
     def test_returns_end_when_error_is_set(self) -> None:
         state = _make_state(error="LLM error in generate_arguments_node: timeout")
@@ -323,29 +323,32 @@ class TestBuildStrategyGraph:
         assert hasattr(graph, "invoke") or hasattr(graph, "ainvoke")
 
     def test_graph_has_expected_node_count(self) -> None:
-        """Graph must have exactly 11 registered nodes (+ __start__ = 12)."""
+        """Graph must have exactly 14 registered nodes (+ __start__ = 15)."""
         graph = self._build()
         # LangGraph exposes the graph structure via .graph attribute on compiled graphs
         # The underlying StateGraph nodes are accessible via graph.nodes or the builder
         node_count = len(graph.nodes)
-        # 11 user nodes + __start__ = 12
-        assert node_count == 12, (
-            f"Expected 12 nodes, got {node_count}. "
+        # 14 user nodes + __start__ = 15
+        assert node_count == 15, (
+            f"Expected 15 nodes, got {node_count}. "
             f"Nodes: {sorted(graph.nodes)}"
         )
 
     def test_graph_has_expected_nodes(self) -> None:
-        """Compiled graph must include all 11 named nodes."""
+        """Compiled graph must include all 14 named nodes."""
         graph = self._build()
         expected_nodes = {
             "analyze_facts",
+            "element_decomposition",
             "fetch_judge",
             "checkpoint_analysis",
             "search_precedents",
             "assess_strength",
-            "generate_arguments",
+            "generate_arguments_irac",
             "checkpoint_arguments",
+            "adversarial_search",
             "counter_and_judge",
+            "argument_ordering",
             "synthesize_strategy",
             "verify",
             "checkpoint_memo",
