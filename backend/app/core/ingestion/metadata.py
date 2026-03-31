@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, fields
 from datetime import datetime
 
@@ -24,6 +25,233 @@ def _truncate_for_llm(text: str) -> str:
         + "\n\n[...middle section truncated for length...]\n\n"
         + text[-_TAIL_CHARS:]
     )
+
+
+def _normalize_judge_name(name: str) -> str:
+    """Normalize judge name spacing and known variants.
+
+    Fixes:
+    - Inconsistent spacing after initials: "D.Y." → "D.Y.", "D. Y." → "D.Y."
+    - Multiple spaces
+    - Known SC judge name variants (OCR/LLM inconsistencies)
+    """
+    # Collapse multiple spaces
+    name = re.sub(r"\s{2,}", " ", name).strip()
+
+    # Normalize initials: "D. Y. " → "D.Y." (letter-dot-space before uppercase)
+    # This handles "D. Y. Chandrachud" → "D.Y. Chandrachud"
+    name = re.sub(r"\b([A-Z])\.\s+(?=[A-Z]\.)", r"\1.", name)
+
+    # Remove trailing dot after last initial before surname
+    # "D.Y. Chandrachud" stays as is (dot followed by space+lowercase-start word is fine)
+
+    # Strip leading/trailing dots or commas left from OCR
+    name = re.sub(r"^[.,\s]+|[.,\s]+$", "", name)
+
+    return name
+
+
+# Known SC judge canonical names — maps common variants to canonical form.
+# Only includes judges with frequently observed OCR/LLM inconsistencies.
+_JUDGE_CANONICAL: dict[str, str] = {
+    # Modern era (most common in our corpus)
+    "dhananjaya y chandrachud": "D.Y. Chandrachud",
+    "dy chandrachud": "D.Y. Chandrachud",
+    "d y chandrachud": "D.Y. Chandrachud",
+    "chandrachud": "D.Y. Chandrachud",
+    "sanjiv khanna": "Sanjiv Khanna",
+    "b r gavai": "B.R. Gavai",
+    "br gavai": "B.R. Gavai",
+    "bhushan ramkrishna gavai": "B.R. Gavai",
+    "surya kant": "Surya Kant",
+    "suryakant": "Surya Kant",
+    "hrishikesh roy": "Hrishikesh Roy",
+    "j b pardiwala": "J.B. Pardiwala",
+    "jb pardiwala": "J.B. Pardiwala",
+    "j.b pardiwala": "J.B. Pardiwala",
+    "pamidighantam sri narasimha": "P.S. Narasimha",
+    "ps narasimha": "P.S. Narasimha",
+    "p s narasimha": "P.S. Narasimha",
+    "manoj misra": "Manoj Misra",
+    "ujjal bhuyan": "Ujjal Bhuyan",
+    "s c sharma": "S.C. Sharma",
+    "sc sharma": "S.C. Sharma",
+    "augustine george masih": "Augustine George Masih",
+    "a g masih": "Augustine George Masih",
+    # Recent CJIs
+    "n v ramana": "N.V. Ramana",
+    "nv ramana": "N.V. Ramana",
+    "nuthalapati venkata ramana": "N.V. Ramana",
+    "u u lalit": "U.U. Lalit",
+    "uu lalit": "U.U. Lalit",
+    "uday umesh lalit": "U.U. Lalit",
+    "s a bobde": "S.A. Bobde",
+    "sa bobde": "S.A. Bobde",
+    "sharad arvind bobde": "S.A. Bobde",
+    "ranjan gogoi": "Ranjan Gogoi",
+    "dipak misra": "Dipak Misra",
+    # Historical (frequent in 1950s-2000s corpus)
+    "b p sinha": "B.P. Sinha",
+    "bp sinha": "B.P. Sinha",
+    "s r das": "S.R. Das",
+    "sr das": "S.R. Das",
+    "k subba rao": "K. Subba Rao",
+    "k n wanchoo": "K.N. Wanchoo",
+    "kn wanchoo": "K.N. Wanchoo",
+    "p n bhagwati": "P.N. Bhagwati",
+    "pn bhagwati": "P.N. Bhagwati",
+    "y v chandrachud": "Y.V. Chandrachud",
+    "yv chandrachud": "Y.V. Chandrachud",
+    "yeshwant vishnu chandrachud": "Y.V. Chandrachud",
+    "v r krishna iyer": "V.R. Krishna Iyer",
+    "vr krishna iyer": "V.R. Krishna Iyer",
+}
+
+
+def _apply_judge_canonical(name: str) -> str:
+    """Look up canonical form for known SC judges."""
+    # Normalize for lookup: lowercase, strip dots/periods, collapse spaces
+    key = re.sub(r"[.\-']", "", name.lower()).strip()
+    key = re.sub(r"\s+", " ", key)
+    return _JUDGE_CANONICAL.get(key, name)
+
+
+def _validate_judges_against_text(
+    judges: list[str] | None,
+    full_text: str,
+    header_chars: int = 2000,
+) -> tuple[list[str], list[str]]:
+    """Validate judge names by checking they appear in the judgment header.
+
+    The bench composition is always listed in the first ~2000 chars of
+    an Indian court judgment. For each judge, we check whether the surname
+    (longest word with 4+ chars) appears case-insensitively in the header.
+
+    Args:
+        judges: List of judge names to validate.
+        full_text: Full judgment text (only first ``header_chars`` are scanned).
+        header_chars: How many chars from the start to scan.
+
+    Returns:
+        Tuple of (validated_judges, rejected_judges).
+    """
+    if not judges:
+        return [], []
+
+    # If text is too short to contain a reliable header, skip validation
+    if len(full_text) < 200:
+        return list(judges), []
+
+    header = full_text[:header_chars].upper()
+    validated: list[str] = []
+    rejected: list[str] = []
+
+    for judge in judges:
+        # Extract surname: longest word with 4+ alpha chars
+        words = [w.strip(".,'") for w in judge.split()]
+        surname_candidates = [w for w in words if len(w) >= 4 and w.isalpha()]
+        if not surname_candidates:
+            # Fallback: use last word regardless
+            surname_candidates = [words[-1].strip(".,'") if words else ""]
+
+        surname = max(surname_candidates, key=len) if surname_candidates else ""
+
+        if surname and surname.upper() in header:
+            validated.append(judge)
+        else:
+            rejected.append(judge)
+
+    return validated, rejected
+
+
+# Supreme Court judge tenure lookup — (appointment_year, retirement_year).
+# Only includes judges with frequently observed hallucination in audit.
+# Source: Supreme Court of India official records.
+_JUDGE_TENURE: dict[str, tuple[int, int]] = {
+    "sathasivam": (2007, 2014),
+    "kapadia": (2003, 2012),
+    "pasayat": (2001, 2009),
+    "gogoi": (2012, 2019),
+    "chandrachud d.y.": (2016, 2024),
+    "chandrachud y.v.": (1972, 1985),
+    "krishna iyer": (1973, 1980),
+    "bhagwati": (1973, 1986),
+    "fazal ali": (1950, 1952),
+    "mukherjea": (1950, 1955),
+    "das": (1950, 1956),
+    "ramana": (2014, 2022),
+    "misra dipak": (2011, 2018),
+    "bobde": (2013, 2021),
+    "lalit": (2014, 2022),
+    "nariman": (2014, 2020),
+    "khanna sanjiv": (2019, 2025),
+    "kaul": (2017, 2025),
+    "bhat": (2019, 2025),
+    "maheshwari": (2019, 2024),
+    "nazeer": (2017, 2023),
+    "trivedi": (2021, 2025),
+    "oka": (2021, 2026),
+    "rajendra babu": (1997, 2004),
+    "venkatarama reddi": (2000, 2006),
+    "arun kumar": (2000, 2005),
+    "kania": (1987, 1992),
+    "kuldip singh": (1988, 1996),
+    "ramaswamy k.": (1989, 1995),
+    "venkatachala": (1995, 1999),
+    "phukan": (1999, 2004),
+    "sen a.p.": (1978, 1985),
+    "dutt murari": (2007, 2009),
+    "chauhan b.s.": (2009, 2014),
+    "bharucha": (1995, 2002),
+}
+
+
+def _validate_judge_tenure(
+    judges: list[str],
+    year: int | None,
+) -> list[str]:
+    """Filter out judges who couldn't have sat on the bench in the given year.
+
+    Uses a lightweight lookup of SC judge tenure ranges. Judges not found
+    in the lookup are passed through (benefit of the doubt).
+
+    Args:
+        judges: List of judge names.
+        year: Case decision year.
+
+    Returns:
+        Filtered list with only temporally plausible judges.
+    """
+    if not judges or year is None:
+        return list(judges) if judges else []
+
+    valid: list[str] = []
+    for judge in judges:
+        # Build lookup key: try surname, then "surname initial"
+        words = [w.strip(".,'") for w in judge.split()]
+        surname_candidates = [w for w in words if len(w) >= 3 and w.isalpha()]
+        surname = max(surname_candidates, key=len).lower() if surname_candidates else ""
+
+        tenure = _JUDGE_TENURE.get(surname)
+
+        # Try with first initial for disambiguation (e.g., "chandrachud d.y.")
+        if tenure is None and len(words) >= 2:
+            initial = words[0].strip(".").lower()
+            tenure = _JUDGE_TENURE.get(f"{surname} {initial}")
+
+        if tenure is None:
+            # Unknown judge — pass through
+            valid.append(judge)
+        elif tenure[0] <= year <= tenure[1] + 1:
+            # +1 grace: retirement mid-year means they may have sat in that year
+            valid.append(judge)
+        else:
+            logger.warning(
+                "Temporal judge mismatch: %s (tenure %d-%d) on %d case — rejected",
+                judge, tenure[0], tenure[1], year,
+            )
+
+    return valid
 
 
 def _parse_judge_names(raw: str | list | None) -> list[str] | None:
@@ -75,9 +303,21 @@ def _parse_judge_names(raw: str | list | None) -> list[str] | None:
         elif name.endswith(", J.") or name.endswith(" J."):
             name = name[:-4].strip() if name.endswith(", J.") else name[:-3].strip()
         if name:
-            cleaned.append(name)
+            name = _normalize_judge_name(name)
+            name = _apply_judge_canonical(name)
+            if name:
+                cleaned.append(name)
 
-    return cleaned if cleaned else None
+    # Deduplicate while preserving order (after normalization, variants merge)
+    seen: set[str] = set()
+    deduped = []
+    for n in cleaned:
+        key = n.lower()
+        if key not in seen:
+            seen.add(key)
+            deduped.append(n)
+
+    return deduped if deduped else None
 
 
 @dataclass
@@ -99,12 +339,14 @@ class CaseMetadata:
     ratio_decidendi: str | None = None
     acts_cited: list[str] | None = None
     cases_cited: list[str] | None = None
+    citation_refs: list[str] | None = None  # Bare reporter refs (no case names) for graph linking
     keywords: list[str] | None = None
     disposal_nature: str | None = None
     case_number: str | None = None
     is_reportable: bool | None = None
     headnotes: str | None = None  # JSON string of structured headnotes array
     outcome_summary: str | None = None
+    case_description: str | None = None  # LLM-generated case summary (fallback for Parquet)
     # Phase C: Legal completeness fields
     coram_size: int | None = None
     lower_court: str | None = None
@@ -295,6 +537,23 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
     Returns:
         The same instance with invalid fields set to ``None``.
     """
+    # -- Title cleanup: strip OCR header/footer garbage --
+    if metadata.title:
+        # "G H " prefix is OCR header leakage (seen in 2019 PDFs)
+        if metadata.title.startswith("G H "):
+            metadata.title = metadata.title[4:]
+        # Strip leading/trailing punctuation artifacts from OCR
+        metadata.title = re.sub(r"^[.\s,;:]+", "", metadata.title).strip()
+
+    # -- Petitioner/Respondent cleanup: strip OCR artifacts --
+    for party_field in ("petitioner", "respondent"):
+        val = getattr(metadata, party_field, None)
+        if val and isinstance(val, str):
+            # Strip leading dots, commas, colons (OCR artifacts)
+            cleaned = re.sub(r"^[.\s,;:]+", "", val).strip()
+            if cleaned != val:
+                setattr(metadata, party_field, cleaned)
+
     # -- Year must be in [1800, current_year] --
     current_year = datetime.now().year
     if metadata.year is not None and (metadata.year < 1800 or metadata.year > current_year):
@@ -386,9 +645,14 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
     for list_field, max_items in _MAX_LIST_ITEMS.items():
         val = getattr(metadata, list_field, None)
         if isinstance(val, list):
-            # Filter empty/whitespace strings, deduplicate, cap count
+            # Strip newlines, collapse double-spaces, deduplicate, cap count
+            def _clean_item(item: str) -> str:
+                item = item.replace("\n", " ").replace("\r", " ")
+                return re.sub(r"\s{2,}", " ", item).strip()
+
             cleaned = list(dict.fromkeys(
-                item.strip() for item in val if isinstance(item, str) and item.strip()
+                _clean_item(item) for item in val
+                if isinstance(item, str) and item.strip()
             ))
             if len(cleaned) > max_items:
                 cleaned = cleaned[:max_items]
@@ -427,8 +691,7 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
 
     # -- Validate split_ratio format (e.g., "3:2", "4:1") --
     if metadata.split_ratio is not None:
-        import re as _re
-        if not _re.match(r'^\d+:\d+$', metadata.split_ratio):
+        if not re.match(r'^\d+:\d+$', metadata.split_ratio):
             logger.warning("Invalid split_ratio '%s', clearing field", metadata.split_ratio)
             metadata.split_ratio = None
 
@@ -558,6 +821,41 @@ def validate_cross_fields(metadata: CaseMetadata) -> CaseMetadata:
         )
         metadata.bench_type = None
 
+    # coram_size → bench_type inference (override mismatches)
+    # SC terminology: 1=single, 2-3=division, 4+=full, 5+=constitutional
+    if metadata.coram_size and isinstance(metadata.coram_size, int):
+        inferred_bench = None
+        if metadata.coram_size == 1:
+            inferred_bench = "single"
+        elif metadata.coram_size in (2, 3):
+            inferred_bench = "division"
+        elif metadata.coram_size == 4:
+            inferred_bench = "full"
+        elif metadata.coram_size >= 5:
+            inferred_bench = "constitutional"
+        if inferred_bench and metadata.bench_type != inferred_bench:
+            if metadata.bench_type is not None:
+                logger.warning(
+                    "bench_type '%s' conflicts with coram_size %d (expected '%s'), overriding",
+                    metadata.bench_type, metadata.coram_size, inferred_bench,
+                )
+            metadata.bench_type = inferred_bench
+
+    # Normalize author_judge (same pipeline as judge list names)
+    if metadata.author_judge and isinstance(metadata.author_judge, str):
+        normalized = _normalize_judge_name(metadata.author_judge.strip())
+        normalized = _apply_judge_canonical(normalized)
+        if normalized:
+            metadata.author_judge = normalized
+
+    # Judge array completion: if author_judge exists but not in judge list, append
+    if (metadata.coram_size and metadata.judge and metadata.author_judge
+            and isinstance(metadata.coram_size, int)
+            and metadata.coram_size > len(metadata.judge)):
+        author_lower = metadata.author_judge.lower()
+        if author_lower not in [j.lower() for j in metadata.judge]:
+            metadata.judge.append(metadata.author_judge)
+
     # author_judge should appear in judge list
     if metadata.author_judge and metadata.judge:
         author_lower = metadata.author_judge.lower()
@@ -582,6 +880,29 @@ def validate_cross_fields(metadata: CaseMetadata) -> CaseMetadata:
         logger.warning(
             "case_type 'Writ Petition' with jurisdiction 'criminal' is unusual"
         )
+
+    # -- cases_cited cleanup: remove self-citations, then run GAN discriminator --
+    if metadata.cases_cited and metadata.citation:
+        own_normalized = re.sub(r"\s+", " ", metadata.citation.strip().lower())
+        metadata.cases_cited = [
+            c for c in metadata.cases_cited
+            if re.sub(r"\s+", " ", c.strip().lower()) != own_normalized
+        ]
+    if metadata.cases_cited:
+        # GAN Discriminator: classify into named citations vs bare refs
+        from app.core.legal.extractor import classify_case_citations
+        named, bare_refs = classify_case_citations(metadata.cases_cited)
+        metadata.cases_cited = named if named else None
+        # Preserve bare refs for later graph linking
+        if bare_refs:
+            existing_refs = getattr(metadata, "citation_refs", None) or []
+            all_refs = sorted(set(existing_refs + bare_refs))
+            metadata.citation_refs = all_refs
+
+    # -- is_reportable: infer from SCR citation --
+    if metadata.is_reportable is None and metadata.citation:
+        if re.search(r'\[\d{4}\]\s+\d+\s+S\.?C\.?R\.?\s+\d+', metadata.citation):
+            metadata.is_reportable = True
 
     return metadata
 
@@ -703,6 +1024,39 @@ def validate_parquet_data(parquet_meta: dict) -> dict:
         cleaned["title"] = title[:500]
         logger.warning("Parquet title truncated from %d chars", len(title))
 
+    # Normalize Parquet disposal_nature to standard enum values
+    _DISPOSAL_MAP = {
+        "appeal(s) allowed": "Allowed",
+        "appeals allowed": "Allowed",
+        "appeal allowed": "Allowed",
+        "case allowed": "Allowed",
+        "leave granted & allowed": "Allowed",
+        "dismissed": "Dismissed",
+        "disposed off": "Disposed Of",
+        "disposed of": "Disposed Of",
+        "case partly allowed": "Partly Allowed",
+        "partly allowed": "Partly Allowed",
+        "directions issued": "Disposed Of",
+        "leave granted & dismissed": "Dismissed",
+        "leave granted & disposed off": "Disposed Of",
+        "matter referred to larger bench": "Referred to Larger Bench",
+        "referred to larger bench": "Referred to Larger Bench",
+        "remitted to lower court": "Remanded",
+        "rejected": "Dismissed",
+        "withdrawn": "Withdrawn",
+        "settled": "Settled",
+        "transferred": "Transferred",
+        "modified": "Modified",
+        "abated": "Abated",
+        "not pressed": "Not Pressed",
+    }
+    raw_disposal = cleaned.get("disposal_nature")
+    if isinstance(raw_disposal, str) and raw_disposal.strip():
+        normalized = _DISPOSAL_MAP.get(raw_disposal.strip().lower())
+        if normalized:
+            cleaned["disposal_nature"] = normalized
+        # else: leave as-is for downstream validation to handle
+
     return cleaned
 
 
@@ -730,7 +1084,7 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> tuple[CaseMeta
     # -- Parquet-priority fields --
     parquet_priority = (
         "title", "citation", "court", "year", "decision_date",
-        "petitioner", "respondent", "author_judge", "disposal_nature",
+        "petitioner", "respondent",
     )
     for field in parquet_priority:
         parquet_val = parquet_meta.get(field)
@@ -753,13 +1107,70 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> tuple[CaseMeta
             val = None
         setattr(result, field, val)
 
+    # -- disposal_nature: LLM priority (Parquet has 67-81% NULLs; LLM reads
+    # the operative portion which always states disposal explicitly) --
+    _valid_disposals = {
+        "Allowed", "Dismissed", "Partly Allowed", "Withdrawn", "Remanded",
+        "Disposed Of", "Settled", "Transferred", "Modified", "Other",
+        "Referred to Larger Bench", "Abated", "Not Pressed",
+    }
+    llm_disposal = getattr(llm_meta, "disposal_nature", None)
+    parquet_disposal = parquet_meta.get("disposal_nature")
+    if llm_disposal and str(llm_disposal).strip():
+        result.disposal_nature = llm_disposal
+        provenance["disposal_nature"] = "llm"
+    elif parquet_disposal and str(parquet_disposal).strip():
+        # Normalize Parquet value if needed
+        if parquet_disposal in _valid_disposals:
+            result.disposal_nature = parquet_disposal
+        elif parquet_disposal.title() in _valid_disposals:
+            result.disposal_nature = parquet_disposal.title()
+        else:
+            result.disposal_nature = parquet_disposal
+        provenance["disposal_nature"] = "parquet_fallback"
+
+    # -- author_judge: LLM priority (Parquet has 0% for un-enriched cases;
+    # LLM extracts from judgment header with 99% success rate) --
+    llm_author = getattr(llm_meta, "author_judge", None)
+    parquet_author = parquet_meta.get("author_judge")
+    if llm_author and str(llm_author).strip():
+        result.author_judge = llm_author
+        provenance["author_judge"] = "llm"
+    elif parquet_author and str(parquet_author).strip():
+        result.author_judge = parquet_author
+        provenance["author_judge"] = "parquet_fallback"
+
     # -- Judge array (parquet may store as comma-separated string) --
+    # Parquet typically only contains the author judge, not the full bench.
+    # Prefer LLM's judge list when it has MORE judges (i.e. the full bench),
+    # or when coram_size indicates the parquet list is incomplete.
     judge_raw = parquet_meta.get("judge", "")
+    parquet_judges: list[str] | None = None
     if (isinstance(judge_raw, str) and judge_raw.strip()) or (isinstance(judge_raw, list) and judge_raw):
-        result.judge = _parse_judge_names(judge_raw)
+        parquet_judges = _parse_judge_names(judge_raw)
+
+    llm_judges: list[str] | None = None
+    if llm_meta.judge:
+        llm_judges = _parse_judge_names(llm_meta.judge)
+
+    llm_coram = getattr(llm_meta, "coram_size", None)
+
+    if llm_judges and parquet_judges:
+        # Prefer LLM if it extracted more judges or coram_size indicates parquet is incomplete
+        if len(llm_judges) > len(parquet_judges):
+            result.judge = llm_judges
+            provenance["judge"] = "llm"
+        elif llm_coram and isinstance(llm_coram, int) and llm_coram > len(parquet_judges):
+            result.judge = llm_judges
+            provenance["judge"] = "llm"
+        else:
+            result.judge = parquet_judges
+            provenance["judge"] = "parquet"
+    elif parquet_judges:
+        result.judge = parquet_judges
         provenance["judge"] = "parquet"
-    elif llm_meta.judge:
-        result.judge = _parse_judge_names(llm_meta.judge)
+    elif llm_judges:
+        result.judge = llm_judges
         provenance["judge"] = "llm"
 
     # -- LLM-priority fields --
