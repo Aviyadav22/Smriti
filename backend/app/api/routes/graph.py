@@ -1,10 +1,13 @@
-"""Citation graph API endpoints — neighborhood, chain, authorities, stats."""
+"""Citation graph API endpoints — neighborhood, chain, authorities, stats, evolution."""
 
 from __future__ import annotations
 
 import logging
+import uuid as _uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_graph_store
 from app.core.graph.traversal import (
@@ -13,6 +16,8 @@ from app.core.graph.traversal import (
     get_graph_stats,
     get_neighborhood,
 )
+from app.core.interfaces import GraphStore
+from app.db.postgres import get_db
 from app.db.redis_client import get_redis
 from app.security.auth import TokenPayload
 from app.security.rate_limiter import rate_limit_dependency
@@ -101,3 +106,87 @@ async def stats(
     except (ConnectionError, RuntimeError) as exc:
         logger.warning("Graph service unavailable: %s", exc)
         raise HTTPException(status_code=502, detail="Citation graph temporarily unavailable")
+
+
+# ---------------------------------------------------------------------------
+# GET /graph/{case_id}/evolution — Citation evolution timeline
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{case_id}/evolution", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+async def get_citation_evolution(
+    case_id: str,
+    max_depth: int = Query(3, ge=1, le=5),
+    direction: str = Query("forward", pattern="^(forward|backward)$"),
+    graph_store: GraphStore = Depends(get_graph_store),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return the citation evolution chain for a case — forward (cases citing this)
+    or backward (cases this one cites), ordered chronologically."""
+    try:
+        _uuid.UUID(case_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid case_id format")
+
+    # Fetch root case info from PostgreSQL
+    result = await db.execute(
+        text(
+            "SELECT id, title, year, citation, court "
+            "FROM cases WHERE id = :id"
+        ),
+        {"id": case_id},
+    )
+    root_row = result.mappings().one_or_none()
+
+    if root_row is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    root_case = {
+        "id": str(root_row["id"]),
+        "title": root_row.get("title"),
+        "year": root_row.get("year"),
+        "citation": root_row.get("citation"),
+    }
+
+    # Query Neo4j for evolution chain
+    if direction == "forward":
+        cypher = (
+            "MATCH (root:Case {id: $case_id})<-[r:CITES]-(citing:Case) "
+            "RETURN citing.id AS id, citing.title AS title, citing.year AS year, "
+            "       citing.citation AS citation, citing.court AS court, "
+            "       r.treatment AS treatment, citing.ratio AS ratio "
+            "ORDER BY citing.year ASC LIMIT 50"
+        )
+    else:
+        cypher = (
+            "MATCH (root:Case {id: $case_id})-[r:CITES]->(cited:Case) "
+            "RETURN cited.id AS id, cited.title AS title, cited.year AS year, "
+            "       cited.citation AS citation, cited.court AS court, "
+            "       r.treatment AS treatment, cited.ratio AS ratio "
+            "ORDER BY cited.year ASC LIMIT 50"
+        )
+
+    try:
+        records = await graph_store.query(cypher=cypher, params={"case_id": case_id})
+    except Exception as exc:
+        logger.warning("Graph query failed for citation evolution: %s", exc)
+        records = []
+
+    evolution = [
+        {
+            "case_id": r.get("id"),
+            "title": r.get("title"),
+            "year": r.get("year"),
+            "citation": r.get("citation"),
+            "court": r.get("court"),
+            "treatment": r.get("treatment"),
+            "ratio_snippet": (r.get("ratio") or "")[:300] if r.get("ratio") else None,
+        }
+        for r in records
+    ]
+
+    return {
+        "root_case": root_case,
+        "evolution": evolution,
+        "direction": direction,
+    }
