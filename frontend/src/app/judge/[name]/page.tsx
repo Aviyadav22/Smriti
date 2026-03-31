@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { getJudgeProfile, getJudgeCases } from "@/lib/api";
+import { JudgePredictionCard } from "@/components/judge-prediction-card";
 import type { JudgeProfile, JudgeCasesResponse } from "@/lib/types";
 import {
     BarChart,
@@ -149,6 +150,11 @@ export default function JudgeProfilePage() {
                             </div>
                             <p className="text-2xl font-semibold">{Object.keys(profile.case_types).length}</p>
                         </div>
+                    </div>
+
+                    {/* Prediction card */}
+                    <div className="mb-8">
+                        <JudgePredictionCard judgeName={judgeName} />
                     </div>
 
                     {/* Charts row */}

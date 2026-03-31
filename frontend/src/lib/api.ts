@@ -659,6 +659,29 @@ export async function compareJudges(names: string[]): Promise<JudgeCompareRespon
     return apiFetch<JudgeCompareResponse>(`/judges/compare?names=${namesParam}`);
 }
 
+export async function getJudgePrediction(params: {
+    judges: string;
+    case_type: string;
+    acts?: string;
+    jurisdiction?: string;
+}): Promise<{
+    predicted_outcome: string;
+    outcome_probabilities: Record<string, number>;
+    confidence: number;
+    sample_size: number;
+    factors: { name: string; impact: string; detail: string }[];
+    caveats: string[];
+} | null> {
+    const searchParams = new URLSearchParams({ judges: params.judges, case_type: params.case_type });
+    if (params.acts) searchParams.set("acts", params.acts);
+    if (params.jurisdiction) searchParams.set("jurisdiction", params.jurisdiction);
+    try {
+        return await apiFetch(`/judges/predict?${searchParams.toString()}`);
+    } catch {
+        return null; // 404 = insufficient data
+    }
+}
+
 export async function getCourtStats(court: string): Promise<CourtStats> {
     return apiFetch<CourtStats>(`/courts/${encodeURIComponent(court)}/stats`);
 }
