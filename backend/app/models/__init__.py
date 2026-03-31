@@ -14,6 +14,7 @@ from app.models.consent import Consent
 from app.models.document import Document
 from app.models.document_analysis import DocumentAnalysis
 from app.models.search_history import SearchHistory
+from app.models.shared_memo import SharedMemo
 from app.models.statute import Statute
 from app.models.user import User
 
@@ -34,6 +35,7 @@ __all__ = [
     "Document",
     "DocumentAnalysis",
     "SearchHistory",
+    "SharedMemo",
     "Statute",
     "TimestampMixin",
     "UUIDPrimaryKeyMixin",
