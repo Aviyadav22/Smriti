@@ -222,7 +222,7 @@ class CasePrepState(TypedDict):
 
 
 class StrategyState(TypedDict):
-    """State for the Strategy Agent graph."""
+    """State for the Strategy/Argument Builder Agent graph."""
     case_facts: str
     target_judge: str          # optional, empty string if not provided
     target_bench: str          # optional, empty string if not provided
@@ -231,14 +231,18 @@ class StrategyState(TypedDict):
     language: str              # "en" or "hi"
     # Produced by nodes:
     fact_analysis: dict        # parsed facts, parties, causes of action
+    legal_elements: list[dict]           # from element_decomposition
     judge_profile: dict        # from Judge Analytics (if target_judge set)
     search_results: list[dict]  # hybrid search hits
     precedent_map: list[dict]  # per-argument precedents with strength
     strength_assessment: dict  # {level: "strong"|"moderate"|"weak", reasoning: str, score: float}
     legal_arguments: list[dict]  # ordered arguments with citations
+    irac_arguments: list[dict]           # structured IRAC format
     counter_arguments: list[dict]  # anticipated counters + rebuttals
+    adversarial_results: list[dict]      # evidence-backed counter-arguments
     judge_considerations: list[dict]  # judge-specific strategic notes
     procedural_suggestions: list[str]
+    argument_order: list[int]            # optimal ordering indices
     strategy_memo: str         # final synthesized output
     confidence: float
     messages: Annotated[list[dict], operator.add]
