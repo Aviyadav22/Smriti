@@ -307,6 +307,280 @@ class TestParseJudgeNamesPrefixes:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Task 2: Newline stripping + cases_cited cleanup
+# ---------------------------------------------------------------------------
+
+
+class TestNewlineStrippingInListFields:
+    """Tests for embedded newline removal in list fields (Task 2)."""
+
+    def test_newlines_stripped_from_cases_cited(self):
+        meta = CaseMetadata(
+            cases_cited=["Union of India\nv.\nState of Kerala", "Ram\nv. Shyam"]
+        )
+        result = validate_with_regex(meta)
+        assert result.cases_cited == [
+            "Union of India v. State of Kerala",
+            "Ram v. Shyam",
+        ]
+
+    def test_newlines_stripped_from_acts_cited(self):
+        meta = CaseMetadata(
+            acts_cited=["Indian Penal\nCode, 1860", "Code of Criminal\nProcedure"]
+        )
+        result = validate_with_regex(meta)
+        # Both should have newlines replaced with spaces
+        assert all("\n" not in a for a in result.acts_cited)
+
+    def test_double_spaces_collapsed(self):
+        meta = CaseMetadata(
+            cases_cited=["Union of India  v.   State of Kerala"]
+        )
+        result = validate_with_regex(meta)
+        assert result.cases_cited == ["Union of India v. State of Kerala"]
+
+    def test_carriage_return_stripped(self):
+        meta = CaseMetadata(
+            keywords=["constitutional\r\nlaw", "fundamental\rrights"]
+        )
+        result = validate_with_regex(meta)
+        assert result.keywords == ["constitutional law", "fundamental rights"]
+
+    def test_empty_after_strip_removed(self):
+        meta = CaseMetadata(cases_cited=["\n", "  \n  ", "Real Case v. Real"])
+        result = validate_with_regex(meta)
+        assert result.cases_cited == ["Real Case v. Real"]
+
+    def test_deduplication_after_strip(self):
+        meta = CaseMetadata(
+            cases_cited=["A v. B", "A v.  B", "A v.\nB"]
+        )
+        result = validate_with_regex(meta)
+        assert result.cases_cited == ["A v. B"]
+
+
+class TestSelfCitationRemoval:
+    """Tests for self-citation and docket number removal (Task 2)."""
+
+    def test_self_citation_removed(self):
+        meta = CaseMetadata(
+            citation="(2023) 5 SCC 100",
+            cases_cited=["(2023) 5 SCC 100", "AIR 2020 SC 500"],
+        )
+        result = validate_cross_fields(meta)
+        assert result.cases_cited == ["AIR 2020 SC 500"]
+
+    def test_self_citation_whitespace_normalized(self):
+        meta = CaseMetadata(
+            citation="(2023)  5  SCC  100",
+            cases_cited=["(2023) 5 SCC 100", "Other Case"],
+        )
+        result = validate_cross_fields(meta)
+        assert result.cases_cited == ["Other Case"]
+
+    def test_docket_number_removed(self):
+        meta = CaseMetadata(
+            cases_cited=["5095 Of 2025", "1040 of 2022", "Real Case v. State"]
+        )
+        result = validate_cross_fields(meta)
+        assert result.cases_cited == ["Real Case v. State"]
+
+    def test_all_docket_numbers_yields_none(self):
+        meta = CaseMetadata(
+            cases_cited=["5095 Of 2025", "1040 of 2022"]
+        )
+        result = validate_cross_fields(meta)
+        assert result.cases_cited is None
+
+    def test_no_citation_no_self_removal(self):
+        meta = CaseMetadata(
+            citation=None,
+            cases_cited=["Laxman v. State of Maharashtra, (2002) 6 SCC 710"],
+        )
+        result = validate_cross_fields(meta)
+        assert result.cases_cited == ["Laxman v. State of Maharashtra, (2002) 6 SCC 710"]
+
+    def test_bare_citation_moved_to_citation_refs(self):
+        """Bare reporter refs are classified into citation_refs, not cases_cited."""
+        meta = CaseMetadata(
+            citation=None,
+            cases_cited=["(2023) 5 SCC 100", "Ram v. State, (2020) 3 SCC 200"],
+        )
+        result = validate_cross_fields(meta)
+        # Named citation stays in cases_cited
+        assert result.cases_cited == ["Ram v. State, (2020) 3 SCC 200"]
+        # Bare ref moved to citation_refs
+        assert result.citation_refs == ["(2023) 5 SCC 100"]
+
+
+# ---------------------------------------------------------------------------
+# Task 3: Disposal nature merge fallback
+# ---------------------------------------------------------------------------
+
+
+class TestDisposalNatureMerge:
+    """Tests for disposal_nature LLM-priority merge in merge_metadata."""
+
+    def test_llm_disposal_wins_over_parquet(self):
+        """LLM extraction takes priority over Parquet for disposal_nature."""
+        parquet = {"disposal_nature": "Allowed"}
+        llm = CaseMetadata(disposal_nature="Dismissed")
+        result, prov = merge_metadata(parquet, llm)
+        assert result.disposal_nature == "Dismissed"
+        assert prov["disposal_nature"] == "llm"
+
+    def test_llm_none_falls_back_to_parquet(self):
+        """When LLM has no disposal_nature, fall back to Parquet."""
+        parquet = {"disposal_nature": "Allowed"}
+        llm = CaseMetadata(disposal_nature=None)
+        result, prov = merge_metadata(parquet, llm)
+        assert result.disposal_nature == "Allowed"
+        assert prov["disposal_nature"] == "parquet_fallback"
+
+    def test_both_none_stays_none(self):
+        parquet = {}
+        llm = CaseMetadata(disposal_nature=None)
+        result, prov = merge_metadata(parquet, llm)
+        assert result.disposal_nature is None
+
+    def test_parquet_fallback_normalizes_title_case(self):
+        """Parquet fallback normalizes to title case when valid."""
+        parquet = {"disposal_nature": "partly allowed"}
+        llm = CaseMetadata(disposal_nature=None)
+        result, prov = merge_metadata(parquet, llm)
+        assert result.disposal_nature == "Partly Allowed"
+        assert prov["disposal_nature"] == "parquet_fallback"
+
+    def test_parquet_fallback_with_normalized_value(self):
+        """Parquet value that maps via _DISPOSAL_MAP should be accepted as fallback."""
+        parquet = {"disposal_nature": "Appeal(s) allowed"}
+        llm = CaseMetadata(disposal_nature=None)
+        from app.core.ingestion.metadata import validate_parquet_data
+        cleaned = validate_parquet_data(parquet)
+        result, prov = merge_metadata(cleaned, llm)
+        assert result.disposal_nature == "Allowed"
+        assert prov["disposal_nature"] == "parquet_fallback"
+
+
+# ---------------------------------------------------------------------------
+# Task 4: bench_type/coram_size inference + judge completion
+# ---------------------------------------------------------------------------
+
+
+class TestCoramBenchInference:
+    """Tests for coram_size → bench_type inference (Task 4)."""
+
+    def test_coram_1_infers_single(self):
+        meta = CaseMetadata(coram_size=1, bench_type=None)
+        result = validate_cross_fields(meta)
+        assert result.bench_type == "single"
+
+    def test_coram_2_infers_division(self):
+        meta = CaseMetadata(coram_size=2, bench_type=None)
+        result = validate_cross_fields(meta)
+        assert result.bench_type == "division"
+
+    def test_coram_3_infers_division(self):
+        meta = CaseMetadata(coram_size=3, bench_type=None)
+        result = validate_cross_fields(meta)
+        assert result.bench_type == "division"
+
+    def test_coram_4_infers_full(self):
+        meta = CaseMetadata(coram_size=4, bench_type=None)
+        result = validate_cross_fields(meta)
+        assert result.bench_type == "full"
+
+    def test_coram_5_infers_constitutional(self):
+        meta = CaseMetadata(coram_size=5, bench_type=None)
+        result = validate_cross_fields(meta)
+        assert result.bench_type == "constitutional"
+
+    def test_coram_overrides_conflicting_bench_type(self):
+        meta = CaseMetadata(coram_size=2, bench_type="single")
+        result = validate_cross_fields(meta)
+        assert result.bench_type == "division"
+
+
+class TestJudgeArrayCompletion:
+    """Tests for judge array completion from author_judge (Task 4)."""
+
+    def test_author_judge_appended_when_missing(self):
+        meta = CaseMetadata(
+            coram_size=3,
+            judge=["A", "B"],
+            author_judge="C",
+        )
+        result = validate_cross_fields(meta)
+        assert "C" in result.judge
+        assert len(result.judge) == 3
+
+    def test_author_judge_not_appended_when_already_present(self):
+        meta = CaseMetadata(
+            coram_size=2,
+            judge=["A"],
+            author_judge="A",
+        )
+        result = validate_cross_fields(meta)
+        assert result.judge == ["A"]
+
+    def test_author_judge_not_appended_when_judge_count_matches_coram(self):
+        meta = CaseMetadata(
+            coram_size=2,
+            judge=["A", "B"],
+            author_judge="C",
+        )
+        result = validate_cross_fields(meta)
+        # coram_size == len(judge), so no append
+        assert len(result.judge) == 2
+
+    def test_case_insensitive_match(self):
+        meta = CaseMetadata(
+            coram_size=3,
+            judge=["D.Y. Chandrachud", "B"],
+            author_judge="d.y. chandrachud",
+        )
+        result = validate_cross_fields(meta)
+        # Author already in list (case-insensitive), should not duplicate
+        assert len(result.judge) == 2
+
+
+class TestIsReportableSCRInference:
+    """Tests for is_reportable SCR citation inference (Task 6)."""
+
+    def test_scr_citation_sets_reportable(self):
+        meta = CaseMetadata(
+            citation="[2023] 5 SCR 100",
+            is_reportable=None,
+        )
+        result = validate_cross_fields(meta)
+        assert result.is_reportable is True
+
+    def test_scr_dotted_citation_sets_reportable(self):
+        meta = CaseMetadata(
+            citation="[2021] 3 S.C.R. 456",
+            is_reportable=None,
+        )
+        result = validate_cross_fields(meta)
+        assert result.is_reportable is True
+
+    def test_non_scr_citation_stays_none(self):
+        meta = CaseMetadata(
+            citation="(2023) 5 SCC 100",
+            is_reportable=None,
+        )
+        result = validate_cross_fields(meta)
+        assert result.is_reportable is None
+
+    def test_already_set_not_overridden(self):
+        meta = CaseMetadata(
+            citation="[2023] 5 SCR 100",
+            is_reportable=False,
+        )
+        result = validate_cross_fields(meta)
+        assert result.is_reportable is False
+
+
 def test_cross_validate_synthesizes_ratio_from_propositions():
     from app.core.ingestion.metadata import CaseMetadata, cross_validate_propositions
     meta = CaseMetadata(
@@ -330,3 +604,48 @@ def test_cross_validate_creates_proposition_from_ratio():
     result = cross_validate_propositions(meta)
     assert len(result.legal_propositions) == 1
     assert "privacy" in result.legal_propositions[0]["proposition_text"]
+
+
+class TestMergeMetadataValidatedJudges:
+    """Tests for the new validated judge merge logic."""
+
+    def test_llm_judges_all_validated_uses_llm(self):
+        """When all LLM judges appear in text, prefer LLM (fuller bench)."""
+        header = "BEFORE HON'BLE D.Y. CHANDRACHUD AND SANJIV KHANNA, JJ.\n"
+        full_text = header + "Body..." * 500
+        parquet = {"judge": "D.Y. Chandrachud"}
+        llm = CaseMetadata(judge=["D.Y. Chandrachud", "Sanjiv Khanna"])
+        result, prov = merge_metadata(parquet, llm, full_text=full_text)
+        assert len(result.judge) == 2
+        assert "Sanjiv Khanna" in result.judge
+
+    def test_hallucinated_llm_judges_fall_back_to_parquet(self):
+        """When ALL LLM judges fail text validation, use parquet."""
+        header = "BEFORE JUSTICE KRISHNA IYER AND JUSTICE DESAI\n"
+        full_text = header + "Body..." * 500
+        parquet = {"judge": "V.R. Krishna Iyer, D.A. Desai"}
+        llm = CaseMetadata(judge=["P. Sathasivam", "B.S. Chauhan"])
+        result, prov = merge_metadata(parquet, llm, full_text=full_text)
+        assert "V.R. Krishna Iyer" in result.judge
+        assert "P. Sathasivam" not in result.judge
+
+    def test_partial_hallucination_unions_valid_with_parquet(self):
+        """When some LLM judges fail, union validated LLM + parquet."""
+        header = "BEFORE HON'BLE D.Y. CHANDRACHUD, SANJIV KHANNA AND C.T. RAVIKUMAR, JJ.\n"
+        full_text = header + "Body..." * 500
+        parquet = {"judge": "D.Y. Chandrachud"}
+        llm = CaseMetadata(
+            judge=["D.Y. Chandrachud", "Sanjiv Khanna", "P. Sathasivam"],
+        )
+        result, prov = merge_metadata(parquet, llm, full_text=full_text)
+        assert "D.Y. Chandrachud" in result.judge
+        assert "Sanjiv Khanna" in result.judge
+        assert "P. Sathasivam" not in result.judge
+
+    def test_no_full_text_falls_back_to_old_logic(self):
+        """When full_text not provided, use count-based fallback."""
+        parquet = {"judge": "D.Y. Chandrachud"}
+        llm = CaseMetadata(judge=["D.Y. Chandrachud", "Sanjiv Khanna"])
+        result, prov = merge_metadata(parquet, llm)
+        # Without text validation, LLM wins by count
+        assert len(result.judge) == 2

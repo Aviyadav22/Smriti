@@ -1060,7 +1060,11 @@ def validate_parquet_data(parquet_meta: dict) -> dict:
     return cleaned
 
 
-def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> tuple[CaseMetadata, dict[str, str]]:
+def merge_metadata(
+    parquet_meta: dict,
+    llm_meta: CaseMetadata,
+    full_text: str = "",
+) -> tuple[CaseMetadata, dict[str, str]]:
     """Merge Parquet ground-truth metadata with LLM-extracted metadata.
 
     Strategy:
@@ -1140,10 +1144,9 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> tuple[CaseMeta
         result.author_judge = parquet_author
         provenance["author_judge"] = "parquet_fallback"
 
-    # -- Judge array (parquet may store as comma-separated string) --
-    # Parquet typically only contains the author judge, not the full bench.
-    # Prefer LLM's judge list when it has MORE judges (i.e. the full bench),
-    # or when coram_size indicates the parquet list is incomplete.
+    # -- Judge array: Validated LLM with Parquet anchor --
+    # Parquet typically only has 1 author judge. LLM extracts full bench.
+    # But LLM can hallucinate judges, so we validate against the judgment text.
     judge_raw = parquet_meta.get("judge", "")
     parquet_judges: list[str] | None = None
     if (isinstance(judge_raw, str) and judge_raw.strip()) or (isinstance(judge_raw, list) and judge_raw):
@@ -1154,24 +1157,75 @@ def merge_metadata(parquet_meta: dict, llm_meta: CaseMetadata) -> tuple[CaseMeta
         llm_judges = _parse_judge_names(llm_meta.judge)
 
     llm_coram = getattr(llm_meta, "coram_size", None)
+    _needs_review = False
 
-    if llm_judges and parquet_judges:
-        # Prefer LLM if it extracted more judges or coram_size indicates parquet is incomplete
+    if llm_judges and full_text:
+        # Validate LLM judges against judgment header text
+        validated_llm, rejected_llm = _validate_judges_against_text(
+            llm_judges, full_text,
+        )
+        # Also apply temporal validation if year is known
+        case_year = (
+            parquet_meta.get("year")
+            or getattr(llm_meta, "year", None)
+        )
+        if case_year and validated_llm:
+            validated_llm = _validate_judge_tenure(validated_llm, case_year)
+
+        if rejected_llm:
+            logger.warning(
+                "Judge text validation rejected %d/%d LLM judges: %s",
+                len(rejected_llm), len(llm_judges), rejected_llm,
+            )
+
+        if validated_llm and not rejected_llm:
+            # All LLM judges validated — use full LLM list
+            result.judge = validated_llm
+            provenance["judge"] = "llm_validated"
+        elif validated_llm:
+            # Partial validation — union validated LLM + parquet (deduped)
+            merged_set: dict[str, str] = {}  # lowercase -> original
+            for j in validated_llm:
+                merged_set.setdefault(j.lower(), j)
+            if parquet_judges:
+                for j in parquet_judges:
+                    merged_set.setdefault(j.lower(), j)
+            result.judge = list(merged_set.values())
+            provenance["judge"] = "llm_partial+parquet"
+        else:
+            # All LLM judges failed — fall back to parquet
+            result.judge = parquet_judges
+            provenance["judge"] = "parquet_llm_rejected"
+            _needs_review = True
+    elif llm_judges and parquet_judges:
+        # No full_text for validation — fall back to count-based logic
         if len(llm_judges) > len(parquet_judges):
             result.judge = llm_judges
-            provenance["judge"] = "llm"
+            provenance["judge"] = "llm_unvalidated"
         elif llm_coram and isinstance(llm_coram, int) and llm_coram > len(parquet_judges):
             result.judge = llm_judges
-            provenance["judge"] = "llm"
+            provenance["judge"] = "llm_unvalidated"
         else:
             result.judge = parquet_judges
             provenance["judge"] = "parquet"
+    elif llm_judges:
+        # Only LLM — validate if text available
+        if full_text:
+            validated_llm, _ = _validate_judges_against_text(llm_judges, full_text)
+            case_year = parquet_meta.get("year") or getattr(llm_meta, "year", None)
+            if case_year and validated_llm:
+                validated_llm = _validate_judge_tenure(validated_llm, case_year)
+            result.judge = validated_llm or llm_judges
+            provenance["judge"] = "llm_validated" if validated_llm else "llm_unvalidated"
+        else:
+            result.judge = llm_judges
+            provenance["judge"] = "llm"
     elif parquet_judges:
         result.judge = parquet_judges
         provenance["judge"] = "parquet"
-    elif llm_judges:
-        result.judge = llm_judges
-        provenance["judge"] = "llm"
+
+    if _needs_review:
+        provenance["_needs_review"] = "all_llm_judges_rejected"
 
     # -- LLM-priority fields --
     llm_priority = (

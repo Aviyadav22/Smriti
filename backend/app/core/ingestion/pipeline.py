@@ -49,8 +49,10 @@ from app.core.interfaces.llm import LLMProvider
 from app.core.interfaces.storage import FileStorage
 from app.core.interfaces.vector_store import VectorStore
 from app.core.legal.extractor import (
+    classify_case_citations,
     extract_acts_cited,
     extract_citations,
+    is_bare_citation_ref,
     normalize_acts_cited_list,
 )
 from app.core.legal.statute_enrichment import enrich_statute_cross_references
@@ -212,17 +214,27 @@ async def ingest_judgment(
     # Await storage (fast) — won't block LLM
     storage_path = await storage_task
 
-    # Await LLM (slow) — ran concurrently with storage
+    # Await LLM (slow) — ran concurrently with storage.
+    # HARD FAIL: If LLM extraction fails, abort the entire case.
+    # Silently continuing with empty metadata wastes embedding/chunking/storage
+    # costs and produces broken cases missing case_type, ratio, jurisdiction, etc.
     try:
         llm_meta = await llm_task
-    except ValueError:
-        logger.warning("LLM returned invalid metadata structure for %s, using empty", pdf_path)
-        llm_meta = CaseMetadata()
-    except Exception:
-        logger.warning("LLM metadata extraction failed after retries for %s, using empty", pdf_path)
-        llm_meta = CaseMetadata()
+    except (ValueError, Exception) as exc:
+        logger.error(
+            "LLM metadata extraction FAILED for %s — aborting case ingestion. "
+            "Cause: %s. Case will NOT be stored with empty metadata.",
+            pdf_path, exc,
+        )
+        raise RuntimeError(
+            f"LLM extraction failed for {pdf_path}: {exc}"
+        ) from exc
+    # Pre-normalize LLM acts_cited to filter garbage before merge
+    if llm_meta.acts_cited:
+        llm_meta.acts_cited = normalize_acts_cited_list(llm_meta.acts_cited)
+
     validated_parquet = validate_parquet_data(parquet_metadata)
-    metadata, provenance = merge_metadata(validated_parquet, llm_meta)
+    metadata, provenance = merge_metadata(validated_parquet, llm_meta, full_text=full_text)
 
     # ------------------------------------------------------------------
     # 3. VALIDATE METADATA
@@ -248,7 +260,9 @@ async def ingest_judgment(
 
     # Enrich acts_cited with old<->new statute cross-references (U3)
     if metadata.acts_cited:
-        metadata.acts_cited = enrich_statute_cross_references(metadata.acts_cited)
+        metadata.acts_cited = enrich_statute_cross_references(
+            metadata.acts_cited, decision_year=metadata.year,
+        )
         provenance["acts_cited"] = provenance.get("acts_cited", "llm") + "+enriched"
 
     # Detect sensitive cases and set anonymization flags (U4)
@@ -261,14 +275,23 @@ async def ingest_judgment(
     if anonymization_flags:
         metadata.anonymization_flags = anonymization_flags
 
-    # Supplement LLM cases_cited with regex extraction
+    # Supplement LLM cases_cited with regex extraction (GAN Generator)
     regex_citations = extract_citations(full_text)
+    all_candidates: set[str] = set(metadata.cases_cited or [])
     if regex_citations:
-        llm_cases = set(metadata.cases_cited or [])
         for cit in regex_citations:
-            llm_cases.add(cit.raw_text)
-        metadata.cases_cited = sorted(llm_cases)
+            cleaned = re.sub(r"\s+", " ", cit.raw_text).strip()
+            all_candidates.add(cleaned)
         provenance["cases_cited"] = "llm+regex"
+
+    # GAN Discriminator: classify into named citations vs bare refs
+    if all_candidates:
+        named, bare_refs = classify_case_citations(list(all_candidates))
+        metadata.cases_cited = named if named else None
+        # Store bare refs as citation_refs for graph linking (not display)
+        metadata.citation_refs = bare_refs if bare_refs else None
+    else:
+        metadata.citation_refs = None
 
     # text_hash already computed in step 1b (before LLM call)
 
@@ -659,7 +682,7 @@ async def _insert_case(
         "respondent": metadata.respondent,
         "decision_date": decision_date,
         "disposal_nature": metadata.disposal_nature,
-        "description": parquet_meta.get("description"),
+        "description": parquet_meta.get("description") or getattr(metadata, "case_description", None),
         "keywords": metadata.keywords,
         "acts_cited": metadata.acts_cited,
         "cases_cited": metadata.cases_cited,
