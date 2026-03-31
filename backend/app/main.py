@@ -404,6 +404,7 @@ from app.api.routes.dpdp import router as dpdp_router
 from app.api.routes.graph import router as graph_router
 from app.api.routes.health import router as health_router
 from app.api.routes.ingest import router as ingest_router
+from app.api.routes.counsel import router as counsel_router
 from app.api.routes.judges import router as judges_router
 from app.api.routes.search import router as search_router
 from app.api.routes.sharing import router as sharing_router
@@ -415,6 +416,7 @@ app.include_router(ingest_router, prefix="/api/v1/ingest", tags=["ingest"])
 app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
 app.include_router(chat_router, prefix="/api/v1/chat", tags=["chat"])
 app.include_router(graph_router, prefix="/api/v1/graph", tags=["graph"])
+app.include_router(counsel_router, prefix="/api/v1", tags=["counsel"])
 app.include_router(judges_router, prefix="/api/v1", tags=["judges"])
 app.include_router(documents_router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(audio_router, prefix="/api/v1/cases", tags=["audio"])
