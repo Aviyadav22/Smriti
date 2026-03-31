@@ -28,6 +28,61 @@ logger = logging.getLogger(__name__)
 MAX_PAGES = 5000
 MAX_OCR_PAGES = 500
 
+# Patterns that indicate the start of a new judgment
+_JUDGMENT_START_PATTERNS = [
+    re.compile(r"IN\s+THE\s+SUPREME\s+COURT\s+OF\s+INDIA", re.IGNORECASE),
+    re.compile(r"IN\s+THE\s+HIGH\s+COURT\s+OF", re.IGNORECASE),
+    re.compile(r"\b(REPORTABLE|NON[\s-]?REPORTABLE)\b", re.IGNORECASE),
+    re.compile(r"^\s*(JUDGMENT|ORDER)\s*$", re.IGNORECASE | re.MULTILINE),
+    re.compile(r"\b(CIVIL|CRIMINAL)\s+APPEAL\s+NO", re.IGNORECASE),
+    re.compile(r"\b(WRIT\s+PETITION|SPECIAL\s+LEAVE\s+PETITION)\b", re.IGNORECASE),
+    re.compile(r"\bSLP\s*\(\s*(C|Crl)\s*\)\s*No", re.IGNORECASE),
+    re.compile(r"\d{4}:\s*INSC:\s*\d+"),  # Neutral citation
+]
+
+
+def _strip_leading_judgment_bleed(
+    text: str,
+    scan_chars: int = 3000,
+    min_bleed: int = 200,
+) -> str:
+    """Remove leading text from a previous judgment that bleeds into this PDF.
+
+    Scans the first ``scan_chars`` characters for case header markers. If the
+    earliest marker appears after ``min_bleed`` characters, everything before
+    it is considered bleed from a previous judgment and is stripped.
+
+    Args:
+        text: Full extracted text.
+        scan_chars: How many chars from the start to scan for markers.
+        min_bleed: Minimum chars before marker to consider it bleed (avoids
+            stripping legitimate short preambles).
+
+    Returns:
+        Text with leading bleed removed, or original text if no bleed detected.
+    """
+    if len(text) < min_bleed:
+        return text
+
+    scan_region = text[:scan_chars]
+    earliest_pos = scan_chars  # sentinel
+
+    for pattern in _JUDGMENT_START_PATTERNS:
+        match = pattern.search(scan_region)
+        if match and match.start() < earliest_pos:
+            earliest_pos = match.start()
+
+    if earliest_pos >= min_bleed and earliest_pos < scan_chars:
+        stripped_len = earliest_pos
+        logger.info(
+            "Stripped %d chars of leading judgment bleed (marker at pos %d)",
+            stripped_len, earliest_pos,
+        )
+        return text[earliest_pos:]
+
+    return text
+
+
 # Characters to strip: zero-width space, BOM, soft hyphen
 # Note: ZWNJ (U+200C) and ZWJ (U+200D) are preserved -- they are structurally
 # meaningful in Devanagari script (conjunct formation control).
@@ -712,6 +767,10 @@ async def extract_and_score(file_path: str) -> TextQuality:
         text, ocr_truncated, ocr_total_pages = await extract_with_ocr(file_path)
         ocr_used = True
         page_map = []  # OCR fallback doesn't produce page_map
+
+    # Strip leading bleed from previous judgment (pre-1964 PDFs)
+    if text:
+        text = _strip_leading_judgment_bleed(text)
 
     if not text:
         text = ""
