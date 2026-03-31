@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.analytics.judge_analytics import JudgeAnalyticsService
+from app.core.analytics.judge_prediction import predict_outcome
 from app.db.postgres import get_db
 from app.db.redis_client import get_redis
 from app.security.rate_limiter import rate_limit_dependency
@@ -112,6 +113,57 @@ async def compare_judges(
         "judges": [
             dataclasses.asdict(p) if p is not None else None for p in profiles
         ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /judges/predict — Predict outcome for judge + case config
+# NOTE: Must be defined before /judges/{judge_name} to avoid path conflicts.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/judges/predict", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+async def predict_judge_outcome(
+    judges: str = Query(..., description="Comma-separated judge names"),
+    case_type: str = Query(..., description="Case type"),
+    acts: str | None = Query(None, description="Comma-separated acts"),
+    jurisdiction: str | None = Query(None),
+    bench_type: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Predict case outcome based on historical judicial patterns."""
+    judge_list = [
+        urllib.parse.unquote(j.strip()) for j in judges.split(",") if j.strip()
+    ]
+    act_list = (
+        [a.strip() for a in acts.split(",") if a.strip()] if acts else None
+    )
+
+    prediction = await predict_outcome(
+        db=db,
+        judges=judge_list,
+        case_type=case_type,
+        jurisdiction=jurisdiction,
+        acts=act_list,
+        bench_type=bench_type,
+    )
+
+    if prediction is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Insufficient data to generate a prediction for the given parameters.",
+        )
+
+    return {
+        "predicted_outcome": prediction.predicted_outcome,
+        "outcome_probabilities": prediction.outcome_probabilities,
+        "confidence": prediction.confidence,
+        "sample_size": prediction.sample_size,
+        "factors": [
+            {"name": f.name, "impact": f.impact, "detail": f.detail}
+            for f in prediction.factors
+        ],
+        "caveats": prediction.caveats,
     }
 
 
