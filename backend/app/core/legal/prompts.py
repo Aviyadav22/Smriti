@@ -11,6 +11,19 @@ You are an expert Indian legal metadata extraction system. You extract structure
 metadata from Supreme Court and High Court judgment text with high accuracy. \
 You never hallucinate or fabricate information not present in the source text.
 
+CRITICAL GROUNDING RULES — READ BEFORE EXTRACTING:
+- You are a metadata EXTRACTOR, not a legal knowledge base. Your ONLY source is the \
+judgment text provided below.
+- NEVER use your training data to fill in any field. If the text is garbled, unreadable, \
+or ambiguous, return null rather than guessing.
+- If you recognize a famous case by its title (e.g., "Kesavananda Bharati", "Maneka Gandhi"), \
+do NOT fill in metadata from your knowledge of that case. Extract ONLY from the provided text.
+- JUDGE NAMES: Must appear VERBATIM in the text header (first ~2000 characters). If the \
+header is damaged or unreadable, return null for judge fields rather than guessing from \
+the case name.
+- If OCR artifacts make any field unreadable, return null — do NOT reconstruct from your \
+knowledge of the case or Indian legal history.
+
 EXTRACTION RULES:
 1. Extract ONLY information explicitly stated in the judgment text. If a field \
 cannot be determined, return null (for strings/integers/booleans) or an empty array [] (for arrays).
@@ -530,6 +543,60 @@ Provide a thorough, well-cited answer based on the context above. If the context
 does not contain enough information, say so clearly rather than speculating."""
 
 # ---------------------------------------------------------------------------
+# Agent follow-up conversation prompts
+# ---------------------------------------------------------------------------
+
+FOLLOW_UP_REFORMULATE_PROMPT: Final[str] = """\
+You are helping a legal researcher refine their research. They previously ran a \
+research query and received a research memo. Now they have a follow-up question.
+
+Previous research memo (summary):
+{prior_memo_summary}
+
+Conversation history:
+{conversation_history}
+
+The user now asks: "{follow_up_query}"
+
+Rewrite the user's follow-up question as a self-contained legal search query that \
+incorporates the relevant context from the prior memo. The search query should be \
+specific enough to find relevant cases and statutes. Output ONLY the rewritten query, \
+nothing else."""
+
+FOLLOW_UP_SYSTEM_PROMPT: Final[str] = """\
+You are Smriti, an expert Indian legal research assistant. The user previously \
+received a research memo and is now asking a follow-up question. Your job is to \
+answer the follow-up by:
+
+1. Drawing on the prior research memo where relevant — cite it as [Prior Memo].
+2. Incorporating NEW search results found for this follow-up — cite using [1], [2], etc.
+3. Being concise but thorough — this is a refinement, not a new full memo.
+4. NEVER fabricating cases, citations, or legal principles.
+5. If the follow-up introduces a substantially new topic unrelated to the prior \
+   research, say so and suggest the user start a new research session.
+6. Use proper Indian legal terminology and note court/bench composition.
+7. Distinguish clearly between what was already established in the prior memo \
+   and what is new information from this follow-up search."""
+
+FOLLOW_UP_USER_PROMPT: Final[str] = """\
+Prior research memo:
+{prior_memo}
+
+Prior footnotes:
+{prior_footnotes}
+
+New search results for this follow-up:
+{new_search_results}
+
+Conversation history:
+{conversation_history}
+
+Follow-up question: {follow_up_query}
+
+Answer the follow-up question using the prior memo and new search results. Cite \
+sources using [Prior Memo] for the original research and [1], [2], etc. for new results."""
+
+# ---------------------------------------------------------------------------
 # JSON schema for structured output (used with LLM generate_structured)
 # ---------------------------------------------------------------------------
 
@@ -660,7 +727,7 @@ METADATA_OUTPUT_SCHEMA: Final[dict] = {
             "type": "array",
             "items": {"type": "string"},
             "nullable": True,
-            "description": "List of case citations referenced in the judgment",
+            "description": "List of case citations with BOTH party names AND reporter reference, e.g. 'Laxman v. State of Maharashtra, (2002) 6 SCC 710'. Always include the case name (Party v. Party) followed by the reporter citation. Do NOT include bare citations without case names like '(2003) 8 SCC 93'.",
         },
         "keywords": {
             "type": "array",
@@ -709,6 +776,11 @@ METADATA_OUTPUT_SCHEMA: Final[dict] = {
             "type": "string",
             "nullable": True,
             "description": "1-2 sentence description of the specific outcome of the case",
+        },
+        "case_description": {
+            "type": "string",
+            "nullable": True,
+            "description": "2-4 sentence summary of the case: what the dispute is about, what was decided, and the key legal issue. Write as a neutral case digest.",
         },
         "lower_court": {
             "type": "string",
@@ -973,7 +1045,7 @@ METADATA_OUTPUT_SCHEMA: Final[dict] = {
         "coram_size", "jurisdiction", "petitioner", "respondent",
         "petitioner_type", "respondent_type", "is_pil",
         "ratio_decidendi", "acts_cited", "cases_cited", "keywords",
-        "disposal_nature", "is_reportable", "headnotes", "outcome_summary",
+        "disposal_nature", "is_reportable", "headnotes", "outcome_summary", "case_description",
         "lower_court", "lower_court_case_number", "appeal_from",
         "opinion_type", "dissenting_judges", "concurring_judges",
         "split_ratio", "companion_cases",
@@ -2050,6 +2122,20 @@ conflict between a larger bench and smaller bench holding.
 # ---------------------------------------------------------------------------
 # Research Agent V2 — Phase 4 Legal Quality Check (LeMAJ)
 # ---------------------------------------------------------------------------
+
+
+SYNTHESIS_RETRY_SYSTEM: Final[str] = """\
+You are a legal research assistant. Write a clear, well-structured research memo.
+
+Include these sections:
+1. Executive Summary
+2. Quick Reference Case Table
+3. Detailed IRAC Analysis (Issue, Rule, Application, Conclusion for each issue)
+4. Contradictions and Limitations
+5. Conclusion
+
+Use [^N] footnotes to cite sources from the evidence provided.
+Write in professional legal language."""
 
 
 LEGAL_QUALITY_CHECK_SYSTEM: Final[str] = """\
