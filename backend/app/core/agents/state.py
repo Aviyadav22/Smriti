@@ -252,6 +252,7 @@ class StrategyState(TypedDict):
 
 
 class DraftingState(TypedDict):
+
     """State for the Drafting Agent graph."""
     doc_type: str            # key into TEMPLATES
     case_facts: str
@@ -269,3 +270,9 @@ class DraftingState(TypedDict):
     messages: Annotated[list[dict], operator.add]
     iteration: int
     error: str
+    # V2 fields:
+    court_profile: dict          # resolved CourtProfile as dict
+    research_context: dict       # extracted from research session (empty if standalone)
+    affidavit_draft: str         # auto-generated companion affidavit
+    suggested_precedents: list[dict]  # graph-suggested precedents from citation graph
+    primary_code: str            # "old" or "new" — IPC vs BNS as primary
