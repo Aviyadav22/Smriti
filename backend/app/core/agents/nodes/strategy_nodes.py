@@ -586,13 +586,35 @@ async def counter_arguments_node(
     fact_analysis = state.get("fact_analysis", {})
     legal_arguments = state.get("legal_arguments", [])
     precedent_map = state.get("precedent_map", [])
+    adversarial_results = state.get("adversarial_results", [])
+
+    # Build combined citation pool (precedent_map + adversarial results)
+    all_precedents = list(precedent_map[:MAX_RESULTS_FOR_LLM])
+    for ar in adversarial_results:
+        all_precedents.append({
+            "title": ar.get("title", ""),
+            "citation": ar.get("citation", ""),
+            "ratio": ar.get("chunk_text", "") or ar.get("snippet", ""),
+            "strength": ar.get("strength", "UNKNOWN"),
+            "adversarial": True,
+        })
+
+    # Build set of known citations for post-generation grounding check
+    known_citations: set[str] = set()
+    for p in all_precedents:
+        title = (p.get("title") or "").upper().strip()
+        citation = (p.get("citation") or "").strip()
+        if title:
+            known_citations.add(title[:40])
+        if citation:
+            known_citations.add(citation)
 
     prompt = (
         "Identify the most likely counter-arguments the opposing side will raise.\n\n"
         f"Fact Analysis:\n{json.dumps(fact_analysis, indent=2)}\n\n"
         f"Client's Arguments:\n{json.dumps(legal_arguments, indent=2)}\n\n"
-        f"Precedent Map ({len(precedent_map)} precedents):\n"
-        f"{json.dumps(precedent_map[:MAX_RESULTS_FOR_LLM], indent=2)}\n\n"
+        f"Available Precedents ({len(all_precedents)} cases — use ONLY these):\n"
+        f"{json.dumps(all_precedents[:MAX_RESULTS_FOR_LLM], indent=2)}\n\n"
         "Order by impact (most dangerous first)."
     )
 
@@ -609,6 +631,22 @@ async def counter_arguments_node(
     counter_arguments = result.get("counter_arguments", [])
     if not isinstance(counter_arguments, list):
         counter_arguments = []
+
+    # Post-generation grounding: flag citations not in our precedent pool
+    for ca in counter_arguments:
+        for field in ("likely_precedents", "rebuttal_precedents"):
+            grounded: list[str] = []
+            for cite in ca.get(field, []):
+                cite_upper = cite.upper().strip()[:40]
+                is_grounded = any(cite_upper[:25] in kc for kc in known_citations)
+                if is_grounded:
+                    grounded.append(cite)
+                else:
+                    logger.warning(
+                        "Ungrounded citation in counter_arguments stripped: %s", cite[:80]
+                    )
+            ca[field] = grounded
+
     return {"counter_arguments": counter_arguments}
 
 
