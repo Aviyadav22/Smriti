@@ -165,6 +165,24 @@ class DraftingRequest(BaseModel):
         return v
 
 
+class DraftFromResearchRequest(BaseModel):
+    research_execution_id: str = Field(..., min_length=1, max_length=50)
+    doc_type: str = Field(..., min_length=1, max_length=50)
+    target_court: str = Field(default="", max_length=200)
+    additional_context: dict[str, str] = Field(default_factory=dict)
+    language: str = Field(default="en", pattern="^(en|hi)$")
+
+    @field_validator("additional_context")
+    @classmethod
+    def validate_additional_context(cls, v: dict[str, str]) -> dict[str, str]:
+        if len(v) > 10:
+            raise ValueError("Maximum 10 additional_context keys allowed")
+        for key, val in v.items():
+            if len(val) > 2000:
+                raise ValueError(f"additional_context value for '{key}' exceeds 2000 characters")
+        return v
+
+
 class FollowUpRequest(BaseModel):
     message: str = Field(..., min_length=5, max_length=5000)
 
@@ -676,6 +694,7 @@ async def run_agent(
             vector_store=vector_store,
             reranker=reranker,
             checkpointer=checkpointer,
+            graph_store=get_graph_store(),
         )
         initial_input = {
             "doc_type": request_body.doc_type,
@@ -931,6 +950,7 @@ async def resume_execution(
             vector_store=vector_store,
             reranker=reranker,
             checkpointer=checkpointer,
+            graph_store=get_graph_store(),
         )
     else:
         # Should not happen due to DB constraint, but guard against it
@@ -942,11 +962,10 @@ async def resume_execution(
     # Resume with Command
     resume_input = Command(resume=body.input)
 
-    # [DEBUG] Log resume details to diagnose checkpoint loop bug
-    logger.warning(
-        "RESUME_DEBUG: exec_id=%s thread_id=%s agent_type=%s body_input=%r resume_input=%r",
+    logger.debug(
+        "Resume: exec_id=%s thread_id=%s agent_type=%s input=%r",
         exec_uuid, execution.thread_id, execution.agent_type,
-        body.input[:200], resume_input,
+        body.input[:200],
     )
 
     # Verify checkpoint state exists before resuming
@@ -1059,17 +1078,32 @@ async def cancel_execution(
 async def get_drafting_templates(
     user: TokenPayload = Depends(get_current_user),
 ) -> dict:
-    """Return available document templates for the Drafting Agent."""
+    """Return available document templates grouped by category."""
+    from collections import defaultdict
+    categories: dict[str, list[dict]] = defaultdict(list)
+    _category_names = {
+        "criminal": "Criminal Litigation",
+        "civil": "Civil Litigation",
+        "constitutional": "Constitutional / Supreme Court",
+        "family": "Family Law",
+        "commercial": "Commercial",
+        "transactional": "Notices & General",
+    }
+    for t in TEMPLATES.values():
+        categories[t.category].append({
+            "doc_type": t.doc_type,
+            "display_name": t.display_name,
+            "sections": t.sections,
+            "required_fields": t.required_fields,
+            "statutory_basis": t.statutory_basis,
+            "category": t.category,
+            "requires_affidavit": t.requires_affidavit,
+            "argument_style": t.argument_style,
+        })
     return {
-        "templates": [
-            {
-                "doc_type": t.doc_type,
-                "display_name": t.display_name,
-                "sections": t.sections,
-                "required_fields": t.required_fields,
-                "statutory_basis": t.statutory_basis,
-            }
-            for t in TEMPLATES.values()
+        "categories": [
+            {"id": cat, "display_name": _category_names.get(cat, cat), "templates": tmpls}
+            for cat, tmpls in categories.items()
         ]
     }
 
@@ -1083,6 +1117,7 @@ async def get_drafting_templates(
 async def export_draft(
     execution_id: str,
     format: str = Query("docx", pattern="^(docx|pdf)$"),
+    include_affidavit: bool = Query(True),
     user: TokenPayload = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
@@ -1113,16 +1148,29 @@ async def export_draft(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Unknown document type: {doc_type}")
 
+    # V2: Extract court profile and affidavit from result_data
+    court_profile_dict = (execution.result_data or {}).get("court_profile")
+    affidavit_text = (execution.result_data or {}).get("affidavit_draft", "") if include_affidavit else ""
+
+    # Reconstruct CourtProfile if available
+    court_profile_obj = None
+    if court_profile_dict:
+        from app.core.drafting.court_profiles import CourtProfile
+        try:
+            court_profile_obj = CourtProfile(**court_profile_dict)
+        except (TypeError, KeyError):
+            pass  # Fall back to default formatting
+
     # Sanitize doc_type for use in Content-Disposition filename
     safe_doc_type = re.sub(r"[^a-zA-Z0-9_-]", "", doc_type)
     fmt = format  # already validated by Query pattern
 
     if fmt == "docx":
-        file_bytes = await export_to_docx(content, template)
+        file_bytes = await export_to_docx(content, template, court_profile=court_profile_obj, affidavit=affidavit_text)
         media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         filename = f"draft_{safe_doc_type}.docx"
     else:
-        file_bytes = await export_to_pdf(content, template)
+        file_bytes = await export_to_pdf(content, template, court_profile=court_profile_obj, affidavit=affidavit_text)
         media_type = "application/pdf"
         filename = f"draft_{safe_doc_type}.pdf"
 
@@ -1141,6 +1189,159 @@ async def export_draft(
         BytesIO(file_bytes),
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /drafting/from-research -- Start drafting from completed research
+# ---------------------------------------------------------------------------
+
+
+@router.post("/drafting/from-research", dependencies=[Depends(rate_limit_dependency("10/minute"))])
+async def draft_from_research(
+    body: DraftFromResearchRequest,
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Start a drafting session pre-populated from a completed research session."""
+    # Validate research execution
+    try:
+        research_uuid = uuid.UUID(body.research_execution_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid research_execution_id format.")
+
+    stmt = select(AgentExecution).where(AgentExecution.id == research_uuid)
+    result = await db.execute(stmt)
+    research_exec = result.scalar_one_or_none()
+
+    if research_exec is None:
+        raise HTTPException(status_code=404, detail="Research execution not found.")
+    if str(research_exec.user_id) != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied.")
+    if research_exec.agent_type != AgentType.research.value:
+        raise HTTPException(status_code=400, detail="Execution is not a research session.")
+    if research_exec.status != AgentStatus.completed.value:
+        raise HTTPException(status_code=400, detail="Research session is not completed.")
+
+    # Extract research results
+    research_data = research_exec.result_data or {}
+    grounding_citations = research_data.get("grounding_citations", [])
+    research_query = (research_exec.input_data or {}).get("query", "")
+
+    # Map research citations to PrecedentRef format
+    relevant_precedents: list[dict] = []
+    for cite in grounding_citations[:20]:
+        if isinstance(cite, dict):
+            relevant_precedents.append({
+                "citation": cite.get("citation", ""),
+                "title": cite.get("title", ""),
+            })
+        elif isinstance(cite, str):
+            relevant_precedents.append({"citation": cite, "title": ""})
+
+    # Build research context for injection into drafting prompts
+    research_context = {
+        "query": research_query,
+        "memo_excerpt": (research_data.get("memo", "") or "")[:5000],
+        "arguments": research_data.get("arguments", []),
+        "statute_sections": research_data.get("statute_sections", []),
+    }
+
+    # Validate doc_type
+    try:
+        template = get_template(body.doc_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Unknown document type: {body.doc_type}")
+
+    # Validate required fields
+    missing = [
+        f for f in template.required_fields
+        if f not in body.additional_context or not body.additional_context[f]
+    ]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing required fields for {body.doc_type}: {', '.join(missing)}",
+        )
+
+    # Detect prompt injection
+    combined_text = body.doc_type + " " + research_query + " " + body.target_court
+    if detect_prompt_injection(combined_text):
+        raise HTTPException(status_code=400, detail="Input rejected.")
+
+    # Determine language
+    request_language = body.language
+
+    # Create execution record
+    checkpointer = get_checkpointer()
+    thread_id = str(uuid.uuid4())
+    execution = AgentExecution(
+        user_id=uuid.UUID(user.sub),
+        agent_type=AgentType.drafting.value,
+        status=AgentStatus.running.value,
+        input_data={
+            "doc_type": body.doc_type,
+            "case_facts": research_query,
+            "target_court": body.target_court,
+            "relevant_precedents": relevant_precedents,
+            "additional_context": body.additional_context,
+            "language": request_language,
+            "research_execution_id": body.research_execution_id,
+        },
+    )
+    db.add(execution)
+    await db.commit()
+    await db.refresh(execution)
+
+    # Build graph
+    llm = get_llm()
+    embedder = get_embedder()
+    vector_store = get_vector_store()
+    reranker = get_reranker()
+
+    graph = build_drafting_graph(
+        llm=llm,
+        flash_llm=get_flash_llm(),
+        embedder=embedder,
+        vector_store=vector_store,
+        reranker=reranker,
+        checkpointer=checkpointer,
+        graph_store=get_graph_store(),
+    )
+
+    config = {"configurable": {"thread_id": thread_id}}
+
+    initial_input = {
+        "doc_type": body.doc_type,
+        "case_facts": research_query,
+        "target_court": body.target_court,
+        "relevant_precedents": relevant_precedents,
+        "additional_context": body.additional_context,
+        "language": request_language,
+        "research_context": research_context,
+    }
+
+    # Audit log
+    await create_audit_log(
+        db=db,
+        action="agent.draft_from_research",
+        user_id=user.sub,
+        resource_type="agent_execution",
+        resource_id=str(execution.id),
+        metadata={
+            "research_execution_id": body.research_execution_id,
+            "doc_type": body.doc_type,
+        },
+    )
+
+    return StreamingResponse(
+        _stream_agent_events(graph, initial_input, config, execution.id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Execution-Id": str(execution.id),
+        },
     )
 
 
@@ -1515,6 +1716,7 @@ async def create_agent_session(
         graph = build_drafting_graph(
             llm=llm, flash_llm=get_flash_llm(), embedder=embedder,
             vector_store=vector_store, reranker=reranker, checkpointer=checkpointer,
+            graph_store=get_graph_store(),
         )
         initial_input = {
             "doc_type": request_body.doc_type,
