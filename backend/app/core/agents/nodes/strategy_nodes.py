@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,8 +59,7 @@ from app.core.legal.prompts import (
     STRATEGY_IRAC_ARGUMENTS_SYSTEM,
     STRATEGY_JUDGE_ANALYSIS_SCHEMA,
     STRATEGY_JUDGE_ANALYSIS_SYSTEM,
-    STRATEGY_SYNTHESIZE_SYSTEM,
-    STRATEGY_SYNTHESIZE_USER,
+    RESEARCH_CONTRADICTIONS_SYSTEM,
 )
 from app.security.sanitizer import sanitize_search_query
 
@@ -749,6 +749,42 @@ async def synthesize_strategy_node(
     # Append legal disclaimer to the memo
     memo += LEGAL_DISCLAIMER
 
+    # Detect contradictions in precedent map
+    contradictions: list[dict] = []
+    if precedent_map and len(precedent_map) > 3:
+        try:
+            contra_prompt = (
+                "Analyze these precedents for contradictions:\n\n"
+                + json.dumps(precedent_map[:MAX_RESULTS_FOR_LLM], indent=2)
+                + "\n\nIdentify genuine legal contradictions between holdings."
+            )
+            contra_result = await llm.generate_structured(
+                prompt=contra_prompt,
+                system=RESEARCH_CONTRADICTIONS_SYSTEM,
+                output_schema={
+                    "type": "object",
+                    "properties": {
+                        "contradictions": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "case_a": {"type": "string"},
+                                    "case_b": {"type": "string"},
+                                    "description": {"type": "string"},
+                                    "resolution": {"type": "string"},
+                                },
+                                "required": ["case_a", "case_b", "description", "resolution"],
+                            },
+                        },
+                    },
+                    "required": ["contradictions"],
+                },
+            )
+            contradictions = contra_result.get("contradictions", [])
+        except Exception as e:
+            logger.warning("Contradiction detection failed: %s", e)
+
     # Calculate confidence (same pattern as research_nodes)
     reranker_scores = sorted(
         [r.get("score", 0.0) for r in search_results if r.get("score")],
@@ -776,11 +812,11 @@ async def synthesize_strategy_node(
         reranker_scores=reranker_scores,
         cross_ref_ratio=min(cross_ref_ratio, 1.0),
         precedent_strengths=precedent_strengths,
-        contradiction_count=0,  # Strategy agent doesn't detect contradictions
+        contradiction_count=len(contradictions),
         total_results=len(search_results),
     )
 
-    return {"strategy_memo": memo, "confidence": confidence}
+    return {"strategy_memo": memo, "confidence": confidence, "contradictions": contradictions}
 
 
 # ---------------------------------------------------------------------------
@@ -809,5 +845,36 @@ async def verify_citations_node(
     grounding_citations = collect_grounding_citations(search_results)
 
     memo = await verify_memo_citations(memo, db, grounding_citations)
+
+    # Misgrounding check: verify propositions match cited case ratio
+    # Extract citation-proposition pairs from memo
+    citation_refs = re.findall(r'\[(\d+)\]\s*([^[.\n]{20,200})', memo)
+    misgrounding_warnings: list[str] = []
+
+    for ref_num, proposition in citation_refs[:5]:
+        # Find the corresponding search result
+        matching = [
+            r for r in search_results
+            if str(r.get("ref_num")) == ref_num
+            or r.get("citation", "").strip() == ref_num
+        ]
+        if not matching:
+            continue
+        result = matching[0]
+        ratio = result.get("ratio", "") or result.get("snippet", "")
+        if ratio and proposition.strip():
+            # Simple semantic check: does the proposition align with the ratio?
+            prop_words = set(proposition.lower().split())
+            ratio_words = set(ratio.lower().split())
+            overlap = len(prop_words & ratio_words) / max(len(prop_words), 1)
+            if overlap < 0.15:  # Very low overlap suggests misgrounding
+                misgrounding_warnings.append(
+                    f"[{ref_num}] may be misgrounded: proposition doesn't align with source ratio"
+                )
+
+    if misgrounding_warnings:
+        memo += "\n\n---\n**Verification Warnings:**\n" + "\n".join(
+            f"- {w}" for w in misgrounding_warnings
+        )
 
     return {"strategy_memo": memo}

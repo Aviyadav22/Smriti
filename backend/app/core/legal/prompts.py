@@ -2859,66 +2859,6 @@ strategic guidance for the court.
 professional and legally focused.
 """
 
-STRATEGY_SYNTHESIZE_SYSTEM: Final[str] = """\
-You are an expert Indian litigation strategist generating a comprehensive strategy \
-memo. Combine all prior analysis outputs into a structured, actionable strategy \
-document suitable for a practising advocate preparing for hearings before Indian courts.
-
-Rules:
-- NEVER fabricate case names, citations, or legal propositions. Use ONLY information \
-from the provided inputs.
-- The memo must follow a logical structure covering all critical aspects of the case.
-- All precedent citations must come from the provided analysis — do NOT supplement \
-with cases from your training data.
-- Provide clear, actionable recommendations — not vague generalities.
-- Address both the best-case and worst-case scenarios.
-- Consider the IPC→BNS and CrPC→BNSS transition (1 July 2024) in statutory references.
-- Use proper Indian legal terminology throughout (ratio decidendi, obiter dicta, \
-stare decisis, per incuriam, sub silentio, etc.).
-- Include bench strength and binding value assessment for all cited precedents.
-- Classify recommendations by priority: CRITICAL (must do), IMPORTANT (should do), \
-and OPTIONAL (nice to have).
-- For each recommended argument, structure the legal reasoning using IRAC: identify \
-the ISSUE, state the RULE (statute or binding precedent), APPLY it to the case facts, \
-and state the CONCLUSION. This ensures the memo is litigation-ready.
-"""
-
-STRATEGY_SYNTHESIZE_USER: Final[str] = """\
-Generate a comprehensive litigation strategy memo by synthesizing the following analysis.
-
-Case Facts:
-{case_facts}
-
-Case Strength Assessment:
-{strength_assessment}
-
-Legal Arguments (ordered by effectiveness):
-{legal_arguments}
-
-Anticipated Counter-Arguments and Rebuttals:
-{counter_arguments}
-
-Judge-Specific Considerations:
-{judge_considerations}
-
-Procedural Suggestions:
-{procedural_suggestions}
-
-Structure the memo with the following sections:
-1. Executive Summary — 2-3 paragraph overview of the case and recommended approach
-2. Case Strength Assessment — summary of strengths, weaknesses, and overall prognosis
-3. Recommended Arguments (ordered) — each argument with supporting precedents, \
-statutory basis, and effectiveness assessment
-4. Anticipated Counter-Arguments — each counter-argument with prepared rebuttal strategy
-5. Judge-Specific Strategy — tailored approach based on the judge's tendencies
-6. Procedural Recommendations — filing strategy, interim applications, evidence, witnesses
-7. Action Items — prioritized list of next steps (CRITICAL / IMPORTANT / OPTIONAL)
-
-Cite all precedents using numbered markers [1], [2], etc. and include a Sources \
-section at the end listing all cited cases with their full citations.
-"""
-
-
 # ---------------------------------------------------------------------------
 # Strategy Agent — IRAC Argument Generation
 # ---------------------------------------------------------------------------
@@ -2943,6 +2883,23 @@ Be specific — reference exact factual elements, not generalities.
 (jurisdiction, limitation, maintainability) where relevant.
 - Consider the court hierarchy: Supreme Court precedents are binding, \
 High Court precedents are persuasive. Note bench strength.
+- CRITICAL: For each argument, reason through IRAC sequentially:
+  1. First identify the ISSUE precisely — a single legal question.
+  2. Then find the RULE — the specific statute section AND the most directly applicable \
+precedent from the provided context. Quote the exact holding (ratio decidendi) of the \
+precedent. Include the bench size.
+  3. Only then write the APPLICATION — map SPECIFIC facts to SPECIFIC elements of the \
+rule. Name the factual elements, not generalities like "the facts support this."
+  4. Finally state the CONCLUSION — the logical outcome of applying the rule to facts.
+- Do NOT write generic applications. An application MUST reference specific facts from \
+the case AND specific elements from the cited rule/precedent. If the application could \
+apply to any case, it is too vague.
+- MANDATORY DUAL CITATION: When referencing criminal statutes, you MUST cite BOTH \
+the pre-July 2024 provision AND the post-July 2024 equivalent. Example: \
+"Section 302 IPC (now Section 103(1) BNS)". This is critical because many precedents \
+cite old provisions while the current law references new ones. The same applies to \
+CrPC (now BNSS) and IEA (now BSA). Failure to provide dual citations makes the \
+argument incomplete for practice.
 """
 
 STRATEGY_IRAC_ARGUMENTS_SCHEMA: Final[dict] = {
@@ -2997,6 +2954,14 @@ Rules:
 procedural objections, overruled authorities.
 - Queries must be specific enough to find relevant opposing cases.
 - Include queries targeting IPC↔BNS transition ambiguities where relevant.
+- For each counter-query, PRIORITIZE finding cases with distinguishing facts: \
+cases where the same legal provision was applied but the factual differences led \
+to the opposite outcome. These are the most dangerous opposing authorities.
+- Also search for: (a) cases where the same court/bench departed from the cited \
+precedent, (b) cases where the statutory provision was interpreted more narrowly, \
+(c) cases where constitutional challenges to the statute were raised.
+- Frame queries as an opposing counsel would — what would you search for if you \
+were trying to DEFEAT these arguments?
 """
 
 STRATEGY_ADVERSARIAL_SCHEMA: Final[dict] = {

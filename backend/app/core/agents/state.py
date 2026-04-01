@@ -245,6 +245,7 @@ class StrategyState(TypedDict):
     argument_order: list[int]            # optimal ordering indices
     strategy_memo: str         # final synthesized output
     confidence: float
+    contradictions: list[dict]  # detected contradictions between precedents
     messages: Annotated[list[dict], operator.add]
     iteration: int
     error: str
