@@ -7,6 +7,7 @@ are passed via closures when the graph is built.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -483,12 +484,12 @@ async def adversarial_search_strategy_node(
     if not counter_queries:
         return {"adversarial_results": []}
 
-    # Run searches for each counter query
-    all_results: list[dict] = []
-    for cq in counter_queries[:5]:
-        query_text = cq.get("query", "")
-        if not query_text:
-            continue
+    # Run all counter-query searches in parallel
+    valid_queries = [(cq, cq.get("query", "")) for cq in counter_queries[:5] if cq.get("query", "").strip()]
+    if not valid_queries:
+        return {"adversarial_results": []}
+
+    async def _search_one(cq: dict, query_text: str) -> list[dict]:
         try:
             async with async_session_factory() as session:
                 results = await parallel_hybrid_search(
@@ -499,12 +500,23 @@ async def adversarial_search_strategy_node(
                     reranker=reranker,
                     db=session,
                 )
+            tagged: list[dict] = []
             for r in results[:3]:
                 r["adversarial"] = True
                 r["target_weakness"] = cq.get("target_weakness", "")
-                all_results.append(r)
+                tagged.append(r)
+            return tagged
         except Exception as e:
             logger.warning("Adversarial search failed for query '%s': %s", query_text[:50], e)
+            return []
+
+    batch_results = await asyncio.gather(
+        *[_search_one(cq, qt) for cq, qt in valid_queries],
+        return_exceptions=False,
+    )
+    all_results: list[dict] = []
+    for batch in batch_results:
+        all_results.extend(batch)
 
     return {"adversarial_results": all_results}
 

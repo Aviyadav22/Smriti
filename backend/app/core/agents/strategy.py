@@ -201,8 +201,8 @@ def build_strategy_graph(
 
     checkpoint_arguments = make_checkpoint_node(
         "arguments",
-        "Here are the legal arguments and strength assessment. Would you like to adjust?",
-        {"legal_arguments": ("legal_arguments", []), "strength_assessment": ("strength_assessment", {})},
+        "Here are the IRAC-structured arguments and strength assessment. Would you like to adjust?",
+        {"irac_arguments": ("irac_arguments", []), "strength_assessment": ("strength_assessment", {})},
     )
 
     checkpoint_memo = make_checkpoint_node(
