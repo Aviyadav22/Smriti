@@ -7,7 +7,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import func, literal_column, select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.case import Case
@@ -137,46 +137,7 @@ class CounselAnalyticsService:
         safe_query = query.replace("%", "\\%").replace("_", "\\_")
         name_pattern = f"%{safe_query}%"
 
-        # Base CTE: unnest party_counsel JSONB array
-        base_sql = text(
-            """
-            SELECT
-                elem->>'counsel_name' AS counsel_name,
-                elem->>'designation' AS designation
-            FROM cases c,
-                 jsonb_array_elements(c.party_counsel) AS elem
-            WHERE c.party_counsel IS NOT NULL
-              AND lower(elem->>'counsel_name') LIKE lower(:name_pattern)
-            """
-        )
-
-        # Aggregation: group by counsel name, find most common designation, count
-        agg_sql = text(
-            """
-            WITH counsel_entries AS (
-                SELECT
-                    elem->>'counsel_name' AS counsel_name,
-                    elem->>'designation' AS designation
-                FROM cases c,
-                     jsonb_array_elements(c.party_counsel) AS elem
-                WHERE c.party_counsel IS NOT NULL
-                  AND lower(elem->>'counsel_name') LIKE lower(:name_pattern)
-            )
-            SELECT
-                counsel_name,
-                COUNT(DISTINCT c2.id) AS total_cases,
-                MODE() WITHIN GROUP (ORDER BY ce.designation) AS designation
-            FROM counsel_entries ce
-            JOIN cases c2 ON EXISTS (
-                SELECT 1 FROM jsonb_array_elements(c2.party_counsel) e2
-                WHERE e2->>'counsel_name' = ce.counsel_name
-            )
-            GROUP BY counsel_name
-            ORDER BY total_cases DESC
-            """
-        )
-
-        # Simpler approach: count cases per counsel name directly
+        # Count distinct counsel names matching the query
         count_sql = text(
             """
             WITH counsel_names AS (
@@ -413,18 +374,21 @@ class CounselAnalyticsService:
 
         results_sql = text(
             f"""
-            SELECT DISTINCT ON (c.id)
-                c.id::text AS id,
-                c.title,
-                c.citation,
-                c.year,
-                c.case_type,
-                c.disposal_nature,
-                elem->>'party' AS party_side
-            FROM cases c,
-                 jsonb_array_elements(c.party_counsel) AS elem
-            WHERE {where_clause}
-            ORDER BY c.id, c.year DESC NULLS LAST
+            SELECT * FROM (
+                SELECT DISTINCT ON (c.id)
+                    c.id::text AS id,
+                    c.title,
+                    c.citation,
+                    c.year,
+                    c.case_type,
+                    c.disposal_nature,
+                    elem->>'party' AS party_side
+                FROM cases c,
+                     jsonb_array_elements(c.party_counsel) AS elem
+                WHERE {where_clause}
+                ORDER BY c.id, c.year DESC NULLS LAST
+            ) sub
+            ORDER BY sub.year DESC NULLS LAST
             LIMIT :limit OFFSET :offset
             """
         )

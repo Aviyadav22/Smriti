@@ -3,7 +3,8 @@
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy import CheckConstraint, DateTime, String
+from sqlalchemy import CheckConstraint, DateTime, String, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -31,6 +32,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    preferences: Mapped[dict] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb"), nullable=False
     )
 
     __table_args__ = (

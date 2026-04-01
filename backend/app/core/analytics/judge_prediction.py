@@ -90,13 +90,13 @@ async def predict_outcome(
         select(
             Case.disposal_nature,
             Case.decision_date,
-            func.count().label("cnt"),
         )
         .where(Case.judge.any(primary_judge))
         .where(Case.case_type == case_type)
         .where(Case.disposal_nature.isnot(None))
-        .group_by(Case.disposal_nature, Case.decision_date)
     )
+    if jurisdiction:
+        base_query = base_query.where(Case.jurisdiction == jurisdiction)
     base_result = await db.execute(base_query)
     base_rows = base_result.all()
 
@@ -114,15 +114,14 @@ async def predict_outcome(
 
     for row in base_rows:
         disposition = row.disposal_nature
-        count = row.cnt
-        raw_total += count
+        raw_total += 1
 
         weight = _OLD_WEIGHT
         if row.decision_date is not None and row.decision_date >= cutoff_date:
             weight = _RECENT_WEIGHT
 
-        weighted_counts[disposition] = weighted_counts.get(disposition, 0.0) + count * weight
-        total_weight += count * weight
+        weighted_counts[disposition] = weighted_counts.get(disposition, 0.0) + weight
+        total_weight += weight
 
     if raw_total < _MIN_CASES:
         return None

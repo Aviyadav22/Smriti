@@ -226,11 +226,17 @@ export default function ResearchAgentPage() {
         setIsFollowUp(true);
         setError(null);
         try {
-            const [messages, detail] = await Promise.all([
+            const [messagesResult, detailResult] = await Promise.allSettled([
                 getAgentSessionMessages(sid),
                 getAgentSessionDetail(sid),
             ]);
-            setSessionMessages(messages);
+
+            const messages = messagesResult.status === "fulfilled" ? messagesResult.value : [];
+            const detail = detailResult.status === "fulfilled" ? detailResult.value : null;
+
+            if (messages.length > 0) {
+                setSessionMessages(messages);
+            }
 
             // Try memo from messages first
             const lastMemo = [...messages].reverse().find(
@@ -245,9 +251,9 @@ export default function ResearchAgentPage() {
             }
 
             // Fallback: get memo from latest completed execution's result_data
-            const completedExec = [...(detail.executions || [])].reverse().find(
+            const completedExec = detail ? [...(detail.executions || [])].reverse().find(
                 (e) => e.status === "completed" && e.result_data?.memo,
-            );
+            ) : null;
 
             if (completedExec?.result_data) {
                 const rd = completedExec.result_data;

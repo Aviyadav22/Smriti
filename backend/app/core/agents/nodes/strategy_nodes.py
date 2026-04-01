@@ -698,7 +698,7 @@ async def synthesize_strategy_node(
 
     # Order irac_arguments using argument_order
     if argument_order:
-        ordered_args = [irac_arguments[i] for i in argument_order if i < len(irac_arguments)]
+        ordered_args = [irac_arguments[i] for i in argument_order if 0 <= i < len(irac_arguments)]
     else:
         ordered_args = irac_arguments
 

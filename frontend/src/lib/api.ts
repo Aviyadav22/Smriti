@@ -40,34 +40,35 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 // ---------------------------------------------------------------------------
 
 let accessToken: string | null = null;
-let refreshToken: string | null = null;
 
-// SECURITY TODO: migrate refresh token to httpOnly cookie to prevent XSS exfiltration.
-// localStorage is accessible to any JS on the same origin. The refresh token is long-lived
-// and should be stored in an httpOnly cookie instead. This requires coordinated backend
-// changes (Set-Cookie headers, CSRF protection). Access token can remain in memory.
-export function setTokens(access: string, refresh: string): void {
+// Access token is kept in memory only (never localStorage).
+// Refresh token lives in an httpOnly cookie — JS cannot read it.
+// On page reload, the AuthProvider calls tryRefreshToken() to re-obtain
+// an access token using the cookie-based refresh endpoint.
+
+export function setTokens(access: string): void {
     accessToken = access;
-    refreshToken = refresh;
-    if (typeof window !== "undefined") {
-        localStorage.setItem("access_token", access);
-        localStorage.setItem("refresh_token", refresh);
-    }
 }
 
 export function clearTokens(): void {
     accessToken = null;
-    refreshToken = null;
+    // Clean up any legacy localStorage tokens from before the cookie migration
     if (typeof window !== "undefined") {
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
     }
 }
 
+/** @deprecated No-op kept for backward compatibility during migration. */
 export function loadTokens(): void {
+    // Legacy localStorage cleanup — tokens now live in memory / httpOnly cookie
     if (typeof window !== "undefined") {
-        accessToken = localStorage.getItem("access_token");
-        refreshToken = localStorage.getItem("refresh_token");
+        const legacyAccess = localStorage.getItem("access_token");
+        if (legacyAccess) {
+            accessToken = legacyAccess;
+            localStorage.removeItem("access_token");
+            localStorage.removeItem("refresh_token");
+        }
     }
 }
 
@@ -75,8 +76,9 @@ export function getAccessToken(): string | null {
     return accessToken;
 }
 
+/** @deprecated Refresh token is now in httpOnly cookie — JS cannot read it. */
 export function getRefreshToken(): string | null {
-    return refreshToken;
+    return null;
 }
 
 // Session-expired event bus — lets AuthProvider react to 401s from any API call
@@ -113,7 +115,8 @@ function isTokenExpired(token: string): boolean {
 /** Proactively refresh the access token if it's expired or about to expire. */
 async function ensureFreshToken(): Promise<void> {
     if (!accessToken || !isTokenExpired(accessToken)) return;
-    if (!refreshToken || isTokenExpired(refreshToken)) return;
+    // Refresh token is in httpOnly cookie — we can't check its expiry from JS.
+    // Just attempt the refresh; server will reject if cookie is missing/expired.
     try {
         await tryRefresh();
     } catch {
@@ -194,7 +197,8 @@ async function apiFetch<T>(
             signal: controller.signal,
         });
 
-        if (res.status === 401 && refreshToken) {
+        if (res.status === 401) {
+            // Attempt refresh — cookie is sent automatically via credentials: "include"
             let refreshed: boolean;
             try {
                 refreshed = await tryRefresh();
@@ -208,7 +212,7 @@ async function apiFetch<T>(
             }
             if (refreshed) {
                 headers["Authorization"] = `Bearer ${accessToken}`;
-                const retry = await fetch(`${API_BASE}${path}`, { ...options, headers });
+                const retry = await fetch(`${API_BASE}${path}`, { ...options, headers, signal: controller.signal });
                 if (!retry.ok) {
                     const err = await retry.json().catch(() => ({}));
                     throw new ApiError(retry.status, extractErrorCode(err), extractErrorMessage(err, "Request failed"));
@@ -253,14 +257,15 @@ async function _doRefresh(): Promise<boolean> {
     // Network errors (TypeError from fetch) are intentionally NOT caught here —
     // they propagate to the caller so it can distinguish network failures from
     // real auth failures and avoid clearing tokens on a transient network blip.
+    // Refresh token is sent automatically via httpOnly cookie (credentials: "include").
     const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: refreshToken }),
+        credentials: "include",
     });
     if (!res.ok) return false;
     const data: TokenResponse = await res.json();
-    setTokens(data.access_token, data.refresh_token);
+    setTokens(data.access_token);
     return true;
 }
 
@@ -269,27 +274,43 @@ async function _doRefresh(): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 export async function login(req: LoginRequest): Promise<TokenResponse> {
-    const data = await apiFetch<TokenResponse>("/auth/login", {
+    // credentials: "include" so the httpOnly refresh cookie is set by the browser
+    const res = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(req),
+        credentials: "include",
     });
-    setTokens(data.access_token, data.refresh_token);
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new ApiError(res.status, extractErrorCode(err), extractErrorMessage(err, "Login failed"));
+    }
+    const data: TokenResponse = await res.json();
+    setTokens(data.access_token);
     return data;
 }
 
 export async function register(req: RegisterRequest): Promise<TokenResponse> {
-    const data = await apiFetch<TokenResponse>("/auth/register", {
+    const res = await fetch(`${API_BASE}/auth/register`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(req),
+        credentials: "include",
     });
-    setTokens(data.access_token, data.refresh_token);
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new ApiError(res.status, extractErrorCode(err), extractErrorMessage(err, "Registration failed"));
+    }
+    const data: TokenResponse = await res.json();
+    setTokens(data.access_token);
     return data;
 }
 
 export async function logout(): Promise<void> {
-    // Best-effort: revoke token server-side before clearing locally
+    // Best-effort: revoke token server-side before clearing locally.
+    // credentials: "include" sends the httpOnly cookie so backend can revoke + clear it.
     try {
-        await apiFetch("/auth/logout", { method: "POST" });
+        await apiFetch("/auth/logout", { method: "POST", credentials: "include" });
     } catch {
         // Intentionally ignored — logout should always succeed locally
     }
@@ -485,7 +506,7 @@ function _streamSSE<T>(
                 signal: controller.signal,
             });
 
-            if (res.status === 401 && refreshToken) {
+            if (res.status === 401) {
                 let refreshed: boolean;
                 try {
                     refreshed = await tryRefresh();
@@ -691,6 +712,8 @@ export async function getCourtStats(court: string): Promise<CourtStats> {
 // ---------------------------------------------------------------------------
 
 export async function uploadDocument(file: File): Promise<DocumentUploadResponse> {
+    await ensureFreshToken();
+
     const formData = new FormData();
     formData.append("file", file);
 
@@ -711,7 +734,7 @@ export async function uploadDocument(file: File): Promise<DocumentUploadResponse
             signal: controller.signal,
         });
 
-        if (res.status === 401 && refreshToken) {
+        if (res.status === 401) {
             let refreshed: boolean;
             try {
                 refreshed = await tryRefresh();
@@ -846,6 +869,8 @@ export async function exportResearchMemo(
     executionId: string,
     format: "docx" | "pdf" | "md" = "docx",
 ): Promise<Blob> {
+    await ensureFreshToken();
+
     const headers: Record<string, string> = {};
     if (accessToken) {
         headers["Authorization"] = `Bearer ${accessToken}`;
@@ -856,7 +881,7 @@ export async function exportResearchMemo(
         { headers },
     );
 
-    if (res.status === 401 && refreshToken) {
+    if (res.status === 401) {
         let refreshed: boolean;
         try {
             refreshed = await tryRefresh();
@@ -942,6 +967,8 @@ export async function exportDraft(
     executionId: string,
     format: "docx" | "pdf" = "docx",
 ): Promise<Blob> {
+    await ensureFreshToken();
+
     const headers: Record<string, string> = {};
     if (accessToken) {
         headers["Authorization"] = `Bearer ${accessToken}`;
@@ -952,7 +979,7 @@ export async function exportDraft(
         { method: "POST", headers },
     );
 
-    if (res.status === 401 && refreshToken) {
+    if (res.status === 401) {
         let refreshed: boolean;
         try {
             refreshed = await tryRefresh();
@@ -1088,8 +1115,8 @@ export async function revokeMemoShare(executionId: string): Promise<{ revoked: b
 }
 
 export async function getSharedMemo(token: string): Promise<{ title: string; memo: string; footnotes: unknown[]; confidence: number | null; agent_type: string }> {
-    const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-    const res = await fetch(`${baseUrl}/api/v1/shared/${token}`);
+    const url = `${API_BASE}/shared/${token}`;
+    const res = await fetch(url);
     if (!res.ok) throw new Error("Memo not found or expired");
     return res.json();
 }

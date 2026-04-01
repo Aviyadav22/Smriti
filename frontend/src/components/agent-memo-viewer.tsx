@@ -12,7 +12,14 @@ import { Input } from "@/components/ui/input";
 import { Check, CheckCircle2, ChevronDown, Clipboard, Copy, Download, HelpCircle, Info, Link as LinkIcon, Loader2, Pencil, Share2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createMemoShare, getMemoShareStatus, revokeMemoShare } from "@/lib/api";
+import type { ReactNode } from "react";
 import type { ResearchFootnote } from "@/lib/types";
+
+/** Props passed by react-markdown to custom component overrides. */
+interface MdProps {
+    children?: ReactNode;
+    [key: string]: unknown;
+}
 
 /** Verification status for a footnote — maps to color. */
 type FootnoteVerification = "verified_pg" | "verified_ik" | "verified_neo4j" | "unverified" | "removed" | "flagged";
@@ -263,6 +270,7 @@ export function AgentMemoViewer({ content, confidence, onFootnoteClick, maxFootn
     const [copiedSection, setCopiedSection] = useState<string | null>(null);
     const [shareUrl, setShareUrl] = useState<string | null>(null);
     const [sharing, setSharing] = useState(false);
+    const [shareError, setShareError] = useState<string | null>(null);
 
     // Check share status on mount
     useEffect(() => {
@@ -287,7 +295,8 @@ export function AgentMemoViewer({ content, confidence, onFootnoteClick, maxFootn
             setShareUrl(result.share_url);
             await navigator.clipboard.writeText(fullUrl);
         } catch {
-            // Share failed — could surface error to user in future
+            setShareError("Failed to create share link");
+            setTimeout(() => setShareError(null), 3000);
         } finally {
             setSharing(false);
         }
@@ -370,24 +379,20 @@ export function AgentMemoViewer({ content, confidence, onFootnoteClick, maxFootn
 
     // Custom markdown components to inject footnote pills and case links
     const components = useMemo(() => ({
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        p: ({ children, ...props }: any) => (
+        p: ({ children, ...props }: MdProps) => (
             <p className="text-base leading-relaxed mb-4" {...props}>
                 {processChildren(children, onFootnoteClick, maxFootnote, footnoteVerification, footnotesMap)}
             </p>
         ),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        li: ({ children, ...props }: any) => (
+        li: ({ children, ...props }: MdProps) => (
             <li className="text-base leading-relaxed" {...props}>
                 {processChildren(children, onFootnoteClick, maxFootnote, footnoteVerification, footnotesMap)}
             </li>
         ),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        h1: ({ children, ...props }: any) => (
+        h1: ({ children, ...props }: MdProps) => (
             <h1 className="text-xl font-bold mt-6 mb-3" {...props}>{children}</h1>
         ),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        h2: ({ children, ...props }: any) => {
+        h2: ({ children, ...props }: MdProps) => {
             const headingText = typeof children === "string" ? children : Array.isArray(children) ? children.join("") : String(children ?? "");
             return (
                 <div className="mt-8 mb-2 border-t border-border/40 pt-5" id={slugify(headingText)}>
@@ -456,40 +461,32 @@ export function AgentMemoViewer({ content, confidence, onFootnoteClick, maxFootn
                 </div>
             );
         },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        h3: ({ children, ...props }: any) => (
+        h3: ({ children, ...props }: MdProps) => (
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mt-4 mb-1.5" {...props}>{children}</h3>
         ),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        strong: ({ children, ...props }: any) => (
+        strong: ({ children, ...props }: MdProps) => (
             <strong className="font-semibold text-foreground" {...props}>{children}</strong>
         ),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        blockquote: ({ children, ...props }: any) => (
+        blockquote: ({ children, ...props }: MdProps) => (
             <blockquote className="border-l-2 border-[var(--gold)] pl-4 my-3 text-base text-muted-foreground italic" {...props}>
                 {children}
             </blockquote>
         ),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ul: ({ children, ...props }: any) => (
+        ul: ({ children, ...props }: MdProps) => (
             <ul className="list-disc list-outside pl-5 space-y-1.5 my-3" {...props}>{children}</ul>
         ),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ol: ({ children, ...props }: any) => (
+        ol: ({ children, ...props }: MdProps) => (
             <ol className="list-decimal list-outside pl-5 space-y-1.5 my-3" {...props}>{children}</ol>
         ),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        table: ({ children, ...props }: any) => (
+        table: ({ children, ...props }: MdProps) => (
             <div className="overflow-x-auto my-2">
                 <table className="text-sm border-collapse border border-border w-full" {...props}>{children}</table>
             </div>
         ),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        th: ({ children, ...props }: any) => (
+        th: ({ children, ...props }: MdProps) => (
             <th className="border border-border px-3 py-1.5 bg-muted text-left text-sm font-semibold" {...props}>{children}</th>
         ),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        td: ({ children, ...props }: any) => (
+        td: ({ children, ...props }: MdProps) => (
             <td className="border border-border px-3 py-1.5 text-sm" {...props}>{children}</td>
         ),
     }), [onFootnoteClick, maxFootnote, footnotesMap, onReviseSection, revisingSection, revisionFeedback, revisionLoading, copiedSection, handleCopySection]);
@@ -570,6 +567,7 @@ export function AgentMemoViewer({ content, confidence, onFootnoteClick, maxFootn
                             </DropdownMenuContent>
                         </DropdownMenu>
                     )}
+                    {shareError && <span className="text-sm text-destructive">{shareError}</span>}
                     {executionId && !shareUrl && (
                         <Button variant="outline" size="sm" onClick={handleShare} disabled={sharing}>
                             {sharing ? (

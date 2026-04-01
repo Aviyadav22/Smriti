@@ -17,14 +17,14 @@ def _make_base_rows(
     counts: dict[str, int],
     decision_date: date | None = None,
 ) -> list:
-    """Build mock rows matching (disposal_nature, decision_date, cnt)."""
+    """Build mock rows matching (disposal_nature, decision_date) — one row per case."""
     rows = []
     for disposition, cnt in counts.items():
-        row = MagicMock()
-        row.disposal_nature = disposition
-        row.decision_date = decision_date
-        row.cnt = cnt
-        rows.append(row)
+        for _ in range(cnt):
+            row = MagicMock()
+            row.disposal_nature = disposition
+            row.decision_date = decision_date
+            rows.append(row)
     return rows
 
 

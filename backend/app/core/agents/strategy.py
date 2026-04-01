@@ -32,7 +32,6 @@ from app.core.agents.nodes.strategy_nodes import (
     counter_arguments_node,
     fetch_judge_profile_node,
     generate_arguments_irac_node,
-    generate_arguments_node,
     judge_considerations_node,
     search_precedents_node,
     synthesize_strategy_node,

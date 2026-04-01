@@ -185,7 +185,7 @@ export default function CounselProfilePage() {
                                 <span className="text-xs uppercase tracking-wider">Win Rate</span>
                             </div>
                             <p className={`text-2xl font-semibold ${winRateColor(profile.win_rate)}`}>
-                                {profile.win_rate != null ? `${profile.win_rate.toFixed(1)}%` : "N/A"}
+                                {profile.win_rate != null && Number.isFinite(profile.win_rate) ? `${profile.win_rate.toFixed(1)}%` : "N/A"}
                             </p>
                         </div>
                         <div className="border rounded-lg bg-card p-4">
