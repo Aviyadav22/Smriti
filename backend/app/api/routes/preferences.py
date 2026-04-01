@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +17,16 @@ from app.security.rbac import get_current_user
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class UpdatePreferencesRequest(BaseModel):
+    """Validated request body for preference updates."""
+
+    preferred_jurisdictions: list[str] | None = None
+    common_case_types: list[str] | None = None
+    preferred_courts: list[str] | None = None
+    frequent_acts: list[str] | None = None
+    output_preference: str | None = None
 
 
 async def _compute_preferences(db: AsyncSession, user_id: str) -> dict:
@@ -92,19 +103,21 @@ async def get_preferences(
     dependencies=[Depends(rate_limit_dependency("20/minute"))],
 )
 async def update_preferences(
-    body: dict,
+    body: UpdatePreferencesRequest,
     current_user: TokenPayload = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Merge partial update into the user's preferences JSONB."""
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=422, detail="Preferences must be a JSON object")
-
     uid = uuid.UUID(current_user.sub)
+
+    # Only include non-None fields so we don't overwrite with nulls
+    new_prefs = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not new_prefs:
+        raise HTTPException(status_code=422, detail="No preference fields provided")
 
     await db.execute(
         text("UPDATE users SET preferences = preferences || :new_prefs WHERE id = :uid"),
-        {"new_prefs": body, "uid": uid},
+        {"new_prefs": new_prefs, "uid": uid},
     )
     await db.commit()
 

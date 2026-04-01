@@ -131,11 +131,25 @@ def build_strategy_graph(
         return await assess_strength_node(state, llm)
 
     async def element_decomposition(state: StrategyState) -> dict:
-        # Adapt StrategyState to the dict shape element_decomposition_node expects
+        # Adapt StrategyState to the dict shape element_decomposition_node expects.
+        # Extract minimal statute context from fact_analysis causes_of_action
+        # (the full statute_lookup_node is not available in the strategy graph).
+        fact_analysis = state.get("fact_analysis", {})
+        statute_refs: list[dict] = []
+        if isinstance(fact_analysis, dict):
+            for cause in fact_analysis.get("causes_of_action", []):
+                if isinstance(cause, dict) and cause.get("statutory_basis"):
+                    statute_refs.append({
+                        "act_short_name": cause["statutory_basis"],
+                        "section_number": "",
+                        "section_title": "",
+                        "section_text": "",
+                        "is_repealed": False,
+                    })
         adapted = {
             "query": state.get("case_facts", ""),
             "rewritten_query": "",
-            "statute_context": [],
+            "statute_context": statute_refs,
             "complexity": "complex",
         }
         return await element_decomposition_node(adapted, flash_llm)

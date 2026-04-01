@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Check, CheckCircle2, ChevronDown, Clipboard, Copy, Download, HelpCircle, Info, Link, Loader2, Pencil, Share2, X } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, Clipboard, Copy, Download, HelpCircle, Info, Link as LinkIcon, Loader2, Pencil, Share2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createMemoShare, getMemoShareStatus, revokeMemoShare } from "@/lib/api";
 import type { ResearchFootnote } from "@/lib/types";
@@ -583,7 +583,7 @@ export function AgentMemoViewer({ content, confidence, onFootnoteClick, maxFootn
                     {executionId && shareUrl && (
                         <div className="flex items-center gap-1.5">
                             <Badge variant="secondary" className="text-xs font-normal gap-1 py-1 px-2">
-                                <Link className="h-3 w-3" />
+                                <LinkIcon className="h-3 w-3" />
                                 Shared
                             </Badge>
                             <Button variant="outline" size="sm" onClick={handleCopyShareUrl} title="Copy share link">

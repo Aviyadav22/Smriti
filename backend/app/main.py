@@ -427,4 +427,4 @@ app.include_router(admin_review_router, prefix="/api/v1/admin/review", tags=["ad
 app.include_router(admin_corrections_router, prefix="/api/v1/admin/corrections", tags=["admin"])
 app.include_router(data_quality_router, prefix="/api/v1/admin/data-quality", tags=["admin"])
 app.include_router(preferences_router, prefix="/api/v1", tags=["preferences"])
-app.include_router(sharing_router, prefix="/api", tags=["sharing"])
+app.include_router(sharing_router, prefix="/api/v1", tags=["sharing"])

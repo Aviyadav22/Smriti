@@ -43,7 +43,13 @@ export default function CounselPage() {
     }, []);
 
     useEffect(() => {
-        fetchCounsels(searchQuery, page);
+        if (searchQuery.trim()) {
+            fetchCounsels(searchQuery, page);
+        } else {
+            setCounsels([]);
+            setTotal(0);
+            setLoading(false);
+        }
     }, [searchQuery, page, fetchCounsels]);
 
     function handleSearchChange(value: string) {

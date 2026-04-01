@@ -1089,7 +1089,7 @@ export async function revokeMemoShare(executionId: string): Promise<{ revoked: b
 
 export async function getSharedMemo(token: string): Promise<{ title: string; memo: string; footnotes: unknown[]; confidence: number | null; agent_type: string }> {
     const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-    const res = await fetch(`${baseUrl}/api/shared/${token}`);
+    const res = await fetch(`${baseUrl}/api/v1/shared/${token}`);
     if (!res.ok) throw new Error("Memo not found or expired");
     return res.json();
 }

@@ -26,13 +26,13 @@ interface CounselProfileData {
     win_rate: number;
     petitioner_cases: number;
     respondent_cases: number;
-    active_years: string;
-    case_type_distribution: Record<string, number>;
+    active_years: [number, number];
+    case_types: Record<string, number>;
     [key: string]: unknown;
 }
 
 interface CounselCase {
-    case_id: string;
+    id: string;
     title: string;
     year: number;
     case_type: string;
@@ -130,8 +130,8 @@ export default function CounselProfilePage() {
         </div>
     );
 
-    const caseTypeEntries = profile.case_type_distribution
-        ? Object.entries(profile.case_type_distribution).sort(([, a], [, b]) => b - a)
+    const caseTypeEntries = profile.case_types
+        ? Object.entries(profile.case_types).sort(([, a], [, b]) => b - a)
         : [];
     const caseTypeTotal = caseTypeEntries.reduce((sum, [, count]) => sum + count, 0);
 
@@ -162,9 +162,9 @@ export default function CounselProfilePage() {
                                     {profile.designation}
                                 </Badge>
                             )}
-                            {profile.active_years && (
+                            {profile.active_years && profile.active_years[0] > 0 && (
                                 <span className="text-xs text-muted-foreground">
-                                    Active: {profile.active_years}
+                                    Active: {profile.active_years[0]}–{profile.active_years[1]}
                                 </span>
                             )}
                         </div>
@@ -307,10 +307,10 @@ export default function CounselProfilePage() {
                                         </thead>
                                         <tbody className="divide-y">
                                             {cases.cases.map((c: CounselCase) => (
-                                                <tr key={c.case_id} className="hover:bg-accent/50">
+                                                <tr key={c.id} className="hover:bg-accent/50">
                                                     <td className="py-2 max-w-[300px]">
                                                         <Link
-                                                            href={`/case/${c.case_id}`}
+                                                            href={`/case/${c.id}`}
                                                             className="hover:underline truncate block"
                                                             title={c.title}
                                                         >
