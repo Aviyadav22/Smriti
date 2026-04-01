@@ -9,16 +9,20 @@ from __future__ import annotations
 
 import io
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from docx import Document  # type: ignore[import-untyped]
 from docx.enum.text import WD_ALIGN_PARAGRAPH  # type: ignore[import-untyped]
 from docx.shared import Inches, Pt  # type: ignore[import-untyped]
-from reportlab.lib.pagesizes import A4  # type: ignore[import-untyped]
+from reportlab.lib.pagesizes import A4, legal  # type: ignore[import-untyped]
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # type: ignore[import-untyped]
-from reportlab.lib.units import inch  # type: ignore[import-untyped]
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer  # type: ignore[import-untyped]
+from reportlab.lib.units import cm, inch  # type: ignore[import-untyped]
+from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer  # type: ignore[import-untyped]
 
 from app.core.drafting.templates import DocumentTemplate
+
+if TYPE_CHECKING:
+    from app.core.drafting.court_profiles import CourtProfile
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,6 +77,8 @@ async def export_to_docx(
     template: DocumentTemplate,
     *,
     title: str = "",
+    court_profile: CourtProfile | None = None,
+    affidavit: str = "",
 ) -> bytes:
     """Export document content to DOCX format with Indian legal formatting.
 
@@ -80,24 +86,40 @@ async def export_to_docx(
         content: The full document text (may contain markdown headings).
         template: The DocumentTemplate describing the document type.
         title: Optional title override; defaults to ``template.display_name``.
+        court_profile: Optional court-specific formatting profile. When
+            provided, margins, font sizes and line spacing are taken from the
+            profile instead of the defaults.
+        affidavit: Optional affidavit content to append after the main
+            document (separated by a page break).
 
     Returns:
         The DOCX file as raw bytes.
     """
     doc = Document()
 
-    # -- Page margins: 1 inch all sides --
+    # -- Page margins --
     for section in doc.sections:
-        section.top_margin = Inches(1)
-        section.bottom_margin = Inches(1)
-        section.left_margin = Inches(1)
-        section.right_margin = Inches(1)
+        if court_profile is not None:
+            section.top_margin = Inches(court_profile.margin_top_cm / 2.54)
+            section.bottom_margin = Inches(court_profile.margin_bottom_cm / 2.54)
+            section.left_margin = Inches(court_profile.margin_left_cm / 2.54)
+            section.right_margin = Inches(court_profile.margin_right_cm / 2.54)
+        else:
+            section.top_margin = Inches(1)
+            section.bottom_margin = Inches(1)
+            section.left_margin = Inches(1)
+            section.right_margin = Inches(1)
+
+    # -- Resolve font sizes from profile or defaults --
+    body_font_size = Pt(court_profile.font_size_body) if court_profile else Pt(12)
+    heading_font_size = Pt(court_profile.font_size_heading) if court_profile else Pt(14)
+    line_spacing = court_profile.line_spacing if court_profile else None
 
     # -- Default font --
     style = doc.styles["Normal"]
     font = style.font
     font.name = "Times New Roman"
-    font.size = Pt(12)
+    font.size = body_font_size
 
     # -- Document title --
     doc_title = title or template.display_name
@@ -117,7 +139,7 @@ async def export_to_docx(
             heading_para = doc.add_heading(heading, level=1)
             for run in heading_para.runs:
                 run.font.name = "Times New Roman"
-                run.font.size = Pt(14)
+                run.font.size = heading_font_size
                 run.font.bold = True
 
         body_text = "\n".join(body_lines).strip()
@@ -131,18 +153,57 @@ async def export_to_docx(
 
             para = doc.add_paragraph()
             para.paragraph_format.space_after = Pt(6)
+            if line_spacing is not None:
+                para.paragraph_format.line_spacing = line_spacing
 
             # Add paragraph number for substantive content
             if heading is not None:
                 run = para.add_run(f"{paragraph_number}. ")
                 run.font.name = "Times New Roman"
-                run.font.size = Pt(12)
+                run.font.size = body_font_size
                 run.font.bold = True
                 paragraph_number += 1
 
             run = para.add_run(paragraph_text.replace("\n", " "))
             run.font.name = "Times New Roman"
-            run.font.size = Pt(12)
+            run.font.size = body_font_size
+
+    # -- Affidavit section --
+    if affidavit:
+        doc.add_page_break()
+        aff_title = doc.add_heading("AFFIDAVIT", level=0)
+        aff_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in aff_title.runs:
+            run.font.name = "Times New Roman"
+            run.font.size = Pt(16)
+            run.font.bold = True
+
+        aff_sections = _parse_sections(affidavit)
+        for heading, body_lines in aff_sections:
+            if heading is not None:
+                heading_para = doc.add_heading(heading, level=1)
+                for run in heading_para.runs:
+                    run.font.name = "Times New Roman"
+                    run.font.size = heading_font_size
+                    run.font.bold = True
+
+            body_text = "\n".join(body_lines).strip()
+            if not body_text:
+                continue
+
+            for paragraph_text in body_text.split("\n\n"):
+                paragraph_text = paragraph_text.strip()
+                if not paragraph_text:
+                    continue
+
+                para = doc.add_paragraph()
+                para.paragraph_format.space_after = Pt(6)
+                if line_spacing is not None:
+                    para.paragraph_format.line_spacing = line_spacing
+
+                run = para.add_run(paragraph_text.replace("\n", " "))
+                run.font.name = "Times New Roman"
+                run.font.size = body_font_size
 
     # -- Document metadata --
     doc.core_properties.title = doc_title
@@ -169,6 +230,8 @@ async def export_to_pdf(
     template: DocumentTemplate,
     *,
     title: str = "",
+    court_profile: CourtProfile | None = None,
+    affidavit: str = "",
 ) -> bytes:
     """Export document content to PDF format with Indian legal formatting.
 
@@ -176,6 +239,11 @@ async def export_to_pdf(
         content: The full document text (may contain markdown headings).
         template: The DocumentTemplate describing the document type.
         title: Optional title override; defaults to ``template.display_name``.
+        court_profile: Optional court-specific formatting profile. When
+            provided, margins, font sizes, line spacing and paper size are
+            taken from the profile instead of the defaults.
+        affidavit: Optional affidavit content to append after the main
+            document (separated by a page break).
 
     Returns:
         The PDF file as raw bytes.
@@ -184,13 +252,33 @@ async def export_to_pdf(
 
     doc_title = title or template.display_name
 
+    # -- Resolve layout from profile or defaults --
+    if court_profile is not None:
+        pagesize = legal if court_profile.paper_size == "legal" else A4
+        top_margin = court_profile.margin_top_cm * cm
+        bottom_margin = court_profile.margin_bottom_cm * cm
+        left_margin = court_profile.margin_left_cm * cm
+        right_margin = court_profile.margin_right_cm * cm
+        body_font_size = court_profile.font_size_body
+        heading_font_size = court_profile.font_size_heading
+        body_leading = court_profile.font_size_body * court_profile.line_spacing
+    else:
+        pagesize = A4
+        top_margin = 1 * inch
+        bottom_margin = 1 * inch
+        left_margin = 1 * inch
+        right_margin = 1 * inch
+        body_font_size = 12
+        heading_font_size = 14
+        body_leading = 16
+
     doc = SimpleDocTemplate(
         buf,
-        pagesize=A4,
-        topMargin=1 * inch,
-        bottomMargin=1 * inch,
-        leftMargin=1 * inch,
-        rightMargin=1 * inch,
+        pagesize=pagesize,
+        topMargin=top_margin,
+        bottomMargin=bottom_margin,
+        leftMargin=left_margin,
+        rightMargin=right_margin,
         title=doc_title,
         author="Smriti AI",
         creator="Smriti AI",
@@ -213,7 +301,7 @@ async def export_to_pdf(
         "SectionHeading",
         parent=styles["Heading1"],
         fontName="Times-Bold",
-        fontSize=14,
+        fontSize=heading_font_size,
         spaceBefore=14,
         spaceAfter=8,
     )
@@ -222,13 +310,13 @@ async def export_to_pdf(
         "BodyText",
         parent=styles["BodyText"],
         fontName="Times-Roman",
-        fontSize=12,
-        leading=16,
+        fontSize=body_font_size,
+        leading=body_leading,
         spaceAfter=6,
     )
 
     # -- Build flowable list --
-    flowables: list[Paragraph | Spacer] = []
+    flowables: list[Paragraph | Spacer | PageBreak] = []
 
     flowables.append(Paragraph(doc_title, title_style))
     flowables.append(Spacer(1, 12))
@@ -262,6 +350,43 @@ async def export_to_pdf(
                 paragraph_number += 1
 
             flowables.append(Paragraph(safe_text, body_style))
+
+    # -- Affidavit section --
+    if affidavit:
+        flowables.append(PageBreak())
+
+        aff_title_style = ParagraphStyle(
+            "AffTitle",
+            parent=styles["Title"],
+            fontName="Times-Bold",
+            fontSize=16,
+            alignment=1,
+            spaceAfter=20,
+        )
+        flowables.append(Paragraph("AFFIDAVIT", aff_title_style))
+        flowables.append(Spacer(1, 12))
+
+        aff_sections = _parse_sections(affidavit)
+        for heading, body_lines in aff_sections:
+            if heading is not None:
+                flowables.append(Paragraph(heading, heading_style))
+
+            body_text = "\n".join(body_lines).strip()
+            if not body_text:
+                continue
+
+            for paragraph_text in body_text.split("\n\n"):
+                paragraph_text = paragraph_text.strip()
+                if not paragraph_text:
+                    continue
+
+                safe_text = (
+                    paragraph_text.replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace("\n", "<br/>")
+                )
+                flowables.append(Paragraph(safe_text, body_style))
 
     doc.build(flowables)
     buf.seek(0)

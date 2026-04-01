@@ -1,6 +1,7 @@
 """Tests for Drafting Agent node functions."""
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -776,3 +777,139 @@ class TestVerifyFinalNode:
         db = AsyncMock()
         result = await verify_final_node(state, db)
         assert result == {"full_draft": ""}
+
+
+# ---------------------------------------------------------------------------
+# resolve_template_node — V2 (court profiles + primary code)
+# ---------------------------------------------------------------------------
+
+
+class TestResolveTemplateV2:
+    @pytest.mark.asyncio
+    async def test_resolve_template_sets_court_profile(self) -> None:
+        state = _make_state(target_court="Supreme Court")
+        result = await resolve_template_node(state)
+        assert "court_profile" in result
+        assert result["court_profile"]["court_id"] == "supreme_court"
+
+    @pytest.mark.asyncio
+    async def test_resolve_template_default_court_profile(self) -> None:
+        state = _make_state(target_court="")
+        result = await resolve_template_node(state)
+        assert result["court_profile"]["court_id"] == "default"
+
+    @pytest.mark.asyncio
+    async def test_resolve_template_sets_primary_code_new(self) -> None:
+        state = _make_state(additional_context={
+            "accused_name": "Test", "fir_number": "123/2025",
+            "police_station": "Test PS", "offences_charged": "S.420 IPC",
+            "fir_date": "2025-01-15",
+        })
+        result = await resolve_template_node(state)
+        assert result["primary_code"] == "new"
+
+    @pytest.mark.asyncio
+    async def test_resolve_template_sets_primary_code_old(self) -> None:
+        state = _make_state(additional_context={
+            "accused_name": "Test", "fir_number": "123/2023",
+            "police_station": "Test PS", "offences_charged": "S.420 IPC",
+            "fir_date": "2023-06-01",
+        })
+        result = await resolve_template_node(state)
+        assert result["primary_code"] == "old"
+
+
+# ---------------------------------------------------------------------------
+# gather_provisions_node — V2 (amendment mappings)
+# ---------------------------------------------------------------------------
+
+
+class TestGatherProvisionsV2:
+    @pytest.mark.asyncio
+    async def test_provisions_include_new_code_mapping(self) -> None:
+        """S.438 CrPC should get new_code_section=482, new_code_act=BNSS."""
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = json.dumps([
+            {"act": "CrPC", "section": "438", "description": "Anticipatory bail", "current": True},
+        ])
+        mock_db = AsyncMock()
+        mock_db.execute.return_value = MagicMock(fetchall=lambda: [])
+
+        state = _make_state(
+            template={"display_name": "Test", "statutory_basis": "S.438 CrPC"},
+            primary_code="new",
+        )
+        result = await gather_provisions_node(state, mock_llm, mock_db)
+        provisions = result["statutory_provisions"]
+        assert len(provisions) >= 1
+        found = [p for p in provisions if p.get("section") == "438"]
+        assert len(found) == 1
+        assert found[0].get("new_code_section") == "482"
+        assert found[0].get("new_code_act") == "BNSS"
+
+
+# ---------------------------------------------------------------------------
+# draft_sections_node — V2 (CRAC + amendment context)
+# ---------------------------------------------------------------------------
+
+
+class TestDraftSectionsV2:
+    @pytest.mark.asyncio
+    async def test_crac_instruction_used_for_advocacy_template(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = "Draft content here"
+        state = _make_state(
+            template={
+                "display_name": "Bail Application",
+                "sections": ["grounds_for_bail"],
+                "prompt_key": "DRAFT_BAIL_APPLICATION_SYSTEM",
+                "argument_style": "crac",
+            },
+            verified_precedents=[],
+            statutory_provisions=[],
+            primary_code="new",
+        )
+        await draft_sections_node(state, mock_llm)
+        call_args = mock_llm.generate.call_args
+        prompt = call_args.kwargs.get("prompt", "")
+        assert "CRAC" in prompt or "CONCLUSION" in prompt or "Lead with" in prompt
+
+    @pytest.mark.asyncio
+    async def test_irac_instruction_used_for_factual_template(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = "Draft content here"
+        state = _make_state(
+            doc_type="plaint",
+            template={
+                "display_name": "Plaint",
+                "sections": ["facts_of_the_case"],
+                "prompt_key": "DRAFT_PLAINT_SYSTEM",
+                "argument_style": "irac",
+            },
+            verified_precedents=[],
+            statutory_provisions=[],
+            primary_code="new",
+        )
+        await draft_sections_node(state, mock_llm)
+        call_args = mock_llm.generate.call_args
+        prompt = call_args.kwargs.get("prompt", "")
+        assert "IRAC" in prompt or "ISSUE" in prompt
+
+    @pytest.mark.asyncio
+    async def test_new_code_context_injected(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = "Draft content"
+        state = _make_state(
+            template={
+                "display_name": "Test",
+                "sections": ["grounds"],
+                "prompt_key": "DRAFT_BAIL_APPLICATION_SYSTEM",
+                "argument_style": "crac",
+            },
+            verified_precedents=[],
+            statutory_provisions=[],
+            primary_code="new",
+        )
+        await draft_sections_node(state, mock_llm)
+        prompt = mock_llm.generate.call_args.kwargs.get("prompt", "")
+        assert "BNS/BNSS/BSA" in prompt or "post-1 July 2024" in prompt

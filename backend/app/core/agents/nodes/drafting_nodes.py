@@ -25,6 +25,7 @@ from app.core.agents.nodes.common import (
     verify_memo_citations,
 )
 from app.core.agents.state import DraftingState
+from app.core.drafting.court_profiles import get_court_profile
 from app.core.drafting.templates import get_template
 from app.core.interfaces import LLMProvider
 from app.core.legal.prompts import (
@@ -77,6 +78,31 @@ _PROMPT_MAP: dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _determine_primary_code(case_facts: str, additional_context: dict) -> str:
+    """Return 'old' or 'new' based on FIR/filing date vs July 1 2024 cutoff."""
+    from datetime import date, datetime
+
+    cutoff = date(2024, 7, 1)
+    for key in ("fir_date", "filing_date", "offence_date"):
+        raw = additional_context.get(key, "")
+        if not raw:
+            continue
+        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y"):
+            try:
+                parsed = datetime.strptime(raw, fmt).date()
+                if parsed < cutoff:
+                    return "old"
+                return "new"
+            except ValueError:
+                continue
+    return "new"
+
+
+# ---------------------------------------------------------------------------
 # Node 1: resolve_template_node
 # ---------------------------------------------------------------------------
 
@@ -102,7 +128,16 @@ async def resolve_template_node(state: DraftingState) -> dict:
     if missing:
         return {"error": f"Missing required fields: {', '.join(missing)}"}
 
-    return {"template": asdict(template)}
+    court_profile = get_court_profile(state.get("target_court", ""))
+    primary_code = _determine_primary_code(
+        state.get("case_facts", ""),
+        state.get("additional_context", {}) or {},
+    )
+    return {
+        "template": asdict(template),
+        "court_profile": asdict(court_profile),
+        "primary_code": primary_code,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +222,25 @@ async def gather_provisions_node(
                 "description": prov.get("description", ""),
                 "current": prov.get("current", True),
             })
+
+    # Post-process: attach old↔new code mappings
+    from app.core.legal.amendment_service import build_lookup_from_constants
+
+    old_to_new, new_to_old = build_lookup_from_constants()
+    _act_to_new = {"IPC": "BNS", "CrPC": "BNSS", "IEA": "BSA"}
+    _act_to_old = {"BNS": "IPC", "BNSS": "CrPC", "BSA": "IEA"}
+
+    for prov in validated:
+        act = prov.get("act", "")
+        sec = prov.get("section", "")
+        key_old = (act, sec)
+        key_new = (act, sec)
+        if key_old in old_to_new:
+            prov["new_code_section"] = old_to_new[key_old][0]
+            prov["new_code_act"] = _act_to_new.get(act, "")
+        elif key_new in new_to_old:
+            prov["old_code_section"] = new_to_old[key_new][0]
+            prov["old_code_act"] = _act_to_old.get(act, "")
 
     return {"statutory_provisions": validated}
 
@@ -288,6 +342,40 @@ async def draft_sections_node(
         sanitized_fb = sanitize_search_query(feedback)
         feedback_text = f"\n\nUser Feedback on Sources:\n{sanitized_fb}\n"
 
+    # Determine argument structure (IRAC vs CRAC)
+    argument_style = template.get("argument_style", "irac")
+    if argument_style == "crac":
+        structure_instruction = (
+            "For substantive legal sections (grounds, legal provisions, "
+            "precedents, analysis), structure each key point using CRAC: "
+            "Lead with your CONCLUSION (your position), then state the RULE "
+            "(statute/precedent), APPLY it to these facts, restate your CONCLUSION."
+        )
+    else:
+        structure_instruction = (
+            "For substantive legal sections (grounds, legal provisions, "
+            "precedents, analysis), structure each key point using IRAC: "
+            "ISSUE (legal question), RULE (statute/precedent), APPLICATION "
+            "(to these facts), CONCLUSION (your position)."
+        )
+
+    # Build amendment / code context
+    primary_code = state.get("primary_code", "new")
+    if primary_code == "new":
+        code_context = (
+            "\n\nStatute Code Context:\n"
+            "- Primary codes: BNS/BNSS/BSA (post-1 July 2024)\n"
+            "- Cite new code as primary, old code in parentheses\n"
+            "- Example: 'Section 482 BNSS (corresponding to Section 438 CrPC)'\n"
+        )
+    else:
+        code_context = (
+            "\n\nStatute Code Context:\n"
+            "- Primary codes: IPC/CrPC/Indian Evidence Act (pre-1 July 2024)\n"
+            "- Cite old code as primary, new code in parentheses for reference\n"
+            "- Example: 'Section 438 CrPC (now Section 482 BNSS)'\n"
+        )
+
     sem = asyncio.Semaphore(3)
 
     async def _draft_one(section_name: str) -> tuple[str, str]:
@@ -303,10 +391,8 @@ async def draft_sections_node(
                 f"{feedback_text}"
                 f"Generate ONLY the content for the '{section_name}' section. "
                 f"Do not include other sections.\n\n"
-                f"For substantive legal sections (grounds, legal provisions, "
-                f"precedents, analysis), structure each key point using IRAC: "
-                f"ISSUE (legal question), RULE (statute/precedent), APPLICATION "
-                f"(to these facts), CONCLUSION (your position)."
+                f"{structure_instruction}"
+                f"{code_context}"
             )
             try:
                 draft = await llm.generate(
