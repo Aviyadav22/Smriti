@@ -53,6 +53,7 @@ vi.mock("@/lib/api", async () => {
     getDraftingTemplates: (...args: unknown[]) =>
       mockGetDraftingTemplates(...args),
     runDraftingAgent: vi.fn(),
+    runDraftingFromResearch: vi.fn(),
     resumeAgentExecution: vi.fn(),
     exportDraft: vi.fn(),
     loadTokens: vi.fn(),

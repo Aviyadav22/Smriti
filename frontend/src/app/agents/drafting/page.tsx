@@ -1,15 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import {
     runDraftingAgent,
+    runDraftingFromResearch,
     getDraftingTemplates,
     exportDraft,
     resumeAgentExecution,
 } from "@/lib/api";
-import type { AgentStreamEvent, AgentStep, DocumentTemplate } from "@/lib/types";
+import type { AgentStreamEvent, AgentStep, DocumentTemplate, TemplateCategory } from "@/lib/types";
 import { AgentStepTimeline } from "@/components/agent-step-timeline";
 import { AgentCheckpointPrompt } from "@/components/agent-checkpoint-prompt";
 import { AgentMemoViewer } from "@/components/agent-memo-viewer";
@@ -54,9 +55,12 @@ const DRAFTING_STEPS = [
 export default function DraftingAgentPage() {
     const { isAuthenticated, isLoading: authLoading } = useAuth();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const researchExecutionId = searchParams.get("research_execution_id");
 
     // Template state
     const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
+    const [categories, setCategories] = useState<TemplateCategory[]>([]);
     const [templatesLoading, setTemplatesLoading] = useState(true);
     const [selectedDocType, setSelectedDocType] = useState("");
     const selectedTemplate = templates.find((t) => t.doc_type === selectedDocType);
@@ -95,7 +99,15 @@ export default function DraftingAgentPage() {
             try {
                 const res = await getDraftingTemplates();
                 if (!cancelled) {
-                    setTemplates(res.templates);
+                    // Support both flat templates and category-grouped response
+                    if (res.categories?.length) {
+                        setCategories(res.categories);
+                        // Flatten categories into a single templates array for lookup
+                        const allTemplates = res.categories.flatMap((c) => c.templates);
+                        setTemplates(allTemplates);
+                    } else {
+                        setTemplates(res.templates);
+                    }
                 }
             } catch (err) {
                 if (!cancelled) {
@@ -220,7 +232,9 @@ export default function DraftingAgentPage() {
     }, []);
 
     const handleSubmit = useCallback(() => {
-        if (!selectedDocType || !caseFacts.trim() || starting) return;
+        if (!selectedDocType || starting) return;
+        // Case facts required unless drafting from research
+        if (!researchExecutionId && !caseFacts.trim()) return;
         setStarting(true);
         setIsRunning(true);
         setError(null);
@@ -244,25 +258,40 @@ export default function DraftingAgentPage() {
             }
         }
 
+        const errorHandler = (err: Error) => {
+            setError(err.message);
+            setIsRunning(false);
+        };
+
         try {
-            abortRef.current = runDraftingAgent(
-                selectedDocType,
-                caseFacts.trim(),
-                handleEvent,
-                (err) => {
-                    setError(err.message);
-                    setIsRunning(false);
-                },
-                targetCourt.trim() || undefined,
-                [],
-                Object.keys(additionalContext).length > 0
-                    ? additionalContext
-                    : undefined,
-            );
+            if (researchExecutionId) {
+                abortRef.current = runDraftingFromResearch(
+                    researchExecutionId,
+                    selectedDocType,
+                    handleEvent,
+                    errorHandler,
+                    targetCourt.trim() || undefined,
+                    Object.keys(additionalContext).length > 0
+                        ? additionalContext
+                        : undefined,
+                );
+            } else {
+                abortRef.current = runDraftingAgent(
+                    selectedDocType,
+                    caseFacts.trim(),
+                    handleEvent,
+                    errorHandler,
+                    targetCourt.trim() || undefined,
+                    [],
+                    Object.keys(additionalContext).length > 0
+                        ? additionalContext
+                        : undefined,
+                );
+            }
         } finally {
             setStarting(false);
         }
-    }, [selectedDocType, caseFacts, targetCourt, dynamicFields, starting, handleEvent]);
+    }, [selectedDocType, caseFacts, targetCourt, dynamicFields, starting, handleEvent, researchExecutionId]);
 
     const [checkpointError, setCheckpointError] = useState<string | null>(null);
 
@@ -369,6 +398,12 @@ export default function DraftingAgentPage() {
                 draft a legal document grounded in precedents and statutes.
             </p>
 
+            {researchExecutionId && (
+                <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-sm text-green-800 dark:text-green-200">
+                    Drafting from research session. The agent will use findings from the linked research execution.
+                </div>
+            )}
+
             {/* Input form (shown when not running and no memo) */}
             {showInputForm && (
                 <Card>
@@ -378,28 +413,53 @@ export default function DraftingAgentPage() {
                             <label htmlFor="drafting-template" className="sr-only">
                                 Document type
                             </label>
-                            <Select
-                                value={selectedDocType}
-                                onValueChange={setSelectedDocType}
-                                disabled={templatesLoading}
-                            >
-                                <SelectTrigger id="drafting-template" className="w-full">
-                                    <SelectValue
-                                        placeholder={
-                                            templatesLoading
-                                                ? "Loading templates..."
-                                                : "Select document type"
-                                        }
-                                    />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {templates.map((t) => (
-                                        <SelectItem key={t.doc_type} value={t.doc_type}>
-                                            {t.display_name}
-                                        </SelectItem>
+                            {categories.length > 0 ? (
+                                <select
+                                    id="drafting-template"
+                                    value={selectedDocType}
+                                    onChange={(e) => setSelectedDocType(e.target.value)}
+                                    disabled={templatesLoading}
+                                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    <option value="">
+                                        {templatesLoading
+                                            ? "Loading templates..."
+                                            : "Select document type"}
+                                    </option>
+                                    {categories.map((cat) => (
+                                        <optgroup key={cat.id} label={cat.display_name}>
+                                            {cat.templates.map((t) => (
+                                                <option key={t.doc_type} value={t.doc_type}>
+                                                    {t.display_name}
+                                                </option>
+                                            ))}
+                                        </optgroup>
                                     ))}
-                                </SelectContent>
-                            </Select>
+                                </select>
+                            ) : (
+                                <Select
+                                    value={selectedDocType}
+                                    onValueChange={setSelectedDocType}
+                                    disabled={templatesLoading}
+                                >
+                                    <SelectTrigger id="drafting-template-select" className="w-full">
+                                        <SelectValue
+                                            placeholder={
+                                                templatesLoading
+                                                    ? "Loading templates..."
+                                                    : "Select document type"
+                                            }
+                                        />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {templates.map((t) => (
+                                            <SelectItem key={t.doc_type} value={t.doc_type}>
+                                                {t.display_name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
                             {templateError && (
                                 <p className="text-xs text-red-500 mt-1" role="alert">
                                     {templateError}
@@ -470,7 +530,7 @@ export default function DraftingAgentPage() {
                             disabled={
                                 starting ||
                                 !selectedDocType ||
-                                !caseFacts.trim() ||
+                                (!researchExecutionId && !caseFacts.trim()) ||
                                 !allDynamicFieldsFilled
                             }
                         >
@@ -520,6 +580,24 @@ export default function DraftingAgentPage() {
                             <AgentStepTimeline steps={steps} />
                         </div>
 
+                        {/* Suggested precedents from citation graph */}
+                        {checkpoint?.context?.suggested_precedents &&
+                            Array.isArray(checkpoint.context.suggested_precedents) &&
+                            (checkpoint.context.suggested_precedents as Array<Record<string, string>>).length > 0 && (
+                            <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
+                                    Related cases from citation graph:
+                                </p>
+                                <ul className="text-sm space-y-1">
+                                    {(checkpoint.context.suggested_precedents as Array<Record<string, string>>).map((p, i) => (
+                                        <li key={i} className="text-blue-700 dark:text-blue-300">
+                                            {p.title || p.citation}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+
                         {/* Checkpoint prompt */}
                         {checkpoint && !sectionDrafts && (
                             <AgentCheckpointPrompt
@@ -559,6 +637,18 @@ export default function DraftingAgentPage() {
                                 onExport={executionId ? handleExport : undefined}
                                 disabled={isRunning}
                             />
+                        )}
+
+                        {/* Companion affidavit preview (auto-generated) */}
+                        {checkpoint?.context?.affidavit_draft && (
+                            <details className="mt-4 border rounded-lg p-4">
+                                <summary className="font-semibold cursor-pointer">
+                                    Companion Affidavit (auto-generated)
+                                </summary>
+                                <div className="mt-2 prose prose-sm max-w-none whitespace-pre-wrap">
+                                    {checkpoint.context.affidavit_draft as string}
+                                </div>
+                            </details>
                         )}
 
                         {/* Memo result (shown if no section drafts available) */}

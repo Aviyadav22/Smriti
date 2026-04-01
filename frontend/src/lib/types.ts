@@ -135,7 +135,6 @@ export interface SimilarCase {
 
 export interface TokenResponse {
     access_token: string;
-    refresh_token: string;
     expires_in: number;
 }
 
@@ -506,8 +505,15 @@ export interface DocumentTemplate {
     statutory_basis: string;
 }
 
+export interface TemplateCategory {
+    id: string;
+    display_name: string;
+    templates: DocumentTemplate[];
+}
+
 export interface DocumentTemplatesResponse {
     templates: DocumentTemplate[];
+    categories?: TemplateCategory[];
 }
 
 // ---------------------------------------------------------------------------

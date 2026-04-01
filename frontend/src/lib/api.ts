@@ -963,6 +963,29 @@ export async function getDraftingTemplates(): Promise<DocumentTemplatesResponse>
     return apiFetch<DocumentTemplatesResponse>("/agents/drafting/templates");
 }
 
+export function runDraftingFromResearch(
+    researchExecutionId: string,
+    docType: string,
+    onEvent: (event: AgentStreamEvent) => void,
+    onError?: (error: Error) => void,
+    targetCourt?: string,
+    additionalContext?: Record<string, unknown>,
+    language?: string,
+): AbortController {
+    return _streamAgent(
+        "/agents/drafting/from-research",
+        {
+            research_execution_id: researchExecutionId,
+            doc_type: docType,
+            target_court: targetCourt || "",
+            additional_context: additionalContext || {},
+            language: language || "en",
+        },
+        onEvent,
+        onError,
+    );
+}
+
 export async function exportDraft(
     executionId: string,
     format: "docx" | "pdf" = "docx",
