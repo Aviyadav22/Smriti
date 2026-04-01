@@ -740,7 +740,7 @@ async def synthesize_strategy_node(
             prompt=prompt,
             system=system,
             temperature=0.2,
-            max_tokens=8192,
+            max_tokens=4096,
         )
     except Exception as e:
         logger.error("LLM error in synthesize_strategy_node: %s", e, exc_info=True)
@@ -749,41 +749,53 @@ async def synthesize_strategy_node(
     # Append legal disclaimer to the memo
     memo += LEGAL_DISCLAIMER
 
-    # Detect contradictions in precedent map
+    # Detect contradictions using search results (richer text) rather than precedent_map
     contradictions: list[dict] = []
-    if precedent_map and len(precedent_map) > 3:
-        try:
-            contra_prompt = (
-                "Analyze these precedents for contradictions:\n\n"
-                + json.dumps(precedent_map[:MAX_RESULTS_FOR_LLM], indent=2)
-                + "\n\nIdentify genuine legal contradictions between holdings."
-            )
-            contra_result = await llm.generate_structured(
-                prompt=contra_prompt,
-                system=RESEARCH_CONTRADICTIONS_SYSTEM,
-                output_schema={
-                    "type": "object",
-                    "properties": {
-                        "contradictions": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "case_a": {"type": "string"},
-                                    "case_b": {"type": "string"},
-                                    "description": {"type": "string"},
-                                    "resolution": {"type": "string"},
+    if search_results and len(search_results) > 3:
+        # Build richer context from search results which have snippets/ratio text
+        contra_context = []
+        for r in search_results[:15]:
+            snippet = r.get("ratio", "") or r.get("snippet", "") or r.get("text", "")
+            if snippet:
+                contra_context.append({
+                    "title": r.get("title", "Unknown"),
+                    "citation": r.get("citation", ""),
+                    "holding": snippet[:500],
+                })
+
+        if len(contra_context) > 3:
+            try:
+                contra_prompt = (
+                    "Analyze these case holdings for contradictions:\n\n"
+                    + json.dumps(contra_context, indent=2)
+                    + "\n\nIdentify genuine legal contradictions between holdings."
+                )
+                contra_result = await llm.generate_structured(
+                    prompt=contra_prompt,
+                    system=RESEARCH_CONTRADICTIONS_SYSTEM,
+                    output_schema={
+                        "type": "object",
+                        "properties": {
+                            "contradictions": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "case_a": {"type": "string"},
+                                        "case_b": {"type": "string"},
+                                        "description": {"type": "string"},
+                                        "resolution": {"type": "string"},
+                                    },
+                                    "required": ["case_a", "case_b", "description", "resolution"],
                                 },
-                                "required": ["case_a", "case_b", "description", "resolution"],
                             },
                         },
+                        "required": ["contradictions"],
                     },
-                    "required": ["contradictions"],
-                },
-            )
-            contradictions = contra_result.get("contradictions", [])
-        except Exception as e:
-            logger.warning("Contradiction detection failed: %s", e)
+                )
+                contradictions = contra_result.get("contradictions", [])
+            except Exception as e:
+                logger.warning("Contradiction detection failed: %s", e)
 
     # Calculate confidence (same pattern as research_nodes)
     reranker_scores = sorted(

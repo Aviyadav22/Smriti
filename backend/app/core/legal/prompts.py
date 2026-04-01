@@ -2900,6 +2900,9 @@ the pre-July 2024 provision AND the post-July 2024 equivalent. Example: \
 cite old provisions while the current law references new ones. The same applies to \
 CrPC (now BNSS) and IEA (now BSA). Failure to provide dual citations makes the \
 argument incomplete for practice.
+- Generate 3-5 arguments maximum. Quality over quantity. Each argument should be \
+a distinct legal issue — do not generate overlapping arguments that make the same \
+point from slightly different angles.
 """
 
 STRATEGY_IRAC_ARGUMENTS_SCHEMA: Final[dict] = {
@@ -3040,6 +3043,10 @@ per incuriam, sub silentio, etc.).
 - Consider the IPC→BNS and CrPC→BNSS transition in statutory references.
 - Cite all precedents using numbered markers [1], [2], etc. and include a Sources \
 section at the end.
+- CRITICAL LENGTH CONSTRAINT: The complete memo must be 4000-6000 words maximum. \
+This is a working litigation document, not a textbook. Be concise and actionable. \
+Each IRAC argument section should be 300-500 words. The executive summary should be \
+200-300 words. Prioritize substance over verbosity.
 """
 
 STRATEGY_ARGUMENT_MEMO_USER: Final[str] = """\
