@@ -25,6 +25,7 @@ from app.core.agents.nodes.drafting_nodes import (
     assemble_document_node,
     draft_sections_node,
     gather_provisions_node,
+    generate_affidavit_node,
     resolve_template_node,
     revise_section_node,
     verify_final_node,
@@ -71,6 +72,7 @@ def build_drafting_graph(
     vector_store: Any,
     reranker: Any,
     checkpointer: Any | None = None,
+    graph_store: Any | None = None,
 ) -> Any:
     """Build and compile the Drafting Agent LangGraph graph.
 
@@ -106,7 +108,7 @@ def build_drafting_graph(
 
     async def gather_provisions(state: DraftingState) -> dict:
         async with async_session_factory() as session:
-            result = await gather_provisions_node(state, llm, session)
+            result = await gather_provisions_node(state, llm, session, graph_store)
         # Count feedback messages for THIS step only (not shared across checkpoints)
         step_feedback_count = sum(
             1 for m in state.get("messages", [])
@@ -117,13 +119,18 @@ def build_drafting_graph(
 
     async def verify_precedents(state: DraftingState) -> dict:
         async with async_session_factory() as session:
-            return await verify_precedents_node(state, session)
+            return await verify_precedents_node(state, session, graph_store)
 
     async def draft_sections(state: DraftingState) -> dict:
-        return await draft_sections_node(state, llm)
+        return await draft_sections_node(state, llm, vector_store, embedder)
 
     async def assemble(state: DraftingState) -> dict:
-        return await assemble_document_node(state, llm)
+        result = await assemble_document_node(state, llm)
+        # V2: Generate companion affidavit if required
+        merged_state = {**state, **result}
+        affidavit_result = await generate_affidavit_node(merged_state, llm)
+        result.update(affidavit_result)
+        return result
 
     async def revise_section(state: DraftingState) -> dict:
         result = await revise_section_node(state, llm)

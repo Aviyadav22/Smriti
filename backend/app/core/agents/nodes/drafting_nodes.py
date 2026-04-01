@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 from dataclasses import asdict
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,7 @@ from app.core.drafting.court_profiles import get_court_profile
 from app.core.drafting.templates import get_template
 from app.core.interfaces import LLMProvider
 from app.core.legal.prompts import (
+    DRAFT_AFFIDAVIT_COMPANION_SYSTEM,
     DRAFT_AFFIDAVIT_SYSTEM,
     DRAFT_ANTICIPATORY_BAIL_SYSTEM,
     DRAFT_APPEAL_SYSTEM,
@@ -149,6 +151,7 @@ async def gather_provisions_node(
     state: DraftingState,
     llm: LLMProvider,
     db: AsyncSession,
+    graph_store: Any | None = None,
 ) -> dict:
     """Identify relevant statutory provisions from case facts and template basis."""
     template = state.get("template", {})
@@ -242,7 +245,38 @@ async def gather_provisions_node(
             prov["old_code_section"] = new_to_old[key_new][0]
             prov["old_code_act"] = _act_to_old.get(act, "")
 
-    return {"statutory_provisions": validated}
+    # V2: Suggest related precedents from citation graph
+    suggested_precedents: list[dict] = []
+    if graph_store:
+        user_precedents = state.get("relevant_precedents", []) or []
+        seen_ids: set[str] = set()
+        top_results: list[dict] = []
+        for prec in user_precedents[:5]:  # Limit to first 5
+            case_id = prec.get("case_id", "")
+            if case_id:
+                top_results.append({"case_id": case_id})
+                seen_ids.add(case_id)
+        if top_results:
+            try:
+                from app.core.agents.nodes.common import get_citation_neighbors
+
+                neighbors = await get_citation_neighbors(
+                    graph_store, top_results, seen_ids, max_results=5
+                )
+                for n in neighbors:
+                    suggested_precedents.append({
+                        "case_id": n.get("case_id", ""),
+                        "title": n.get("title", ""),
+                        "citation": n.get("citation", ""),
+                        "source": "citation_graph",
+                    })
+            except Exception:
+                logger.warning("Failed to get citation graph suggestions", exc_info=True)
+
+    result = {"statutory_provisions": validated}
+    if suggested_precedents:
+        result["suggested_precedents"] = suggested_precedents
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +287,7 @@ async def gather_provisions_node(
 async def verify_precedents_node(
     state: DraftingState,
     db: AsyncSession,
+    graph_store: Any | None = None,
 ) -> dict:
     """Verify user-provided precedents against the database."""
     relevant_precedents = state.get("relevant_precedents", []) or []
@@ -291,6 +326,32 @@ async def verify_precedents_node(
         entry = {**prec, "verified": citation in verified_set}
         verified_precedents.append(entry)
 
+    # V2: Detect overruled/distinguished treatment via graph + text analysis
+    if graph_store:
+        from app.core.legal.treatment import has_overruling_language
+
+        for prec in verified_precedents:
+            # Default to good_law
+            prec["treatment"] = "good_law"
+            case_id = prec.get("case_id", "")
+            if not case_id:
+                continue
+            try:
+                neighbors = await graph_store.get_neighbors(
+                    case_id, relationship="CITES", direction="both", depth=1
+                )
+                neighbor_nodes = neighbors.get("nodes", [])
+                for node in neighbor_nodes:
+                    node_text = node.get("text", "") or node.get("snippet", "") or ""
+                    if node_text and has_overruling_language(node_text):
+                        prec["treatment"] = "overruled"
+                        break
+            except Exception:
+                logger.warning("Failed treatment check for %s", case_id, exc_info=True)
+    else:
+        for prec in verified_precedents:
+            prec.setdefault("treatment", "good_law")
+
     return {"verified_precedents": verified_precedents}
 
 
@@ -302,6 +363,8 @@ async def verify_precedents_node(
 async def draft_sections_node(
     state: DraftingState,
     llm: LLMProvider,
+    vector_store: Any | None = None,
+    embedder: Any | None = None,
 ) -> dict:
     """Draft each section of the document individually using the LLM."""
     template = state.get("template", {})
@@ -401,7 +464,44 @@ async def draft_sections_node(
                     temperature=0.2,
                     max_tokens=4096,
                 )
-                return section_name, draft.strip()
+                draft = draft.strip()
+
+                # V2: Inject actual statute text for substantive sections
+                substantive_sections = {
+                    "legal_provisions", "grounds", "grounds_for_bail",
+                    "grounds_for_anticipatory_bail", "grounds_for_quashing",
+                    "grounds_for_leave", "grounds_for_divorce",
+                    "grounds_for_maintenance", "legal_grounds",
+                }
+                if vector_store and embedder and section_name in substantive_sections:
+                    try:
+                        from app.core.legal.extractor import extract_acts_cited
+
+                        acts_refs = extract_acts_cited(draft)
+                        if acts_refs:
+                            # Query for statute text (limit to 3 to avoid bloat)
+                            for act_ref in list(acts_refs)[:3]:
+                                query_text = f"{act_ref.raw_text} section text"
+                                embedding = await embedder.embed(
+                                    query_text, task_type="RETRIEVAL_QUERY"
+                                )
+                                results = await vector_store.search(
+                                    embedding,
+                                    top_k=1,
+                                    filter={"vector_type": "statute"},
+                                )
+                                if results:
+                                    statute_text = results[0].get("text", "")
+                                    if statute_text and len(statute_text) < 2000:
+                                        draft = draft + f"\n\n> **{act_ref.raw_text}**: {statute_text}"
+                    except Exception:
+                        logger.warning(
+                            "Statute text injection failed for %s",
+                            section_name,
+                            exc_info=True,
+                        )
+
+                return section_name, draft
             except Exception as e:
                 logger.warning("Failed to draft section %s: %s", section_name, e)
                 return section_name, f"[Error drafting {section_name}: {e}]"
@@ -587,3 +687,58 @@ async def verify_final_node(
     )
     memo = await verify_memo_citations(memo, db, grounding_citations)
     return {"full_draft": memo}
+
+
+# ---------------------------------------------------------------------------
+# Node 8: generate_affidavit_node
+# ---------------------------------------------------------------------------
+
+
+async def generate_affidavit_node(
+    state: DraftingState,
+    llm: LLMProvider,
+) -> dict:
+    """Generate a companion affidavit if the template requires one."""
+    template = state.get("template", {})
+    if not template.get("requires_affidavit", False):
+        return {"affidavit_draft": ""}
+
+    case_facts = sanitize_search_query(state.get("case_facts", ""))
+    additional_context = state.get("additional_context", {}) or {}
+    target_court = state.get("target_court", "")
+
+    deponent_name = (
+        additional_context.get("accused_name", "")
+        or additional_context.get("petitioner_details", "")
+        or additional_context.get("applicant_details", "")
+        or additional_context.get("complainant_details", "")
+        or additional_context.get("deponent_name", "")
+        or "[DEPONENT NAME]"
+    )
+
+    prompt = (
+        f"Generate a supporting affidavit for a {template.get('display_name', 'legal document')}.\n\n"
+        f"Deponent: {deponent_name}\n"
+        f"Court: {target_court or 'Not specified'}\n\n"
+        f"Case Facts:\n{case_facts}\n\n"
+        "Follow standard Indian affidavit format:\n"
+        "1. Deponent identification (name, age, S/o or D/o, address, occupation)\n"
+        "2. 'I do hereby solemnly affirm and state on oath as follows:'\n"
+        "3. Numbered paragraphs of facts\n"
+        "4. Knowledge vs. belief distinction\n"
+        "5. Verification clause with place and date\n"
+        "6. Deponent signature line\n"
+        "7. 'BEFORE ME' notary/oath commissioner block\n"
+    )
+
+    try:
+        affidavit = await llm.generate(
+            prompt=prompt,
+            system=DRAFT_AFFIDAVIT_COMPANION_SYSTEM,
+            temperature=0.1,
+            max_tokens=4096,
+        )
+        return {"affidavit_draft": affidavit.strip()}
+    except Exception:
+        logger.warning("Failed to generate companion affidavit", exc_info=True)
+        return {"affidavit_draft": ""}

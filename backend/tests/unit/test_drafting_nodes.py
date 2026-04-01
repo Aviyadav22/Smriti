@@ -10,6 +10,7 @@ from app.core.agents.nodes.drafting_nodes import (
     assemble_document_node,
     draft_sections_node,
     gather_provisions_node,
+    generate_affidavit_node,
     resolve_template_node,
     revise_section_node,
     verify_final_node,
@@ -913,3 +914,240 @@ class TestDraftSectionsV2:
         await draft_sections_node(state, mock_llm)
         prompt = mock_llm.generate.call_args.kwargs.get("prompt", "")
         assert "BNS/BNSS/BSA" in prompt or "post-1 July 2024" in prompt
+
+
+# ---------------------------------------------------------------------------
+# verify_precedents_node — V2 (overruled precedent shield)
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyPrecedentsV2:
+    @pytest.mark.asyncio
+    async def test_overruled_precedent_tagged(self) -> None:
+        mock_graph = AsyncMock()
+        mock_graph.get_neighbors.return_value = {
+            "nodes": [{"text": "The decision in X v Y was expressly overruled by this Court."}]
+        }
+        state = _make_state(
+            relevant_precedents=[
+                {"citation": "2020 SCC 123", "title": "X v Y", "case_id": "case-1"}
+            ],
+        )
+
+        with patch(
+            "app.core.agents.nodes.drafting_nodes.verify_citations_against_db",
+            new_callable=AsyncMock,
+        ) as mock_verify:
+            mock_verify.return_value = (["2020 SCC 123"], [])
+            db = AsyncMock()
+            result = await verify_precedents_node(state, db, mock_graph)
+
+        assert result["verified_precedents"][0]["treatment"] == "overruled"
+
+    @pytest.mark.asyncio
+    async def test_good_law_precedent_tagged(self) -> None:
+        mock_graph = AsyncMock()
+        mock_graph.get_neighbors.return_value = {
+            "nodes": [{"text": "Following the ratio in X v Y, we hold that..."}]
+        }
+        state = _make_state(
+            relevant_precedents=[
+                {"citation": "2020 SCC 123", "title": "X v Y", "case_id": "case-1"}
+            ],
+        )
+
+        with patch(
+            "app.core.agents.nodes.drafting_nodes.verify_citations_against_db",
+            new_callable=AsyncMock,
+        ) as mock_verify:
+            mock_verify.return_value = (["2020 SCC 123"], [])
+            db = AsyncMock()
+            result = await verify_precedents_node(state, db, mock_graph)
+
+        assert result["verified_precedents"][0]["treatment"] == "good_law"
+
+    @pytest.mark.asyncio
+    async def test_no_graph_store_defaults_to_good_law(self) -> None:
+        state = _make_state(
+            relevant_precedents=[
+                {"citation": "2020 SCC 123", "title": "X v Y"}
+            ],
+        )
+
+        with patch(
+            "app.core.agents.nodes.drafting_nodes.verify_citations_against_db",
+            new_callable=AsyncMock,
+        ) as mock_verify:
+            mock_verify.return_value = ([], [])
+            db = AsyncMock()
+            result = await verify_precedents_node(state, db, None)
+
+        assert result["verified_precedents"][0]["treatment"] == "good_law"
+
+
+# ---------------------------------------------------------------------------
+# gather_provisions_node — V2 (citation graph suggestions)
+# ---------------------------------------------------------------------------
+
+
+class TestGatherProvisionsCitationGraph:
+    @pytest.mark.asyncio
+    async def test_suggests_precedents_from_graph(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = "[]"
+        mock_db = AsyncMock()
+        mock_db.execute.return_value = MagicMock(fetchall=lambda: [])
+
+        mock_graph = AsyncMock()
+
+        state = _make_state(
+            template={"display_name": "Test", "statutory_basis": "S.438 CrPC"},
+            relevant_precedents=[
+                {"case_id": "case-1", "citation": "2020 SCC 1", "title": "A v B"},
+            ],
+        )
+
+        with patch(
+            "app.core.agents.nodes.common.get_citation_neighbors",
+            new_callable=AsyncMock,
+        ) as mock_neighbors:
+            mock_neighbors.return_value = [
+                {"case_id": "case-2", "title": "C v D", "citation": "2021 SCC 5"},
+            ]
+            result = await gather_provisions_node(state, mock_llm, mock_db, mock_graph)
+
+        assert "suggested_precedents" in result
+        assert len(result["suggested_precedents"]) == 1
+        assert result["suggested_precedents"][0]["source"] == "citation_graph"
+
+    @pytest.mark.asyncio
+    async def test_no_suggestions_without_graph_store(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = "[]"
+        mock_db = AsyncMock()
+        mock_db.execute.return_value = MagicMock(fetchall=lambda: [])
+
+        state = _make_state(
+            template={"display_name": "Test", "statutory_basis": "S.438 CrPC"},
+            relevant_precedents=[
+                {"case_id": "case-1", "citation": "2020 SCC 1", "title": "A v B"},
+            ],
+        )
+
+        result = await gather_provisions_node(state, mock_llm, mock_db, None)
+
+        assert "suggested_precedents" not in result
+
+
+# ---------------------------------------------------------------------------
+# draft_sections_node — V2 (statute text injection)
+# ---------------------------------------------------------------------------
+
+
+class TestDraftSectionsStatuteInjection:
+    @pytest.mark.asyncio
+    async def test_statute_text_injected_for_substantive_section(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = "Under Section 438 CrPC, the accused seeks anticipatory bail."
+
+        mock_embedder = AsyncMock()
+        mock_embedder.embed.return_value = [0.1] * 1536
+
+        mock_vector_store = AsyncMock()
+        mock_vector_store.search.return_value = [
+            {"text": "Section 438. Direction for grant of bail to person apprehending arrest."}
+        ]
+
+        state = _make_state(
+            template={
+                "display_name": "Bail Application",
+                "sections": ["grounds_for_bail"],
+                "prompt_key": "DRAFT_BAIL_APPLICATION_SYSTEM",
+            },
+            verified_precedents=[],
+            statutory_provisions=[],
+        )
+
+        result = await draft_sections_node(state, mock_llm, mock_vector_store, mock_embedder)
+
+        draft = result["section_drafts"]["grounds_for_bail"]
+        assert "Section 438" in draft
+        assert "Direction for grant of bail" in draft
+
+    @pytest.mark.asyncio
+    async def test_no_injection_for_non_substantive_section(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = "Prayer text referencing Section 438 CrPC."
+
+        mock_embedder = AsyncMock()
+        mock_vector_store = AsyncMock()
+
+        state = _make_state(
+            template={
+                "display_name": "Bail Application",
+                "sections": ["prayer"],
+                "prompt_key": "DRAFT_BAIL_APPLICATION_SYSTEM",
+            },
+            verified_precedents=[],
+            statutory_provisions=[],
+        )
+
+        result = await draft_sections_node(state, mock_llm, mock_vector_store, mock_embedder)
+
+        # embedder/vector_store should not have been called for non-substantive "prayer"
+        mock_embedder.embed.assert_not_awaited()
+        mock_vector_store.search.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# generate_affidavit_node
+# ---------------------------------------------------------------------------
+
+
+class TestAffidavitGeneration:
+    @pytest.mark.asyncio
+    async def test_affidavit_generated_when_required(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = "I solemnly affirm and state on oath..."
+        state = _make_state(
+            template={"requires_affidavit": True, "display_name": "Bail Application"},
+            full_draft="Full draft content here.",
+            additional_context={
+                "accused_name": "John Doe",
+                "fir_number": "1",
+                "police_station": "PS",
+                "offences_charged": "420",
+            },
+            target_court="Delhi High Court",
+        )
+        result = await generate_affidavit_node(state, mock_llm)
+        assert "affidavit_draft" in result
+        assert result["affidavit_draft"].strip()
+
+    @pytest.mark.asyncio
+    async def test_no_affidavit_when_not_required(self) -> None:
+        mock_llm = AsyncMock()
+        state = _make_state(
+            template={"requires_affidavit": False, "display_name": "Legal Notice"},
+            full_draft="Notice content.",
+        )
+        result = await generate_affidavit_node(state, mock_llm)
+        assert result["affidavit_draft"] == ""
+        mock_llm.generate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_affidavit_uses_deponent_name(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = "Affidavit text"
+        state = _make_state(
+            template={"requires_affidavit": True, "display_name": "Writ Petition"},
+            full_draft="Draft.",
+            additional_context={
+                "petitioner_details": "Ram Kumar",
+                "respondent_details": "State",
+                "fundamental_right_violated": "Art.21",
+            },
+        )
+        result = await generate_affidavit_node(state, mock_llm)
+        prompt = mock_llm.generate.call_args.kwargs.get("prompt", "")
+        assert "Ram Kumar" in prompt
