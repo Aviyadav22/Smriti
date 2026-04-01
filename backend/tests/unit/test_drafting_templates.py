@@ -242,3 +242,55 @@ class TestGetTemplate:
         t1 = get_template("bail_application")
         t2 = get_template("bail_application")
         assert t1 is t2
+
+
+# ---------------------------------------------------------------------------
+# TestTemplateV2Fields
+# ---------------------------------------------------------------------------
+
+_VALID_CATEGORIES = {
+    "criminal",
+    "civil",
+    "constitutional",
+    "family",
+    "commercial",
+    "transactional",
+}
+
+
+class TestTemplateV2Fields:
+    def test_every_template_has_category(self) -> None:
+        for doc_type, template in TEMPLATES.items():
+            assert isinstance(template.category, str), (
+                f"TEMPLATES['{doc_type}'].category must be a string"
+            )
+            assert template.category in _VALID_CATEGORIES, (
+                f"TEMPLATES['{doc_type}'].category='{template.category}' "
+                f"is not a valid category. Valid: {sorted(_VALID_CATEGORIES)}"
+            )
+
+    def test_every_template_has_argument_style(self) -> None:
+        for doc_type, template in TEMPLATES.items():
+            assert template.argument_style in ("irac", "crac"), (
+                f"TEMPLATES['{doc_type}'].argument_style='{template.argument_style}' "
+                f"must be 'irac' or 'crac'"
+            )
+
+    def test_every_template_has_requires_affidavit(self) -> None:
+        for doc_type, template in TEMPLATES.items():
+            assert isinstance(template.requires_affidavit, bool), (
+                f"TEMPLATES['{doc_type}'].requires_affidavit must be a bool, "
+                f"got {type(template.requires_affidavit).__name__}"
+            )
+
+    def test_bail_application_is_crac_and_requires_affidavit(self) -> None:
+        template = TEMPLATES["bail_application"]
+        assert template.category == "criminal"
+        assert template.argument_style == "crac"
+        assert template.requires_affidavit is True
+
+    def test_legal_notice_is_irac_and_no_affidavit(self) -> None:
+        template = TEMPLATES["legal_notice"]
+        assert template.category == "transactional"
+        assert template.argument_style == "irac"
+        assert template.requires_affidavit is False

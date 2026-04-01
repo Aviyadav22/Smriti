@@ -22,6 +22,9 @@ class DocumentTemplate:
         statutory_basis: The statute or article authorising this document type.
         court_header: Template string for the court name header.
         prompt_key: Key to look up the drafting prompt constant name.
+        category: Document category (criminal, civil, constitutional, family, commercial, transactional).
+        argument_style: "irac" (factual) or "crac" (advocacy, conclusion-first).
+        requires_affidavit: Whether to auto-generate a companion affidavit.
     """
 
     doc_type: str
@@ -31,6 +34,9 @@ class DocumentTemplate:
     statutory_basis: str
     court_header: str
     prompt_key: str
+    category: str
+    argument_style: str
+    requires_affidavit: bool
 
 
 TEMPLATES: Final[dict[str, DocumentTemplate]] = {
@@ -56,6 +62,9 @@ TEMPLATES: Final[dict[str, DocumentTemplate]] = {
         statutory_basis="Section 439, Code of Criminal Procedure, 1973",
         court_header="IN THE HIGH COURT OF {court}",
         prompt_key="DRAFT_BAIL_APPLICATION_SYSTEM",
+        category="criminal",
+        argument_style="crac",
+        requires_affidavit=True,
     ),
     "writ_petition_226": DocumentTemplate(
         doc_type="writ_petition_226",
@@ -78,6 +87,9 @@ TEMPLATES: Final[dict[str, DocumentTemplate]] = {
         statutory_basis="Article 226, Constitution of India",
         court_header="IN THE HIGH COURT OF {court}",
         prompt_key="DRAFT_WRIT_PETITION_SYSTEM",
+        category="constitutional",
+        argument_style="crac",
+        requires_affidavit=True,
     ),
     "writ_petition_32": DocumentTemplate(
         doc_type="writ_petition_32",
@@ -100,6 +112,9 @@ TEMPLATES: Final[dict[str, DocumentTemplate]] = {
         statutory_basis="Article 32, Constitution of India",
         court_header="IN THE HON'BLE SUPREME COURT OF INDIA",
         prompt_key="DRAFT_WRIT_PETITION_SYSTEM",
+        category="constitutional",
+        argument_style="crac",
+        requires_affidavit=True,
     ),
     "written_statement": DocumentTemplate(
         doc_type="written_statement",
@@ -120,6 +135,9 @@ TEMPLATES: Final[dict[str, DocumentTemplate]] = {
         statutory_basis="Order VIII, Code of Civil Procedure, 1908",
         court_header="IN THE COURT OF {court}",
         prompt_key="DRAFT_WRITTEN_STATEMENT_SYSTEM",
+        category="civil",
+        argument_style="irac",
+        requires_affidavit=False,
     ),
     "legal_notice": DocumentTemplate(
         doc_type="legal_notice",
@@ -142,6 +160,9 @@ TEMPLATES: Final[dict[str, DocumentTemplate]] = {
         statutory_basis="Various",
         court_header="",
         prompt_key="DRAFT_LEGAL_NOTICE_SYSTEM",
+        category="transactional",
+        argument_style="irac",
+        requires_affidavit=False,
     ),
     "appeal": DocumentTemplate(
         doc_type="appeal",
@@ -163,6 +184,9 @@ TEMPLATES: Final[dict[str, DocumentTemplate]] = {
         statutory_basis="Various",
         court_header="IN THE HIGH COURT OF {court}",
         prompt_key="DRAFT_APPEAL_SYSTEM",
+        category="constitutional",
+        argument_style="crac",
+        requires_affidavit=True,
     ),
     "interim_application": DocumentTemplate(
         doc_type="interim_application",
@@ -185,6 +209,9 @@ TEMPLATES: Final[dict[str, DocumentTemplate]] = {
         statutory_basis="Various",
         court_header="IN THE HIGH COURT OF {court}",
         prompt_key="DRAFT_APPLICATION_SYSTEM",
+        category="civil",
+        argument_style="crac",
+        requires_affidavit=True,
     ),
 }
 
