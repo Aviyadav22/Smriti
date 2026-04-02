@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -37,6 +37,8 @@ export default function CaseDetailPage() {
     const [graphData, setGraphData] = useState<GraphData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const graphContainerRef = useRef<HTMLDivElement>(null);
+    const [graphWidth, setGraphWidth] = useState(600);
 
     // WIRED_BY_REFACTOR: Hindi translation of ratio decidendi via case summary endpoint
     const [summaryLang, setSummaryLang] = useState<"en" | "hi">("en");
@@ -74,6 +76,18 @@ export default function CaseDetailPage() {
         }
         load();
     }, [caseId]);
+
+    // Measure graph container width for ForceGraph2D
+    useEffect(() => {
+        const el = graphContainerRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver((entries) => {
+            for (const entry of entries) setGraphWidth(entry.contentRect.width);
+        });
+        ro.observe(el);
+        setGraphWidth(el.clientWidth);
+        return () => ro.disconnect();
+    }, []);
 
     const toggleSummaryLanguage = useCallback(async () => {
         const newLang = summaryLang === "en" ? "hi" : "en";
@@ -312,8 +326,10 @@ export default function CaseDetailPage() {
                                                     Full Graph <ExternalLink className="h-2.5 w-2.5" />
                                                 </Button>
                                             </div>
-                                            <div className="h-[350px] border rounded-md overflow-hidden bg-background">
+                                            <div ref={graphContainerRef} className="h-[350px] border rounded-md overflow-hidden bg-background">
                                                 <ForceGraph2D
+                                                    width={graphWidth}
+                                                    height={350}
                                                     graphData={(() => {
                                                         const nodeIds = new Set(graphData.nodes.map((n) => n.id));
                                                         return {
