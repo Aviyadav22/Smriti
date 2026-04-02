@@ -279,3 +279,4 @@ class DraftingState(TypedDict):
     # V3 fields:
     bench_composition: list[str]  # judge names for judge-aware drafting
     judge_context: dict           # analytics results for bench
+    revision_history: list[dict]  # version snapshots [{version, timestamp, section, old_text, new_text, feedback}]

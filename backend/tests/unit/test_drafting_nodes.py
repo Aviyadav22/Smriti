@@ -1216,3 +1216,73 @@ class TestJudgeAwareDrafting:
         await draft_sections_node(state, mock_llm)
         prompt = mock_llm.generate.call_args.kwargs.get("prompt", "")
         assert "Judge Context" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# Version Tracking (V3)
+# ---------------------------------------------------------------------------
+
+
+class TestVersionTracking:
+    @pytest.mark.asyncio
+    async def test_revision_stores_snapshot(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = "Revised grounds text"
+        state = _make_state(
+            revision_feedback="grounds_for_bail: Strengthen the no-flight-risk argument",
+            section_drafts={
+                "court_header": "Header",
+                "grounds_for_bail": "Original grounds text",
+                "prayer": "Prayer text",
+            },
+            template={
+                "display_name": "Bail Application",
+                "sections": ["court_header", "grounds_for_bail", "prayer"],
+            },
+            revision_history=[],
+        )
+        result = await revise_section_node(state, mock_llm)
+        assert "revision_history" in result
+        history = result["revision_history"]
+        assert len(history) == 1
+        assert history[0]["section"] == "grounds_for_bail"
+        assert history[0]["old_text"] == "Original grounds text"
+        assert history[0]["new_text"] == "Revised grounds text"
+        assert history[0]["version"] == 1
+        assert "timestamp" in history[0]
+
+    @pytest.mark.asyncio
+    async def test_revision_appends_to_existing_history(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = "Second revision"
+        state = _make_state(
+            revision_feedback="prayer: Add alternative prayer",
+            section_drafts={
+                "court_header": "Header",
+                "prayer": "Original prayer",
+            },
+            template={
+                "display_name": "Bail Application",
+                "sections": ["court_header", "prayer"],
+            },
+            revision_history=[
+                {"version": 1, "section": "grounds", "old_text": "a", "new_text": "b", "feedback": "f", "timestamp": 1.0}
+            ],
+        )
+        result = await revise_section_node(state, mock_llm)
+        history = result["revision_history"]
+        assert len(history) == 2
+        assert history[1]["version"] == 2
+
+    @pytest.mark.asyncio
+    async def test_no_snapshot_when_no_feedback(self) -> None:
+        mock_llm = AsyncMock()
+        state = _make_state(
+            revision_feedback="",
+            section_drafts={"prayer": "Text"},
+            template={"display_name": "Test", "sections": ["prayer"]},
+            revision_history=[],
+        )
+        result = await revise_section_node(state, mock_llm)
+        # No revision happened, so no snapshot should be added
+        assert result.get("revision_history") is None or len(result.get("revision_history", [])) == 0

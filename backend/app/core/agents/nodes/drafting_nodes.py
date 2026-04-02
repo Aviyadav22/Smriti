@@ -699,13 +699,29 @@ async def revise_section_node(
             temperature=0.2,
             max_tokens=4096,
         )
-        section_drafts = {**section_drafts, target_section: revised.strip()}
+        revised_text = revised.strip()
+
+        # V3: Store revision snapshot
+        import time
+        snapshot = {
+            "version": len(state.get("revision_history", []) or []) + 1,
+            "timestamp": time.time(),
+            "section": target_section,
+            "old_text": current_draft,
+            "new_text": revised_text,
+            "feedback": feedback_text,
+        }
+        history = list(state.get("revision_history", []) or [])
+        history.append(snapshot)
+
+        section_drafts = {**section_drafts, target_section: revised_text}
     except Exception:
         logger.warning(
             "Failed to revise section '%s'", target_section, exc_info=True
         )
+        return {"section_drafts": section_drafts}
 
-    return {"section_drafts": section_drafts}
+    return {"section_drafts": section_drafts, "revision_history": history}
 
 
 # ---------------------------------------------------------------------------

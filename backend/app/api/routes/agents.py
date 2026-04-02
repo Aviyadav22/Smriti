@@ -1348,6 +1348,42 @@ async def draft_from_research(
 
 
 # ---------------------------------------------------------------------------
+# GET /drafting/versions/{execution_id} -- Revision history for a drafting run
+# ---------------------------------------------------------------------------
+
+
+@router.get("/drafting/versions/{execution_id}", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+async def get_draft_versions(
+    execution_id: str,
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Get revision history for a drafting execution."""
+    try:
+        exec_uuid = uuid.UUID(execution_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid execution_id format.")
+
+    stmt = select(AgentExecution).where(AgentExecution.id == exec_uuid)
+    result = await db.execute(stmt)
+    execution = result.scalar_one_or_none()
+
+    if execution is None:
+        raise HTTPException(status_code=404, detail="Execution not found.")
+    if str(execution.user_id) != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied.")
+    if execution.agent_type != AgentType.drafting.value:
+        raise HTTPException(status_code=400, detail="Only available for drafting executions.")
+
+    revision_history = (execution.result_data or {}).get("revision_history", [])
+    return {
+        "execution_id": execution_id,
+        "versions": revision_history,
+        "total_revisions": len(revision_history),
+    }
+
+
+# ---------------------------------------------------------------------------
 # POST /research/revise-section/{execution_id} -- Revise a single memo section
 # ---------------------------------------------------------------------------
 
