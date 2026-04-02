@@ -1394,3 +1394,95 @@ class TestParseOpposingDocNode:
         result = await parse_opposing_document_node(state, mock_llm)
         assert len(result["relevant_precedents"]) == 2
         assert result["relevant_precedents"][0]["citation"] == "Ram v Shyam (2020) 5 SCC 100"
+
+
+# ---------------------------------------------------------------------------
+# Cross-document consistency check (V3)
+# ---------------------------------------------------------------------------
+
+
+class TestCrossDocConsistency:
+    @pytest.mark.asyncio
+    async def test_consistency_warnings_appended_to_draft(self) -> None:
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=MagicMock(fetchall=lambda: []))
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = json.dumps([
+            "Draft says payment was Rs. 25 lakhs but opposing doc claims Rs. 30 lakhs"
+        ])
+        state = _make_state(
+            full_draft="The payment of Rs. 25 lakhs was made on 01.03.2025.",
+            opposing_document_analysis={
+                "facts": ["Payment of Rs. 30 lakhs was due"],
+                "parties": {"petitioner": "Alice", "respondent": "Bob"},
+            },
+            verified_precedents=[],
+        )
+
+        with patch(
+            "app.core.agents.nodes.common.verify_case_ids",
+            new_callable=AsyncMock,
+        ) as mock_verify_ids, patch(
+            "app.core.agents.nodes.common.verify_citations_against_db",
+            new_callable=AsyncMock,
+        ) as mock_verify_cites:
+            mock_verify_ids.return_value = set()
+            mock_verify_cites.return_value = ([], [])
+            result = await verify_final_node(state, mock_db, mock_llm)
+
+        assert "Consistency Warnings" in result["full_draft"]
+        assert "25 lakhs" in result["full_draft"] or "30 lakhs" in result["full_draft"]
+
+    @pytest.mark.asyncio
+    async def test_no_consistency_check_without_opposing_doc(self) -> None:
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=MagicMock(fetchall=lambda: []))
+        mock_llm = AsyncMock()
+        state = _make_state(
+            full_draft="Some draft text.",
+            opposing_document_analysis={},
+            verified_precedents=[],
+        )
+
+        with patch(
+            "app.core.agents.nodes.common.verify_case_ids",
+            new_callable=AsyncMock,
+        ) as mock_verify_ids, patch(
+            "app.core.agents.nodes.common.verify_citations_against_db",
+            new_callable=AsyncMock,
+        ) as mock_verify_cites:
+            mock_verify_ids.return_value = set()
+            mock_verify_cites.return_value = ([], [])
+            result = await verify_final_node(state, mock_db, mock_llm)
+
+        assert "Consistency Warnings" not in result["full_draft"]
+        mock_llm.generate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_consistency_check_handles_llm_failure(self) -> None:
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=MagicMock(fetchall=lambda: []))
+        mock_llm = AsyncMock()
+        mock_llm.generate.side_effect = RuntimeError("LLM down")
+        state = _make_state(
+            full_draft="Draft text.",
+            opposing_document_analysis={
+                "facts": ["Some fact"],
+                "parties": {},
+            },
+            verified_precedents=[],
+        )
+
+        with patch(
+            "app.core.agents.nodes.common.verify_case_ids",
+            new_callable=AsyncMock,
+        ) as mock_verify_ids, patch(
+            "app.core.agents.nodes.common.verify_citations_against_db",
+            new_callable=AsyncMock,
+        ) as mock_verify_cites:
+            mock_verify_ids.return_value = set()
+            mock_verify_cites.return_value = ([], [])
+            result = await verify_final_node(state, mock_db, mock_llm)
+
+        # Should not crash, just skip the check
+        assert "full_draft" in result

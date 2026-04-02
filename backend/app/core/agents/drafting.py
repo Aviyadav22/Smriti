@@ -156,7 +156,7 @@ def build_drafting_graph(
 
     async def verify_final(state: DraftingState) -> dict:
         async with async_session_factory() as session:
-            return await verify_final_node(state, session)
+            return await verify_final_node(state, session, flash_llm)
 
     # -- Checkpoint nodes (HITL via interrupt) ------------------------------
 

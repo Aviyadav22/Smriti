@@ -789,6 +789,73 @@ async def revise_section_node(
 
 
 # ---------------------------------------------------------------------------
+# Cross-document consistency helper
+# ---------------------------------------------------------------------------
+
+
+async def _check_cross_document_consistency(
+    draft: str,
+    opposing_analysis: dict,
+    llm: LLMProvider,
+) -> list[str]:
+    """Check for inconsistencies between draft and opposing document.
+
+    Returns a list of warning strings for any detected inconsistencies.
+    """
+    if not opposing_analysis or not draft:
+        return []
+
+    opposing_facts = opposing_analysis.get("facts", [])
+    opposing_parties = opposing_analysis.get("parties", {})
+    if not opposing_facts:
+        return []
+
+    # Build a compact summary of opposing doc for comparison
+    facts_text = "\n".join(f"- {f}" for f in opposing_facts[:20])
+    parties_text = (
+        f"Petitioner: {opposing_parties.get('petitioner', 'N/A')}, "
+        f"Respondent: {opposing_parties.get('respondent', 'N/A')}"
+    )
+
+    prompt = (
+        "Compare the following draft response against the opposing document's facts. "
+        "Identify any INCONSISTENCIES — contradictions in dates, amounts, party names, "
+        "or facts that the draft admits but should deny (or vice versa).\n\n"
+        f"Opposing Document Facts:\n{facts_text}\n\n"
+        f"Opposing Parties: {parties_text}\n\n"
+        f"Draft Response (first 5000 chars):\n{draft[:5000]}\n\n"
+        "Return a JSON array of inconsistency strings. "
+        "Return an empty array [] if no inconsistencies found. "
+        "Only flag genuine contradictions, not stylistic differences."
+    )
+
+    try:
+        raw = await llm.generate(
+            prompt=prompt,
+            system="You are a legal proofreader checking for factual consistency between legal documents.",
+            temperature=0.0,
+            max_tokens=1024,
+        )
+        # Parse JSON array
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            cleaned = cleaned.strip()
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:].strip()
+
+        warnings = json.loads(cleaned)
+        if isinstance(warnings, list):
+            return [str(w) for w in warnings[:10]]  # Cap at 10 warnings
+    except Exception:
+        logger.warning("Cross-document consistency check failed", exc_info=True)
+
+    return []
+
+
+# ---------------------------------------------------------------------------
 # Node 7: verify_final_node
 # ---------------------------------------------------------------------------
 
@@ -796,6 +863,7 @@ async def revise_section_node(
 async def verify_final_node(
     state: DraftingState,
     db: AsyncSession,
+    llm: LLMProvider | None = None,
 ) -> dict:
     """Verify citations in the final draft using shared 3-layer verification."""
     memo = state.get("full_draft", "")
@@ -806,6 +874,22 @@ async def verify_final_node(
         state.get("verified_precedents", [])
     )
     memo = await verify_memo_citations(memo, db, grounding_citations)
+
+    # V3: Cross-document consistency check
+    opposing_analysis = state.get("opposing_document_analysis", {})
+    if opposing_analysis and memo and llm is not None:
+        try:
+            consistency_warnings = await _check_cross_document_consistency(
+                memo, opposing_analysis, llm
+            )
+            if consistency_warnings:
+                warning_text = "\n\n---\n**Consistency Warnings:**\n"
+                for i, w in enumerate(consistency_warnings, 1):
+                    warning_text += f"{i}. {w}\n"
+                memo = memo + warning_text
+        except Exception:
+            logger.warning("Consistency check failed", exc_info=True)
+
     return {"full_draft": memo}
 
 
