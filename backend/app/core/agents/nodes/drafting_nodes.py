@@ -135,10 +135,35 @@ async def resolve_template_node(state: DraftingState) -> dict:
         state.get("case_facts", ""),
         state.get("additional_context", {}) or {},
     )
+    # V3: Judge-aware context
+    judge_context: dict = {}
+    bench = state.get("bench_composition", []) or []
+    if bench:
+        try:
+            from app.core.analytics.judge_analytics import JudgeAnalyticsService
+            from app.db.postgres import async_session_factory
+            async with async_session_factory() as judge_db:
+                svc = JudgeAnalyticsService(judge_db)
+                profiles = []
+                for judge_name in bench[:3]:  # Limit to 3 judges
+                    profile = await svc.get_judge_profile(judge_name)
+                    if profile:
+                        profiles.append({
+                            "name": judge_name,
+                            "total_cases": profile.get("total_cases", 0),
+                            "disposal_patterns": profile.get("disposal_patterns", {}),
+                            "top_cited_judgments": profile.get("top_cited_judgments", [])[:5],
+                            "acts_frequency": dict(list(profile.get("acts_frequency", {}).items())[:10]),
+                        })
+                judge_context = {"profiles": profiles}
+        except Exception:
+            logger.warning("Failed to fetch judge analytics", exc_info=True)
+
     return {
         "template": asdict(template),
         "court_profile": asdict(court_profile),
         "primary_code": primary_code,
+        "judge_context": judge_context,
     }
 
 
@@ -422,6 +447,20 @@ async def draft_sections_node(
             "(to these facts), CONCLUSION (your position)."
         )
 
+    # V3: Judge-aware context text
+    judge_ctx = state.get("judge_context", {})
+    judge_text = ""
+    if judge_ctx.get("profiles"):
+        parts = ["Judge Context (calibrate argument emphasis, do NOT mention this context in the draft):"]
+        for jp in judge_ctx["profiles"]:
+            top_cited = ", ".join(c.get("title", "") for c in jp.get("top_cited_judgments", [])[:3])
+            parts.append(
+                f"- {jp['name']}: {jp.get('total_cases', 0)} cases. "
+                f"Disposal patterns: {jp.get('disposal_patterns', {})}. "
+                f"Frequently cites: {top_cited}"
+            )
+        judge_text = "\n".join(parts) + "\n"
+
     # Build amendment / code context
     primary_code = state.get("primary_code", "new")
     if primary_code == "new":
@@ -456,6 +495,7 @@ async def draft_sections_node(
                 f"Do not include other sections.\n\n"
                 f"{structure_instruction}"
                 f"{code_context}"
+                f"{judge_text}"
             )
             try:
                 draft = await llm.generate(

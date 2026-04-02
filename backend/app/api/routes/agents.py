@@ -146,6 +146,7 @@ class DraftingRequest(BaseModel):
     relevant_precedents: list[PrecedentRef] = Field(default_factory=list)
     additional_context: dict[str, str] = Field(default_factory=dict)
     language: str = Field(default="en", pattern="^(en|hi)$")
+    bench_composition: list[str] = Field(default_factory=list, max_length=5)
 
     @field_validator("relevant_precedents")
     @classmethod
@@ -703,6 +704,7 @@ async def run_agent(
             "relevant_precedents": [p.model_dump() for p in request_body.relevant_precedents],
             "additional_context": request_body.additional_context,
             "language": request_language,
+            "bench_composition": request_body.bench_composition,
         }
     else:
         raise HTTPException(

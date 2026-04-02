@@ -276,3 +276,6 @@ class DraftingState(TypedDict):
     affidavit_draft: str         # auto-generated companion affidavit
     suggested_precedents: list[dict]  # graph-suggested precedents from citation graph
     primary_code: str            # "old" or "new" — IPC vs BNS as primary
+    # V3 fields:
+    bench_composition: list[str]  # judge names for judge-aware drafting
+    judge_context: dict           # analytics results for bench

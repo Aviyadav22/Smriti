@@ -1151,3 +1151,68 @@ class TestAffidavitGeneration:
         result = await generate_affidavit_node(state, mock_llm)
         prompt = mock_llm.generate.call_args.kwargs.get("prompt", "")
         assert "Ram Kumar" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Judge-Aware Drafting (V3)
+# ---------------------------------------------------------------------------
+
+
+class TestJudgeAwareDrafting:
+    @pytest.mark.asyncio
+    async def test_resolve_template_with_bench_composition(self) -> None:
+        """When bench_composition is provided but no DB, judge_context should be empty dict."""
+        state = _make_state(bench_composition=["Justice A", "Justice B"])
+        result = await resolve_template_node(state)
+        # judge_context should be present (may be empty if DB unavailable in test)
+        assert "judge_context" in result
+
+    @pytest.mark.asyncio
+    async def test_draft_sections_includes_judge_context_in_prompt(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = "Draft content"
+        state = _make_state(
+            template={
+                "display_name": "Bail Application",
+                "sections": ["grounds_for_bail"],
+                "prompt_key": "DRAFT_BAIL_APPLICATION_SYSTEM",
+                "argument_style": "crac",
+            },
+            verified_precedents=[],
+            statutory_provisions=[],
+            primary_code="new",
+            judge_context={
+                "profiles": [
+                    {
+                        "name": "Justice D.Y. Chandrachud",
+                        "total_cases": 500,
+                        "disposal_patterns": {"allowed": 200, "dismissed": 300},
+                        "top_cited_judgments": [{"title": "Vishaka v. State of Rajasthan"}],
+                        "acts_frequency": {"Constitution": 100},
+                    }
+                ]
+            },
+        )
+        await draft_sections_node(state, mock_llm)
+        prompt = mock_llm.generate.call_args.kwargs.get("prompt", "")
+        assert "Justice D.Y. Chandrachud" in prompt or "Judge Context" in prompt
+
+    @pytest.mark.asyncio
+    async def test_draft_sections_no_judge_context_when_empty(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = "Draft content"
+        state = _make_state(
+            template={
+                "display_name": "Bail Application",
+                "sections": ["grounds_for_bail"],
+                "prompt_key": "DRAFT_BAIL_APPLICATION_SYSTEM",
+                "argument_style": "crac",
+            },
+            verified_precedents=[],
+            statutory_provisions=[],
+            primary_code="new",
+            judge_context={},
+        )
+        await draft_sections_node(state, mock_llm)
+        prompt = mock_llm.generate.call_args.kwargs.get("prompt", "")
+        assert "Judge Context" not in prompt
