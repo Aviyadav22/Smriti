@@ -22,15 +22,10 @@ logger = logging.getLogger(__name__)
 async def migrate(dry_run: bool = False) -> None:
     # Late imports so --help works without full app setup
     from app.core.config import settings
-    from app.core.providers.graph.neo4j_store import Neo4jGraphStore
+    from app.core.providers.graph.neo4j_store import Neo4jGraph
 
-    graph = Neo4jGraphStore(
-        uri=settings.neo4j_uri,
-        username=settings.neo4j_username,
-        password=settings.neo4j_password,
-    )
+    graph = Neo4jGraph()  # reads settings (NEO4J_URI, etc.) from env
     try:
-        await graph.connect()
         logger.info("Connected to Neo4j at %s", settings.neo4j_uri)
 
         # ---- Step 1: Backfill cited_by_count ----
