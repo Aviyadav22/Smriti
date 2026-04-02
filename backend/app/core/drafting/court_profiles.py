@@ -30,6 +30,11 @@ class CourtProfile:
     requires_affidavit: bool
     numbering_style: str  # "arabic" or "roman"
     print_both_sides: bool
+    pdf_format: str  # "pdf" or "pdf_a"
+    requires_ocr: bool  # Whether OCR text layer is required
+    max_file_size_mb: int  # Maximum file size for e-filing
+    requires_bookmarks: bool  # Whether PDF bookmarks are required
+    filing_portal_url: str  # URL of the e-filing portal (informational)
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +60,11 @@ COURT_PROFILES: dict[str, CourtProfile] = {
         requires_affidavit=True,
         numbering_style="arabic",
         print_both_sides=True,
+        pdf_format="pdf",
+        requires_ocr=False,
+        max_file_size_mb=50,
+        requires_bookmarks=True,
+        filing_portal_url="https://efiling.sci.gov.in",
     ),
     "delhi_hc": CourtProfile(
         court_id="delhi_hc",
@@ -74,6 +84,11 @@ COURT_PROFILES: dict[str, CourtProfile] = {
         requires_affidavit=True,
         numbering_style="arabic",
         print_both_sides=False,
+        pdf_format="pdf",
+        requires_ocr=False,
+        max_file_size_mb=50,
+        requires_bookmarks=True,
+        filing_portal_url="https://efiling.ecourts.gov.in",
     ),
     "bombay_hc": CourtProfile(
         court_id="bombay_hc",
@@ -93,6 +108,11 @@ COURT_PROFILES: dict[str, CourtProfile] = {
         requires_affidavit=True,
         numbering_style="arabic",
         print_both_sides=False,
+        pdf_format="pdf_a",
+        requires_ocr=True,
+        max_file_size_mb=50,
+        requires_bookmarks=True,
+        filing_portal_url="https://efiling.ecourts.gov.in",
     ),
     "madras_hc": CourtProfile(
         court_id="madras_hc",
@@ -112,6 +132,11 @@ COURT_PROFILES: dict[str, CourtProfile] = {
         requires_affidavit=True,
         numbering_style="arabic",
         print_both_sides=False,
+        pdf_format="pdf",
+        requires_ocr=False,
+        max_file_size_mb=50,
+        requires_bookmarks=False,
+        filing_portal_url="https://efiling.ecourts.gov.in",
     ),
     "karnataka_hc": CourtProfile(
         court_id="karnataka_hc",
@@ -131,6 +156,11 @@ COURT_PROFILES: dict[str, CourtProfile] = {
         requires_affidavit=True,
         numbering_style="arabic",
         print_both_sides=False,
+        pdf_format="pdf",
+        requires_ocr=False,
+        max_file_size_mb=50,
+        requires_bookmarks=False,
+        filing_portal_url="https://efiling.ecourts.gov.in",
     ),
     "calcutta_hc": CourtProfile(
         court_id="calcutta_hc",
@@ -150,6 +180,11 @@ COURT_PROFILES: dict[str, CourtProfile] = {
         requires_affidavit=True,
         numbering_style="arabic",
         print_both_sides=False,
+        pdf_format="pdf",
+        requires_ocr=False,
+        max_file_size_mb=50,
+        requires_bookmarks=False,
+        filing_portal_url="https://efiling.ecourts.gov.in",
     ),
     "nclt": CourtProfile(
         court_id="nclt",
@@ -169,6 +204,11 @@ COURT_PROFILES: dict[str, CourtProfile] = {
         requires_affidavit=True,
         numbering_style="arabic",
         print_both_sides=False,
+        pdf_format="pdf_a",
+        requires_ocr=True,
+        max_file_size_mb=20,
+        requires_bookmarks=True,
+        filing_portal_url="https://efiling.nclt.gov.in",
     ),
     "default": CourtProfile(
         court_id="default",
@@ -188,6 +228,11 @@ COURT_PROFILES: dict[str, CourtProfile] = {
         requires_affidavit=True,
         numbering_style="arabic",
         print_both_sides=False,
+        pdf_format="pdf",
+        requires_ocr=False,
+        max_file_size_mb=50,
+        requires_bookmarks=False,
+        filing_portal_url="",
     ),
 }
 
