@@ -12,6 +12,7 @@ from app.core.agents.drafting import (
     route_after_draft,
     route_after_final,
     route_after_sources,
+    route_after_start,
     route_after_template,
 )
 
@@ -47,6 +48,28 @@ def _make_state(**overrides) -> dict:
     }
     base.update(overrides)
     return base
+
+
+# ---------------------------------------------------------------------------
+# route_after_start
+# ---------------------------------------------------------------------------
+
+
+class TestRouteAfterStart:
+    def test_returns_parse_opposing_doc_when_text_present(self) -> None:
+        state = _make_state(opposing_document_text="Full plaint text...")
+        result = route_after_start(state)
+        assert result == "parse_opposing_doc"
+
+    def test_returns_resolve_template_when_no_opposing_text(self) -> None:
+        state = _make_state()
+        result = route_after_start(state)
+        assert result == "resolve_template"
+
+    def test_returns_resolve_template_when_opposing_text_empty(self) -> None:
+        state = _make_state(opposing_document_text="")
+        result = route_after_start(state)
+        assert result == "resolve_template"
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +332,7 @@ class TestBuildDraftingGraph:
         assert graph is not None
 
     def test_has_expected_nodes(self) -> None:
-        """Graph must contain exactly the expected 10 nodes."""
+        """Graph must contain exactly the expected 11 nodes."""
         llm = AsyncMock()
         flash_llm = AsyncMock()
         embedder = AsyncMock()
@@ -327,6 +350,7 @@ class TestBuildDraftingGraph:
         )
 
         expected_nodes = {
+            "parse_opposing_doc",
             "resolve_template",
             "gather_provisions",
             "verify_precedents",

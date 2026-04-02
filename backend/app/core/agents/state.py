@@ -280,3 +280,7 @@ class DraftingState(TypedDict):
     bench_composition: list[str]  # judge names for judge-aware drafting
     judge_context: dict           # analytics results for bench
     revision_history: list[dict]  # version snapshots [{version, timestamp, section, old_text, new_text, feedback}]
+    # V3 — Opposing document fields:
+    opposing_document_text: str        # raw text from uploaded opposing doc
+    opposing_document_analysis: dict   # parsed OpposingDocAnalysis as dict
+    source_document_id: str            # reference to uploaded document

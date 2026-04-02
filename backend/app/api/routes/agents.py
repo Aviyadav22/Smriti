@@ -1348,6 +1348,169 @@ async def draft_from_research(
 
 
 # ---------------------------------------------------------------------------
+# POST /drafting/from-document -- Upload opposing doc and auto-generate response
+# ---------------------------------------------------------------------------
+
+
+class DraftFromDocumentRequest(BaseModel):
+    document_id: str = Field(..., min_length=1, max_length=50)
+    response_type: str = Field(default="", max_length=50)  # empty = auto-detect
+    target_court: str = Field(default="", max_length=200)
+    additional_context: dict[str, str] = Field(default_factory=dict)
+    language: str = Field(default="en", pattern="^(en|hi)$")
+
+    @field_validator("additional_context")
+    @classmethod
+    def validate_additional_context(cls, v: dict[str, str]) -> dict[str, str]:
+        if len(v) > 10:
+            raise ValueError("Maximum 10 additional_context keys allowed")
+        for key, val in v.items():
+            if len(val) > 2000:
+                raise ValueError(f"additional_context value for '{key}' exceeds 2000 characters")
+        return v
+
+
+@router.post("/drafting/from-document", dependencies=[Depends(rate_limit_dependency("10/minute"))])
+async def draft_from_document(
+    body: DraftFromDocumentRequest,
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Upload an opposing document and auto-generate a response draft.
+
+    Loads the document by ID, extracts PDF text, parses it via LLM,
+    and starts a drafting session with ``opposing_document_text`` populated.
+    The drafting graph auto-detects the response type (e.g. plaint -> written statement).
+    """
+    import tempfile
+
+    from app.core.dependencies import get_storage
+    from app.core.ingestion.pdf import extract_pdf_text
+    from app.models.document import Document
+
+    # Load document record
+    try:
+        doc_uuid = uuid.UUID(body.document_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid document_id format.")
+
+    stmt = select(Document).where(Document.id == doc_uuid)
+    result = await db.execute(stmt)
+    doc = result.scalar_one_or_none()
+
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    if str(doc.user_id) != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+    # Retrieve PDF bytes from storage
+    storage = get_storage()
+    try:
+        pdf_bytes = await storage.retrieve(doc.storage_path)
+    except Exception as e:
+        logger.warning("Failed to retrieve document %s: %s", body.document_id, e)
+        raise HTTPException(status_code=500, detail="Failed to retrieve document from storage.")
+
+    # Write to temp file and extract text
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(pdf_bytes)
+            tmp_path = tmp.name
+
+        text, _page_count, _page_map = await extract_pdf_text(tmp_path)
+    except Exception as e:
+        logger.warning("Failed to extract text from document %s: %s", body.document_id, e)
+        raise HTTPException(status_code=500, detail="Failed to extract text from PDF.")
+    finally:
+        import os
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Document contains no extractable text.")
+
+    # Detect prompt injection in extracted text (first 2000 chars)
+    if detect_prompt_injection(text[:2000]):
+        raise HTTPException(status_code=400, detail="Document content rejected.")
+
+    # Create execution record
+    checkpointer = get_checkpointer()
+    thread_id = str(uuid.uuid4())
+    request_language = body.language
+
+    execution = AgentExecution(
+        user_id=uuid.UUID(user.sub),
+        agent_type=AgentType.drafting.value,
+        status=AgentStatus.running.value,
+        thread_id=uuid.UUID(thread_id),
+        input_data={
+            "doc_type": body.response_type,
+            "source_document_id": body.document_id,
+            "target_court": body.target_court,
+            "additional_context": body.additional_context,
+            "language": request_language,
+        },
+    )
+    db.add(execution)
+    await db.commit()
+    await db.refresh(execution)
+
+    # Build graph
+    llm = get_llm()
+    embedder = get_embedder()
+    vector_store = get_vector_store()
+    reranker = get_reranker()
+
+    graph = build_drafting_graph(
+        llm=llm,
+        flash_llm=get_flash_llm(),
+        embedder=embedder,
+        vector_store=vector_store,
+        reranker=reranker,
+        checkpointer=checkpointer,
+        graph_store=get_graph_store(),
+    )
+
+    config = {"configurable": {"thread_id": thread_id}}
+
+    initial_input = {
+        "doc_type": body.response_type,  # empty string triggers auto-detect
+        "case_facts": "",  # will be populated from opposing doc analysis
+        "target_court": body.target_court,
+        "relevant_precedents": [],
+        "additional_context": body.additional_context,
+        "language": request_language,
+        "opposing_document_text": text,
+        "source_document_id": body.document_id,
+    }
+
+    # Audit log
+    await create_audit_log(
+        db=db,
+        action="agent.draft_from_document",
+        user_id=user.sub,
+        resource_type="agent_execution",
+        resource_id=str(execution.id),
+        metadata={
+            "source_document_id": body.document_id,
+            "response_type": body.response_type or "auto-detect",
+        },
+    )
+
+    return StreamingResponse(
+        _stream_agent_events(graph, initial_input, config, execution.id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Execution-Id": str(execution.id),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # GET /drafting/versions/{execution_id} -- Revision history for a drafting run
 # ---------------------------------------------------------------------------
 

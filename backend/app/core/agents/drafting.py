@@ -6,8 +6,9 @@ the full document, and supports iterative revision -- with HITL checkpoints
 at key decision points.
 
 Graph flow:
-  START -> resolve_template -> gather_provisions -> verify_precedents ->
-  checkpoint_sources -> draft_sections -> assemble -> checkpoint_draft ->
+  START -> [parse_opposing_doc (if opposing text)] -> resolve_template ->
+  gather_provisions -> verify_precedents -> checkpoint_sources ->
+  draft_sections -> assemble -> checkpoint_draft ->
   verify_final -> checkpoint_final -> END
 
 With a conditional revise branch from checkpoint_draft:
@@ -26,6 +27,7 @@ from app.core.agents.nodes.drafting_nodes import (
     draft_sections_node,
     gather_provisions_node,
     generate_affidavit_node,
+    parse_opposing_document_node,
     resolve_template_node,
     revise_section_node,
     verify_final_node,
@@ -41,6 +43,13 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Router functions (module-level for testability)
 # ---------------------------------------------------------------------------
+
+
+def route_after_start(state: DraftingState) -> str:
+    """Route: if opposing_document_text is present, parse it first."""
+    if state.get("opposing_document_text"):
+        return "parse_opposing_doc"
+    return "resolve_template"
 
 
 def route_after_template(state: DraftingState) -> str:
@@ -102,6 +111,9 @@ def build_drafting_graph(
     # DB-accessing nodes create fresh sessions via async_session_factory()
     # because the FastAPI Depends(get_db) session closes before the
     # StreamingResponse generator runs.
+
+    async def parse_opposing_doc(state: DraftingState) -> dict:
+        return await parse_opposing_document_node(state, llm)
 
     async def resolve_template(state: DraftingState) -> dict:
         return await resolve_template_node(state)
@@ -169,6 +181,7 @@ def build_drafting_graph(
 
     # -- Register nodes -----------------------------------------------------
 
+    graph.add_node("parse_opposing_doc", parse_opposing_doc)
     graph.add_node("resolve_template", resolve_template)
     graph.add_node("gather_provisions", gather_provisions)
     graph.add_node("verify_precedents", verify_precedents)
@@ -182,7 +195,12 @@ def build_drafting_graph(
 
     # -- Edges --------------------------------------------------------------
 
-    graph.add_edge(START, "resolve_template")
+    graph.add_conditional_edges(
+        START,
+        route_after_start,
+        {"parse_opposing_doc": "parse_opposing_doc", "resolve_template": "resolve_template"},
+    )
+    graph.add_edge("parse_opposing_doc", "resolve_template")
 
     graph.add_conditional_edges(
         "resolve_template",

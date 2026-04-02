@@ -58,6 +58,70 @@ logger = logging.getLogger(__name__)
 
 MAX_RESULTS_FOR_LLM = 30
 
+
+# ---------------------------------------------------------------------------
+# Node 0: parse_opposing_document_node (V3)
+# ---------------------------------------------------------------------------
+
+
+async def parse_opposing_document_node(
+    state: DraftingState,
+    llm: LLMProvider,
+) -> dict:
+    """Parse an uploaded opposing document into structured sections.
+
+    Only runs when opposing_document_text is present in state.
+    """
+    text = state.get("opposing_document_text", "")
+    if not text:
+        return {}
+
+    from app.core.drafting.document_parser import (
+        build_response_context,
+        parse_opposing_document,
+    )
+
+    analysis = await parse_opposing_document(text, llm)
+
+    # Build context for the response document
+    response_context = build_response_context(analysis)
+
+    # Merge with any user-provided additional_context (user overrides)
+    existing_context = state.get("additional_context", {}) or {}
+    merged_context = {**response_context, **existing_context}
+
+    result: dict = {
+        "opposing_document_analysis": {
+            "doc_type": analysis.doc_type,
+            "parties": analysis.parties,
+            "court": analysis.court,
+            "case_number": analysis.case_number,
+            "facts": analysis.facts,
+            "reliefs_claimed": analysis.reliefs_claimed,
+            "legal_provisions": analysis.legal_provisions,
+            "precedents_cited": analysis.precedents_cited,
+            "key_arguments": analysis.key_arguments,
+            "suggested_response_type": analysis.suggested_response_type,
+        },
+        "additional_context": merged_context,
+    }
+
+    # Auto-set doc_type if not already set and we have a suggestion
+    if not state.get("doc_type") and analysis.suggested_response_type:
+        result["doc_type"] = analysis.suggested_response_type
+
+    # Auto-set target_court from opposing doc
+    if not state.get("target_court") and analysis.court:
+        result["target_court"] = analysis.court
+
+    # Convert opposing precedents to relevant_precedents format
+    if analysis.precedents_cited and not state.get("relevant_precedents"):
+        result["relevant_precedents"] = [
+            {"citation": cite, "title": cite} for cite in analysis.precedents_cited[:10]
+        ]
+
+    return result
+
 # Mapping from template prompt_key strings to the actual prompt constants
 _PROMPT_MAP: dict[str, str] = {
     "DRAFT_BAIL_APPLICATION_SYSTEM": DRAFT_BAIL_APPLICATION_SYSTEM,

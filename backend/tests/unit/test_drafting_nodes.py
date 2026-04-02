@@ -11,6 +11,7 @@ from app.core.agents.nodes.drafting_nodes import (
     draft_sections_node,
     gather_provisions_node,
     generate_affidavit_node,
+    parse_opposing_document_node,
     resolve_template_node,
     revise_section_node,
     verify_final_node,
@@ -1286,3 +1287,110 @@ class TestVersionTracking:
         result = await revise_section_node(state, mock_llm)
         # No revision happened, so no snapshot should be added
         assert result.get("revision_history") is None or len(result.get("revision_history", [])) == 0
+
+
+# ---------------------------------------------------------------------------
+# parse_opposing_document_node (V3)
+# ---------------------------------------------------------------------------
+
+
+class TestParseOpposingDocNode:
+    @pytest.mark.asyncio
+    async def test_parses_and_enriches_state(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = json.dumps({
+            "doc_type": "plaint",
+            "parties": {"petitioner": "Alice", "respondent": "Bob"},
+            "court": "District Court Delhi",
+            "case_number": "CS 100/2025",
+            "facts": ["Fact 1"],
+            "reliefs_claimed": ["Rs 10 lakh"],
+            "legal_provisions": ["S.420 IPC"],
+            "precedents_cited": [],
+            "key_arguments": ["Cheating"],
+        })
+        state = _make_state(
+            opposing_document_text="Full plaint text...",
+            doc_type="",
+            target_court="",
+        )
+        result = await parse_opposing_document_node(state, mock_llm)
+        assert result["doc_type"] == "written_statement"  # Auto-detected
+        assert result["target_court"] == "District Court Delhi"
+        assert "plaintiff_claims" in result["additional_context"]
+
+    @pytest.mark.asyncio
+    async def test_skips_when_no_opposing_text(self) -> None:
+        mock_llm = AsyncMock()
+        state = _make_state(opposing_document_text="")
+        result = await parse_opposing_document_node(state, mock_llm)
+        assert result == {}
+        mock_llm.generate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_preserves_user_doc_type_over_auto_detect(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = json.dumps({
+            "doc_type": "plaint",
+            "parties": {},
+            "court": "",
+            "case_number": "",
+            "facts": [],
+            "reliefs_claimed": [],
+            "legal_provisions": [],
+            "precedents_cited": [],
+            "key_arguments": [],
+        })
+        state = _make_state(
+            opposing_document_text="Some text",
+            doc_type="appeal",  # User explicitly set this
+        )
+        result = await parse_opposing_document_node(state, mock_llm)
+        # Should NOT override user's explicit doc_type
+        assert "doc_type" not in result
+
+    @pytest.mark.asyncio
+    async def test_user_context_overrides_parsed_context(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = json.dumps({
+            "doc_type": "plaint",
+            "parties": {"petitioner": "Alice", "respondent": "Bob"},
+            "court": "District Court",
+            "case_number": "CS 1/2025",
+            "facts": ["Fact 1"],
+            "reliefs_claimed": [],
+            "legal_provisions": [],
+            "precedents_cited": [],
+            "key_arguments": [],
+        })
+        state = _make_state(
+            opposing_document_text="Some text",
+            doc_type="",
+            additional_context={"respondent_details": "Custom Name"},
+        )
+        result = await parse_opposing_document_node(state, mock_llm)
+        # User-provided respondent_details should override parsed value
+        assert result["additional_context"]["respondent_details"] == "Custom Name"
+
+    @pytest.mark.asyncio
+    async def test_converts_precedents_to_relevant_precedents(self) -> None:
+        mock_llm = AsyncMock()
+        mock_llm.generate.return_value = json.dumps({
+            "doc_type": "plaint",
+            "parties": {},
+            "court": "",
+            "case_number": "",
+            "facts": [],
+            "reliefs_claimed": [],
+            "legal_provisions": [],
+            "precedents_cited": ["Ram v Shyam (2020) 5 SCC 100", "X v Y AIR 2019 SC 500"],
+            "key_arguments": [],
+        })
+        state = _make_state(
+            opposing_document_text="Some text",
+            doc_type="",
+            relevant_precedents=[],
+        )
+        result = await parse_opposing_document_node(state, mock_llm)
+        assert len(result["relevant_precedents"]) == 2
+        assert result["relevant_precedents"][0]["citation"] == "Ram v Shyam (2020) 5 SCC 100"
