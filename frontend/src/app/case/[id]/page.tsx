@@ -11,6 +11,7 @@ import { Footer } from "@/components/footer";
 import dynamic from "next/dynamic";
 import { getCase, getCaseCitations, getCaseCitedBy, getCaseSimilar, getCasePdfUrl, getCaseSummary, getGraphNeighborhood } from "@/lib/api";
 import type { CaseDetail, CitationItem, GraphData, SimilarCase } from "@/lib/types";
+import { EDGE_COLORS, isPlaceholderNode, getEdgeColor } from "@/lib/graph-utils";
 import Link from "next/link";
 import { ArrowLeft, FileText, BookOpen, Link2, Scale, ExternalLink, Languages, Loader2, GitBranch, MessageSquare, Clock } from "lucide-react";
 import { CaseTimeline } from "@/components/case-timeline";
@@ -313,24 +314,35 @@ export default function CaseDetailPage() {
                                             </div>
                                             <div className="h-[350px] border rounded-md overflow-hidden bg-background">
                                                 <ForceGraph2D
-                                                    graphData={{
-                                                        nodes: graphData.nodes.map((n) => ({
-                                                            ...n,
-                                                            val: n.id === caseId ? 6 : Math.max(2, Math.log2((n.cited_by_count || 0) + 1) * 2),
-                                                        })),
-                                                        links: graphData.edges.map((e) => ({
-                                                            source: e.from,
-                                                            target: e.to,
-                                                            type: e.type,
-                                                        })),
-                                                    }}
+                                                    graphData={(() => {
+                                                        const nodeIds = new Set(graphData.nodes.map((n) => n.id));
+                                                        return {
+                                                            nodes: graphData.nodes.map((n) => ({
+                                                                ...n,
+                                                                val: isPlaceholderNode(n as Record<string, unknown>)
+                                                                    ? 1.5
+                                                                    : n.id === caseId ? 6 : Math.max(2, Math.log2((n.cited_by_count || 0) + 1) * 2),
+                                                            })),
+                                                            links: graphData.edges
+                                                                .filter((e) => nodeIds.has(e.from) && nodeIds.has(e.to))
+                                                                .map((e) => ({
+                                                                    source: e.from,
+                                                                    target: e.to,
+                                                                    type: e.type,
+                                                                })),
+                                                        };
+                                                    })()}
                                                     nodeLabel={(node: Record<string, unknown>) =>
                                                         (node.title as string) || (node.citation as string) || (node.id as string)
                                                     }
-                                                    nodeColor={(node: Record<string, unknown>) =>
-                                                        node.id === caseId ? "#B89B6A" : "#6B7280"
+                                                    nodeColor={(node: Record<string, unknown>) => {
+                                                        if (node.id === caseId) return "#B89B6A";
+                                                        if (isPlaceholderNode(node)) return "#D1D5DB";
+                                                        return "#6B7280";
+                                                    }}
+                                                    linkColor={(link: Record<string, unknown>) =>
+                                                        getEdgeColor((link.type as string) || "cites")
                                                     }
-                                                    linkColor={() => "#9CA3AF"}
                                                     linkDirectionalArrowLength={3}
                                                     linkDirectionalArrowRelPos={0.9}
                                                     onNodeClick={(node: Record<string, unknown>) => {

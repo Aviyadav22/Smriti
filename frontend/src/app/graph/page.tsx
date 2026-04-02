@@ -16,6 +16,7 @@ import {
     search as searchApi,
 } from "@/lib/api";
 import type { GraphNode, GraphData, GraphStats } from "@/lib/types";
+import { EDGE_COLORS, LEGEND_TYPES, isPlaceholderNode, getEdgeColor } from "@/lib/graph-utils";
 import {
     Loader2,
     Search,
@@ -39,13 +40,6 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-const EDGE_COLORS: Record<string, string> = {
-    cites: "#9CA3AF",         // gray
-    overrules: "#EF4444",     // red
-    affirms: "#22C55E",       // green
-    distinguishes: "#F97316", // orange
-};
 
 const DEPTH_OPTIONS = [1, 2, 3];
 
@@ -164,18 +158,25 @@ export default function GraphPage() {
 
     // Prepare data for force-graph (it needs {id, ...} nodes and {source, target} links)
     const fgData = graphData
-        ? {
-              nodes: graphData.nodes.map((n) => ({
-                  ...n,
-                  val: Math.max(2, Math.log2((n.cited_by_count || 0) + 1) * 3),
-              })),
-              links: graphData.edges.map((e) => ({
-                  source: e.from,
-                  target: e.to,
-                  type: e.type,
-                  context: e.context,
-              })),
-          }
+        ? (() => {
+              const nodeIds = new Set(graphData.nodes.map((n) => n.id));
+              return {
+                  nodes: graphData.nodes.map((n) => ({
+                      ...n,
+                      val: isPlaceholderNode(n as Record<string, unknown>)
+                          ? 1.5
+                          : Math.max(2, Math.log2((n.cited_by_count || 0) + 1) * 3),
+                  })),
+                  links: graphData.edges
+                      .filter((e) => nodeIds.has(e.from) && nodeIds.has(e.to))
+                      .map((e) => ({
+                          source: e.from,
+                          target: e.to,
+                          type: e.type,
+                          context: e.context,
+                      })),
+              };
+          })()
         : { nodes: [], links: [] };
 
     return (
@@ -287,15 +288,14 @@ export default function GraphPage() {
                                     nodeLabel={(node: Record<string, unknown>) =>
                                         (node.title as string) || (node.citation as string) || (node.id as string)
                                     }
-                                    nodeColor={(node: Record<string, unknown>) =>
-                                        node.id === activeCaseId
-                                            ? "#B89B6A"
-                                            : node.id === selectedNode?.id
-                                              ? "#60A5FA"
-                                              : "#6B7280"
-                                    }
+                                    nodeColor={(node: Record<string, unknown>) => {
+                                        if (node.id === activeCaseId) return "#B89B6A";
+                                        if (node.id === selectedNode?.id) return "#60A5FA";
+                                        if (isPlaceholderNode(node)) return "#D1D5DB";
+                                        return "#6B7280";
+                                    }}
                                     linkColor={(link: Record<string, unknown>) =>
-                                        EDGE_COLORS[(link.type as string) || "cites"] || "#9CA3AF"
+                                        getEdgeColor((link.type as string) || "cites")
                                     }
                                     linkDirectionalArrowLength={4}
                                     linkDirectionalArrowRelPos={0.9}
@@ -314,13 +314,13 @@ export default function GraphPage() {
 
                                 {/* Legend */}
                                 <div className="absolute bottom-4 left-4 bg-card/90 border rounded-md px-3 py-2 text-[10px] space-y-1">
-                                    {Object.entries(EDGE_COLORS).map(([type, color]) => (
+                                    {LEGEND_TYPES.map((type) => (
                                         <div key={type} className="flex items-center gap-2">
                                             <span
                                                 className="w-4 h-0.5 inline-block rounded"
-                                                style={{ backgroundColor: color }}
+                                                style={{ backgroundColor: EDGE_COLORS[type] }}
                                             />
-                                            <span className="capitalize text-muted-foreground">{type}</span>
+                                            <span className="capitalize text-muted-foreground">{type.replace(/_/g, " ")}</span>
                                         </div>
                                     ))}
                                     <div className="text-muted-foreground/50 mt-1 pt-1 border-t">
