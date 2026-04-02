@@ -33,6 +33,19 @@ const STEP_LABELS: Record<string, string> = {
     // Fast path
     fast_path_search: "Quick search",
     fast_path_synthesis: "Quick synthesis",
+    // Strategy / Argument Builder agent steps
+    analyze_facts: "Analyzing case facts",
+    element_decomposition: "Decomposing legal elements",
+    fetch_judge: "Fetching judge profile",
+    checkpoint_analysis: "Review fact analysis",
+    search_precedents: "Searching precedents",
+    assess_strength: "Assessing case strength",
+    generate_arguments_irac: "Generating IRAC arguments",
+    checkpoint_arguments: "Review IRAC arguments",
+    adversarial_search: "Adversarial search",
+    counter_and_judge: "Counter-arguments & judge strategy",
+    argument_ordering: "Ordering arguments",
+    synthesize_strategy: "Synthesizing argument memo",
     // Case prep agent steps
     load_analysis: "Loading document analysis",
     prioritize: "Prioritizing legal issues",

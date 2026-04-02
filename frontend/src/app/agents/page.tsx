@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { AgentHubCard } from "@/components/agent-hub-card";
-import { Search, FileText, History, Lightbulb, PenTool, Loader2 } from "lucide-react";
+import { Search, FileText, History, Scale, PenTool, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Header } from "@/components/header";
@@ -70,7 +70,7 @@ export default function AgentsPage() {
                         <AgentHubCard
                             title={t("strategy.title")}
                             description={t("strategy.description")}
-                            icon={<Lightbulb className="h-6 w-6" />}
+                            icon={<Scale className="h-6 w-6" />}
                             href="/agents/strategy"
                         />
                         <AgentHubCard

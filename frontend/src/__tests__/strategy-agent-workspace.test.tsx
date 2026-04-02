@@ -60,7 +60,7 @@ import StrategyAgentPage from "@/app/agents/strategy/page";
 describe("StrategyAgentPage", () => {
   it("renders page heading", () => {
     renderWithProviders(<StrategyAgentPage />);
-    expect(screen.getByText("Strategy Agent")).toBeInTheDocument();
+    expect(screen.getByText("Argument Builder")).toBeInTheDocument();
   });
 
   it("renders case facts textarea", () => {
@@ -89,14 +89,14 @@ describe("StrategyAgentPage", () => {
     expect(screen.getByText("Bench type (optional)")).toBeInTheDocument();
   });
 
-  it("renders Analyze Strategy submit button", () => {
+  it("renders Build Arguments submit button", () => {
     renderWithProviders(<StrategyAgentPage />);
-    expect(screen.getByText("Analyze Strategy")).toBeInTheDocument();
+    expect(screen.getByText("Build Arguments")).toBeInTheDocument();
   });
 
   it("has disabled submit button when both fields are empty", () => {
     renderWithProviders(<StrategyAgentPage />);
-    const button = screen.getByText("Analyze Strategy");
+    const button = screen.getByText("Build Arguments");
     expect(button).toBeDisabled();
   });
 
@@ -106,7 +106,7 @@ describe("StrategyAgentPage", () => {
       "Describe the facts of your case...",
     );
     fireEvent.change(textarea, { target: { value: "Landlord dispute facts" } });
-    const button = screen.getByText("Analyze Strategy");
+    const button = screen.getByText("Build Arguments");
     expect(button).toBeDisabled();
   });
 
@@ -116,7 +116,7 @@ describe("StrategyAgentPage", () => {
       "What relief are you seeking?",
     );
     fireEvent.change(reliefInput, { target: { value: "Injunction" } });
-    const button = screen.getByText("Analyze Strategy");
+    const button = screen.getByText("Build Arguments");
     expect(button).toBeDisabled();
   });
 
@@ -130,7 +130,7 @@ describe("StrategyAgentPage", () => {
     );
     fireEvent.change(textarea, { target: { value: "Landlord dispute facts" } });
     fireEvent.change(reliefInput, { target: { value: "Injunction" } });
-    const button = screen.getByText("Analyze Strategy");
+    const button = screen.getByText("Build Arguments");
     expect(button).not.toBeDisabled();
   });
 
@@ -151,7 +151,7 @@ describe("StrategyAgentPage", () => {
       target: { value: "Specific performance" },
     });
 
-    const button = screen.getByText("Analyze Strategy");
+    const button = screen.getByText("Build Arguments");
     fireEvent.click(button);
 
     expect(mockRun).toHaveBeenCalledWith(
@@ -214,8 +214,8 @@ describe("StrategyAgentPage", () => {
     expect(screen.getByPlaceholderText("Describe the facts of your case...")).toBeInTheDocument();
   });
 
-  it("shows description mentioning strategic memo", () => {
+  it("shows description mentioning argument memorandum", () => {
     renderWithProviders(<StrategyAgentPage />);
-    expect(screen.getByText(/strategic memo/i)).toBeInTheDocument();
+    expect(screen.getByText(/argument memorandum/i)).toBeInTheDocument();
   });
 });

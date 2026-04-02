@@ -31,14 +31,16 @@ import Link from "next/link";
 
 const STRATEGY_STEPS = [
     "analyze_facts",
+    "element_decomposition",
     "fetch_judge",
     "checkpoint_analysis",
     "search_precedents",
     "assess_strength",
-    "generate_arguments",
+    "generate_arguments_irac",
     "checkpoint_arguments",
-    "counter_arguments",
-    "judge_considerations",
+    "adversarial_search",
+    "counter_and_judge",
+    "argument_ordering",
     "synthesize_strategy",
     "verify",
     "checkpoint_memo",
@@ -245,12 +247,12 @@ export default function StrategyAgentPage() {
             </div>
 
             <h1 className="text-2xl font-semibold font-[family-name:var(--font-lora)] mb-2">
-                Strategy Agent
+                Argument Builder
             </h1>
             <p className="text-sm text-muted-foreground mb-6">
-                Enter your case facts and desired relief. The agent will analyze
-                strengths, generate arguments, anticipate counter-arguments, and
-                create a strategic memo.
+                Enter your case facts and desired relief. The agent will decompose legal elements,
+                generate IRAC-structured arguments with verified precedents, run adversarial search
+                for opposing cases, and produce a litigation-ready argument memorandum.
             </p>
 
             {/* Input form (shown when not running and no memo) */}
@@ -323,7 +325,7 @@ export default function StrategyAgentPage() {
                             {starting ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                                "Analyze Strategy"
+                                "Build Arguments"
                             )}
                         </Button>
                     </CardContent>
@@ -413,7 +415,7 @@ export default function StrategyAgentPage() {
                                     onClick={handleReset}
                                 >
                                     <RotateCcw className="h-3.5 w-3.5 mr-1.5" />{" "}
-                                    New Analysis
+                                    New Argument Brief
                                 </Button>
                             </>
                         )}

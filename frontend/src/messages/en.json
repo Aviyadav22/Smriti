@@ -46,8 +46,8 @@
       "description": "Select a previously analyzed document. The agent prioritizes issues by legal strength, performs deeper precedent searches through citation graphs, and generates a strategy memo with recommended argument ordering."
     },
     "strategy": {
-      "title": "Strategy Agent",
-      "description": "Enter case facts and desired relief. The agent assesses case strength, generates ordered legal arguments, anticipates counter-arguments, and produces a strategic memo with judge-specific insights."
+      "title": "Argument Builder",
+      "description": "Enter case facts and desired relief. The agent generates IRAC-structured arguments with verified precedents, adversarial counter-analysis, and a litigation-ready argument memorandum."
     },
     "drafting": {
       "title": "Drafting Agent",
