@@ -239,7 +239,7 @@ async def understand_query(
             output_schema=QUERY_UNDERSTANDING_SCHEMA,
         )
         return _parse_llm_result(raw_query, result)
-    except (ValueError, KeyError, ConnectionError, TimeoutError, RuntimeError) as exc:
+    except Exception as exc:
         logger.warning("LLM query understanding failed, using passthrough: %s", exc)
         return _passthrough(raw_query)
 
