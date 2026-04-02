@@ -205,7 +205,7 @@ async def ingest_judgment(
     # the PDF is actually uploaded now or later (bulk upload after ingestion).
     # Format: gs://{bucket}/cases/{case_id}/{filename}.pdf
     storage_dest = f"cases/{case_id}/{_safe_filename(parquet_metadata)}"
-    _GCS_BUCKET_FOR_PATH = os.environ.get("GCS_PDF_BUCKET", settings.gcs_bucket_name)
+    _GCS_BUCKET_FOR_PATH = os.environ.get("GCS_PDF_BUCKET", os.environ.get("GCS_BUCKET_NAME", "smriti-production-documents"))
     canonical_gcs_path = f"gs://{_GCS_BUCKET_FOR_PATH}/{storage_dest}"
 
     async def _store_pdf() -> str:
@@ -392,8 +392,10 @@ async def ingest_judgment(
 
         # --------------------------------------------------------------
         # 6c. CONTEXTUAL EMBEDDINGS (optional, requires fast_llm)
+        # Set SKIP_CONTEXTUAL_EMBEDDINGS=1 to skip (saves ~50 LLM calls/case)
         # --------------------------------------------------------------
-        if fast_llm is not None:
+        _skip_contextual = os.environ.get("SKIP_CONTEXTUAL_EMBEDDINGS", "").strip() in ("1", "true")
+        if fast_llm is not None and not _skip_contextual:
             from app.core.ingestion.contextual_embeddings import batch_contextualize_chunks
             chunk_dicts = [{"text": c.text, "section_type": c.section_type} for c in chunks]
             doc_meta = {
@@ -424,6 +426,12 @@ async def ingest_judgment(
             raise RuntimeError(
                 f"Embedding count mismatch: {len(embeddings)} embeddings "
                 f"for {len(chunks)} chunks (case_id={case_id})"
+            )
+        _expected_dim = int(os.environ.get("EMBEDDING_DIMENSION", "1536"))
+        if embeddings and len(embeddings[0]) != _expected_dim:
+            raise RuntimeError(
+                f"Embedding dimension mismatch: got {len(embeddings[0])}, "
+                f"expected {_expected_dim} (case_id={case_id})"
             )
 
         # --------------------------------------------------------------
@@ -491,8 +499,10 @@ async def ingest_judgment(
 
         # --------------------------------------------------------------
         # 8b. RAPTOR SECTION SUMMARIES (optional, requires fast_llm)
+        # Set SKIP_RAPTOR_SUMMARIES=1 to skip (saves ~10 LLM calls/case)
         # --------------------------------------------------------------
-        if fast_llm is not None:
+        _skip_raptor = os.environ.get("SKIP_RAPTOR_SUMMARIES", "").strip() in ("1", "true")
+        if fast_llm is not None and not _skip_raptor:
             try:
                 from app.core.ingestion.section_summarizer import (
                     build_pinecone_summary_vectors,
@@ -525,6 +535,8 @@ async def ingest_judgment(
                         str(case_id), summaries, summary_embeddings, base_meta
                     )
                     await vector_store.upsert(summary_vectors)
+                    # Track RAPTOR IDs so stale cleanup doesn't delete them
+                    new_vector_ids.extend(v["id"] for v in summary_vectors)
                     logger.info(
                         "case_id=%s: %d RAPTOR section summaries stored",
                         case_id, len(summaries),
@@ -1009,6 +1021,11 @@ async def _embed_chunks(
                 if rate_limiter:
                     await rate_limiter.acquire()
                 batch_embeddings = await embedder.embed_batch(batch)
+                if len(batch_embeddings) != len(batch):
+                    raise RuntimeError(
+                        f"Embedding batch returned {len(batch_embeddings)} "
+                        f"for {len(batch)} inputs (partial failure)"
+                    )
                 all_embeddings.extend(batch_embeddings)
                 break
             except Exception as exc:
@@ -1222,8 +1239,9 @@ async def _upsert_proposition_vectors(
     for vec, emb in zip(vectors, embeddings):
         vec["values"] = emb
 
-    # Upsert in batches of 100
-    for batch_start in range(0, len(vectors), _EMBED_BATCH_SIZE):
+    # Upsert in batches (use same configurable batch size as chunk vectors)
+    _upsert_batch = int(os.environ.get("PINECONE_UPSERT_BATCH", "100"))
+    for batch_start in range(0, len(vectors), _upsert_batch):
         batch = vectors[batch_start : batch_start + _EMBED_BATCH_SIZE]
         await vector_store.upsert(batch)
 
@@ -1277,29 +1295,49 @@ async def _build_citation_graph(
     graph_store: GraphStore,
 ) -> None:
     """Create the case node and citation edges in Neo4j."""
-    # Create the case node with rich metadata
-    try:
-        await graph_store.create_node(
-            "Case",
-            {
-                "id": case_id,
-                "title": metadata.title or "",
-                "citation": metadata.citation or "",
-                "court": metadata.court or "",
-                "year": metadata.year or 0,
-                "bench_type": metadata.bench_type or "",
-                "case_type": metadata.case_type or "",
-                "disposal_nature": metadata.disposal_nature or "",
-                "judge": ", ".join(metadata.judge) if metadata.judge else "",
-                # Needed by case_search fulltext index
-                "keywords": ", ".join(metadata.keywords[:30]) if metadata.keywords else "",
-                "acts_cited": ", ".join(metadata.acts_cited[:25]) if metadata.acts_cited else "",
-                "ratio": (metadata.ratio_decidendi or "")[:2000],
-            },
-        )
-    except (OSError, ConnectionError, RuntimeError) as exc:
-        logger.error("Failed to create case node %s: %s", case_id, exc)
-        return
+    # Build node properties dict
+    node_props = {
+        "id": case_id,
+        "title": metadata.title or "",
+        "citation": metadata.citation or "",
+        "court": metadata.court or "",
+        "year": metadata.year or 0,
+        "bench_type": metadata.bench_type or "",
+        "case_type": metadata.case_type or "",
+        "disposal_nature": metadata.disposal_nature or "",
+        "judge": ", ".join(metadata.judge) if metadata.judge else "",
+        "keywords": ", ".join(metadata.keywords[:30]) if metadata.keywords else "",
+        "acts_cited": ", ".join(metadata.acts_cited[:25]) if metadata.acts_cited else "",
+        "ratio": (metadata.ratio_decidendi or "")[:2000],
+    }
+
+    # --- Placeholder resolution: promote existing placeholder if citation matches ---
+    promoted = False
+    if metadata.citation:
+        try:
+            result = await graph_store.query(
+                "MATCH (p:Case {citation: $citation}) "
+                "WHERE p.id STARTS WITH 'ref_' "
+                "SET p.id = $id, p.title = $title, p.court = $court, "
+                "    p.year = $year, p.bench_type = $bench_type, "
+                "    p.case_type = $case_type, p.disposal_nature = $disposal_nature, "
+                "    p.judge = $judge, p.keywords = $keywords, "
+                "    p.acts_cited = $acts_cited, p.ratio = $ratio "
+                "RETURN p.id",
+                params=node_props,
+            )
+            promoted = bool(result)
+            if promoted:
+                logger.info("Promoted placeholder node to real case %s", case_id)
+        except (OSError, ConnectionError, RuntimeError) as exc:
+            logger.warning("Placeholder resolution failed for %s: %s", case_id, exc)
+
+    if not promoted:
+        try:
+            await graph_store.create_node("Case", node_props)
+        except (OSError, ConnectionError, RuntimeError) as exc:
+            logger.error("Failed to create case node %s: %s", case_id, exc)
+            return
 
     # Extract citations and detect treatment for each (CPU-only, no I/O)
     citations = extract_citations(full_text)
@@ -1343,11 +1381,30 @@ async def _build_citation_graph(
             "UNWIND $edges AS e "
             "MATCH (a:Case {id: $from_id}), (b:Case {citation: e.citation}) "
             "MERGE (a)-[r:CITES]->(b) "
-            "SET r.reporter = e.reporter, r.treatment = e.treatment",
+            "SET r.reporter = e.reporter, r.treatment = e.treatment "
+            "WITH b, e "
+            "WHERE e.treatment = 'overruled' "
+            "SET b.is_overruled = true",
             params={"from_id": case_id, "edges": edge_data},
         )
     except (OSError, ConnectionError, RuntimeError) as exc:
         logger.warning("Failed to batch-create citation edges for %s: %s", case_id, exc)
+
+    # Persist cited_by_count for affected nodes
+    try:
+        await graph_store.query(
+            "MATCH (target:Case)<-[:CITES]-(citing:Case {id: $case_id}) "
+            "WITH target, count { (target)<-[:CITES]-() } AS cnt "
+            "SET target.cited_by_count = cnt",
+            params={"case_id": case_id},
+        )
+        await graph_store.query(
+            "MATCH (self:Case {id: $case_id}) "
+            "SET self.cited_by_count = count { (self)<-[:CITES]-() }",
+            params={"case_id": case_id},
+        )
+    except (OSError, ConnectionError, RuntimeError) as exc:
+        logger.debug("Could not update cited_by_count for %s: %s", case_id, exc)
 
     # --- V2: Enriched CITES edges with treatment context (UNWIND batch) ---
     if metadata.citation_treatments:

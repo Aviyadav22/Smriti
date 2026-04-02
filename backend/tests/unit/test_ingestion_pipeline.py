@@ -6,6 +6,11 @@ embedding failures, empty text handling, and chunking configuration.
 
 from __future__ import annotations
 
+import os
+
+# Mock embedder uses 4-dim vectors; tell pipeline to accept them
+os.environ.setdefault("EMBEDDING_DIMENSION", "4")
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,6 +19,7 @@ from app.core.ingestion.chunker import Chunk, Section
 from app.core.ingestion.metadata import CaseMetadata
 from app.core.ingestion.pipeline import (
     _EMBED_BATCH_SIZE,
+    _build_citation_graph,
     _embed_chunks,
     _safe_filename,
     ingest_judgment,
@@ -484,3 +490,116 @@ class TestSafeFilename:
         result = _safe_filename({"title": "A" * 200})
         # Should be truncated to 80 chars + ".pdf"
         assert len(result) <= 85
+
+
+class TestPlaceholderResolution:
+    """Test that ingesting a real case promotes matching placeholder nodes."""
+
+    @pytest.mark.asyncio
+    async def test_placeholder_promoted_when_citation_matches(self) -> None:
+        """When a placeholder exists with matching citation, promote it in-place."""
+        graph_store = AsyncMock()
+        # Call sequence: 1) placeholder query (found), 2) placeholder MERGE, 3) CITES edges,
+        # 4) cited_by_count targets, 5) cited_by_count self
+        graph_store.query = AsyncMock(side_effect=[
+            [{"id": "ref_abc123"}],  # placeholder found and promoted
+            [],  # placeholder MERGE for cited nodes
+            [],  # CITES edge creation
+            [],  # cited_by_count for targets
+            [],  # cited_by_count for self
+        ])
+        graph_store.create_node = AsyncMock()
+
+        metadata = _make_case_metadata(
+            citation="(2020) 1 SCC 100",
+            title="Promoted Case",
+        )
+        await _build_citation_graph(
+            "real-uuid", metadata, "As held in AIR 2010 SC 200, the law is settled.", graph_store,
+        )
+
+        # create_node should NOT be called — placeholder was promoted
+        graph_store.create_node.assert_not_called()
+        # First query should be the placeholder resolution query
+        first_cypher = graph_store.query.call_args_list[0].args[0] if graph_store.query.call_args_list[0].args else graph_store.query.call_args_list[0].kwargs.get("cypher", "")
+        assert "STARTS WITH 'ref_'" in first_cypher
+
+    @pytest.mark.asyncio
+    async def test_no_placeholder_creates_node_normally(self) -> None:
+        """When no placeholder exists, create node via create_node."""
+        graph_store = AsyncMock()
+        graph_store.query = AsyncMock(side_effect=[
+            [],  # no placeholder found
+            [],  # placeholder MERGE for cited nodes
+            [],  # CITES edge creation
+            [],  # cited_by_count for targets
+            [],  # cited_by_count for self
+        ])
+        graph_store.create_node = AsyncMock()
+
+        metadata = _make_case_metadata(citation="(2020) 1 SCC 100", title="New Case")
+        await _build_citation_graph(
+            "real-uuid", metadata, "As held in AIR 2010 SC 200, the law is settled.", graph_store,
+        )
+
+        # create_node SHOULD be called
+        graph_store.create_node.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_citation_skips_placeholder_check(self) -> None:
+        """When metadata has no citation, skip placeholder check entirely."""
+        graph_store = AsyncMock()
+        graph_store.query = AsyncMock(return_value=[])
+        graph_store.create_node = AsyncMock()
+
+        metadata = _make_case_metadata(citation="", title="No Citation Case")
+        await _build_citation_graph(
+            "real-uuid", metadata, "Short text with no citations.", graph_store,
+        )
+
+        # create_node should be called (no placeholder check)
+        graph_store.create_node.assert_called_once()
+
+
+class TestGraphPropertyPersistence:
+    """Test that cited_by_count and is_overruled are persisted during ingestion."""
+
+    @pytest.mark.asyncio
+    async def test_is_overruled_in_cites_query(self) -> None:
+        """CITES edge creation query should include is_overruled logic."""
+        graph_store = AsyncMock()
+        graph_store.query = AsyncMock(return_value=[])
+        graph_store.create_node = AsyncMock()
+
+        metadata = _make_case_metadata(citation="(2022) 1 SCC 1", title="Overruling Case")
+        full_text = "The decision in AIR 2010 SC 100 is hereby overruled by this bench."
+
+        await _build_citation_graph("case-uuid", metadata, full_text, graph_store)
+
+        # Find the CITES edge creation query
+        all_cyphers = [
+            c.args[0] if c.args else c.kwargs.get("cypher", "")
+            for c in graph_store.query.call_args_list
+        ]
+        cites_queries = [q for q in all_cyphers if "MERGE (a)-[r:CITES]->(b)" in q]
+        assert len(cites_queries) >= 1, f"Expected CITES query, got: {all_cyphers}"
+        assert "is_overruled" in cites_queries[0]
+
+    @pytest.mark.asyncio
+    async def test_cited_by_count_updated_after_edges(self) -> None:
+        """After creating CITES edges, cited_by_count should be computed."""
+        graph_store = AsyncMock()
+        graph_store.query = AsyncMock(return_value=[])
+        graph_store.create_node = AsyncMock()
+
+        metadata = _make_case_metadata(citation="(2022) 1 SCC 1", title="Citing Case")
+        full_text = "As held in AIR 2010 SC 100, the principle applies."
+
+        await _build_citation_graph("case-uuid", metadata, full_text, graph_store)
+
+        all_cyphers = [
+            c.args[0] if c.args else c.kwargs.get("cypher", "")
+            for c in graph_store.query.call_args_list
+        ]
+        count_queries = [q for q in all_cyphers if "cited_by_count" in q]
+        assert len(count_queries) >= 1, f"Expected cited_by_count query, got: {all_cyphers}"
