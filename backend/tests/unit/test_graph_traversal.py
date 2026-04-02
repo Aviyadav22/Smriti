@@ -8,6 +8,7 @@ import pytest
 
 from app.core.graph.traversal import (
     MAX_NODES,
+    _TREATMENT_TO_DISPLAY,
     get_authorities,
     get_citation_chain,
     get_graph_stats,
@@ -303,3 +304,157 @@ class TestGetGraphStats:
         redis.setex.assert_called_once()
         call_args = redis.setex.call_args
         assert call_args.args[1] == 900  # 15 min TTL
+
+
+# ---------------------------------------------------------------------------
+# Treatment normalization
+# ---------------------------------------------------------------------------
+
+
+class TestTreatmentNormalization:
+    """Test that edge treatment properties are normalized to display types."""
+
+    @pytest.mark.asyncio
+    async def test_overruled_treatment_becomes_overrules(self) -> None:
+        store = _make_graph_store(
+            query_return=[
+                {
+                    "id": "case_2",
+                    "title": "Overruled Case",
+                    "citation": None,
+                    "court": "SC",
+                    "year": 2020,
+                    "cited_by_count": 1,
+                    "edges": [
+                        {"from": "case_1", "to": "case_2", "type": "CITES", "treatment": "overruled", "context": None},
+                    ],
+                },
+            ],
+            get_node_return={"id": "case_1", "title": "Center"},
+        )
+        result = await get_neighborhood("case_1", graph_store=store, depth=1)
+        assert result["edges"][0]["type"] == "overrules"
+
+    @pytest.mark.asyncio
+    async def test_affirmed_treatment_becomes_affirms(self) -> None:
+        store = _make_graph_store(
+            query_return=[
+                {
+                    "id": "case_2",
+                    "title": "Affirmed Case",
+                    "citation": None,
+                    "court": "SC",
+                    "year": 2020,
+                    "cited_by_count": 1,
+                    "edges": [
+                        {"from": "case_1", "to": "case_2", "type": "CITES", "treatment": "affirmed", "context": None},
+                    ],
+                },
+            ],
+            get_node_return={"id": "case_1", "title": "Center"},
+        )
+        result = await get_neighborhood("case_1", graph_store=store, depth=1)
+        assert result["edges"][0]["type"] == "affirms"
+
+    @pytest.mark.asyncio
+    async def test_distinguished_treatment_becomes_distinguishes(self) -> None:
+        store = _make_graph_store(
+            query_return=[
+                {
+                    "id": "case_2",
+                    "title": "Distinguished Case",
+                    "citation": None,
+                    "court": "SC",
+                    "year": 2020,
+                    "cited_by_count": 1,
+                    "edges": [
+                        {"from": "case_1", "to": "case_2", "type": "CITES", "treatment": "distinguished", "context": None},
+                    ],
+                },
+            ],
+            get_node_return={"id": "case_1", "title": "Center"},
+        )
+        result = await get_neighborhood("case_1", graph_store=store, depth=1)
+        assert result["edges"][0]["type"] == "distinguishes"
+
+    @pytest.mark.asyncio
+    async def test_null_treatment_becomes_cites(self) -> None:
+        store = _make_graph_store(
+            query_return=[
+                {
+                    "id": "case_2",
+                    "title": "Cited Case",
+                    "citation": None,
+                    "court": "SC",
+                    "year": 2020,
+                    "cited_by_count": 1,
+                    "edges": [
+                        {"from": "case_1", "to": "case_2", "type": "CITES", "treatment": None, "context": None},
+                    ],
+                },
+            ],
+            get_node_return={"id": "case_1", "title": "Center"},
+        )
+        result = await get_neighborhood("case_1", graph_store=store, depth=1)
+        assert result["edges"][0]["type"] == "cites"
+
+    @pytest.mark.asyncio
+    async def test_referred_to_treatment_becomes_cites(self) -> None:
+        store = _make_graph_store(
+            query_return=[
+                {
+                    "id": "case_2",
+                    "title": "Referred Case",
+                    "citation": None,
+                    "court": "SC",
+                    "year": 2020,
+                    "cited_by_count": 1,
+                    "edges": [
+                        {"from": "case_1", "to": "case_2", "type": "CITES", "treatment": "referred_to", "context": None},
+                    ],
+                },
+            ],
+            get_node_return={"id": "case_1", "title": "Center"},
+        )
+        result = await get_neighborhood("case_1", graph_store=store, depth=1)
+        assert result["edges"][0]["type"] == "cites"
+
+    def test_all_treatment_types_mapped(self) -> None:
+        """Every treatment value in the mapping produces the expected display type."""
+        expected = {
+            "overruled": "overrules",
+            "affirmed": "affirms",
+            "distinguished": "distinguishes",
+            "followed": "followed",
+            "not_followed": "not_followed",
+            "doubted": "doubted",
+            "explained": "explained",
+            "per_incuriam": "per_incuriam",
+            "referred_to": "cites",
+            None: "cites",
+        }
+        for treatment, display in expected.items():
+            assert _TREATMENT_TO_DISPLAY[treatment] == display, (
+                f"Treatment {treatment!r} should map to {display!r}"
+            )
+
+    @pytest.mark.asyncio
+    async def test_citation_chain_also_normalizes_treatment(self) -> None:
+        store = _make_graph_store(
+            query_return=[
+                {
+                    "id": "cited_1",
+                    "title": "Overruled in Chain",
+                    "citation": None,
+                    "court": "SC",
+                    "year": 2018,
+                    "cited_by_count": 3,
+                    "edges": [
+                        {"from": "case_1", "to": "cited_1", "type": "CITES", "treatment": "overruled"},
+                    ],
+                },
+            ],
+        )
+        result = await get_citation_chain("case_1", graph_store=store, max_depth=2)
+        assert len(result["edges"]) == 1
+        assert result["edges"][0]["type"] == "overrules"

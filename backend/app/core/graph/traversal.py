@@ -14,6 +14,19 @@ logger = logging.getLogger(__name__)
 
 MAX_NODES = 200
 
+_TREATMENT_TO_DISPLAY: dict[str | None, str] = {
+    "overruled": "overrules",
+    "affirmed": "affirms",
+    "distinguished": "distinguishes",
+    "followed": "followed",
+    "not_followed": "not_followed",
+    "doubted": "doubted",
+    "explained": "explained",
+    "per_incuriam": "per_incuriam",
+    "referred_to": "cites",
+    None: "cites",
+}
+
 
 async def get_neighborhood(
     case_id: str,
@@ -41,7 +54,7 @@ async def get_neighborhood(
                 "  neighbor.year AS year, "
                 "  neighbor.cited_by_count AS cited_by_count, "
                 "  [rel IN rels | {from: startNode(rel).id, to: endNode(rel).id, "
-                "   type: type(rel), context: rel.context}] AS edges "
+                "   type: type(rel), treatment: rel.treatment, context: rel.context}] AS edges "
                 "LIMIT $limit"
             ),
             params={"id": case_id, "limit": MAX_NODES},
@@ -85,19 +98,25 @@ async def get_neighborhood(
             }
 
         for edge in record.get("edges", []):
-            edge_key = (edge["from"], edge["to"], edge["type"])
+            edge_key = (edge["from"], edge["to"], edge.get("type", "CITES"))
             if edge_key not in edges_set:
                 edges_set.add(edge_key)
+                treatment = edge.get("treatment")
                 edges_list.append({
                     "from": edge["from"],
                     "to": edge["to"],
-                    "type": edge["type"],
+                    "type": _TREATMENT_TO_DISPLAY.get(treatment, "cites"),
                     "context": edge.get("context"),
                 })
 
+    # Filter edges to only include those whose endpoints are in nodes_map.
+    # This prevents orphan edges when intermediate path nodes are missing
+    # (e.g. depth > 1) or when Neo4j nodes lack an `id` property.
+    valid_edges = [e for e in edges_list if e["from"] in nodes_map and e["to"] in nodes_map]
+
     return {
         "nodes": list(nodes_map.values()),
-        "edges": edges_list,
+        "edges": valid_edges,
     }
 
 
@@ -123,7 +142,7 @@ async def get_citation_chain(
                 "  cited.year AS year, "
                 "  cited.cited_by_count AS cited_by_count, "
                 "  [rel IN rels | {from: startNode(rel).id, to: endNode(rel).id, "
-                "   type: type(rel)}] AS edges "
+                "   type: type(rel), treatment: rel.treatment}] AS edges "
                 "LIMIT $limit"
             ),
             params={"id": case_id, "limit": MAX_NODES},
@@ -154,15 +173,18 @@ async def get_citation_chain(
             edge_key = (edge["from"], edge["to"])
             if edge_key not in edges_set:
                 edges_set.add(edge_key)
+                treatment = edge.get("treatment")
                 edges_list.append({
                     "from": edge["from"],
                     "to": edge["to"],
-                    "type": edge.get("type", "CITES"),
+                    "type": _TREATMENT_TO_DISPLAY.get(treatment, "cites"),
                 })
+
+    valid_edges = [e for e in edges_list if e["from"] in nodes_map and e["to"] in nodes_map]
 
     return {
         "nodes": list(nodes_map.values()),
-        "edges": edges_list,
+        "edges": valid_edges,
     }
 
 
