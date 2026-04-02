@@ -48,7 +48,7 @@ async def create_audit_log(
     hashed_ip = (
         hashlib.sha256(
             f"{ip_address}:{AUDIT_IP_SALT}".encode()
-        ).hexdigest()[:16]
+        ).hexdigest()
         if ip_address
         else None
     )

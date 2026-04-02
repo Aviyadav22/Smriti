@@ -103,9 +103,12 @@ function SearchContent() {
         }
     }, [initialQuery, executeSearch]);
 
+    const [facetsError, setFacetsError] = useState(false);
+
     useEffect(() => {
         searchFacets().then(setFacets).catch((err) => {
             console.error("Failed to load search facets:", err);
+            setFacetsError(true);
         });
     }, []);
 

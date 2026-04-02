@@ -21,8 +21,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import gc
 import json
 import logging
+import os
 import random
 import signal
 import sys
@@ -106,7 +108,7 @@ from scripts.ingest_s3 import (  # noqa: E402
 # Constants
 # ---------------------------------------------------------------------------
 
-GCS_BUCKET = "smriti-batch-ingestion"
+GCS_BUCKET = os.environ.get("GCS_BUCKET", "smriti-batch-ingestion")
 BATCH_MODEL = "gemini-2.5-flash"
 DATA_DIR = Path("data")
 BATCH_RUNS_DIR = DATA_DIR / "batch_runs"
@@ -241,12 +243,8 @@ async def phase1_extract_and_upload(
         stem = Path(str(key)).stem
         stem_index[stem] = key
 
-    # GCS client (only if not dry run)
-    gcs_client: gcs_storage.Client | None = None
-    bucket: Any = None
-    if not dry_run:
-        gcs_client = _get_gcs_client()
-        bucket = gcs_client.bucket(GCS_BUCKET)
+    # GCS client initialization skipped — per-PDF uploads removed to prevent OOM.
+    # PDFs will be bulk-uploaded to GCS separately after ingestion.
 
     manifest: list[ManifestEntry] = []
     skipped_dedup = 0
@@ -262,9 +260,24 @@ async def phase1_extract_and_upload(
 
         # Extract text
         logger.info("[%d/%d] Extracting text from %s", i + 1, len(pdf_paths), pdf_path.name)
+
+        # Skip oversized PDFs that cause OOM (>250 pages)
+        try:
+            import fitz
+            with fitz.open(str(pdf_path)) as doc:
+                if doc.page_count > 250:
+                    logger.warning(
+                        "Skipping oversized PDF %s (%d pages) to prevent OOM",
+                        pdf_path.name, doc.page_count,
+                    )
+                    skipped_extraction += 1
+                    continue
+        except Exception:
+            pass  # If page count check fails, try extraction anyway
+
         try:
             quality = await extract_and_score(str(pdf_path))
-        except (OSError, RuntimeError) as exc:
+        except (OSError, RuntimeError, MemoryError) as exc:
             logger.warning("Text extraction failed for %s: %s", pdf_path.name, exc)
             skipped_extraction += 1
             continue
@@ -295,16 +308,10 @@ async def phase1_extract_and_upload(
         # Generate case ID
         case_id = str(uuid.uuid4())
 
-        # Upload PDF to GCS
-        gcs_uri = f"gs://{GCS_BUCKET}/pdfs/{case_id}.pdf"
-        if not dry_run and bucket is not None:
-            try:
-                blob = bucket.blob(f"pdfs/{case_id}.pdf")
-                blob.upload_from_filename(str(pdf_path))
-            except (OSError, ConnectionError, RuntimeError, gapi_exceptions.GoogleAPICallError) as upload_exc:
-                logger.warning("GCS upload failed for %s: %s", pdf_path.name, upload_exc)
-                # Continue anyway — batch can still use local text
-                gcs_uri = f"local://{pdf_path}"
+        # Skip per-PDF GCS upload during Phase 1 to prevent OOM on large batches.
+        # PDFs will be bulk-uploaded to GCS separately after ingestion.
+        # Phase 2 batch only needs the text (embedded in JSONL), not the PDF.
+        gcs_uri = f"local://{pdf_path}"
 
         logger.info(
             "[%d/%d] %s: %d chars, tier=%s, gcs=%s",
@@ -418,6 +425,7 @@ def _build_batch_jsonl_entry(case_id: str, gcs_pdf_uri: str, full_text: str) -> 
                 "responseMimeType": "application/json",
                 "responseSchema": METADATA_OUTPUT_SCHEMA,
                 "temperature": 0.1,
+                "maxOutputTokens": 16384,
             },
         },
     }
@@ -779,6 +787,9 @@ async def phase3_process_cases(
                         "Phase 3 progress: %d/%d processed (%d success, %d failed)",
                         processed_count, len(manifest), success_count, failure_count,
                     )
+                if processed_count % 50 == 0:
+                    gc.collect()
+                    logger.debug("GC collected after %d cases", processed_count)
 
     try:
         # Run cases concurrently (bounded by semaphore)
@@ -833,6 +844,11 @@ async def _process_single_case(
 
     # A. Parse batch result -> CaseMetadata
     llm_meta = _parse_batch_result_to_metadata(raw_metadata)
+
+    # Layer 4: Quick metadata sanity check
+    if not llm_meta.title and not llm_meta.citation:
+        logger.warning("Case %s: no title or citation in batch result, skipping", case_id)
+        return "error: missing title and citation"
 
     # Pre-normalize LLM acts_cited to filter garbage before merge
     if llm_meta.acts_cited:
@@ -972,6 +988,10 @@ async def _process_single_case(
                 raise RuntimeError(
                     f"Embedding count mismatch: {len(embeddings)} for {len(chunks)} chunks"
                 )
+
+            # Layer 4: Spot-check embedding dimensions
+            if embeddings and len(embeddings[0]) != 1536:
+                return f"error: embedding dimension {len(embeddings[0])} != 1536"
 
             # G. Upsert chunk vectors
             new_vector_ids = [f"{case_id}_{chunk.chunk_index}" for chunk in chunks]
@@ -1417,6 +1437,24 @@ async def run_pipeline(
 
         if _shutdown_event.is_set():
             break
+
+        # Layer 3: Quality gate — validate metadata before spending on Phase 3
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+            from ingestion.quality_gates import validate_batch_metadata
+
+            qg_report = validate_batch_metadata(metadata_results)
+            if not qg_report.passed:
+                logger.error("QUALITY GATE FAILED between Phase 2 and Phase 3:")
+                for f in qg_report.failures:
+                    logger.error("  %s", f)
+                logger.error("Fix issues and resume with: --resume %s", run_id)
+                continue
+            logger.info("Quality gate passed: %s", qg_report.checks)
+            for w in qg_report.warnings:
+                logger.warning("  QG WARNING: %s", w)
+        except ImportError:
+            logger.warning("quality_gates module not found, skipping Layer 3 check")
 
         # Phase 3: Online processing
         statuses = await phase3_process_cases(

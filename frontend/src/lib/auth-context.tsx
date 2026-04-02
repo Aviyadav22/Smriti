@@ -8,7 +8,6 @@ import {
     logout as apiLogout,
     loadTokens,
     getAccessToken,
-    getRefreshToken,
     tryRefreshToken,
     onSessionExpired,
 } from "@/lib/api";
@@ -46,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         let cancelled = false;
 
         async function init() {
+            // Migrate any legacy localStorage tokens (one-time cleanup)
             loadTokens();
             const token = getAccessToken();
 
@@ -58,25 +58,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 return;
             }
 
-            // Access token expired or missing — try refresh
-            const refresh = getRefreshToken();
-            if (refresh && !isTokenExpired(refresh)) {
-                try {
-                    const ok = await tryRefreshToken();
-                    if (!cancelled) {
-                        setIsAuthenticated(ok);
-                        if (!ok) setAuthError("Session expired — please log in again");
-                        setIsLoading(false);
-                    }
-                    return;
-                } catch {
-                    if (!cancelled) {
-                        setAuthError("Session expired — please log in again");
-                    }
+            // Access token expired or missing — try refresh via httpOnly cookie.
+            // We can't check if the cookie exists from JS, so just attempt it.
+            try {
+                const ok = await tryRefreshToken();
+                if (!cancelled) {
+                    setIsAuthenticated(ok);
+                    if (!ok) setAuthError("Session expired — please log in again");
+                    setIsLoading(false);
+                }
+                return;
+            } catch {
+                if (!cancelled) {
+                    setAuthError("Session expired — please log in again");
                 }
             }
 
-            // No valid tokens at all
+            // No valid session
             if (!cancelled) {
                 setIsAuthenticated(false);
                 setIsLoading(false);

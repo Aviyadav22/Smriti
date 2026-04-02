@@ -31,7 +31,7 @@ def _sanitize_filename(filename: str | None) -> str:
     if not filename:
         return "upload.pdf"
     safe = Path(filename).name
-    safe = _re.sub(r"[^\w\-. ]", "_", safe)
+    safe = _re.sub(r"[^a-zA-Z0-9\-_. ]", "_", safe)
     if not safe.lower().endswith(".pdf"):
         safe += ".pdf"
     return safe[:200]

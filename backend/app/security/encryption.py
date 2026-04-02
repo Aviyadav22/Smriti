@@ -113,13 +113,32 @@ def decrypt_field(ciphertext: str) -> str:
     return plaintext_bytes.decode("utf-8")
 
 
+def _looks_like_ciphertext(value: str) -> bool:
+    """Heuristic: check if a value looks like it was produced by encrypt_field.
+
+    Encrypted values are base64-encoded and at least nonce (12) + tag (16) = 28 bytes.
+    """
+    try:
+        raw = base64.b64decode(value)
+        return len(raw) >= _NONCE_SIZE + 16
+    except Exception:
+        return False
+
+
 def safe_decrypt(value: str) -> str:
     """Decrypt if encrypted, return as-is if plaintext.
 
     Provides migration safety: pre-existing plaintext messages in the DB
-    won't crash when read after encryption is enabled.
+    won't crash when read after encryption is enabled. However, if a value
+    looks like ciphertext (valid base64 of sufficient length) and decryption
+    fails, the error is re-raised to prevent leaking garbled ciphertext.
     """
     try:
         return decrypt_field(value)
-    except (ValueError, Exception):
+    except ValueError:
+        # If it looks like ciphertext, decryption failure is a real error
+        # (wrong key, tampered data) — don't silently return garbage.
+        if _looks_like_ciphertext(value):
+            raise
+        # Otherwise it's likely pre-encryption plaintext — return as-is.
         return value

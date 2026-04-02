@@ -55,6 +55,27 @@ engine = create_async_engine(
     **_pool_kwargs,
 )
 
+# Pool monitoring — log warnings when pool is under pressure
+if not _use_nullpool:
+    from sqlalchemy import event as sa_event
+
+    @sa_event.listens_for(engine.sync_engine, "checkout")
+    def _on_checkout(dbapi_conn, connection_record, connection_proxy):  # noqa: ARG001
+        pool = engine.pool
+        _logger.debug(
+            "DB pool checkout: size=%s, checked_in=%s, overflow=%s",
+            pool.size(), pool.checkedin(), pool.overflow(),
+        )
+
+    @sa_event.listens_for(engine.sync_engine, "checkin")
+    def _on_checkin(dbapi_conn, connection_record):  # noqa: ARG001
+        pool = engine.pool
+        if pool.overflow() > pool.size() // 2:
+            _logger.warning(
+                "DB pool pressure: overflow=%s exceeds half of pool_size=%s",
+                pool.overflow(), pool.size(),
+            )
+
 async_session_factory = async_sessionmaker(
     engine,
     class_=AsyncSession,

@@ -56,6 +56,7 @@ export function clearTokens(): void {
     if (typeof window !== "undefined") {
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
+        localStorage.removeItem("smriti_refresh_fallback");
     }
 }
 
@@ -257,11 +258,18 @@ async function _doRefresh(): Promise<boolean> {
     // Network errors (TypeError from fetch) are intentionally NOT caught here —
     // they propagate to the caller so it can distinguish network failures from
     // real auth failures and avoid clearing tokens on a transient network blip.
-    // Refresh token is sent automatically via httpOnly cookie (credentials: "include").
+    // Primary: httpOnly cookie (credentials: "include").
+    // Fallback: localStorage refresh token (for dev mode where Next.js proxy
+    // may not forward Set-Cookie headers correctly).
+    const fallbackRefresh = typeof window !== "undefined"
+        ? localStorage.getItem("smriti_refresh_fallback")
+        : null;
+    const body = fallbackRefresh ? JSON.stringify({ refresh_token: fallbackRefresh }) : undefined;
     const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body,
     });
     if (!res.ok) return false;
     const data: TokenResponse = await res.json();
@@ -287,6 +295,10 @@ export async function login(req: LoginRequest): Promise<TokenResponse> {
     }
     const data: TokenResponse = await res.json();
     setTokens(data.access_token);
+    // Store refresh token as fallback for dev proxy cookie issues
+    if (data.refresh_token && typeof window !== "undefined") {
+        localStorage.setItem("smriti_refresh_fallback", data.refresh_token);
+    }
     return data;
 }
 
@@ -303,6 +315,9 @@ export async function register(req: RegisterRequest): Promise<TokenResponse> {
     }
     const data: TokenResponse = await res.json();
     setTokens(data.access_token);
+    if (data.refresh_token && typeof window !== "undefined") {
+        localStorage.setItem("smriti_refresh_fallback", data.refresh_token);
+    }
     return data;
 }
 
@@ -499,6 +514,7 @@ function _streamSSE<T>(
         }
         let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
         try {
+            // Use SSE_BASE for streaming to bypass Next.js proxy timeout
             let res = await fetch(`${API_BASE}${path}`, {
                 method: "POST",
                 headers,

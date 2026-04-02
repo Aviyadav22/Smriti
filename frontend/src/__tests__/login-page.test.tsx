@@ -106,7 +106,6 @@ describe("LoginPage", () => {
   it("calls login API on form submit and navigates to search", async () => {
     mockApiLogin.mockResolvedValue({
       access_token: "token",
-      refresh_token: "refresh",
       expires_in: 3600,
     });
 

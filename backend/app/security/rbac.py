@@ -45,14 +45,16 @@ async def get_current_user_optional(
 ) -> TokenPayload | None:
     """FastAPI dependency that optionally extracts the current user.
 
-    Returns None if no token is provided or if the token is invalid.
-    Useful for public endpoints that want to track authenticated users.
+    Returns None if no token is provided. Rejects invalid/tampered tokens
+    instead of silently treating them as "unauthenticated".
     """
     if not token:
         return None
+    from app.security.exceptions import AuthenticationError as AuthError
     try:
         return await verify_access_token(token)
-    except Exception as exc:
+    except AuthError as exc:
+        # Expected auth failures: expired, revoked, malformed — treat as unauthenticated
         logger.debug("Optional auth failed: %s", exc)
         return None
 

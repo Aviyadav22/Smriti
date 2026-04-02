@@ -25,6 +25,21 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Thinking budget: 0 = disabled (saves ~6x on output token costs for gemini-2.5-flash).
+# Set GEMINI_THINKING_BUDGET=0 for ingestion, omit or set -1 for research agents.
+_THINKING_BUDGET: int | None = None
+_raw_budget = os.environ.get("GEMINI_THINKING_BUDGET")
+if _raw_budget is not None:
+    _THINKING_BUDGET = int(_raw_budget)
+
+
+def _apply_thinking_config(config_kwargs: dict) -> None:
+    """Add thinking_config to GenerateContentConfig kwargs if budget is set."""
+    if _THINKING_BUDGET is not None:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(
+            thinking_budget=_THINKING_BUDGET,
+        )
+
 # Build retry exception tuple with granular Google exceptions when available
 _GEMINI_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
     GoogleAPIError, asyncio.TimeoutError, ConnectionError, OSError, TimeoutError,
@@ -170,6 +185,7 @@ class GeminiLLM:
             "temperature": temperature,
             "max_output_tokens": max_tokens,
         }
+        _apply_thinking_config(config_kwargs)
         # [S10] Use context cache for synthesis calls
         if use_context_cache and system:
             cached_name = await self._get_or_create_synthesis_cache(system)
@@ -201,12 +217,14 @@ class GeminiLLM:
         Schema is normalized to use Gemini-compatible nullable format.
         """
         normalized_schema = self._normalize_schema(output_schema)
-        config = types.GenerateContentConfig(
-            system_instruction=system,
-            temperature=temperature,
-            response_mime_type="application/json",
-            response_schema=normalized_schema,
-        )
+        config_kwargs: dict = {
+            "system_instruction": system,
+            "temperature": temperature,
+            "response_mime_type": "application/json",
+            "response_schema": normalized_schema,
+        }
+        _apply_thinking_config(config_kwargs)
+        config = types.GenerateContentConfig(**config_kwargs)
         response = await asyncio.wait_for(
             self._client.aio.models.generate_content(
                 model=self._model, contents=prompt, config=config
@@ -244,12 +262,14 @@ class GeminiLLM:
         )
 
         normalized_schema = self._normalize_schema(output_schema)
-        config = types.GenerateContentConfig(
-            system_instruction=system,
-            temperature=temperature,
-            response_mime_type="application/json",
-            response_schema=normalized_schema,
-        )
+        pdf_config_kwargs: dict = {
+            "system_instruction": system,
+            "temperature": temperature,
+            "response_mime_type": "application/json",
+            "response_schema": normalized_schema,
+        }
+        _apply_thinking_config(pdf_config_kwargs)
+        config = types.GenerateContentConfig(**pdf_config_kwargs)
         response = await asyncio.wait_for(
             self._client.aio.models.generate_content(
                 model=self._model,
@@ -299,6 +319,7 @@ class GeminiLLM:
         }
         if max_tokens:
             config_kwargs["max_output_tokens"] = max_tokens
+        _apply_thinking_config(config_kwargs)
         # [S10] Use context cache for synthesis calls
         if use_context_cache and system:
             cached_name = await self._get_or_create_synthesis_cache(system)

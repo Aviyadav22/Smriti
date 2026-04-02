@@ -1,0 +1,21 @@
+# Turbo Ingestion - Account {X} Environment
+# Copy this to env_a, env_b, env_c, env_d and fill in per-account values
+
+# === PER-ACCOUNT (change these for each account) ===
+GEMINI_USE_VERTEXAI=true
+GEMINI_VERTEXAI_PROJECT=FILL_IN_PROJECT_ID
+GEMINI_VERTEXAI_LOCATION=us-central1
+GOOGLE_APPLICATION_CREDENTIALS=ingestion/accounts/account_FILL_LETTER.json
+GCS_BUCKET=smriti-batch-FILL_LETTER
+
+# === STORAGE (same for all accounts) ===
+STORAGE_PROVIDER=local
+GCS_PDF_BUCKET=smriti-production-documents
+
+# === SHARED DB CREDENTIALS (same for all accounts) ===
+DATABASE_URL=postgresql+asyncpg://smriti:E9tGr2mSXTi1h36LwsmLKbRVooPmlZbYIY5FnYmuzWg=@76.13.185.172:5432/smriti
+PINECONE_API_KEY=pcsk_xZ2MX_QLAsifUTrh2vZ9CzND9XdopAijUnx1Pz9EkxDawgwYyinEnCmtBSYF3F5cjbZQp
+PINECONE_HOST=https://smriti-legal-y3apxf5.svc.aped-4627-b74a.pinecone.io
+NEO4J_URI=neo4j+s://7a4a400f.databases.neo4j.io
+NEO4J_USER=7a4a400f
+NEO4J_PASSWORD=oEvhe2GWOs7r41pHiuzIOwopN2im3drdOTJsb1R4vqE

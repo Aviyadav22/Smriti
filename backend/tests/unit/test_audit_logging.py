@@ -91,9 +91,9 @@ class TestCreateAuditLog:
 
         # Should not be the raw IP
         assert stored_ip != "192.168.1.1"
-        # Should be a 16-char hex string (truncated SHA-256)
+        # Should be a full 64-char hex SHA-256 hash
         assert stored_ip is not None
-        assert len(stored_ip) == 16
+        assert len(stored_ip) == 64
 
     @pytest.mark.asyncio
     async def test_metadata_serialized_as_json(self) -> None:

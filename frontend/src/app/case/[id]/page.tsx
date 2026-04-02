@@ -41,6 +41,7 @@ export default function CaseDetailPage() {
     const [summaryLang, setSummaryLang] = useState<"en" | "hi">("en");
     const [translatedSummary, setTranslatedSummary] = useState<string | null>(null);
     const [summaryLoading, setSummaryLoading] = useState(false);
+    const [translationError, setTranslationError] = useState(false);
 
     useEffect(() => {
         if (!UUID_RE.test(caseId)) {
@@ -84,11 +85,12 @@ export default function CaseDetailPage() {
         // Fetch Hindi translation from summary endpoint
         setSummaryLoading(true);
         try {
+            setTranslationError(false);
             const res = await getCaseSummary(caseId, "hi");
             setTranslatedSummary(res.summary);
             setSummaryLang("hi");
         } catch {
-            // Silently fail — keep showing English
+            setTranslationError(true);
         } finally {
             setSummaryLoading(false);
         }

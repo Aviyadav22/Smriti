@@ -81,19 +81,20 @@ describe("API Client", () => {
   // Token management
   // -----------------------------------------------------------------------
 
-  it("setTokens stores tokens and makes them accessible", () => {
-    setTokens("access-abc", "refresh-xyz");
+  it("setTokens stores access token in memory (not localStorage)", () => {
+    setTokens("access-abc");
 
     expect(getAccessToken()).toBe("access-abc");
-    expect(localStorageMock.setItem).toHaveBeenCalledWith("access_token", "access-abc");
-    expect(localStorageMock.setItem).toHaveBeenCalledWith("refresh_token", "refresh-xyz");
+    // Access token should NOT be written to localStorage (memory only)
+    expect(localStorageMock.setItem).not.toHaveBeenCalled();
   });
 
-  it("clearTokens removes tokens", () => {
-    setTokens("a", "r");
+  it("clearTokens removes tokens and cleans up legacy localStorage", () => {
+    setTokens("a");
     clearTokens();
 
     expect(getAccessToken()).toBeNull();
+    // Should clean up any legacy localStorage entries from before cookie migration
     expect(localStorageMock.removeItem).toHaveBeenCalledWith("access_token");
     expect(localStorageMock.removeItem).toHaveBeenCalledWith("refresh_token");
   });
@@ -108,7 +109,7 @@ describe("API Client", () => {
   });
 
   it("logout clears tokens", async () => {
-    setTokens("a", "r");
+    setTokens("a");
     await logout();
 
     expect(getAccessToken()).toBeNull();

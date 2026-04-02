@@ -140,7 +140,6 @@ describe("RegisterPage", () => {
   it("calls register API on valid form submit", async () => {
     mockApiRegister.mockResolvedValue({
       access_token: "token",
-      refresh_token: "refresh",
       expires_in: 3600,
     });
 

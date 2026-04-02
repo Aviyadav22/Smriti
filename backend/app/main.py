@@ -337,7 +337,7 @@ if settings.app_env == "production":
     from starlette.middleware.trustedhost import TrustedHostMiddleware
     allowed_hosts = [h.replace("https://", "").replace("http://", "").split("/")[0]
                      for h in settings.cors_origin_list]
-    allowed_hosts.append("localhost")
+    # Never add localhost in production — would allow Host-header spoofing
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
 

@@ -153,16 +153,15 @@ function ChatPageInner() {
     }, [input]);
 
     // Auto-send query from URL params (e.g., "Open in Chat" from case detail page)
+    const autoSendDone = useRef(false);
     useEffect(() => {
         const initialQuery = searchParams.get("q");
-        if (initialQuery && messages.length === 0 && !isStreaming) {
+        if (initialQuery && messages.length === 0 && !isStreaming && !autoSendDone.current) {
+            autoSendDone.current = true;
             setInput(initialQuery);
-            // Auto-send after a short delay to let the component fully mount
-            setTimeout(() => {
-                handleSend(initialQuery);
-            }, 500);
+            handleSend(initialQuery);
         }
-    }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [searchParams, messages.length, isStreaming]); // eslint-disable-line react-hooks/exhaustive-deps
 
     async function loadSessions() {
         setSessionsLoading(true);

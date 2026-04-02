@@ -187,8 +187,10 @@ class GeminiEmbedder:
         """
         if self._use_vertex_rest:
             # REST path: one content per call, limited concurrency
-            _SUB_BATCH = 3
-            sem = asyncio.Semaphore(2)
+            _SUB_BATCH = int(os.environ.get("EMBED_SUB_BATCH", "3"))
+            _EMBED_SEM = int(os.environ.get("EMBED_CONCURRENCY", "2"))
+            _EMBED_SLEEP = float(os.environ.get("EMBED_SLEEP", "2.0"))
+            sem = asyncio.Semaphore(_EMBED_SEM)
 
             async def _embed_one(text: str) -> list[float]:
                 async with sem:
@@ -200,14 +202,15 @@ class GeminiEmbedder:
                 batch_results = await asyncio.gather(*[_embed_one(t) for t in sub])
                 all_results.extend(batch_results)
                 if i + _SUB_BATCH < len(texts):
-                    await asyncio.sleep(2.0)
+                    await asyncio.sleep(_EMBED_SLEEP)
             return all_results
 
         if self._use_vertexai:
             # Vertex AI SDK: one content per call, process sequentially in small
             # sub-batches with limited concurrency to respect token-per-minute quota
-            _SUB_BATCH = 3
-            _CONCURRENCY = 1
+            _SUB_BATCH = int(os.environ.get("EMBED_SUB_BATCH", "3"))
+            _CONCURRENCY = int(os.environ.get("EMBED_CONCURRENCY", "1"))
+            _EMBED_SLEEP = float(os.environ.get("EMBED_SLEEP", "3.0"))
             sem = asyncio.Semaphore(_CONCURRENCY)
 
             async def _embed_one_sdk(text: str) -> list[float]:
@@ -231,7 +234,7 @@ class GeminiEmbedder:
                 batch_results = await asyncio.gather(*[_embed_one_sdk(t) for t in sub])
                 all_results.extend(batch_results)
                 if i + _SUB_BATCH < len(texts):
-                    await asyncio.sleep(3.0)
+                    await asyncio.sleep(_EMBED_SLEEP)
             return all_results
 
         # AI Studio: batch in single call

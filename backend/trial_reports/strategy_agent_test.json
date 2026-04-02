@@ -1,0 +1,536 @@
+{
+  "test_input": {
+    "case_facts": "My client, Rajesh Kumar, is a 35-year-old government employee working as a clerk in the Delhi Municipal Corporation. On 15 March 2025, he was arrested by the Delhi Police Anti-Corruption Branch for allegedly accepting a bribe of Rs. 50,000 from a contractor seeking approval for a building permit. The trap was laid based on a complaint by the contractor, Suresh Gupta. During the trap operation, the marked currency notes were recovered from Rajesh's desk drawer. However, Rajesh claims the money was planted and that Suresh had a personal grudge against him because Rajesh had previously rejected his building permit application on legitimate grounds (structural safety violations). Rajesh has been in judicial custody for 45 days. He has no prior criminal record, has a family with two minor children, and his wife is unemployed. The case is registered under Section 7 of the Prevention of Corruption Act, 1988 (as amended in 2018). The Special Judge, CBI Court, Delhi has denied bail twice citing the seriousness of the offence and the recovery of marked currency. We want to move the High Court for bail.",
+    "desired_relief": "Regular bail under Section 439 CrPC / Section 483 BNSS from the High Court of Delhi",
+    "target_judge": "",
+    "target_bench": "single",
+    "language": "en"
+  },
+  "fact_analysis": {
+    "parties": {
+      "petitioner": {
+        "name": "Rajesh Kumar",
+        "designation": "Accused",
+        "legal_capacity": "Individual"
+      },
+      "respondent": {
+        "name": "State (represented by Delhi Police Anti-Corruption Branch)",
+        "designation": "Respondent",
+        "legal_capacity": "Government Body"
+      }
+    },
+    "causes_of_action": [
+      {
+        "title": "Accepting Bribe",
+        "statutory_basis": "Section 7 of the Prevention of Corruption Act, 1988 (as amended in 2018)",
+        "description": "Allegedly accepting a bribe of Rs. 50,000 from a contractor (Suresh Gupta) for approval of a building permit. Marked currency notes were recovered from Rajesh's desk drawer during a trap operation."
+      }
+    ],
+    "relevant_statutes": [
+      "Prevention of Corruption Act, 1988 (as amended in 2018)",
+      "Bharatiya Nagarik Suraksha Sanhita (BNSS) / Code of Criminal Procedure (CrPC)"
+    ],
+    "key_dates": [
+      {
+        "date": "15 March 2025",
+        "event": "Rajesh Kumar arrested by Delhi Police Anti-Corruption Branch"
+      },
+      {
+        "date": "Approximately 45 days after 15 March 2025",
+        "event": "Rajesh Kumar has been in judicial custody for 45 days"
+      },
+      {
+        "date": "During judicial custody (prior to current date)",
+        "event": "Special Judge, CBI Court, Delhi denied bail twice"
+      }
+    ],
+    "jurisdictional_issues": [
+      "Territorial Jurisdiction: Delhi (Delhi Municipal Corporation, Delhi Police, CBI Court Delhi, High Court)",
+      "Subject-Matter Jurisdiction: Special Judge, CBI Court, Delhi (for the corruption case and initial bail applications); High Court (for the current bail application)",
+      "Forum Selection: Bail application to be moved from Special Judge, CBI Court to High Court"
+    ]
+  },
+  "legal_elements": [
+    {
+      "element_id": "prima_facie_case_section_7_pca",
+      "description": "To assess the strength of the prosecution's case for bail, it is crucial to determine the essential ingredients of the offense under Section 7 of the Prevention of Corruption Act, 1988 (as amended in 2018), which typically involve a public servant obtaining or attempting to obtain an undue advantage.",
+      "statute_basis": "Section 7 of the Prevention of Corruption Act, 1988 (as amended in 2018) (Specific text not provided, but the element refers to the content of this section).",
+      "search_query": "elements of section 7 prevention of corruption act 2018 undue advantage",
+      "is_contested": true
+    },
+    {
+      "element_id": "general_bail_principles",
+      "description": "The court must consider established principles for granting bail, including the seriousness of the alleged offense, the likelihood of the accused absconding or tampering with evidence/witnesses, the duration of judicial custody, and the accused's personal circumstances.",
+      "statute_basis": "Sections 437 and 439 of the Code of Criminal Procedure, 1973.",
+      "search_query": "bail principles CrPC section 439",
+      "is_contested": true
+    },
+    {
+      "element_id": "evidentiary_value_marked_currency_defense",
+      "description": "The court needs to evaluate the evidentiary weight of the recovery of marked currency notes in the context of a bail application, especially when the accused claims false implication and that the money was planted due to a personal grudge.",
+      "statute_basis": "Indian Evidence Act, 1872 (specifically sections related to burden of proof and circumstantial evidence), and judicial precedents on trap cases.",
+      "search_query": "bail planted money corruption case India",
+      "is_contested": true
+    }
+  ],
+  "strength_assessment": {
+    "level": "moderate",
+    "score": 0.45,
+    "reasoning": "The case for bail presents a classic conflict between a strong legal argument and damning circumstantial evidence, making its strength moderate. The petitioner's primary strength lies in the consistent line of Supreme Court precedents, such as AMAN BHATIA, SOUNDARAJAN, and NEERAJ DUTTA, which unequivocally state that proof of 'demand' for a bribe is a sine qua non for an offence under Section 7 of the PC Act, and mere recovery of money is insufficient. The provided facts focus on the recovery of marked notes but are silent on the evidence of demand. However, this is severely weakened by the factual matrix of a trap operation where marked currency was recovered from the petitioner's possession. The prosecution will argue that the circumstances themselves imply a demand, as per NEERAJ DUTTA. Crucially, the precedent in DEVINDER KUMAR BANSAL cautions courts against granting bail in serious corruption cases except in exceptional circumstances, creating a high threshold. The fact that two previous bail applications have been rejected by the Special Judge further weakens the petitioner's position, as the High Court will be reluctant to interfere without a significant change in circumstances or a patent error of law. The balance of these factors results in a moderate assessment.",
+    "key_strengths": [
+      "The legal position, firmly established by multiple binding Supreme Court precedents like AMAN BHATIA and SOUNDARAJAN, requires the prosecution to prove 'demand' of a bribe, which is not established in the given facts, making the foundation of the prosecution case arguably weak.",
+      "The petitioner has been in judicial custody for 45 days, which can be argued as a sufficient period for investigation, mitigating the risk of tampering with evidence or influencing witnesses."
+    ],
+    "key_weaknesses": [
+      "The recovery of marked currency notes from the petitioner's desk drawer during a trap operation provides strong prima facie evidence of 'acceptance' of illegal gratification, which can lead to a presumption against the accused under Section 20 of the PC Act.",
+      "The Supreme Court's judgment in DEVINDER KUMAR BANSAL sets a very high bar for granting bail in corruption cases, emphasizing public justice over personal liberty, which the prosecution will heavily rely on.",
+      "The bail application has been rejected twice by the competent Special Judge, which creates a significant procedural and persuasive hurdle for the petitioner in the High Court."
+    ]
+  },
+  "irac_arguments": [
+    {
+      "title": "Absence of Prima Facie Proof of 'Demand'",
+      "issue": "Whether the petitioner is entitled to bail when the prosecution's case, resting solely on the recovery of currency, fails to prima facie establish the essential ingredient of 'demand' for an offence under Section 7 of the Prevention of Corruption Act, 1988.",
+      "rule": "The Supreme Court has consistently held that proof of demand for illegal gratification is a sine qua non for constituting an offence under Section 7 of the Prevention of Corruption Act, 1988. Mere recovery of tainted money, without proof of a preceding demand, is insufficient to sustain a conviction.",
+      "rule_authorities": [
+        {
+          "citation": "SOUNDARAJAN versus STATE REP. BY THE INSPECTOR OF POLICE VIGILANCE ANTICORRUPTION DINDIGUL [2023] 4 S.C.R. 133",
+          "strength": "BINDING",
+          "bench_size": 2
+        },
+        {
+          "citation": "AMAN BHATIA versus STATE (GNCT OF DELHI) [2025] 6 S.C.R. 64",
+          "strength": "BINDING",
+          "bench_size": 2
+        },
+        {
+          "citation": "NEERAJ DUTTA versus STATE (GOVT. OF N.C.T. OF DELHI) [2023] 2 S.C.R. 997",
+          "strength": "BINDING",
+          "bench_size": 2
+        }
+      ],
+      "statutory_basis": "Section 7 of the Prevention of Corruption Act, 1988",
+      "application": "The prosecution's case against the petitioner, Rajesh Kumar, is founded entirely on the recovery of marked currency notes from his desk drawer during a trap operation. The facts presented by the prosecution are devoid of any evidence, whether direct or circumstantial, that the petitioner ever made a demand for the bribe of Rs. 50,000 from the contractor, Suresh Gupta. As per the binding precedent in SOUNDARAJAN, 'demand for gratification and its acceptance are sine qua non'. The principle in AMAN BHATIA further clarifies that 'mere recovery of tainted money without proof of demand is insufficient'. Without establishing the foundational element of demand, the prosecution's case is prima facie weak and fails to meet the threshold required to deny bail.",
+      "conclusion": "Therefore, due to the complete absence of evidence establishing the essential ingredient of demand, the petitioner is entitled to be enlarged on bail.",
+      "effectiveness_score": 9
+    },
+    {
+      "title": "Non-Applicability of Presumption under Section 20 PC Act",
+      "issue": "Whether the statutory presumption of guilt under Section 20 of the Prevention of Corruption Act, 1988 can be invoked against the petitioner at the bail stage when the foundational facts of demand and acceptance have not been proven.",
+      "rule": "The legal presumption under Section 20 of the PC Act, that gratification was accepted as a motive or reward, can only be raised after the prosecution has first proved the foundational facts of demand and acceptance of the said gratification. The presumption is not automatic upon mere recovery of money.",
+      "rule_authorities": [
+        {
+          "citation": "THE STATE OF KARNATAKA versus CHANDRASHA [2024] 11 S.C.R. 1472",
+          "strength": "BINDING",
+          "bench_size": 3
+        },
+        {
+          "citation": "SOUNDARAJAN versus STATE REP. BY THE INSPECTOR OF POLICE VIGILANCE ANTICORRUPTION DINDIGUL [2023] 4 S.C.R. 133",
+          "strength": "BINDING",
+          "bench_size": 2
+        }
+      ],
+      "statutory_basis": "Section 20 of the Prevention of Corruption Act, 1988",
+      "application": "The prosecution relies on the recovery of Rs. 50,000 to trigger the adverse presumption under Section 20 of the PC Act. However, the Full Bench of the Supreme Court in THE STATE OF KARNATAKA versus CHANDRASHA explicitly held that the court is mandated to raise the presumption only 'once these foundational facts [demand and acceptance] are proved'. As argued, the prosecution has failed to provide any evidence of demand by the petitioner. Since the prerequisite for invoking Section 20 has not been met, no presumption of guilt can be drawn against the petitioner at this stage. Relying on such a presumption to deny bail would be contrary to the law laid down by the Supreme Court.",
+      "conclusion": "Consequently, the presumption under Section 20 of the PC Act is not applicable, and the bail application must be decided on the merits without this adverse inference.",
+      "effectiveness_score": 8
+    },
+    {
+      "title": "Entitlement to Bail on General Principles and Period of Incarceration",
+      "issue": "Whether the petitioner should be granted bail under the general principles of criminal jurisprudence, considering his 45-day period of incarceration and the unlikelihood of him absconding or tampering with evidence.",
+      "rule": "Under Section 439 of the Code of Criminal Procedure, 1973 (now Section 483 of the Bharatiya Nagarik Suraksha Sanhita, 2023), the High Court has wide discretionary powers to grant bail, balancing the liberty of the individual with the interests of justice, considering factors such as the period of detention, risk of flight, and potential for tampering with evidence.",
+      "rule_authorities": [],
+      "statutory_basis": "Section 439 of the Code of Criminal Procedure, 1973 (now Section 483 of the Bharatiya Nagarik Suraksha Sanhita, 2023)",
+      "application": "The petitioner, Rajesh Kumar, has been in judicial custody since 15 March 2025, for a period of 45 days. This period is more than sufficient for the investigating agency to have conducted its custodial interrogation and secured all primary evidence, including the allegedly tainted currency. As a public servant with a permanent residence and family in Delhi, the petitioner has deep roots in the community and poses no flight risk. The investigation is substantially complete, mitigating any apprehension of the petitioner tampering with evidence or influencing witnesses. His continued detention amounts to pre-trial punishment, which is contrary to the principle of 'bail, not jail'. The fact that two prior applications were rejected by the Special Judge does not bar this Court from exercising its wider jurisdiction under Section 439 CrPC (now Section 483 BNSS) based on the weak prima facie case and the completed investigation.",
+      "conclusion": "Therefore, based on the prolonged custody, the completion of the investigation, and the petitioner's non-existent flight risk, he is entitled to be released on bail.",
+      "effectiveness_score": 7
+    }
+  ],
+  "adversarial_results": [
+    {
+      "case_id": "28e43891-8eba-4768-a3e5-640f02398bf5",
+      "score": 0.8410961,
+      "title": "AMAN BHATIA versus STATE (GNCT OF DELHI)",
+      "citation": "[2025] 6 S.C.R. 64",
+      "court": "Supreme Court of India",
+      "year": 2025,
+      "date": "2025-05-01",
+      "case_type": "Criminal Appeal",
+      "judge": [
+        "B. PARDIWALA",
+        "J.B. Pardiwala"
+      ],
+      "snippet": "**money**, knowing it to be\na **bribe**. The courts have consistently reiterated that the **demand** for\na **bribe** is sine qua non for establishing an offence under **Section** **7**\nof the PC **Act**.\n\n52. A five-Judge Bench of this Court in Neeraj Dutta v. State\n(Government",
+      "chunk_text": "Proof of demand for illegal gratification is a sine qua non for establishing an offence under Sections 7 and 13(1)(d) of the PC Act; mere recovery of tainted money is insufficient for conviction.",
+      "bench_type": "division",
+      "equivalent_citations": [
+        "2025 INSC 618"
+      ],
+      "relevance_sources": [],
+      "treatment_warning": null,
+      "char_start": 0,
+      "char_end": 0,
+      "source_query": "bail denied Section 7 PC Act demand inferred from recovery of marked currency notes from accused possession",
+      "adversarial": true,
+      "target_weakness": "The client's argument that the absence of direct, recorded evidence of 'demand' is fatal to the prosecution's case at the bail stage."
+    },
+    {
+      "case_id": "0cc258ff-b276-4d49-9650-d028c3065a93",
+      "score": 0.8053874,
+      "title": "THE STATE OF KARNATAKA versus CHANDRASHA",
+      "citation": "[2024] 11 S.C.R. 1472",
+      "court": "Supreme Court of India",
+      "year": 2024,
+      "date": "2024-11-26",
+      "case_type": "Criminal Appeal",
+      "judge": [
+        "SANJIV KHANNA",
+        "R. Mahadevan"
+      ],
+      "snippet": "**illegality** in grant of sanction;\n**Demand** and acceptance of **gratification**; Preponderance of probability;\nProsecution proved **case** beyond reasonable doubt; **Recovery**\nof **tainted** **currency** **notes**; Legal fee or repayment of loan; **Public**\n**servant** accepted or agreed to accept any **gratification** other than\nlegal remuneration; **Inference**",
+      "chunk_text": "Proof of demand and acceptance of illegal gratification by a public servant is a sine qua non to establish guilt under Sections 7 and 13(1)(d) of the Prevention of Corruption Act, 1988.",
+      "bench_type": "full",
+      "equivalent_citations": [
+        "2024 INSC 928"
+      ],
+      "relevance_sources": [],
+      "treatment_warning": null,
+      "char_start": 0,
+      "char_end": 0,
+      "source_query": "bail denied Section 7 PC Act demand inferred from recovery of marked currency notes from accused possession",
+      "adversarial": true,
+      "target_weakness": "The client's argument that the absence of direct, recorded evidence of 'demand' is fatal to the prosecution's case at the bail stage."
+    },
+    {
+      "case_id": "92d9b894-6141-48da-b8b7-b3af8b8d123f",
+      "score": 0.7797246,
+      "title": "SOUNDARAJAN versus STATE REP. BY THE INSPECTOR OF POLICE VIGILANCE ANTICORRUPTION DINDIGUL",
+      "citation": "[2023] 4 S.C.R. 133",
+      "court": "Supreme Court of India",
+      "year": 2023,
+      "date": "2023-04-17",
+      "case_type": "Criminal Appeal",
+      "judge": [
+        "Abhay S. Oka",
+        "Rajesh Bindal"
+      ],
+      "snippet": "To establish an offence under Section 7 of the Prevention of Corruption Act, 1988, the prosecution must prove the demand for gratification beyond a reasonable doubt.",
+      "chunk_text": "To establish an offence under Section 7 of the Prevention of Corruption Act, 1988, the prosecution must prove the demand for gratification beyond a reasonable doubt.",
+      "bench_type": "division",
+      "equivalent_citations": [],
+      "relevance_sources": [],
+      "treatment_warning": null,
+      "char_start": 0,
+      "char_end": 0,
+      "source_query": "bail denied Section 7 PC Act demand inferred from recovery of marked currency notes from accused possession",
+      "adversarial": true,
+      "target_weakness": "The client's argument that the absence of direct, recorded evidence of 'demand' is fatal to the prosecution's case at the bail stage."
+    },
+    {
+      "case_id": "28e43891-8eba-4768-a3e5-640f02398bf5",
+      "score": 0.87476355,
+      "title": "AMAN BHATIA versus STATE (GNCT OF DELHI)",
+      "citation": "[2025] 6 S.C.R. 64",
+      "court": "Supreme Court of India",
+      "year": 2025,
+      "date": "2025-05-01",
+      "case_type": "Criminal Appeal",
+      "judge": [
+        "B. PARDIWALA",
+        "J.B. Pardiwala"
+      ],
+      "snippet": "Proof of demand for illegal gratification is a sine qua non for establishing an offence under Sections 7 and 13(1)(d) of the PC Act; mere recovery of tainted money is insufficient for conviction.",
+      "chunk_text": "Proof of demand for illegal gratification is a sine qua non for establishing an offence under Sections 7 and 13(1)(d) of the PC Act; mere recovery of tainted money is insufficient for conviction.",
+      "bench_type": "division",
+      "equivalent_citations": [
+        "2025 INSC 618"
+      ],
+      "relevance_sources": [],
+      "treatment_warning": null,
+      "char_start": 0,
+      "char_end": 0,
+      "source_query": "conscious possession of bribe money recovered from office desk drawer Section 7 PC Act bail rejected",
+      "adversarial": true,
+      "target_weakness": "The potential defense that the accused had no knowledge of the money recovered from his desk drawer, attempting to negate the element of 'acceptance'."
+    },
+    {
+      "case_id": "52b99036-c908-41c1-9ee3-93714107bba2",
+      "score": 0.81083864,
+      "title": "MINI versus CBI/SPE COCHIN",
+      "citation": "[2025] 8 S.C.R. 799",
+      "court": "Supreme Court of India",
+      "year": 2025,
+      "date": "2025-08-13",
+      "case_type": "Criminal Appeal",
+      "judge": [
+        "MANOJ MISRA",
+        "UJJAL BHUYAN"
+      ],
+      "snippet": "To sustain a conviction under the Prevention of Corruption Act, 1988, there must be cogent proof of demand for gratification; recovery of money alone is insufficient if the demand is not proved. A plausible explanation provided by the accused in their Section 313 CrPC statement regarding the receipt of money must be meticulously considered and, if found reasonable, can entitle the accused to the benefit of doubt.",
+      "chunk_text": "To sustain a conviction under the Prevention of Corruption Act, 1988, there must be cogent proof of demand for gratification; recovery of money alone is insufficient if the demand is not proved. A plausible explanation provided by the accused in their Section 313 CrPC statement regarding the receipt of money must be meticulously considered and, if found reasonable, can entitle the accused to the benefit of doubt.",
+      "bench_type": "division",
+      "equivalent_citations": [
+        "2025 INSC 980"
+      ],
+      "relevance_sources": [],
+      "treatment_warning": null,
+      "char_start": 0,
+      "char_end": 0,
+      "source_query": "conscious possession of bribe money recovered from office desk drawer Section 7 PC Act bail rejected",
+      "adversarial": true,
+      "target_weakness": "The potential defense that the accused had no knowledge of the money recovered from his desk drawer, attempting to negate the element of 'acceptance'."
+    },
+    {
+      "case_id": "41cec862-2c6d-45d0-9962-1b058184bbe5",
+      "score": 0.7928494,
+      "title": "PARITALA SUDHAKAR versus STATE OF TELANGANA",
+      "citation": "[2025] 6 S.C.R. 180",
+      "court": "Supreme Court of India",
+      "year": 2025,
+      "date": "2025-05-08",
+      "case_type": "Criminal Appeal",
+      "judge": [
+        "SUDHANSHU DHULIA",
+        "Ahsanuddin Amanullah"
+      ],
+      "snippet": "The prosecution must prove the demand and acceptance of illegal gratification beyond reasonable doubt in trap cases; material contradictions in witness testimony regarding the sequence of events and recovery of money entitle the accused to the benefit of doubt.",
+      "chunk_text": "The prosecution must prove the demand and acceptance of illegal gratification beyond reasonable doubt in trap cases; material contradictions in witness testimony regarding the sequence of events and recovery of money entitle the accused to the benefit of doubt.",
+      "bench_type": "division",
+      "equivalent_citations": [
+        "2025 INSC 655"
+      ],
+      "relevance_sources": [],
+      "treatment_warning": null,
+      "char_start": 0,
+      "char_end": 0,
+      "source_query": "conscious possession of bribe money recovered from office desk drawer Section 7 PC Act bail rejected",
+      "adversarial": true,
+      "target_weakness": "The potential defense that the accused had no knowledge of the money recovered from his desk drawer, attempting to negate the element of 'acceptance'."
+    },
+    {
+      "case_id": "92d9b894-6141-48da-b8b7-b3af8b8d123f",
+      "score": 0.92368877,
+      "title": "SOUNDARAJAN versus STATE REP. BY THE INSPECTOR OF POLICE VIGILANCE ANTICORRUPTION DINDIGUL",
+      "citation": "[2023] 4 S.C.R. 133",
+      "court": "Supreme Court of India",
+      "year": 2023,
+      "date": "2023-04-17",
+      "case_type": "Criminal Appeal",
+      "judge": [
+        "Abhay S. Oka",
+        "Rajesh Bindal"
+      ],
+      "snippet": "The presumption under Section 20 of the Prevention of Corruption Act, 1988, can only be invoked upon the proof of both demand and acceptance of gratification by the accused.",
+      "chunk_text": "The presumption under Section 20 of the Prevention of Corruption Act, 1988, can only be invoked upon the proof of both demand and acceptance of gratification by the accused.",
+      "bench_type": "division",
+      "equivalent_citations": [],
+      "relevance_sources": [],
+      "treatment_warning": null,
+      "char_start": 0,
+      "char_end": 0,
+      "source_query": "applicability of presumption Section 20 Prevention of Corruption Act at bail stage to show prima facie case",
+      "adversarial": true,
+      "target_weakness": "The assertion that the statutory presumption under Section 20 PC Act is irrelevant for deciding a bail application and is purely a matter for trial."
+    },
+    {
+      "case_id": "6906aaee-672c-425d-a97b-eb23c22a785c",
+      "score": 0.9103384,
+      "title": "NEERAJ DUTTA versus STATE (GOVT. OF N.C.T. OF DELHI)",
+      "citation": "[2023] 2 S.C.R. 997",
+      "court": "Supreme Court of India",
+      "year": 2023,
+      "date": "2023-03-17",
+      "case_type": "Criminal Appeal",
+      "judge": [
+        "ABHAY S. OKA"
+      ],
+      "snippet": "The presumption under Section 20 of the PC Act can only be invoked after the basic facts of demand and acceptance are proved beyond reasonable doubt.",
+      "chunk_text": "The presumption under Section 20 of the PC Act can only be invoked after the basic facts of demand and acceptance are proved beyond reasonable doubt.",
+      "bench_type": "division",
+      "equivalent_citations": [],
+      "relevance_sources": [],
+      "treatment_warning": null,
+      "char_start": 0,
+      "char_end": 0,
+      "source_query": "applicability of presumption Section 20 Prevention of Corruption Act at bail stage to show prima facie case",
+      "adversarial": true,
+      "target_weakness": "The assertion that the statutory presumption under Section 20 PC Act is irrelevant for deciding a bail application and is purely a matter for trial."
+    },
+    {
+      "case_id": "41cec862-2c6d-45d0-9962-1b058184bbe5",
+      "score": 0.8971018,
+      "title": "PARITALA SUDHAKAR versus STATE OF TELANGANA",
+      "citation": "[2025] 6 S.C.R. 180",
+      "court": "Supreme Court of India",
+      "year": 2025,
+      "date": "2025-05-08",
+      "case_type": "Criminal Appeal",
+      "judge": [
+        "SUDHANSHU DHULIA",
+        "Ahsanuddin Amanullah"
+      ],
+      "snippet": "The presumption under Section 20 of the Prevention of Corruption Act, 1988, does not arise where the factum of demand is not proved, especially in the presence of prior animus between the complainant and the accused.",
+      "chunk_text": "The presumption under Section 20 of the Prevention of Corruption Act, 1988, does not arise where the factum of demand is not proved, especially in the presence of prior animus between the complainant and the accused.",
+      "bench_type": "division",
+      "equivalent_citations": [
+        "2025 INSC 655"
+      ],
+      "relevance_sources": [],
+      "treatment_warning": null,
+      "char_start": 0,
+      "char_end": 0,
+      "source_query": "applicability of presumption Section 20 Prevention of Corruption Act at bail stage to show prima facie case",
+      "adversarial": true,
+      "target_weakness": "The assertion that the statutory presumption under Section 20 PC Act is irrelevant for deciding a bail application and is purely a matter for trial."
+    },
+    {
+      "case_id": "f4550098-3ce3-4638-bd27-312c5e6e694b",
+      "score": 0.84726137,
+      "title": "THE DIRECTORATE OF ENFORCEMENT versus M. GOPAL REDDY & ANR",
+      "citation": "[2023] 3 S.C.R. 79",
+      "court": "Supreme Court of India",
+      "year": 2023,
+      "date": "2023-02-24",
+      "case_type": "Criminal Appeal",
+      "judge": [
+        "M.R. Shah",
+        "C.T. Ravikumar"
+      ],
+      "snippet": "In cases involving economic offenses that have a significant impact on society, courts must exercise extreme caution and be very slow in granting anticipatory bail under Section 438 of the Code of Criminal Procedure, 1973.",
+      "chunk_text": "In cases involving economic offenses that have a significant impact on society, courts must exercise extreme caution and be very slow in granting anticipatory bail under Section 438 of the Code of Criminal Procedure, 1973.",
+      "bench_type": "division",
+      "equivalent_citations": [],
+      "relevance_sources": [],
+      "treatment_warning": null,
+      "char_start": 0,
+      "char_end": 0,
+      "source_query": "bail in corruption cases denied despite investigation complete due to gravity of offence and societal impact",
+      "adversarial": true,
+      "target_weakness": "The client's reliance on general bail principles, such as completion of investigation and the period of incarceration (45 days), as sufficient grounds for release."
+    },
+    {
+      "case_id": "c0c19794-c589-4076-8b62-f09b26abb51d",
+      "score": 0.76320153,
+      "title": "AJWAR versus WASEEM AND ANOTHER",
+      "citation": "[2024] 5 S.C.R. 575",
+      "court": "Supreme Court of India",
+      "year": 2024,
+      "date": "2024-05-17",
+      "case_type": "Criminal Appeal",
+      "judge": [
+        "HIMA KOHLI"
+      ],
+      "snippet": "In determining bail for serious offences, the court must consider the nature of accusations, gravity of the crime, role of the accused, criminal antecedents, and the likelihood of witness tampering.",
+      "chunk_text": "In determining bail for serious offences, the court must consider the nature of accusations, gravity of the crime, role of the accused, criminal antecedents, and the likelihood of witness tampering.",
+      "bench_type": "division",
+      "equivalent_citations": [
+        "2024 INSC 438"
+      ],
+      "relevance_sources": [],
+      "treatment_warning": null,
+      "char_start": 0,
+      "char_end": 0,
+      "source_query": "bail in corruption cases denied despite investigation complete due to gravity of offence and societal impact",
+      "adversarial": true,
+      "target_weakness": "The client's reliance on general bail principles, such as completion of investigation and the period of incarceration (45 days), as sufficient grounds for release."
+    },
+    {
+      "case_id": "b4ec9920-a49b-4786-a6c4-e16b4952264b",
+      "score": 0.75750744,
+      "title": "SHAMBHU DEBNATH versus THE STATE OF BIHAR & ORS.",
+      "citation": "[2024] 12 S.C.R. 2083",
+      "court": "Supreme Court of India",
+      "year": 2024,
+      "date": "2024-12-19",
+      "case_type": "Criminal Appeal",
+      "judge": [
+        "VIKRAM NATH"
+      ],
+      "snippet": "Courts must evaluate the nature and gravity of the offense, the role of the accused, and the facts of the case when considering anticipatory bail; a mechanical and cryptic approach that fails to account for heinous crimes is unsustainable.",
+      "chunk_text": "Courts must evaluate the nature and gravity of the offense, the role of the accused, and the facts of the case when considering anticipatory bail; a mechanical and cryptic approach that fails to account for heinous crimes is unsustainable.",
+      "bench_type": "division",
+      "equivalent_citations": [
+        "2024 INSC 1032"
+      ],
+      "relevance_sources": [],
+      "treatment_warning": null,
+      "char_start": 0,
+      "char_end": 0,
+      "source_query": "bail in corruption cases denied despite investigation complete due to gravity of offence and societal impact",
+      "adversarial": true,
+      "target_weakness": "The client's reliance on general bail principles, such as completion of investigation and the period of incarceration (45 days), as sufficient grounds for release."
+    }
+  ],
+  "counter_arguments": [
+    {
+      "title": "Bail in Corruption Cases is an Exception; Public Interest Outweighs Liberty",
+      "legal_basis": "The respondent will argue that economic offences, particularly corruption by public servants, form a grave class of crime that undermines the fabric of society. They will contend that at the bail stage, the court must prioritize public justice and the need for a corruption-free society over the individual's liberty, especially when a prima facie case is established through a successful trap operation.",
+      "likely_precedents": [
+        "DEVINDER KUMAR BANSAL versus THE STATE OF PUNJAB [2025] 3 S.C.R. 1531"
+      ],
+      "impact": "high",
+      "rebuttal": "While acknowledging the seriousness of corruption charges, the principle in DEVINDER KUMAR BANSAL applies to anticipatory bail and cannot justify indefinite pre-trial detention where the investigation is complete and the accused has been incarcerated for 45 days. More importantly, the very foundation of the prosecution's case is flawed. The consistent mandate from the Supreme Court in SOUNDARAJAN and AMAN BHATIA is that 'demand' is a sine qua non. Without a prima facie case on this essential ingredient, the gravity of the alleged offence is irrelevant, and continued detention becomes punitive.",
+      "rebuttal_precedents": [
+        "SOUNDARAJAN versus STATE REP. BY THE INSPECTOR OF POLICE VIGILANCE ANTICORRUPTION DINDIGUL [2023] 4 S.C.R. 133",
+        "AMAN BHATIA versus STATE (GNCT OF DELHI) [2025] 6 S.C.R. 64"
+      ]
+    },
+    {
+      "title": "Recovery of Tainted Money Triggers Presumption under Section 20 PC Act",
+      "legal_basis": "The prosecution will strongly argue that the recovery of marked currency notes from the petitioner's desk drawer constitutes proven 'acceptance of undue advantage'. They will cite precedent to assert that once acceptance is proven, the court is entitled to raise the statutory presumption under Section 20 of the PC Act, shifting the burden onto the accused to prove the money was not a bribe. They will argue this presumption is strong enough to deny bail.",
+      "likely_precedents": [
+        "P. SARANGAPANI (DEAD) THR. LR PAKA SAROJA versus STATE OF ANDHRA PRADESH [2023] 12 S.C.R. 433",
+        "SITA SOREN versus UNION OF INDIA [2024] 3 S.C.R. 462"
+      ],
+      "impact": "high",
+      "rebuttal": "This argument is legally untenable in light of the Full Bench decision in THE STATE OF KARNATAKA versus CHANDRASHA, which authoritatively settled that the presumption under Section 20 can only be raised 'once these foundational facts [demand and acceptance] are proved'. The precedent in P. SARANGAPANI must be read subject to this Full Bench ruling. The prosecution has offered no evidence of 'demand'. Therefore, the foundational facts are not met, and the presumption cannot be invoked. Mere recovery from a drawer does not automatically prove 'acceptance' in the absence of demand.",
+      "rebuttal_precedents": [
+        "THE STATE OF KARNATAKA versus CHANDRASHA [2024] 11 S.C.R. 1472",
+        "SOUNDARAJAN versus STATE REP. BY THE INSPECTOR OF POLICE VIGILANCE ANTICORRUPTION DINDIGUL [2023] 4 S.C.R. 133"
+      ]
+    },
+    {
+      "title": "Proof of Demand is a Matter of Trial; Circumstantial Evidence Exists",
+      "legal_basis": "The respondent will contend that the absence of direct evidence of demand is not fatal at the bail stage. They will argue that demand can be proven through circumstantial evidence during the trial, and the court should not conduct a mini-trial. They will posit that the successful trap operation, the presence of the complainant, and the recovery of money from the accused's control are strong circumstances pointing towards a pre-existing demand.",
+      "likely_precedents": [
+        "NEERAJ DUTTA versus STATE (GOVT. OF N.C.T. OF DELHI) [2023] 2 S.C.R. 997",
+        "MIR MUSTAFA ALI HASMI versus THE STATE OF A.P. [2024] 7 S.C.R. 640"
+      ],
+      "impact": "medium",
+      "rebuttal": "While demand can be proven by circumstantial evidence, the same precedents cited by the prosecution set a very high bar. NEERAJ DUTTA requires that the circumstances be 'consistent only with the hypothesis of a demand for a bribe'. Recovery from a desk drawer is not exclusively consistent with a demand; it is equally consistent with the money being planted. Furthermore, MIR MUSTAFA ALI HASMI cautions against relying on such evidence unless it is of an 'unimpeachable character'. The prosecution has failed to present any prima facie evidence, direct or circumstantial, that meets this threshold.",
+      "rebuttal_precedents": [
+        "NEERAJ DUTTA versus STATE (GOVT. OF N.C.T. OF DELHI) [2023] 2 S.C.R. 997",
+        "MIR MUSTAFA ALI HASMI versus THE STATE OF A.P. [2024] 7 S.C.R. 640",
+        "MINI versus CBI/SPE COCHIN [2025] 8 S.C.R. 799"
+      ]
+    },
+    {
+      "title": "Two Prior Bail Applications Have Been Rejected by the Special Judge",
+      "legal_basis": "This is a procedural argument. The prosecution will emphasize that the Special Judge, who is intimately familiar with the case diary and investigation records, has already considered the matter on merits twice and found sufficient grounds to deny bail. They will argue that no substantial change in circumstances has occurred to warrant the High Court taking a different view.",
+      "likely_precedents": [],
+      "impact": "low",
+      "rebuttal": "The rejection of prior bail applications by the Special Judge does not act as a bar on the High Court's wider jurisdiction under Section 439 CrPC (now Section 483 BNSS). A significant change in circumstances has indeed occurred: the petitioner has now been incarcerated for 45 days, and the investigation is substantially complete, removing any risk of tampering. More importantly, this application is founded on a precise legal argument based on binding Supreme Court precedents like CHANDRASHA, which clarify the law on 'demand' and 'presumption', providing a fresh and compelling basis for the grant of bail.",
+      "rebuttal_precedents": [
+        "THE STATE OF KARNATAKA versus CHANDRASHA [2024] 11 S.C.R. 1472"
+      ]
+    }
+  ],
+  "argument_order": [
+    0,
+    1,
+    2
+  ],
+  "contradictions": [
+    {
+      "case_a": "P. SARANGAPANI (DEAD) THR. LR PAKA SAROJA versus STATE OF ANDHRA PRADESH",
+      "case_b": "NEERAJ DUTTA versus STATE (GOVT. OF N.C.T. OF DELHI)",
+      "description": "There is a subtle tension in the articulation of the law regarding the presumption under Section 20 of the Prevention of Corruption Act, 1988. The holding in P. SARANGAPANI suggests that once the 'acceptance of undue advantage' is proven, the court is 'entitled' to raise the rebuttable presumption. This could be interpreted as suggesting that proof of acceptance alone is sufficient to shift the burden to the accused. However, the Constitution Bench in NEERAJ DUTTA, and numerous other benches (e.g., SOUNDARAJAN, THE STATE OF KARNATAKA v. CHANDRASHA), have held that proof of 'demand and acceptance' is a sine qua non for the offence itself. These cases clarify that the presumption under Section 20 is invoked only after the foundational facts, including demand, are established by the prosecution.",
+      "resolution": "The law as laid down by the Constitution Bench in NEERAJ DUTTA is the binding precedent. It mandates that proof of demand for illegal gratification is a sine qua non for constituting the offence under the PC Act. The presumption under Section 20 cannot be used to dispense with the primary requirement of proving demand. Therefore, the holding in P. SARANGAPANI must be read in harmony with the NEERAJ DUTTA judgment, meaning the 'acceptance' referred to must be one that follows a proven 'demand'."
+    }
+  ],
+  "confidence": 0.8707544943076924,
+  "memo": "**MEMORANDUM OF ARGUMENTS**\n**FOR THE PETITIONER: RAJESH KUMAR**\n\n**IN THE HIGH COURT OF DELHI AT NEW DELHI**\n**(CRIMINAL MISCELLANEOUS JURISDICTION)**\n\n**BAIL APPLICATION NO. ______ OF 2025**\n(Under Section 439 of the Code of Criminal Procedure, 1973 read with Section 483 of the Bharatiya Nagarik Suraksha Sanhita, 2023)\n\n**IN THE MATTER OF:**\nRajesh Kumar\n... Petitioner/Accused\nVersus\nState (NCT of Delhi) through the Anti-Corruption Branch\n... Respondent\n\n**FIR No.:** [To be inserted]\n**Date of Registration:** 15 March 2025\n**Police Station:** Anti-Corruption Branch, Delhi\n**Under Section:** 7 of the Prevention of Corruption Act, 1988 (as amended)\n\n---\n\n### **1. EXECUTIVE SUMMARY**\n\nThis memorandum outlines the legal strategy and substantive arguments for securing regular bail for the Petitioner, Mr. Rajesh Kumar, a 35-year-old clerk in the Delhi Municipal Corporation, who has been in judicial custody since 15 March 2025 (45 days). The Petitioner is accused of an offence under Section 7 of the Prevention of Corruption Act, 1988 (\"PC Act\"), following a trap operation where marked currency was allegedly recovered from his desk drawer. The Special Judge has denied bail on two prior occasions, citing the gravity of the offence and the recovery of currency.\n\nThe cornerstone of the present application before this Hon'ble High Court is the settled position of law, reiterated by multiple binding precedents of the Hon'ble Supreme Court, that proof of 'demand' of illegal gratification is a *sine qua non* for constituting an offence under Section 7 of the PC Act. The prosecution's case, as it stands, is devoid of any prima facie evidence\u2014direct or circumstantial\u2014of such a demand being made by the Petitioner. It rests solely on the recovery of currency, which the Petitioner maintains was planted due to a pre-existing grudge held by the complainant.\n\nThis memorandum will demonstrate that in the absence of the foundational ingredient of 'demand', the prosecution's case is prima facie weak, the statutory presumption under Section 20 of the PC Act is inapplicable, and the continued incarceration of the Petitioner amounts to pre-trial punishment. Coupled with the Petitioner's clean antecedents, deep community roots, and the completion of the substantive investigation, a compelling case for the grant of bail is made out.\n\n### **2. CASE STRENGTH ASSESSMENT**\n\n**Overall Prognosis: Moderate**\n\nThe application presents a strong legal challenge to a factually adverse situation. While the recovery of marked currency in a trap case is a significant hurdle, the legal framework established by the Supreme Court provides a robust foundation for our arguments.\n\n**Key Strengths:**\n\n1.  **Absence of 'Demand' Evidence:** The prosecution's failure to produce any evidence of demand is our strongest point. The law is unequivocally on our side, as established by binding Supreme Court judgments like **SOUNDARAJAN** [1] and **AMAN BHATIA** [2], which hold that mere recovery is insufficient.\n2.  **Inapplicability of Statutory Presumption:** The authoritative Full Bench ruling in **THE STATE OF KARNATAKA versus CHANDRASHA** [4] mandates that the presumption under Section 20 of the PC Act can only be invoked *after* the foundational facts of demand and acceptance are proven. This directly counters the prosecution's primary legal weapon.\n3.  **Period of Incarceration:** The Petitioner has been in custody for 45 days. This prolonged period weakens the State's argument regarding the need for further investigation or the risk of tampering, as the crucial evidence has already been secured.\n4.  **Petitioner's Profile:** The Petitioner has no prior criminal record, is a permanent government employee, and has a family with minor children to support. This establishes his deep roots in society and negates any flight risk.\n\n**Key Weaknesses:**\n\n1.  **Factual Recovery of Currency:** The recovery of marked currency from the Petitioner's desk drawer is strong circumstantial evidence that the prosecution will heavily rely upon to create a prima facie case of 'acceptance'.\n2.  **High Bar for Bail in Corruption Cases:** The prosecution will cite **DEVINDER KUMAR BANSAL** [5] to argue that economic offences require a stricter approach to bail, where public interest outweighs personal liberty.\n3.  **Prior Bail Rejections:** The fact that the Special Judge has denied bail twice creates a persuasive burden. We must demonstrate a significant change in circumstances or a patent error of law in the lower court's reasoning.\n\n### **3. ARGUMENTS**\n\nThe following arguments are submitted for the consideration of this Hon'ble Court:\n\n**3.1. Argument 1: Absence of Prima Facie Proof of 'Demand' Renders the Prosecution Case Untenable for Bail Denial**\n\n*   **ISSUE:** Whether the Petitioner is entitled to bail when the prosecution's case, resting solely on the recovery of currency, fails to prima facie establish the essential ingredient of 'demand' for an offence under Section 7 of the Prevention of Corruption Act, 1988.\n\n*   **RULE:** The Hon'ble Supreme Court has consistently and authoritatively held that proof of demand for illegal gratification is a *sine qua non* for constituting an offence under Section 7 of the PC Act. Mere recovery of tainted money, without proof of a preceding demand, is insufficient to sustain a charge, let alone deny liberty at the pre-trial stage.\n    *   **SOUNDARAJAN versus STATE** [1] (Division Bench): The Court held that \"demand for gratification and its acceptance are sine qua non\" for constituting the offence.\n    *   **AMAN BHATIA versus STATE (GNCT OF DELHI)** [2] (Division Bench): It was reiterated that \"mere recovery of tainted money without proof of demand is insufficient.\"\n    *   **NEERAJ DUTTA versus STATE (GOVT. OF N.C.T. OF DELHI)** [3] (Constitution Bench): While permitting proof of demand by circumstantial evidence, the five-Judge Bench affirmed that \"proof of demand... is an indispensable essentiality\" for an offence under Section 7.\n\n*   **APPLICATION:** In the instant case, the prosecution's entire edifice is built upon the recovery of Rs. 50,000 from the Petitioner's desk drawer. The facts presented in the FIR and relied upon by the learned Special Judge are conspicuously silent on the crucial element of 'demand'. There is no allegation of any prior conversation, no transcript of a recorded demand, and no witness to any such demand being made by the Petitioner. The Petitioner's consistent defence is that the money was planted by the complainant, Suresh Gupta, who bore a grudge against him for the prior rejection of a building permit on legitimate grounds. In the absence of any material to prima facie establish demand, the prosecution fails to make out a foundational ingredient of the offence. Relying solely on recovery is directly contrary to the *ratio decidendi* laid down in **SOUNDARAJAN** [1] and **AMAN BHATIA** [2].\n\n*   **CONCLUSION:** It is humbly submitted that due to the complete absence of evidence establishing the essential ingredient of demand, the prosecution has failed to establish a prima facie case. Consequently, the continued detention of the Petitioner is illegal and unjust, and he is entitled to be enlarged on bail.\n\n**3.2. Argument 2: The Statutory Presumption under Section 20 of the PC Act is Not Attracted**\n\n*   **ISSUE:** Whether the statutory presumption of guilt under Section 20 of the PC Act can be invoked against the Petitioner at the bail stage when the foundational facts of demand and acceptance have not been proven by the prosecution.\n\n*   **RULE:** The legal presumption under Section 20 of the PC Act\u2014that gratification was accepted as a motive or reward for an official act\u2014is not automatic. It can only be raised by the court *after* the prosecution has first discharged its burden of proving the foundational facts of demand for and acceptance of the said gratification.\n    *   **THE STATE OF KARNATAKA versus CHANDRASHA** [4] (Full Bench): The Supreme Court authoritatively held that a court is mandated to raise the presumption under Section 20 only \"once these foundational facts [demand and acceptance] are proved.\" This ruling by a larger bench is the definitive law on the subject.\n    *   **SOUNDARAJAN versus STATE** [1] (Division Bench): The Court clarified that the presumption can only be invoked upon proof of both demand and acceptance.\n\n*   **APPLICATION:** The prosecution's argument for denying bail heavily leans on an implicit invocation of the presumption under Section 20, suggesting that the recovery itself proves guilt. This approach is legally flawed and has been expressly deprecated by the Hon'ble Supreme Court. As established in the preceding argument, the prosecution has failed to adduce any evidence of 'demand'. Since this primary foundational fact is unproven, the question of raising a presumption under Section 20 does not arise. To draw an adverse inference against the Petitioner at the bail stage based on a presumption that is not legally available would be a grave error of law. The recovery from a desk drawer, especially in the context of a plausible defence of planting due to animus, cannot be equated with conscious '\n\n---\n**Disclaimer**: This is AI-generated legal analysis produced by Smriti AI. It does not constitute legal advice. All citations, holdings, and legal propositions must be independently verified by a qualified advocate before reliance. Consult a practising lawyer for advice specific to your situation.",
+  "precedent_count": 13,
+  "search_result_count": 13,
+  "execution_time_seconds": 299.9819347858429
+}

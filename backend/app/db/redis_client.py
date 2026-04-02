@@ -1,5 +1,6 @@
 """Async Redis client singleton."""
 
+import asyncio
 import logging
 
 import redis.asyncio as aioredis
@@ -12,22 +13,28 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _redis_client: aioredis.Redis | None = None
+_redis_lock = asyncio.Lock()
 
 
 async def get_redis() -> aioredis.Redis | None:
     global _redis_client
     if not settings.redis_url:
         return None
-    if _redis_client is None:
+    if _redis_client is not None:
+        return _redis_client
+    async with _redis_lock:
+        # Double-check after acquiring lock
+        if _redis_client is not None:
+            return _redis_client
         try:
-            _redis_client = aioredis.from_url(
+            client = aioredis.from_url(
                 settings.redis_url, decode_responses=True
             )
             # Verify connection works (fail fast instead of crashing on first use)
-            await _redis_client.ping()
+            await client.ping()
+            _redis_client = client
         except (RedisConnectionError, RedisTimeoutError, AuthenticationError, OSError) as exc:
             logger.error("Redis connection failed: %s", exc)
-            _redis_client = None
             return None
     return _redis_client
 

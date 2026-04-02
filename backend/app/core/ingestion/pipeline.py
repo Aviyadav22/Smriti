@@ -14,6 +14,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -200,21 +201,28 @@ async def ingest_judgment(
             timeout=200.0,  # Longer timeout for PDF multimodal
         )
 
-    # PDF storage is independent of LLM — run in parallel
+    # PDF storage: write the canonical GCS path into DB regardless of whether
+    # the PDF is actually uploaded now or later (bulk upload after ingestion).
+    # Format: gs://{bucket}/cases/{case_id}/{filename}.pdf
     storage_dest = f"cases/{case_id}/{_safe_filename(parquet_metadata)}"
+    _GCS_BUCKET_FOR_PATH = os.environ.get("GCS_PDF_BUCKET", settings.gcs_bucket_name)
+    canonical_gcs_path = f"gs://{_GCS_BUCKET_FOR_PATH}/{storage_dest}"
 
     async def _store_pdf() -> str:
         try:
-            return await storage.store(pdf_path, storage_dest)
+            actual_path = await storage.store(pdf_path, storage_dest)
+            return actual_path
         except (OSError, PermissionError, FileNotFoundError) as exc:
-            logger.error("Failed to store PDF %s: %s", pdf_path, exc)
-            return pdf_path  # fallback: keep original path
+            logger.warning("PDF storage skipped for %s: %s (will bulk-upload later)", pdf_path, exc)
+            return canonical_gcs_path  # Use future GCS path even if upload fails
 
     llm_task = asyncio.create_task(_llm_extract_with_retry())
     storage_task = asyncio.create_task(_store_pdf())
 
     # Await storage (fast) — won't block LLM
     storage_path = await storage_task
+    # Always save the canonical GCS path in DB for retrieval consistency
+    storage_path = canonical_gcs_path
 
     # Await LLM (slow) — ran concurrently with storage.
     # HARD FAIL: If LLM extraction fails, abort the entire case.
@@ -1094,9 +1102,10 @@ async def _upsert_vectors(
             },
         })
 
-    # Upsert in batches of 100 (Pinecone recommended batch size)
-    for i in range(0, len(vectors), 100):
-        await vector_store.upsert(vectors[i : i + 100])
+    # Upsert in batches (Pinecone recommended: 100, turbo mode: 300)
+    _upsert_batch = int(os.environ.get("PINECONE_UPSERT_BATCH", "100"))
+    for i in range(0, len(vectors), _upsert_batch):
+        await vector_store.upsert(vectors[i : i + _upsert_batch])
 
 
 async def _upsert_proposition_vectors(

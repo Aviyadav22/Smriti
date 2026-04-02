@@ -125,25 +125,35 @@ async def _get_rate_limiter() -> RateLimiter:
 
 import threading
 import time as _time
+from collections import OrderedDict
 
 _mem_lock = threading.Lock()
-_mem_buckets: dict[str, list[float]] = {}
+_mem_buckets: OrderedDict[str, list[float]] = OrderedDict()
+
+_MAX_BUCKETS = 10000
 
 
 def _in_memory_check(key: str, limit: int, window_seconds: int) -> bool:
     """Simple in-memory sliding window fallback when Redis is down."""
     now = _time.time()
     with _mem_lock:
-        if len(_mem_buckets) > 10000:
-            _mem_buckets.clear()
+        # Evict oldest entries when over capacity (LRU-style, not clear-all)
+        while len(_mem_buckets) > _MAX_BUCKETS:
+            _mem_buckets.popitem(last=False)
+
         entries = _mem_buckets.get(key, [])
         # Prune expired entries
         entries = [t for t in entries if t > now - window_seconds]
+        if not entries:
+            # Clean up empty keys to prevent unbounded growth
+            _mem_buckets.pop(key, None)
         if len(entries) >= limit:
             _mem_buckets[key] = entries
             return False
         entries.append(now)
         _mem_buckets[key] = entries
+        # Move to end (most recently used)
+        _mem_buckets.move_to_end(key)
         return True
 
 

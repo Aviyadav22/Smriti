@@ -1,0 +1,10 @@
+# Service account keys — NEVER commit
+accounts/*.json
+accounts/env_*
+!accounts/env_template
+
+# Runtime artifacts
+logs/
+runs/
+*.log
+__pycache__/

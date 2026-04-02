@@ -165,7 +165,11 @@ export default function ResearchAgentPage() {
 
     useEffect(() => {
         if (!authLoading && !isAuthenticated) router.push("/login");
-    }, [authLoading, isAuthenticated, router]);
+        // Clear stale auth errors when user is authenticated (e.g. after re-login)
+        if (!authLoading && isAuthenticated && error?.toLowerCase().includes("session expired")) {
+            setError(null);
+        }
+    }, [authLoading, isAuthenticated, router, error]);
 
     // Cleanup on unmount
     useEffect(() => {
@@ -536,7 +540,13 @@ export default function ResearchAgentPage() {
                 { query: query.trim() },
                 handleEvent,
                 (err) => {
-                    setError(err.message);
+                    const msg = err.message || "Research failed";
+                    // Replace generic auth errors with a more helpful message
+                    if (msg.toLowerCase().includes("session expired") || msg.toLowerCase().includes("unauthorized")) {
+                        setError("Authentication error. Please sign in again.");
+                    } else {
+                        setError(msg);
+                    }
                     setIsRunning(false);
                 },
             );

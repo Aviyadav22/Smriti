@@ -31,7 +31,22 @@ class GCSStorage:
     """
 
     def __init__(self) -> None:
-        self._client = storage.Client(project=settings.gcs_project_id)
+        import os
+        from pathlib import Path
+
+        creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        if creds_path and Path(creds_path).exists():
+            from google.oauth2 import service_account as sa
+            credentials = sa.Credentials.from_service_account_file(
+                creds_path,
+                scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            )
+            self._client = storage.Client(
+                project=settings.gcs_project_id,
+                credentials=credentials,
+            )
+        else:
+            self._client = storage.Client(project=settings.gcs_project_id)
         self._bucket = self._client.bucket(settings.gcs_bucket_name)
 
     def _parse_gs_path(self, storage_path: str) -> str:

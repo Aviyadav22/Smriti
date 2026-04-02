@@ -97,6 +97,9 @@ async def create_chat(
                         graph_store=graph_store,
                     ):
                         yield f"data: {json.dumps(event.data | {'type': event.type})}\n\n"
+            except asyncio.CancelledError:
+                logger.info("Chat SSE stream cancelled (client disconnected) for user %s", user.sub)
+                return
             except TimeoutError:
                 logger.warning("Chat SSE stream timed out after 5 minutes")
                 yield f"data: {json.dumps({'type': 'error', 'message': 'Stream timed out after 5 minutes'})}\n\n"
@@ -174,6 +177,9 @@ async def send_message(
                         graph_store=graph_store,
                     ):
                         yield f"data: {json.dumps(event.data | {'type': event.type})}\n\n"
+            except asyncio.CancelledError:
+                logger.info("Chat SSE stream cancelled (client disconnected) for session %s", session_id)
+                return
             except TimeoutError:
                 logger.warning("Chat SSE stream timed out after 5 minutes")
                 yield f"data: {json.dumps({'type': 'error', 'message': 'Stream timed out after 5 minutes'})}\n\n"

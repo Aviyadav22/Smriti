@@ -5,7 +5,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +28,39 @@ from app.security.rbac import get_current_user
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# ---------------------------------------------------------------------------
+# Refresh token cookie helpers
+# ---------------------------------------------------------------------------
+
+_REFRESH_COOKIE = "smriti_refresh"
+_REFRESH_COOKIE_PATH = "/api/v1/auth"
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    """Set refresh token as httpOnly cookie on the response."""
+    is_prod = settings.app_env == "production"
+    response.set_cookie(
+        key=_REFRESH_COOKIE,
+        value=token,
+        httponly=True,
+        secure=is_prod,
+        samesite="lax",
+        path=_REFRESH_COOKIE_PATH,
+        max_age=settings.jwt_refresh_token_expire_days * 86400,
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    """Clear refresh token cookie."""
+    is_prod = settings.app_env == "production"
+    response.delete_cookie(
+        key=_REFRESH_COOKIE,
+        httponly=True,
+        secure=is_prod,
+        samesite="lax",
+        path=_REFRESH_COOKIE_PATH,
+    )
 
 
 class RegisterRequest(BaseModel):
@@ -57,7 +90,8 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    """Legacy body-based refresh. Prefer reading from httpOnly cookie."""
+    refresh_token: str | None = None
 
 
 class LogoutRequest(BaseModel):
@@ -66,14 +100,15 @@ class LogoutRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
     expires_in: int
+    refresh_token: str = ""  # Included as fallback for dev proxy; httpOnly cookie is primary
 
 
 @router.post("/register", status_code=201, dependencies=[Depends(rate_limit_dependency("5/minute"))])
 async def register(
     body: RegisterRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
     """Register a new user with consent and return JWT tokens (auto-login)."""
@@ -134,12 +169,13 @@ async def register(
 
     # Auto-login: generate tokens just like the login endpoint
     access_token = create_access_token(user_id, "researcher")
-    refresh_token = create_refresh_token(user_id)
+    refresh_tok = create_refresh_token(user_id)
+    _set_refresh_cookie(response, refresh_tok)
 
     return TokenResponse(
         access_token=access_token,
-        refresh_token=refresh_token,
         expires_in=settings.jwt_access_token_expire_minutes * 60,
+        refresh_token=refresh_tok,
     )
 
 
@@ -147,6 +183,7 @@ async def register(
 async def login(
     body: LoginRequest,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
     """Authenticate and return JWT token pair."""
@@ -163,8 +200,9 @@ async def login(
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     # Check account lock
-    if user["locked_until"] and user["locked_until"] > datetime.now(timezone.utc):
-        remaining = (user["locked_until"] - datetime.now(timezone.utc)).seconds // 60 + 1
+    now = datetime.now(timezone.utc)
+    if user["locked_until"] and user["locked_until"] > now:
+        remaining = (user["locked_until"] - now).seconds // 60 + 1
         raise HTTPException(
             status_code=423,
             detail=f"Account temporarily locked. Try again in {remaining} minute(s).",
@@ -214,7 +252,8 @@ async def login(
     await db.commit()
 
     access_token = create_access_token(str(user["id"]), user["role"])
-    refresh_token = create_refresh_token(str(user["id"]))
+    refresh_tok = create_refresh_token(str(user["id"]))
+    _set_refresh_cookie(response, refresh_tok)
 
     await create_audit_log(
         db=db,
@@ -228,19 +267,28 @@ async def login(
 
     return TokenResponse(
         access_token=access_token,
-        refresh_token=refresh_token,
         expires_in=settings.jwt_access_token_expire_minutes * 60,
+        refresh_token=refresh_tok,
     )
 
 
 @router.post("/refresh", dependencies=[Depends(rate_limit_dependency("10/minute"))])
 async def refresh_token(
-    body: RefreshRequest,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
+    body: RefreshRequest | None = None,
+    smriti_refresh: str | None = Cookie(default=None),
 ) -> TokenResponse:
-    """Refresh access token using refresh token with rotation."""
-    payload = await verify_refresh_token(body.refresh_token)
+    """Refresh access token using refresh token with rotation.
+
+    Reads refresh token from httpOnly cookie (preferred) or legacy request body.
+    """
+    token = smriti_refresh or (body.refresh_token if body else None)
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing refresh token")
+
+    payload = await verify_refresh_token(token)
 
     # Fetch the user's actual role from the database (refresh token has role="refresh")
     result = await db.execute(
@@ -249,10 +297,12 @@ async def refresh_token(
     )
     user = result.mappings().one_or_none()
     if user is None or not user["is_active"]:
+        _clear_refresh_cookie(response)
         raise HTTPException(status_code=401, detail="User not found or deactivated")
 
     access_token = create_access_token(payload.sub, user["role"])
-    new_refresh_token = create_refresh_token(payload.sub)
+    new_refresh_tok = create_refresh_token(payload.sub)
+    _set_refresh_cookie(response, new_refresh_tok)
 
     # Revoke the old refresh token (rotation)
     await revoke_token(payload.jti, int(payload.exp.timestamp()))
@@ -269,7 +319,6 @@ async def refresh_token(
 
     return TokenResponse(
         access_token=access_token,
-        refresh_token=new_refresh_token,
         expires_in=settings.jwt_access_token_expire_minutes * 60,
     )
 
@@ -280,23 +329,30 @@ async def refresh_token(
     dependencies=[Depends(rate_limit_dependency("20/minute"))],
 )
 async def logout(
-    body: LogoutRequest | None = None,
+    response: Response,
     current_user: TokenPayload = Depends(get_current_user),
+    body: LogoutRequest | None = None,
+    smriti_refresh: str | None = Cookie(default=None),
 ) -> dict[str, str]:
     """Revoke the current access token and optional refresh token (logout).
 
-    Adds the token JTIs to the Redis revocation list so they can no longer
-    be used for authentication.
+    Reads refresh token from httpOnly cookie (preferred) or legacy request body.
+    Clears the refresh cookie on the response.
     """
     await revoke_token(current_user.jti, int(current_user.exp.timestamp()))
-    if body and body.refresh_token:
+
+    # Revoke refresh token from cookie or body
+    refresh_tok = smriti_refresh or (body.refresh_token if body else None)
+    if refresh_tok:
         try:
-            refresh_payload = await verify_refresh_token(body.refresh_token)
+            refresh_payload = await verify_refresh_token(refresh_tok)
             await revoke_token(refresh_payload.jti, int(refresh_payload.exp.timestamp()))
         except (HTTPException, ValueError, RuntimeError) as exc:
             logger.warning(
                 "Failed to revoke refresh token during logout: %s", exc
             )
+
+    _clear_refresh_cookie(response)
     return {"detail": "Successfully logged out"}
 
 
@@ -379,6 +435,32 @@ async def delete_account(
 
     # Revoke current token
     await revoke_token(current_user.jti, int(current_user.exp.timestamp()))
+
+    # Best-effort cleanup of external stores (Pinecone vectors, Neo4j nodes, Redis cache)
+    try:
+        from app.core.dependencies import get_vector_store, get_graph_store
+        vector_store = get_vector_store()
+        if vector_store and hasattr(vector_store, "delete_by_metadata"):
+            await vector_store.delete_by_metadata({"user_id": uid})
+    except Exception as e:
+        logger.warning("Failed to clean Pinecone vectors for deleted user %s: %s", uid[:8], e)
+
+    try:
+        graph_store = get_graph_store()
+        if graph_store and hasattr(graph_store, "delete_user_data"):
+            await graph_store.delete_user_data(uid)
+    except Exception as e:
+        logger.warning("Failed to clean Neo4j data for deleted user %s: %s", uid[:8], e)
+
+    try:
+        from app.db.redis_client import get_redis
+        redis_client = await get_redis()
+        if redis_client:
+            # Scan and delete user-specific cache keys
+            async for key in redis_client.scan_iter(match=f"user:{uid}:*", count=100):
+                await redis_client.delete(key)
+    except Exception as e:
+        logger.warning("Failed to clean Redis cache for deleted user %s: %s", uid[:8], e)
 
     await create_audit_log(
         db=db,
