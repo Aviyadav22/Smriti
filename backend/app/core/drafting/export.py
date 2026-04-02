@@ -578,3 +578,117 @@ async def export_research_memo_pdf(
     doc.build(flowables)
     buf.seek(0)
     return buf.read()
+
+
+# ---------------------------------------------------------------------------
+# Filing package export (ZIP)
+# ---------------------------------------------------------------------------
+
+
+async def export_filing_package(
+    content: str,
+    template: DocumentTemplate,
+    *,
+    title: str = "",
+    court_profile: "CourtProfile | None" = None,
+    affidavit: str = "",
+    vakalatnama: bool = True,
+    annexure_index: list[dict] | None = None,
+) -> bytes:
+    """Export a complete filing package as a ZIP file.
+
+    Contains: main document (DOCX), affidavit (DOCX if provided),
+    vakalatnama template (DOCX), and annexure index (DOCX).
+    """
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # 1. Main document
+        docx_bytes = await export_to_docx(
+            content, template, title=title,
+            court_profile=court_profile,
+        )
+        safe_name = template.doc_type.replace(" ", "_")
+        zf.writestr(f"01_main_{safe_name}.docx", docx_bytes)
+
+        # 2. Affidavit (if provided)
+        if affidavit:
+            aff_bytes = await export_to_docx(
+                affidavit, template, title="Affidavit",
+                court_profile=court_profile,
+            )
+            zf.writestr("02_affidavit.docx", aff_bytes)
+
+        # 3. Vakalatnama template
+        if vakalatnama:
+            vak_content = _generate_vakalatnama_template(template)
+            vak_doc = Document()
+            for section in vak_doc.sections:
+                section.top_margin = Inches(1)
+                section.bottom_margin = Inches(1)
+                section.left_margin = Inches(1)
+                section.right_margin = Inches(1)
+            style = vak_doc.styles["Normal"]
+            style.font.name = "Times New Roman"
+            style.font.size = Pt(12)
+            title_para = vak_doc.add_heading("VAKALATNAMA", level=0)
+            title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for run in title_para.runs:
+                run.font.name = "Times New Roman"
+            para = vak_doc.add_paragraph(vak_content)
+            para.style.font.name = "Times New Roman"
+            vak_buf = io.BytesIO()
+            vak_doc.save(vak_buf)
+            vak_buf.seek(0)
+            zf.writestr("03_vakalatnama.docx", vak_buf.read())
+
+        # 4. Annexure index
+        if annexure_index:
+            idx_doc = Document()
+            style = idx_doc.styles["Normal"]
+            style.font.name = "Times New Roman"
+            style.font.size = Pt(12)
+            idx_doc.add_heading("INDEX OF ANNEXURES", level=0)
+            table = idx_doc.add_table(rows=1, cols=3)
+            table.style = "Table Grid"
+            hdr = table.rows[0].cells
+            hdr[0].text = "Sr. No."
+            hdr[1].text = "Description"
+            hdr[2].text = "Page No."
+            for i, ann in enumerate(annexure_index, 1):
+                row = table.add_row().cells
+                row[0].text = str(i)
+                row[1].text = ann.get("description", "")
+                row[2].text = ann.get("page", "")
+            idx_buf = io.BytesIO()
+            idx_doc.save(idx_buf)
+            idx_buf.seek(0)
+            zf.writestr("04_annexure_index.docx", idx_buf.read())
+
+    buf.seek(0)
+    return buf.read()
+
+
+def _generate_vakalatnama_template(template: DocumentTemplate) -> str:
+    """Generate a standard vakalatnama text template."""
+    return (
+        "I/We, the undersigned, do hereby appoint and retain "
+        "Shri/Smt. _________________, Advocate, "
+        "as my/our Advocate to appear, act and plead on my/our behalf "
+        f"in connection with the {template.display_name} "
+        "and to conduct and prosecute (or defend) the same and all "
+        "proceedings that may be taken in respect of any application "
+        "connected with the same or any decree or order passed therein.\n\n"
+        "AND I/We do hereby authorize the said Advocate to sign, verify "
+        "and present pleadings, applications, and other documents.\n\n"
+        "AND I/We agree to ratify all acts done by the said Advocate "
+        "in pursuance of this authority.\n\n"
+        "Dated this ___ day of _____________, 20___\n\n"
+        "________________________\n"
+        "Signature of the Client\n\n"
+        "Accepted:\n\n"
+        "________________________\n"
+        "Advocate\n"
+        "Enrollment No.: _______________\n"
+    )

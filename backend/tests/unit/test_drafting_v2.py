@@ -1,6 +1,8 @@
 """Tests for Drafting Agent V2 features."""
 from __future__ import annotations
 
+import io
+
 import pytest
 
 from app.core.drafting.court_profiles import COURT_PROFILES
@@ -76,3 +78,46 @@ class TestExportWithCourtProfile:
         result = await export_to_pdf(content, template, court_profile=profile)
         assert isinstance(result, bytes)
         assert len(result) > 100
+
+
+class TestFilingPackage:
+    @pytest.mark.asyncio
+    async def test_filing_package_creates_zip(self) -> None:
+        import zipfile
+        from app.core.drafting.export import export_filing_package
+        template = get_template("bail_application")
+        content = "## FACTS\n\nTest content."
+        result = await export_filing_package(content, template)
+        assert isinstance(result, bytes)
+        # Verify it's a valid ZIP
+        buf = io.BytesIO(result)
+        with zipfile.ZipFile(buf, "r") as zf:
+            names = zf.namelist()
+            assert any("main_" in n for n in names)
+            assert any("vakalatnama" in n for n in names)
+
+    @pytest.mark.asyncio
+    async def test_filing_package_includes_affidavit(self) -> None:
+        import zipfile
+        from app.core.drafting.export import export_filing_package
+        template = get_template("bail_application")
+        content = "## FACTS\n\nTest."
+        affidavit = "## AFFIDAVIT\n\nI affirm..."
+        result = await export_filing_package(content, template, affidavit=affidavit)
+        buf = io.BytesIO(result)
+        with zipfile.ZipFile(buf, "r") as zf:
+            names = zf.namelist()
+            assert any("affidavit" in n for n in names)
+
+    @pytest.mark.asyncio
+    async def test_filing_package_includes_annexure_index(self) -> None:
+        import zipfile
+        from app.core.drafting.export import export_filing_package
+        template = get_template("bail_application")
+        content = "## FACTS\n\nTest."
+        annexures = [{"description": "Copy of FIR", "page": "1"}, {"description": "ID Proof", "page": "5"}]
+        result = await export_filing_package(content, template, annexure_index=annexures)
+        buf = io.BytesIO(result)
+        with zipfile.ZipFile(buf, "r") as zf:
+            names = zf.namelist()
+            assert any("annexure_index" in n for n in names)
