@@ -431,21 +431,44 @@ async def cmd_run(step: str, accounts: list[str] | None = None) -> None:
         log_file = LOGS_DIR / f"worker_{acc}.log"
 
         # Write a per-worker wrapper that processes only its assigned years
-        # batch_ingest_vertex.py supports --year (single year), so we loop
+        # with a GLOBAL case counter that stops across all years when limit reached.
         worker_script = run_dir / f"worker_{acc}.py"
         worker_script.write_text(
-            f"""import subprocess, sys
+            f"""import subprocess, sys, json
+from pathlib import Path
+
+GLOBAL_LIMIT = {limit}
+global_count = 0
+
 for yr in range({start_year}, {int(end_year) + 1}):
-    print(f"=== Year {{yr}} ===", flush=True)
+    remaining = GLOBAL_LIMIT - global_count
+    if remaining <= 0:
+        print(f"Global limit reached ({{global_count}}/{{GLOBAL_LIMIT}}). Stopping.", flush=True)
+        break
+    print(f"=== Year {{yr}} (global: {{global_count}}/{{GLOBAL_LIMIT}}, remaining: {{remaining}}) ===", flush=True)
     ret = subprocess.run([
         sys.executable, {repr(str(BACKEND_DIR / 'scripts' / 'batch_ingest_vertex.py'))},
         "--year", str(yr),
-        "--limit", "{limit}",
+        "--limit", str(remaining),
         "--rpm-limit", "150",
         "--concurrency", "8",
     ], cwd={repr(str(BACKEND_DIR))})
     if ret.returncode != 0:
         print(f"Year {{yr}} failed (exit {{ret.returncode}})", flush=True)
+    # Count completed cases from latest batch run progress
+    batch_dir = Path({repr(str(BACKEND_DIR))}) / "data" / "batch_runs"
+    if batch_dir.exists():
+        for d in sorted(batch_dir.iterdir(), reverse=True):
+            prog = d / "progress.json"
+            if prog.exists() and str(yr) in d.name:
+                try:
+                    data = json.loads(prog.read_text())
+                    new_completed = len(data.get("completed", []))
+                    global_count += new_completed
+                    print(f"  Year {{yr}}: {{new_completed}} cases completed (global: {{global_count}})", flush=True)
+                except Exception:
+                    pass
+                break
 """,
             encoding="utf-8",
         )

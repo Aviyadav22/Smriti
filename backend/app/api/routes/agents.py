@@ -78,11 +78,21 @@ def _categorize_error(exc: Exception) -> dict:
             "message": "A search operation timed out. Results may be incomplete.",
             "recoverable": True,
         }
-    if "auth" in lower or "401" in lower or "403" in lower or "permission" in lower:
+    # Distinguish app-level auth errors from upstream provider (Gemini/Google) auth errors.
+    # Google API errors mention "auth", "403", "permission" but are provider issues, not user auth.
+    _is_google_err = any(kw in lower for kw in ("google", "gemini", "vertex", "api_key", "service account", "credentials"))
+    if ("401" in lower or "403" in lower or "permission" in lower or "auth" in lower) and not _is_google_err:
         return {
             "type": "error",
             "category": "auth_error",
             "message": "Authentication error. Please sign in again.",
+            "recoverable": False,
+        }
+    if _is_google_err and ("auth" in lower or "403" in lower or "permission" in lower):
+        return {
+            "type": "error",
+            "category": "provider_error",
+            "message": "AI provider authentication failed. Check server configuration.",
             "recoverable": False,
         }
     if "no results" in lower or "not found" in lower:

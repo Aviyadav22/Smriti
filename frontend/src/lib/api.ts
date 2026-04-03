@@ -274,6 +274,11 @@ async function _doRefresh(): Promise<boolean> {
     if (!res.ok) return false;
     const data: TokenResponse = await res.json();
     setTokens(data.access_token);
+    // Update localStorage fallback so token rotation doesn't invalidate it
+    // (Next.js rewrite proxy may not forward Set-Cookie from backend)
+    if (data.refresh_token && typeof window !== "undefined") {
+        localStorage.setItem("smriti_refresh_fallback", data.refresh_token);
+    }
     return true;
 }
 

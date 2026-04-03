@@ -160,7 +160,14 @@ def _get_gcs_client() -> gcs_storage.Client:
 # Graceful shutdown
 # ---------------------------------------------------------------------------
 
-_shutdown_event = asyncio.Event()
+_shutdown_event: asyncio.Event | None = None
+
+
+def _init_shutdown_event() -> asyncio.Event:
+    """Create the shutdown event inside the running event loop."""
+    global _shutdown_event
+    _shutdown_event = asyncio.Event()
+    return _shutdown_event
 
 
 def _make_shutdown_handler(loop: asyncio.AbstractEventLoop) -> Any:
@@ -171,6 +178,8 @@ def _make_shutdown_handler(loop: asyncio.AbstractEventLoop) -> Any:
             "Received signal %s — initiating graceful shutdown...",
             signal.Signals(sig).name,
         )
+        if _shutdown_event is None:
+            return
         if loop.is_running():
             loop.call_soon_threadsafe(_shutdown_event.set)
         else:
@@ -518,6 +527,7 @@ async def phase2_batch_metadata(
 
     result_blobs = list(bucket.list_blobs(prefix=f"batch_jobs/{run_id}/results/"))
     global_line = 0  # Global counter across ALL result files — never resets
+    missing_custom_id_count = 0  # Track missing custom_ids for safety halt
     for blob in result_blobs:
         if not blob.name.endswith(".jsonl"):
             continue
@@ -528,26 +538,39 @@ async def phase2_batch_metadata(
             try:
                 result_obj = json.loads(line)
 
-                # Primary: use custom_id if present in response
+                # Primary: use custom_id from response (MUST be present)
                 custom_id = result_obj.get("custom_id")
                 if custom_id and custom_id in valid_case_ids:
                     case_id = custom_id
-                elif global_line < len(case_id_order):
-                    # Fallback: global line counter (never resets per file)
-                    case_id = case_id_order[global_line]
+                    # Do NOT increment global_line — custom_id is authoritative
+                elif custom_id:
+                    # custom_id present but not in our manifest — skip
                     logger.warning(
-                        "No custom_id in result line %d, using global line counter "
-                        "fallback (case_id=%s)",
-                        global_line, case_id,
+                        "Unknown custom_id %s in result line %d, skipping",
+                        custom_id[:12], global_line,
                     )
-                else:
-                    logger.warning(
-                        "Extra result line %d beyond manifest size", global_line,
-                    )
-                    global_line += 1
+                    missing_custom_id_count += 1
                     continue
-
-                global_line += 1
+                else:
+                    # NO custom_id — positional fallback is UNSAFE
+                    missing_custom_id_count += 1
+                    if missing_custom_id_count > len(case_id_order) * 0.1:
+                        logger.error(
+                            "HALTING: >10%% of batch results lack custom_id "
+                            "(%d missing). Positional fallback is unreliable.",
+                            missing_custom_id_count,
+                        )
+                        break
+                    if global_line < len(case_id_order):
+                        case_id = case_id_order[global_line]
+                        logger.warning(
+                            "No custom_id in line %d, UNSAFE positional fallback "
+                            "(case_id=%s)", global_line, case_id[:12],
+                        )
+                        global_line += 1  # Only increment on positional fallback
+                    else:
+                        global_line += 1
+                        continue
 
                 # Extract the response content
                 response = result_obj.get("response", {})
@@ -559,7 +582,13 @@ async def phase2_batch_metadata(
                         if text_content:
                             try:
                                 parsed = json.loads(text_content)
-                                results[case_id] = parsed
+                                if case_id in results:
+                                    logger.warning(
+                                        "Duplicate batch result for %s — keeping first",
+                                        case_id[:12],
+                                    )
+                                else:
+                                    results[case_id] = parsed
                             except (json.JSONDecodeError, ValueError) as parse_exc:
                                 logger.warning(
                                     "Failed to parse JSON for case %s: %s",
@@ -747,7 +776,10 @@ async def phase3_process_cases(
                 else:
                     raise
 
-            except (RuntimeError, ConnectionError, TimeoutError, OSError, ValueError, genai_errors.ClientError, httpx.TimeoutException) as exc:
+            except (RuntimeError, ConnectionError, TimeoutError, OSError, ValueError,
+                    genai_errors.ClientError, httpx.TimeoutException, httpx.HTTPStatusError,
+                    gapi_exceptions.ServiceUnavailable, gapi_exceptions.DeadlineExceeded,
+                    ) as exc:
                 exc_str = str(exc).lower()
                 if "429" in exc_str or "resource_exhausted" in exc_str:
                     logger.warning(
@@ -914,12 +946,18 @@ async def _process_single_case(
             logger.warning("Failed to store PDF for %s: %s", case_id, store_exc)
             storage_path = entry.pdf_local_path
 
-        case_id, already_ingested = await _insert_case(
+        resolved_case_id, already_ingested = await _insert_case(
             db, case_id, metadata, full_text, storage_path, entry.parquet_meta,
             provenance=provenance, text_hash=entry.text_hash,
             extraction_confidence=extraction_confidence,
             page_map=entry.page_map,
         )
+        if resolved_case_id != case_id:
+            logger.info(
+                "case_id resolved: %s -> %s (citation match)",
+                case_id[:12], resolved_case_id[:12],
+            )
+        case_id = resolved_case_id  # Use resolved ID for all subsequent ops
 
         if already_ingested:
             logger.info("Case %s already fully ingested, skipping", metadata.citation)
@@ -1118,13 +1156,19 @@ def _save_progress(
     completed_cases: set[str],
     statuses: dict[str, str],
 ) -> None:
-    """Save progress to disk for resume support."""
+    """Save progress to disk atomically for resume support.
+
+    Writes to a temp file first, then atomically replaces the target.
+    Prevents corrupted JSON from partial writes (OOM, power loss, SIGKILL).
+    """
     data = {
         "completed": sorted(completed_cases),
         "statuses": statuses,
         "saved_at": datetime.now().isoformat(),
     }
-    progress_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    tmp_path = progress_path.with_suffix(".tmp")
+    tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    os.replace(str(tmp_path), str(progress_path))  # atomic on NTFS + Linux
 
 
 # ---------------------------------------------------------------------------
@@ -1354,6 +1398,9 @@ async def run_pipeline(
     concurrency: int = 1,
 ) -> None:
     """Main pipeline orchestrator."""
+    # Initialize shutdown event inside the running event loop (not at import time)
+    _init_shutdown_event()
+
     # Install signal handlers
     loop = asyncio.get_running_loop()
     handler = _make_shutdown_handler(loop)

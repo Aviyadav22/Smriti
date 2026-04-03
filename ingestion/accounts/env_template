@@ -2,6 +2,8 @@
 # Copy this to env_a, env_b, env_c, env_d and fill in per-account values
 
 # === PER-ACCOUNT (change these for each account) ===
+# CRITICAL: MUST be true — Vertex AI uses FREE trial credits
+# NEVER set to false — AI Studio costs REAL MONEY
 GEMINI_USE_VERTEXAI=true
 GEMINI_VERTEXAI_PROJECT=FILL_IN_PROJECT_ID
 GEMINI_VERTEXAI_LOCATION=us-central1

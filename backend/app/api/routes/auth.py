@@ -102,7 +102,7 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
-    refresh_token: str = ""  # Included as fallback for dev proxy; httpOnly cookie is primary
+    refresh_token: str  # Always included — dev proxy may not forward httpOnly cookies
 
 
 @router.post("/register", status_code=201, dependencies=[Depends(rate_limit_dependency("5/minute"))])
@@ -320,6 +320,7 @@ async def refresh_token(
     return TokenResponse(
         access_token=access_token,
         expires_in=settings.jwt_access_token_expire_minutes * 60,
+        refresh_token=new_refresh_tok,
     )
 
 

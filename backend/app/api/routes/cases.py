@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid as _uuid
 
@@ -23,6 +24,8 @@ from app.db.postgres import get_db
 from app.security.auth import TokenPayload
 from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user, get_current_user_optional
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -305,12 +308,16 @@ async def get_similar(
     embedder = get_embedder()
     vector_store = get_vector_store()
 
-    query_vector = await embedder.embed_text(ratio)
-    vector_results = await vector_store.search(
-        query_vector,
-        top_k=limit + 5,  # fetch extra to filter self
-        filters={"vector_type": {"$in": ["chunk", "proposition", "ratio", "headnote"]}},
-    )
+    try:
+        query_vector = await embedder.embed_text(ratio)
+        vector_results = await vector_store.search(
+            query_vector,
+            top_k=limit + 5,  # fetch extra to filter self
+            filters={"vector_type": {"$in": ["chunk", "proposition", "ratio", "headnote"]}},
+        )
+    except Exception as exc:
+        logger.warning("Similar cases search failed for %s: %s", case_id, exc)
+        return {"case_id": case_id, "similar": [], "total": 0}
 
     # Deduplicate by case_id and exclude self
     seen: set[str] = {case_id}

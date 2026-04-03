@@ -81,7 +81,7 @@ The turbo orchestrator sets `GEMINI_THINKING_BUDGET=0` automatically for all wor
 ### Hard Limits
 | Resource | Limit | 35K Impact | Action |
 |----------|-------|-----------|--------|
-| Pinecone Starter | 1M vectors | ~1.05M (tight!) | Skip community vectors, monitor count |
+| Pinecone Pro | Unlimited | ~1.05M | No limit — Pro plan with $300 free credit (3 weeks) |
 | Neo4j AuraDB Free | 200K nodes / 400K rels | ~70K nodes, ~150K rels | Safe |
 | PostgreSQL (Hostinger) | 8GB RAM | Fine for concurrent writes | Monitor connections |
 | Vertex AI batch jobs | 75 per region per project | Only need 1-2 per account | No issue |
@@ -99,7 +99,8 @@ At 35K cases, ~30 vectors/case average:
 | community | ~30K | LOW | **SKIP** (saves ~30K vectors) |
 | **Total** | **~975K** | | Under 1M |
 
-**Decision**: Skip community vectors to stay under 1M. Can generate later after upgrading Pinecone.
+**Decision**: Skip RAPTOR + community vectors for SPEED only (saves 60 LLM calls/case).
+Pinecone Pro has no vector limit — backfill all vector types later.
 
 ---
 
