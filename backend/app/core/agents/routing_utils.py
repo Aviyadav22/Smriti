@@ -131,6 +131,10 @@ def make_checkpoint_node(
         fields to include in the node's return dict (beyond messages).
     """
     async def checkpoint(state: dict) -> dict:
+        # Skip checkpoint when skip_checkpoints is set (auto-approve mode)
+        if state.get("skip_checkpoints"):
+            return {"messages": [{"type": "user_feedback", "step": step, "content": {"action": "approve"}}]}
+
         payload: dict[str, Any] = {"question": question}
         for key, (state_key, default) in state_fields.items():
             payload[key] = state.get(state_key, default)

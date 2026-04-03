@@ -247,6 +247,7 @@ class StrategyState(TypedDict):
     strategy_memo: str         # final synthesized output
     confidence: float
     contradictions: list[dict]  # detected contradictions between precedents
+    skip_checkpoints: bool       # when True, all HITL checkpoints auto-approve
     messages: Annotated[list[dict], operator.add]
     iteration: int
     error: str

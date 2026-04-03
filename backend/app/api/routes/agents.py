@@ -144,6 +144,7 @@ class StrategyRequest(BaseModel):
     target_judge: str = Field(default="", max_length=200)
     target_bench: str = Field(default="", max_length=50)
     language: str = Field(default="en", pattern="^(en|hi)$")
+    skip_checkpoints: bool = Field(default=True)  # Auto-approve by default; toggle enables HITL
 
 
 class PrecedentRef(BaseModel):
@@ -786,6 +787,7 @@ async def run_agent(
             "target_judge": request_body.target_judge,
             "target_bench": request_body.target_bench,
             "language": request_language,
+            "skip_checkpoints": request_body.skip_checkpoints,
         }
     elif agent_type == "drafting":
         graph = build_drafting_graph(
@@ -2018,6 +2020,7 @@ async def create_agent_session(
             "target_judge": request_body.target_judge,
             "target_bench": request_body.target_bench,
             "language": request_language,
+            "skip_checkpoints": getattr(request_body, "skip_checkpoints", True),
         }
     else:
         graph = build_drafting_graph(
