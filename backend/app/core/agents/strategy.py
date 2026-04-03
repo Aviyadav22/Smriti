@@ -57,7 +57,6 @@ logger = logging.getLogger(__name__)
 
 route_after_analysis = make_feedback_router("analysis", "analyze_facts", "search_precedents", check_error=True)
 route_after_arguments = make_feedback_router("arguments", "generate_arguments_irac", "adversarial_search", check_error=True)
-route_after_memo = make_feedback_router("memo", "synthesize_strategy", check_error=True)
 
 
 # ---------------------------------------------------------------------------
@@ -205,12 +204,6 @@ def build_strategy_graph(
         {"irac_arguments": ("irac_arguments", []), "strength_assessment": ("strength_assessment", {})},
     )
 
-    checkpoint_memo = make_checkpoint_node(
-        "memo",
-        "Here is the strategy memo. Any revisions?",
-        {"strategy_memo": ("strategy_memo", ""), "confidence": ("confidence", 0.0)},
-    )
-
     # -- Register nodes -----------------------------------------------------
 
     graph.add_node("analyze_facts", analyze_facts)
@@ -226,7 +219,6 @@ def build_strategy_graph(
     graph.add_node("argument_ordering", argument_ordering)
     graph.add_node("synthesize_strategy", synthesize_strategy)
     graph.add_node("verify", verify)
-    graph.add_node("checkpoint_memo", checkpoint_memo)
 
     # -- Edges --------------------------------------------------------------
 
@@ -259,13 +251,7 @@ def build_strategy_graph(
     graph.add_edge("counter_and_judge", "argument_ordering")
     graph.add_edge("argument_ordering", "synthesize_strategy")
     graph.add_edge("synthesize_strategy", "verify")
-    graph.add_edge("verify", "checkpoint_memo")
-
-    graph.add_conditional_edges(
-        "checkpoint_memo",
-        route_after_memo,
-        {"synthesize_strategy": "synthesize_strategy", END: END},
-    )
+    graph.add_edge("verify", END)
 
     # -- Compile ------------------------------------------------------------
 
