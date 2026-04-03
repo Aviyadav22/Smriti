@@ -423,6 +423,27 @@ async def _stream_agent_events(
                 # [T1] Enrich with Phase 4 structured data
                 if final_state.get("footnotes"):
                     result_data["footnotes"] = final_state["footnotes"]
+                elif final_state.get("search_results"):
+                    # Strategy/case-prep agents: synthesize footnotes from search results
+                    # so the frontend can render citation pills with hover previews
+                    synth_footnotes = []
+                    seen_citations: set[str] = set()
+                    for sr in final_state["search_results"]:
+                        cite = sr.get("citation", "")
+                        if not cite or cite in seen_citations:
+                            continue
+                        seen_citations.add(cite)
+                        synth_footnotes.append({
+                            "number": len(synth_footnotes) + 1,
+                            "citation": cite,
+                            "title": sr.get("title", ""),
+                            "court": sr.get("court", ""),
+                            "year": sr.get("year", ""),
+                            "case_id": sr.get("case_id", ""),
+                            "verification_status": "verified_pg" if sr.get("case_id") else "unverified",
+                        })
+                    if synth_footnotes:
+                        result_data["footnotes"] = synth_footnotes
                 if final_state.get("source_attribution"):
                     result_data["source_attribution"] = final_state["source_attribution"]
                 if final_state.get("research_audit"):
@@ -2098,7 +2119,7 @@ async def session_follow_up(
     )
     last_exec_row = last_exec_result.mappings().one_or_none()
     if not last_exec_row or not last_exec_row["result_data"]:
-        raise HTTPException(status_code=400, detail="No completed research in this session.")
+        raise HTTPException(status_code=400, detail="No completed execution in this session.")
 
     result_data = last_exec_row["result_data"]
     if isinstance(result_data, str):
