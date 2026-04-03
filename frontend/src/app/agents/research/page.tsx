@@ -23,12 +23,10 @@ import type {
     AgentSession,
     AgentSessionMessage,
 } from "@/lib/types";
-import { AgentStepTimeline } from "@/components/agent-step-timeline";
 import { AgentCheckpointPrompt } from "@/components/agent-checkpoint-prompt";
 import { PlanReview } from "@/components/plan-review";
 import { AgentMemoViewer } from "@/components/agent-memo-viewer";
-import { ResearchProcessPanel } from "@/components/research-process-panel";
-import { ResearchProgressBar } from "@/components/research-progress-bar";
+import { ResearchProgress } from "@/components/research-progress";
 import { FootnotesPanel } from "@/components/footnotes-panel";
 import { VerificationBanner } from "@/components/verification-banner";
 import { ResearchAuditTrail } from "@/components/research-audit-trail";
@@ -114,6 +112,9 @@ export default function ResearchAgentPage() {
     const [followUpStreaming, setFollowUpStreaming] = useState(false);
     const [followUpStreamContent, setFollowUpStreamContent] = useState("");
 
+    // Research options
+    const [steerResearch, setSteerResearch] = useState(false);
+
     // Original research state
     const [query, setQuery] = useState("");
     const [starting, setStarting] = useState(false);
@@ -138,6 +139,8 @@ export default function ResearchAgentPage() {
     const abortRef = useRef<AbortController | null>(null);
 
     const [processEvents, setProcessEvents] = useState<ProcessEvent[]>([]);
+    const [completedNodes, setCompletedNodes] = useState<Set<string>>(new Set());
+    const [startTime, setStartTime] = useState<number | null>(null);
     const [footnotes, setFootnotes] = useState<ResearchFootnote[]>([]);
     const [researchAudit, setResearchAudit] = useState<ResearchAudit | null>(null);
     const [verificationBanner, setVerificationBanner] = useState<string | null>(null);
@@ -226,9 +229,25 @@ export default function ResearchAgentPage() {
     }, [searchParams, isAuthenticated]);
 
     const loadSession = useCallback(async (sid: string) => {
+        // Clear ALL state immediately so old content doesn't flash
         setSessionId(sid);
         setIsFollowUp(true);
         setError(null);
+        setMemo("");
+        setStreamingMemo("");
+        streamQueueRef.current = "";
+        setFootnotes([]);
+        setConfidence(undefined);
+        setConfidenceBreakdown(undefined);
+        setResearchAudit(null);
+        setVerificationBanner(null);
+        setCheckpoint(null);
+        setSteps([]);
+        setProcessEvents([]);
+        setCompletedNodes(new Set());
+        setIsRunning(false);
+        setExecutionId(null);
+        setSessionMessages([]);
         try {
             const [messagesResult, detailResult] = await Promise.allSettled([
                 getAgentSessionMessages(sid),
@@ -291,17 +310,24 @@ export default function ResearchAgentPage() {
     }, []);
 
     const handleDeleteSession = useCallback(async (sid: string) => {
+        // Optimistic: remove from UI immediately, revert on error
+        const prev = sessions;
+        setSessions((s) => s.filter((x) => x.id !== sid));
+        if (sessionId === sid) {
+            // Inline reset instead of calling handleNewSession (declared later)
+            abortRef.current?.abort();
+            setSessionId(null);
+            setIsFollowUp(false);
+            setMemo("");
+            setQuery("");
+            setIsRunning(false);
+        }
         try {
             await deleteAgentSession(sid);
-            setSessions((prev) => prev.filter((s) => s.id !== sid));
-            if (sessionId === sid) {
-                handleNewSession();
-            }
-        } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : "Failed to delete session";
-            setError(msg);
+        } catch {
+            setSessions(prev);
         }
-    }, [sessionId]);
+    }, [sessionId, sessions]);
 
     const handleNewSession = useCallback(() => {
         abortRef.current?.abort();
@@ -320,6 +346,8 @@ export default function ResearchAgentPage() {
         setConfidenceBreakdown(undefined);
         setError(null);
         setProcessEvents([]);
+        setCompletedNodes(new Set());
+        setStartTime(null);
         setFootnotes([]);
         setResearchAudit(null);
         setVerificationBanner(null);
@@ -366,6 +394,43 @@ export default function ResearchAgentPage() {
             case "status": {
                 const stepName = event.step;
                 if (stepName) {
+                    // Track completed nodes for the unified progress component
+                    setCompletedNodes((prev) => {
+                        const next = new Set(prev);
+                        next.add(stepName);
+                        return next;
+                    });
+                    // Push to processEvents so activity feed shows each step live.
+                    // Skip if a richer event was JUST added (within last 500ms) —
+                    // the backend sends process_events then status for the same node.
+                    setProcessEvents((prev) => {
+                        const now = Date.now();
+                        // Skip if any recent event (last 2 entries, within 1s) covers this node
+                        for (let i = prev.length - 1; i >= Math.max(0, prev.length - 3); i--) {
+                            const recent = prev[i];
+                            if (recent.timestamp && now - recent.timestamp < 1000) {
+                                // A "found" or "plan" event already covers this node
+                                if (recent.type === "found" || recent.type === "plan" ||
+                                    recent.type === "evaluating" || recent.type === "reflection" ||
+                                    recent.type === "gap" || recent.type === "drafting" ||
+                                    recent.type === "verification" || recent.type === "quality") {
+                                    return prev;
+                                }
+                                // Already have a status for this exact node
+                                if (recent.type === "status" && (recent.data as Record<string, unknown>).step === stepName) {
+                                    return prev;
+                                }
+                            }
+                        }
+                        return [
+                            ...prev,
+                            {
+                                type: "status",
+                                data: { step: stepName } as Record<string, unknown>,
+                                timestamp: Date.now(),
+                            },
+                        ];
+                    });
                     if (FAST_PATH_INDICATORS.has(stepName)) {
                         setDetectedPath((prev) => {
                             if (prev !== "fast") {
@@ -387,7 +452,13 @@ export default function ResearchAgentPage() {
                             return "full";
                         });
                     }
-                    setCurrentStepLabel(event.message || stepName);
+                    // Clean status label: strip "__interrupt__" and internal jargon
+                    const rawLabel = event.message || stepName;
+                    const cleanLabel = rawLabel
+                        .replace(/__interrupt__/g, "")
+                        .replace(/^Completed:\s*/i, "")
+                        .trim();
+                    setCurrentStepLabel(cleanLabel || stepName.replace(/_/g, " "));
                 }
                 setSteps((prev) => {
                     const stepIdx = prev.findIndex((s) => s.name === stepName);
@@ -518,6 +589,8 @@ export default function ResearchAgentPage() {
         setCheckpoint(null);
         setExecutionId(null);
         setProcessEvents([]);
+        setCompletedNodes(new Set());
+        setStartTime(Date.now());
         setFootnotes([]);
         setResearchAudit(null);
         setVerificationBanner(null);
@@ -537,7 +610,12 @@ export default function ResearchAgentPage() {
             // Use session-based endpoint for new research
             abortRef.current = createAgentSession(
                 "research",
-                { query: query.trim() },
+                {
+                    query: query.trim(),
+                    steer_research: steerResearch,
+                    auto_approve: !steerResearch,
+                    skip_verification: true,
+                },
                 handleEvent,
                 (err) => {
                     const msg = err.message || "Research failed";
@@ -728,7 +806,7 @@ export default function ResearchAgentPage() {
     }
 
     const showInputForm = !isRunning && !memo && !checkpoint && steps.length === 0 && !isFollowUp;
-    const showWorkspace = isRunning || memo || checkpoint || steps.length > 0;
+    const showWorkspace = isRunning || memo || checkpoint || steps.length > 0 || isFollowUp;
     const displayMemo = memo || streamingMemo;
     const isStreaming = !memo && !!streamingMemo;
     const showFollowUpArea = isFollowUp && !isRunning && !!memo && !checkpoint;
@@ -779,13 +857,11 @@ export default function ResearchAgentPage() {
                             </Button>
                         </div>
 
-                        <h1 className="text-2xl font-semibold font-[family-name:var(--font-lora)] mb-2">
+                        <h1 className="text-2xl font-semibold font-[family-name:var(--font-lora)] mb-1">
                             Research Agent
                         </h1>
                         <p className="text-sm text-muted-foreground mb-6">
-                            Enter a legal research question. The agent will decompose it,
-                            search case law, detect contradictions, and generate a
-                            structured memo.
+                            AI-powered legal research with citation verification and adversarial analysis.
                         </p>
 
                         {/* D21: Offline banner */}
@@ -795,9 +871,9 @@ export default function ResearchAgentPage() {
                             </div>
                         )}
 
-                        {/* Input form (shown when not running and no memo) */}
+                        {/* Input form */}
                         {showInputForm && (
-                            <Card>
+                            <Card className="max-w-4xl mx-auto">
                                 <CardContent className="pt-6 space-y-4">
                                     <label htmlFor="research-query" className="text-sm font-medium text-foreground">
                                         What legal question are you investigating?
@@ -851,11 +927,20 @@ export default function ResearchAgentPage() {
                                         </div>
                                     )}
                                     <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-3">
                                             <span id="query-char-count" className={`text-xs ${query.length > 1800 ? "text-amber-500" : "text-muted-foreground"}`}>
                                                 {query.length}/2000
                                             </span>
                                             <span className="text-xs text-muted-foreground hidden sm:inline">Ctrl+Enter to submit</span>
+                                            <label className="flex items-center gap-1.5 cursor-pointer select-none" title="Pause at checkpoints to review and steer the research plan, findings, and draft memo">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={steerResearch}
+                                                    onChange={(e) => setSteerResearch(e.target.checked)}
+                                                    className="h-3.5 w-3.5 rounded border-border accent-primary"
+                                                />
+                                                <span className="text-xs text-muted-foreground">Steer research</span>
+                                            </label>
                                         </div>
                                         <Button
                                             onClick={handleSubmit}
@@ -877,45 +962,27 @@ export default function ResearchAgentPage() {
                         {showWorkspace && (
                             <>
                             <div className={cn(
-                                "grid gap-6 md:grid-cols-[240px_1fr]",
                                 "transition-[margin] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
                                 footnotesPanelOpen ? "lg:mr-[400px]" : "",
                             )}>
-                                {/* Left: Step Timeline + Process Panel */}
-                                <div className="hidden md:block">
-                                    <div className="sticky top-20 space-y-4">
-                                        <div>
-                                            <h3 className="text-xs uppercase tracking-wider font-medium text-muted-foreground mb-3">
-                                                Progress
-                                            </h3>
-                                            <AgentStepTimeline steps={steps} />
-                                        </div>
-                                        <ResearchProcessPanel events={processEvents} isRunning={isRunning} />
-                                    </div>
-                                </div>
-
-                                {/* Right: Main content */}
-                                <div className="space-y-4">
+                                {/* Full-width main content */}
+                                <div className="space-y-4 max-w-4xl mx-auto">
                                     {/* Query display */}
-                                    <Card>
-                                        <CardContent className="pt-4">
-                                            <p className="text-xs uppercase tracking-wider font-medium text-muted-foreground mb-1">
-                                                Query
-                                            </p>
-                                            <p className="text-sm">{query}</p>
-                                        </CardContent>
-                                    </Card>
-
-                                    {/* Progress bar */}
-                                    {isRunning && (
-                                        <ResearchProgressBar events={processEvents} isRunning={isRunning} />
-                                    )}
-
-                                    {/* Mobile step timeline + process panel */}
-                                    <div className="md:hidden space-y-3">
-                                        <AgentStepTimeline steps={steps} />
-                                        <ResearchProcessPanel events={processEvents} isRunning={isRunning} />
+                                    <div className="rounded-lg border bg-card px-5 py-4">
+                                        <p className="text-xs uppercase tracking-wider font-medium text-muted-foreground mb-1">
+                                            Query
+                                        </p>
+                                        <p className="text-sm font-medium">{query}</p>
                                     </div>
+
+                                    {/* Unified progress (stages + live activity) */}
+                                    <ResearchProgress
+                                        events={processEvents}
+                                        completedNodes={completedNodes}
+                                        isRunning={isRunning}
+                                        isFastPath={_detectedPath === "fast"}
+                                        startTime={startTime ?? undefined}
+                                    />
 
                                     {/* Checkpoint prompt */}
                                     {checkpoint && checkpoint.context?.research_plan ? (
@@ -951,16 +1018,18 @@ export default function ResearchAgentPage() {
                                         />
                                     )}
 
-                                    {/* Skeleton shimmer while waiting */}
-                                    {isRunning && !displayMemo && (
-                                        <div className="space-y-4 animate-pulse">
-                                            <div className="h-6 w-3/4 bg-muted rounded" />
-                                            <div className="h-4 w-full bg-muted rounded" />
-                                            <div className="h-4 w-full bg-muted rounded" />
-                                            <div className="h-4 w-5/6 bg-muted rounded" />
-                                            <div className="h-6 w-2/3 bg-muted rounded mt-6" />
-                                            <div className="h-4 w-full bg-muted rounded" />
-                                            <div className="h-4 w-4/5 bg-muted rounded" />
+                                    {/* Skeleton shimmer while waiting — only show when no checkpoint visible */}
+                                    {isRunning && !displayMemo && !checkpoint && (
+                                        <div className="rounded-lg border bg-card p-6 space-y-4">
+                                            <div className="space-y-3 animate-pulse">
+                                                <div className="h-5 w-2/3 bg-muted rounded" />
+                                                <div className="h-3 w-full bg-muted/70 rounded" />
+                                                <div className="h-3 w-full bg-muted/70 rounded" />
+                                                <div className="h-3 w-5/6 bg-muted/70 rounded" />
+                                                <div className="h-5 w-1/2 bg-muted rounded mt-4" />
+                                                <div className="h-3 w-full bg-muted/70 rounded" />
+                                                <div className="h-3 w-4/5 bg-muted/70 rounded" />
+                                            </div>
                                         </div>
                                     )}
 
@@ -1087,16 +1156,12 @@ export default function ResearchAgentPage() {
                                         </div>
                                     )}
 
-                                    {/* Typing indicator + Cancel button */}
+                                    {/* Cancel button — progress is already shown above */}
                                     {isRunning && !checkpoint && (
-                                        <div className="flex items-center gap-3">
-                                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                <span>{currentStepLabel || "Agent is working..."}</span>
-                                            </div>
-                                            <Button variant="outline" size="sm" onClick={handleCancel} className="text-destructive border-destructive/30 hover:bg-destructive/10">
+                                        <div className="flex justify-end">
+                                            <Button variant="ghost" size="sm" onClick={handleCancel} className="text-muted-foreground hover:text-destructive">
                                                 <XCircle className="h-3.5 w-3.5 mr-1" />
-                                                Cancel
+                                                Cancel research
                                             </Button>
                                         </div>
                                     )}
@@ -1110,6 +1175,19 @@ export default function ResearchAgentPage() {
                                                     Restart Research
                                                 </Button>
                                             )}
+                                        </div>
+                                    )}
+
+                                    {/* Session loaded but no memo (failed/incomplete) */}
+                                    {isFollowUp && !isRunning && !memo && !checkpoint && !error && (
+                                        <div className="rounded-lg border bg-card p-6 text-center space-y-3">
+                                            <p className="text-sm text-muted-foreground">
+                                                This research session did not complete successfully.
+                                            </p>
+                                            <Button size="sm" onClick={handleNewSession}>
+                                                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                                                Start New Research
+                                            </Button>
                                         </div>
                                     )}
 
@@ -1128,7 +1206,6 @@ export default function ResearchAgentPage() {
                                         </>
                                     )}
                                 </div>
-
                             </div>
 
                             {/* Desktop slide-out footnotes panel */}

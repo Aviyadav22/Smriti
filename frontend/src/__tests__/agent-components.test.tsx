@@ -89,7 +89,7 @@ describe("AgentCheckpointPrompt", () => {
   it("submits user input as structured JSON and clears the textarea", () => {
     const onSubmit = vi.fn();
     render(<AgentCheckpointPrompt question="Review?" onSubmit={onSubmit} />);
-    const textarea = screen.getByPlaceholderText("Type your response...");
+    const textarea = screen.getByPlaceholderText("Additional instructions or modifications...");
     fireEvent.change(textarea, { target: { value: "Proceed with analysis" } });
     fireEvent.click(screen.getByText("Submit"));
     // [M50] "Proceed with analysis" is feedback (not bare "proceed"), treated as feedback
@@ -100,7 +100,7 @@ describe("AgentCheckpointPrompt", () => {
   it("bare 'proceed' is treated as approve", () => {
     const onSubmit = vi.fn();
     render(<AgentCheckpointPrompt question="Review?" onSubmit={onSubmit} />);
-    const textarea = screen.getByPlaceholderText("Type your response...");
+    const textarea = screen.getByPlaceholderText("Additional instructions or modifications...");
     fireEvent.change(textarea, { target: { value: "proceed" } });
     fireEvent.click(screen.getByText("Submit"));
     expect(onSubmit).toHaveBeenCalledWith(JSON.stringify({ action: "approve" }));
@@ -125,7 +125,7 @@ describe("AgentCheckpointPrompt", () => {
   it("disables inputs when disabled prop is true", () => {
     const onSubmit = vi.fn();
     render(<AgentCheckpointPrompt question="Review?" onSubmit={onSubmit} disabled />);
-    const textarea = screen.getByPlaceholderText("Type your response...");
+    const textarea = screen.getByPlaceholderText("Additional instructions or modifications...");
     expect((textarea as HTMLTextAreaElement).disabled).toBe(true);
     expect((screen.getByText("Submit") as HTMLButtonElement).disabled).toBe(true);
   });

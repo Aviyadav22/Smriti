@@ -10,13 +10,17 @@ Graph flow (complex queries — 5 stages):
     → gather_results → batch_cot_with_reflection → evaluate_and_extract
     → gap_analysis → [should_refine] → dispatch_workers | checkpoint_findings
     → adversarial_search → temporal_validation
-    → speculative_synthesis → format_footnotes → verify_v2 → quality_check
+    → speculative_synthesis → format_footnotes → [verify_v2?] → quality_check
     → checkpoint_memo → END
+
+  Note: verify_v2 is skipped by default (skip_verification=True) since citations
+  are RAG-grounded. HITL checkpoints are auto-approved by default; enable
+  steer_research=True to interactively review plan/findings/memo.
 
 Fast path (simple queries):
   START → rewrite_query → classify
     → statute_lookup → element_decomposition → route_by_complexity
-    → fast_path_search → fast_path_synthesis → format_footnotes → verify_v2
+    → fast_path_search → fast_path_synthesis → format_footnotes → [verify_v2?]
     → quality_check → checkpoint_memo → END
 """
 from __future__ import annotations
@@ -302,7 +306,18 @@ def build_research_graph(
                 "precomputed_embeddings": {},
             }))
 
-        return Command(goto=sends)
+        # [T1] Emit a progress event so the frontend knows workers are dispatching
+        worker_types = [s.arg.get("task", {}).get("task_type", "unknown") for s in sends]
+        dispatch_event = {
+            "type": "progress",
+            "data": {
+                "stage": "investigate",
+                "progress": 0.25,
+                "detail": f"Dispatching {len(sends)} search workers ({', '.join(set(worker_types))})",
+            },
+        }
+
+        return Command(goto=sends, update={"process_events": [dispatch_event]})
 
     async def gather(state: ResearchState) -> dict:
         result = await gather_worker_results_node(state)
@@ -684,6 +699,12 @@ def build_research_graph(
             return "format_footnotes"
         return "speculative_synthesis"
 
+    def route_after_footnotes(state: ResearchState) -> str:
+        """[PERF] Skip verify_v2 when skip_verification is set (citations are RAG-grounded)."""
+        if state.get("skip_verification"):
+            return "quality_check"
+        return "verify_v2"
+
     def route_after_quality(state: ResearchState) -> str:
         """[B3] Route after quality check: pass → memo, fail + retry → synthesis, max → memo with warning."""
         qr = state.get("legal_quality_result")
@@ -832,9 +853,14 @@ def build_research_graph(
         },
     )
 
-    # Stage 5: Synthesize — speculative synthesis → format footnotes → verify → quality → memo
+    # Stage 5: Synthesize — speculative synthesis → format footnotes → [verify?] → quality → memo
     graph.add_edge("speculative_synthesis", "format_footnotes")
-    graph.add_edge("format_footnotes", "verify_v2")
+    # [PERF] Conditionally skip verify_v2 when skip_verification is set
+    graph.add_conditional_edges(
+        "format_footnotes",
+        route_after_footnotes,
+        {"verify_v2": "verify_v2", "quality_check": "quality_check"},
+    )
     graph.add_edge("verify_v2", "quality_check")
     # [B3] Quality retry loop — conditional routing after quality check
     graph.add_conditional_edges(

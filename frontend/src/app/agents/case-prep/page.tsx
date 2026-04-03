@@ -1,24 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import {
-    getDocuments,
-    runCasePrepAgent,
-    resumeAgentExecution,
-} from "@/lib/api";
-import type {
-    AgentStreamEvent,
-    AgentStep,
-    DocumentListItem,
-} from "@/lib/types";
+import { getDocuments } from "@/lib/api";
+import type { AgentStreamEvent, AgentStep, DocumentListItem } from "@/lib/types";
+import { useAgentSession } from "@/hooks/useAgentSession";
 import { AgentStepTimeline } from "@/components/agent-step-timeline";
 import { AgentCheckpointPrompt } from "@/components/agent-checkpoint-prompt";
 import { AgentMemoViewer } from "@/components/agent-memo-viewer";
+import { AgentSessionSidebar } from "@/components/agents/AgentSessionSidebar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, ArrowLeft, RotateCcw, FileText } from "lucide-react";
+import { Loader2, ArrowLeft, RotateCcw, FileText, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { LegalDisclaimer } from "@/components/legal-disclaimer";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
@@ -29,15 +24,9 @@ import Link from "next/link";
 // ---------------------------------------------------------------------------
 
 const CASE_PREP_STEPS = [
-    "load_analysis",
-    "prioritize",
-    "checkpoint_issues",
-    "deep_search",
-    "argument_order",
-    "checkpoint_strategy",
-    "strategy_memo",
-    "verify",
-    "checkpoint_memo",
+    "load_analysis", "prioritize", "checkpoint_issues",
+    "deep_search", "argument_order", "checkpoint_strategy",
+    "strategy_memo", "verify", "checkpoint_memo",
 ];
 
 // ---------------------------------------------------------------------------
@@ -47,190 +36,120 @@ const CASE_PREP_STEPS = [
 export default function CasePrepAgentPage() {
     const { isAuthenticated, isLoading: authLoading } = useAuth();
     const router = useRouter();
+    const searchParams = useSearchParams();
 
-    // Document selection
+    // Session management (shared hook)
+    const session = useAgentSession("case_prep");
+
+    // Sidebar
+    const [sidebarOpen, setSidebarOpen] = useState(true);
+
+    // Document selection (unique to case-prep)
     const [documents, setDocuments] = useState<DocumentListItem[]>([]);
     const [documentsLoading, setDocumentsLoading] = useState(true);
     const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
     const [docSearch, setDocSearch] = useState("");
 
-    // Filtered documents for search
+    // Step timeline
+    const [steps, setSteps] = useState<AgentStep[]>([]);
+    const [starting, setStarting] = useState(false);
+
     const filteredDocuments = documents.filter((d) =>
         d.filename.toLowerCase().includes(docSearch.toLowerCase()),
     );
-
-    // Agent state
-    const [starting, setStarting] = useState(false);
-    const [isRunning, setIsRunning] = useState(false);
-    const [executionId, setExecutionId] = useState<string | null>(null);
-    const [steps, setSteps] = useState<AgentStep[]>([]);
-    const [checkpoint, setCheckpoint] = useState<{
-        question: string;
-        context: Record<string, unknown>;
-    } | null>(null);
-    const [memo, setMemo] = useState("");
-    const [confidence, setConfidence] = useState<number | undefined>();
-    const [error, setError] = useState<string | null>(null);
-    const abortRef = useRef<AbortController | null>(null);
 
     useEffect(() => {
         if (!authLoading && !isAuthenticated) router.push("/login");
     }, [authLoading, isAuthenticated, router]);
 
-    // Fetch completed documents
+    // Fetch documents
     useEffect(() => {
         if (!isAuthenticated) return;
         (async () => {
             try {
                 const data = await getDocuments(1, 100);
-                setDocuments(
-                    data.documents.filter((d) => d.status === "completed"),
-                );
-            } catch (err) {
-                console.error("Failed to load documents for case prep:", err);
-                setError("Failed to load documents. Please refresh the page.");
+                setDocuments(data.documents.filter((d) => d.status === "completed"));
+            } catch {
+                session.setError("Failed to load documents. Please refresh the page.");
             } finally {
                 setDocumentsLoading(false);
             }
         })();
-    }, [isAuthenticated]);
+    }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Cleanup on unmount
+    // Load sessions on mount
     useEffect(() => {
-        return () => {
-            abortRef.current?.abort();
-        };
-    }, []);
+        if (isAuthenticated) session.refreshSessions();
+    }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Handle ?session= query param
+    useEffect(() => {
+        const paramSessionId = searchParams.get("session");
+        if (paramSessionId && isAuthenticated) session.loadSession(paramSessionId);
+    }, [searchParams, isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ---------------------------------------------------------------------------
+    // Event handler
+    // ---------------------------------------------------------------------------
 
     const handleEvent = useCallback((event: AgentStreamEvent) => {
-        // Capture execution_id from the first event that carries it,
-        // so it's available before "done" (e.g. at checkpoint time).
-        if (event.execution_id) {
-            setExecutionId(event.execution_id);
-        }
-
         switch (event.type) {
             case "status":
                 setSteps((prev) =>
                     prev.map((s) => ({
                         ...s,
                         status:
-                            s.name === event.step
-                                ? "completed"
-                                : CASE_PREP_STEPS.indexOf(s.name) ===
-                                    CASE_PREP_STEPS.indexOf(event.step!) + 1
-                                  ? "active"
-                                  : s.status,
-                        message:
-                            s.name === event.step
-                                ? event.message || s.message
-                                : s.message,
+                            s.name === event.step ? "completed"
+                                : CASE_PREP_STEPS.indexOf(s.name) === CASE_PREP_STEPS.indexOf(event.step!) + 1
+                                    ? "active" : s.status,
+                        message: s.name === event.step ? event.message || s.message : s.message,
                     })),
                 );
                 break;
             case "checkpoint":
-                setCheckpoint({
-                    question: event.question || "",
-                    context: event.context || {},
-                });
-                setIsRunning(false);
+                session.setCheckpoint({ question: event.question || "", context: event.context || {} });
+                session.setIsRunning(false);
                 break;
             case "memo":
-                setMemo(event.content || "");
-                if (
-                    event.data &&
-                    typeof event.data === "object" &&
-                    "confidence" in (event.data as Record<string, unknown>)
-                ) {
-                    setConfidence(
-                        (event.data as Record<string, unknown>)
-                            .confidence as number,
-                    );
+                session.setMemo(event.content || "");
+                if (event.data && typeof event.data === "object" && "confidence" in (event.data as Record<string, unknown>)) {
+                    session.setConfidence((event.data as Record<string, unknown>).confidence as number);
                 }
                 break;
             case "done":
-                setExecutionId(event.execution_id || null);
-                setIsRunning(false);
-                setSteps((prev) =>
-                    prev.map((s) => ({
-                        ...s,
-                        status:
-                            s.status === "active" || s.status === "pending"
-                                ? "completed"
-                                : s.status,
-                    })),
-                );
+                session.setIsRunning(false);
+                session.refreshSessions();
+                setSteps((prev) => prev.map((s) => ({
+                    ...s,
+                    status: s.status === "active" || s.status === "pending" ? "completed" : s.status,
+                })));
                 break;
             case "error":
-                setError(event.message || "Agent encountered an error");
-                setIsRunning(false);
+                session.setError(event.message || "Agent encountered an error");
+                session.setIsRunning(false);
                 break;
         }
-    }, []);
+    }, [session]);
+
+    // ---------------------------------------------------------------------------
+    // Submit
+    // ---------------------------------------------------------------------------
 
     const handleStart = useCallback(() => {
         if (!selectedDocId || starting) return;
         setStarting(true);
-        setIsRunning(true);
-        setError(null);
-        setMemo("");
-        setConfidence(undefined);
-        setCheckpoint(null);
-        setExecutionId(null);
-        setSteps(
-            CASE_PREP_STEPS.map((name, i) => ({
-                name,
-                status: i === 0 ? ("active" as const) : ("pending" as const),
-            })),
-        );
-        try {
-            abortRef.current = runCasePrepAgent(
-                selectedDocId,
-                handleEvent,
-                (err) => {
-                    setError(err.message);
-                    setIsRunning(false);
-                },
-            );
-        } finally {
-            setStarting(false);
-        }
-    }, [selectedDocId, starting, handleEvent]);
-
-    const [checkpointError, setCheckpointError] = useState<string | null>(null);
-
-    const handleResume = useCallback(
-        (input: string) => {
-            if (!executionId) return;
-            const savedCheckpoint = checkpoint;
-            setCheckpoint(null);
-            setCheckpointError(null);
-            setIsRunning(true);
-            abortRef.current = resumeAgentExecution(
-                executionId,
-                input,
-                handleEvent,
-                (err) => {
-                    setCheckpoint(savedCheckpoint);
-                    setCheckpointError(err.message);
-                    setIsRunning(false);
-                },
-            );
-        },
-        [executionId, checkpoint, handleEvent],
-    );
+        setSteps(CASE_PREP_STEPS.map((name, i) => ({
+            name, status: i === 0 ? ("active" as const) : ("pending" as const),
+        })));
+        session.startSession({ document_id: selectedDocId }, handleEvent);
+        setStarting(false);
+    }, [selectedDocId, starting, handleEvent, session]);
 
     const handleReset = useCallback(() => {
-        abortRef.current?.abort();
+        session.newSession();
         setSelectedDocId(null);
-        setIsRunning(false);
-        setExecutionId(null);
         setSteps([]);
-        setCheckpoint(null);
-        setMemo("");
-        setConfidence(undefined);
-        setError(null);
-    }, []);
+    }, [session]);
 
     if (authLoading || !isAuthenticated) {
         return (
@@ -244,206 +163,154 @@ export default function CasePrepAgentPage() {
     }
 
     const selectedDoc = documents.find((d) => d.id === selectedDocId);
-    const showSelector = !isRunning && !memo && !checkpoint && steps.length === 0;
-    const showWorkspace = isRunning || memo || checkpoint || steps.length > 0;
+    const showSelector = !session.isRunning && !session.memo && !session.checkpoint && steps.length === 0 && !session.isFollowUp;
+    const showWorkspace = session.isRunning || session.memo || session.checkpoint || steps.length > 0 || session.isFollowUp;
 
     return (
         <div className="min-h-screen flex flex-col">
             <Header />
 
-            <main className="flex-1">
-                <div className="mx-auto max-w-6xl px-4 py-8">
-            <div className="flex items-center gap-3 mb-6">
-                <Button variant="ghost" size="sm" asChild>
-                    <Link href="/agents">
-                        <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Agents
-                    </Link>
-                </Button>
-            </div>
-
-            <h1 className="text-2xl font-semibold font-[family-name:var(--font-lora)] mb-2">
-                Case Prep Agent
-            </h1>
-            <p className="text-sm text-muted-foreground mb-6">
-                Select an analyzed document to generate a strategy memo with
-                prioritized issues, deep precedent search, and recommended
-                argument ordering.
-            </p>
-
-            {/* Document selector (shown when not running) */}
-            {showSelector && (
-                <Card>
-                    <CardContent className="pt-6 space-y-4">
-                        {documentsLoading ? (
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <Loader2 className="h-4 w-4 animate-spin" />{" "}
-                                Loading documents...
-                            </div>
-                        ) : documents.length === 0 ? (
-                            <div className="text-center py-6">
-                                <FileText className="h-8 w-8 mx-auto text-muted-foreground mb-3" />
-                                <p className="text-sm text-muted-foreground mb-3">
-                                    No analyzed documents found. Upload and
-                                    analyze a document first.
-                                </p>
-                                <Button variant="outline" size="sm" asChild>
-                                    <Link href="/upload">Upload Document</Link>
-                                </Button>
-                            </div>
-                        ) : (
-                            <>
-                                <label
-                                    htmlFor="doc-select"
-                                    className="text-sm font-medium"
-                                >
-                                    Select a document
-                                </label>
-                                <label htmlFor="doc-search" className="sr-only">Search documents</label>
-                                <input
-                                    id="doc-search"
-                                    type="text"
-                                    placeholder="Search documents..."
-                                    value={docSearch}
-                                    onChange={(e) =>
-                                        setDocSearch(e.target.value)
-                                    }
-                                    className="w-full px-3 py-2 text-sm border rounded-md mb-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                                />
-                                <select
-                                    id="doc-select"
-                                    value={selectedDocId || ""}
-                                    onChange={(e) =>
-                                        setSelectedDocId(
-                                            e.target.value || null,
-                                        )
-                                    }
-                                    className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                                >
-                                    <option value="">
-                                        Choose a document...
-                                    </option>
-                                    {filteredDocuments.map((doc) => (
-                                        <option key={doc.id} value={doc.id}>
-                                            {doc.filename} (
-                                            {new Date(
-                                                doc.created_at,
-                                            ).toLocaleDateString()}
-                                            )
-                                        </option>
-                                    ))}
-                                </select>
-                                <Button
-                                    onClick={handleStart}
-                                    disabled={starting || !selectedDocId}
-                                >
-                                    {starting ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                        "Start Case Prep"
-                                    )}
-                                </Button>
-                            </>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
-
-            {/* Running or completed state */}
-            {showWorkspace && (
-                <div className="grid gap-6 md:grid-cols-[240px_1fr]">
-                    {/* Left: Step Timeline */}
-                    <div className="hidden md:block">
-                        <div className="sticky top-20">
-                            <h3 className="text-xs uppercase tracking-wider font-medium text-muted-foreground mb-3">
-                                Progress
-                            </h3>
-                            <AgentStepTimeline steps={steps} />
-                        </div>
-                    </div>
-
-                    {/* Right: Main content */}
-                    <div className="space-y-4">
-                        {/* Selected document info */}
-                        {selectedDoc && (
-                            <Card>
-                                <CardContent className="pt-4">
-                                    <p className="text-xs uppercase tracking-wider font-medium text-muted-foreground mb-1">
-                                        Document
-                                    </p>
-                                    <p className="text-sm font-medium">
-                                        {selectedDoc.filename}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">
-                                        Uploaded{" "}
-                                        {new Date(
-                                            selectedDoc.created_at,
-                                        ).toLocaleDateString()}
-                                    </p>
-                                </CardContent>
-                            </Card>
-                        )}
-
-                        {/* Mobile step timeline */}
-                        <div className="md:hidden">
-                            <AgentStepTimeline steps={steps} />
-                        </div>
-
-                        {/* Checkpoint prompt */}
-                        {checkpoint && (
-                            <AgentCheckpointPrompt
-                                question={checkpoint.question}
-                                context={checkpoint.context}
-                                onSubmit={handleResume}
-                                disabled={isRunning}
-                                error={checkpointError}
-                                onClearError={() => setCheckpointError(null)}
-                            />
-                        )}
-
-                        {/* Memo result */}
-                        {memo && (
-                            <Card>
-                                <CardContent className="pt-6">
-                                    <AgentMemoViewer
-                                        content={memo}
-                                        confidence={confidence}
-                                    />
-                                </CardContent>
-                            </Card>
-                        )}
-
-                        {/* Error */}
-                        {error && (
-                            <div className="text-sm text-red-500 p-3 rounded-md bg-red-50 dark:bg-red-950/20" role="alert">
-                                {error}
-                            </div>
-                        )}
-
-                        {/* Loading indicator */}
-                        {isRunning && !checkpoint && (
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <Loader2 className="h-4 w-4 animate-spin" />{" "}
-                                Agent is working...
-                            </div>
-                        )}
-
-                        {/* New Case Prep button after completion */}
-                        {!isRunning && (memo || error) && (
-                            <>
-                                <LegalDisclaimer className="mt-2" />
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleReset}
-                                >
-                                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />{" "}
-                                    New Case Prep
-                                </Button>
-                            </>
-                        )}
-                    </div>
+            <main className="flex-1 flex">
+                {/* Session sidebar */}
+                <div className={cn(
+                    "hidden md:flex flex-col transition-all duration-200",
+                    sidebarOpen ? "w-64 min-w-[16rem]" : "w-0 min-w-0 overflow-hidden",
+                )}>
+                    <AgentSessionSidebar
+                        sessions={session.sessions}
+                        activeSessionId={session.sessionId}
+                        onSelectSession={session.loadSession}
+                        onDeleteSession={session.deleteSession}
+                        onNewSession={handleReset}
+                        loading={session.sessionsLoading}
+                    />
                 </div>
-            )}
+
+                <div className="flex-1 min-w-0">
+                    <div className="mx-auto max-w-6xl px-4 py-8">
+                        <div className="flex items-center gap-3 mb-6">
+                            <Button variant="ghost" size="sm" asChild>
+                                <Link href="/agents"><ArrowLeft className="h-3.5 w-3.5 mr-1" /> Agents</Link>
+                            </Button>
+                            <Button variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSidebarOpen((p) => !p)}>
+                                {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+                            </Button>
+                        </div>
+
+                        <h1 className="text-2xl font-semibold font-[family-name:var(--font-lora)] mb-1">Case Prep Agent</h1>
+                        <p className="text-sm text-muted-foreground mb-6">
+                            Select an analyzed document to generate a strategy memo with prioritized issues and precedent search.
+                        </p>
+
+                        {/* Document selector */}
+                        {showSelector && (
+                            <Card>
+                                <CardContent className="pt-6 space-y-4">
+                                    {documentsLoading ? (
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                            <Loader2 className="h-4 w-4 animate-spin" /> Loading documents...
+                                        </div>
+                                    ) : documents.length === 0 ? (
+                                        <div className="text-center py-6">
+                                            <FileText className="h-8 w-8 mx-auto text-muted-foreground mb-3" />
+                                            <p className="text-sm text-muted-foreground mb-3">No analyzed documents found.</p>
+                                            <Button variant="outline" size="sm" asChild>
+                                                <Link href="/upload">Upload Document</Link>
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <label htmlFor="doc-select" className="text-sm font-medium">Select a document</label>
+                                            <input id="doc-search" type="text" placeholder="Search documents..." value={docSearch}
+                                                onChange={(e) => setDocSearch(e.target.value)}
+                                                className="w-full px-3 py-2 text-sm border rounded-md mb-2 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                                            />
+                                            <select id="doc-select" value={selectedDocId || ""} onChange={(e) => setSelectedDocId(e.target.value || null)}
+                                                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                                            >
+                                                <option value="">Choose a document...</option>
+                                                {filteredDocuments.map((doc) => (
+                                                    <option key={doc.id} value={doc.id}>
+                                                        {doc.filename} ({new Date(doc.created_at).toLocaleDateString()})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <Button onClick={handleStart} disabled={starting || !selectedDocId}>
+                                                {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Start Case Prep"}
+                                            </Button>
+                                        </>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {/* Running or completed state */}
+                        {showWorkspace && (
+                            <div className="grid gap-6 md:grid-cols-[240px_1fr]">
+                                <div className="hidden md:block">
+                                    <div className="sticky top-20">
+                                        <h3 className="text-xs uppercase tracking-wider font-medium text-muted-foreground mb-3">Progress</h3>
+                                        <AgentStepTimeline steps={steps} />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    {selectedDoc && (
+                                        <Card><CardContent className="pt-4">
+                                            <p className="text-xs uppercase tracking-wider font-medium text-muted-foreground mb-1">Document</p>
+                                            <p className="text-sm font-medium">{selectedDoc.filename}</p>
+                                        </CardContent></Card>
+                                    )}
+
+                                    <div className="md:hidden"><AgentStepTimeline steps={steps} /></div>
+
+                                    {session.checkpoint && (
+                                        <AgentCheckpointPrompt
+                                            question={session.checkpoint.question}
+                                            context={session.checkpoint.context}
+                                            onSubmit={session.resume}
+                                            disabled={session.isRunning}
+                                            error={session.checkpointError}
+                                            onClearError={() => session.setCheckpointError(null)}
+                                        />
+                                    )}
+
+                                    {session.memo && (
+                                        <Card><CardContent className="pt-6">
+                                            <AgentMemoViewer content={session.memo} confidence={session.confidence} />
+                                        </CardContent></Card>
+                                    )}
+
+                                    {/* Session loaded but no memo */}
+                                    {session.isFollowUp && !session.isRunning && !session.memo && !session.checkpoint && !session.error && (
+                                        <div className="rounded-lg border bg-card p-6 text-center space-y-3">
+                                            <p className="text-sm text-muted-foreground">This session did not complete successfully.</p>
+                                            <Button size="sm" onClick={handleReset}><RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Start New Case Prep</Button>
+                                        </div>
+                                    )}
+
+                                    {session.error && (
+                                        <div className="text-sm text-red-500 p-3 rounded-md bg-red-50 dark:bg-red-950/20" role="alert">{session.error}</div>
+                                    )}
+
+                                    {session.isRunning && !session.checkpoint && (
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                            <Loader2 className="h-4 w-4 animate-spin" /> Agent is working...
+                                        </div>
+                                    )}
+
+                                    {!session.isRunning && (session.memo || session.error) && (
+                                        <>
+                                            <LegalDisclaimer className="mt-2" />
+                                            <Button variant="outline" size="sm" onClick={handleReset}>
+                                                <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> New Case Prep
+                                            </Button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </main>
 

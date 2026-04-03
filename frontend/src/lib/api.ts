@@ -34,6 +34,11 @@ import type {
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
+/**
+ * Direct backend URL for SSE streams — bypasses Next.js rewrite proxy
+ * which buffers responses and breaks real-time streaming.
+ */
+const SSE_BASE = process.env.NEXT_PUBLIC_SSE_URL || "http://localhost:8000/api/v1";
 
 // ---------------------------------------------------------------------------
 // Token management
@@ -519,7 +524,6 @@ function _streamSSE<T>(
         }
         let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
         try {
-            // Use SSE_BASE for streaming to bypass Next.js proxy timeout
             let res = await fetch(`${API_BASE}${path}`, {
                 method: "POST",
                 headers,

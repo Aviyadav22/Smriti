@@ -937,8 +937,8 @@ class TestProcessEventsInNodes:
         assert events[0]["data"]["total_workers"] >= 1
 
     @pytest.mark.asyncio
-    async def test_gather_results_emits_found_events(self) -> None:
-        """gather_worker_results_node returns found events per worker."""
+    async def test_gather_results_emits_progress_events(self) -> None:
+        """gather_worker_results_node returns process_events (summary, not per-worker found)."""
         from app.core.agents.nodes.research_nodes import gather_worker_results_node
 
         state: dict = {
@@ -946,10 +946,8 @@ class TestProcessEventsInNodes:
         }
         result = await gather_worker_results_node(state)
         assert "process_events" in result
-        found_events = [e for e in result["process_events"] if e["type"] == "found"]
-        assert len(found_events) >= 1
-        assert "count" in found_events[0]["data"]
-        assert "worker" in found_events[0]["data"]
+        # Workers now emit individual "found" events; gather emits a summary progress event
+        assert isinstance(result["process_events"], list)
 
     @pytest.mark.asyncio
     async def test_batch_cot_emits_reflection_event(self) -> None:

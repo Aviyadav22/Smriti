@@ -204,6 +204,7 @@ class ResearchState(TypedDict):
     citation_registry: dict                  # Pre-assigned [^N] → search result mapping for deterministic footnotes
     quality_attempts: int                    # [B3] Quality retry counter (0, 1, 2)
     auto_approve: bool                       # [D10] Skip HITL checkpoints when True
+    skip_verification: bool                  # [PERF] Skip verify_v2 step (citations are RAG-grounded)
     _gathered_task_ids: list[str]            # Internal: task_ids already gathered (prevents re-processing)
     _total_workers_dispatched: int           # Internal: cumulative worker count across all dispatch rounds
 

@@ -48,6 +48,37 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Helper: emit a per-worker "found" event for live SSE streaming [T1]
+# ---------------------------------------------------------------------------
+
+_WORKER_LABELS = {
+    "case_law": "Case law search",
+    "named_case": "Named case lookup",
+    "statute": "Statute search",
+    "constitution": "Constitution search",
+    "ik_search": "Indian Kanoon",
+    "web": "Web search",
+    "graph": "Citation graph",
+    "graph_community": "Graph community",
+}
+
+
+def _worker_found_event(task_type: str, results: list, query: str = "") -> dict:
+    """Create a process_events entry so the SSE stream shows results as each worker finishes."""
+    top_case = ""
+    if results:
+        top_case = (results[0].get("title") or results[0].get("name") or "")[:80]
+    return {
+        "type": "found",
+        "data": {
+            "worker": _WORKER_LABELS.get(task_type, task_type),
+            "count": len(results),
+            "top_case": top_case,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
 # Worker: case_law_worker — dual-query hybrid search
 # ---------------------------------------------------------------------------
 
@@ -181,12 +212,15 @@ async def case_law_worker(
     except Exception as exc:
         logger.warning("Proposition search failed (non-fatal): %s", exc)
 
-    return {"worker_results": [WorkerResult(
-        task_id=task["task_id"], task_type="case_law",
-        query=task["nl_query"], results=results,
-        source_urls=[], metadata={}, error=None,
-        reasoning="",  # Populated by batch_worker_cot_node [S4]
-    )]}
+    return {
+        "worker_results": [WorkerResult(
+            task_id=task["task_id"], task_type="case_law",
+            query=task["nl_query"], results=results,
+            source_urls=[], metadata={}, error=None,
+            reasoning="",  # Populated by batch_worker_cot_node [S4]
+        )],
+        "process_events": [_worker_found_event("case_law", results)],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -307,12 +341,15 @@ async def named_case_worker(
         except Exception:
             pass  # Supplemental search is best-effort
 
-    return {"worker_results": [WorkerResult(
-        task_id=task["task_id"], task_type="named_case",
-        query=task.get("nl_query", ""),
-        results=results, source_urls=[], metadata={},
-        error=None, reasoning="",
-    )]}
+    return {
+        "worker_results": [WorkerResult(
+            task_id=task["task_id"], task_type="named_case",
+            query=task.get("nl_query", ""),
+            results=results, source_urls=[], metadata={},
+            error=None, reasoning="",
+        )],
+        "process_events": [_worker_found_event("named_case", results)],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -415,13 +452,16 @@ async def statute_worker(
             reasoning="",
         )]}
 
-    return {"worker_results": [WorkerResult(
-        task_id=task["task_id"], task_type="statute",
-        query=task["nl_query"], results=results,
-        source_urls=[],
-        metadata={"expanded_terms": expanded_terms if expanded_terms else []},
-        error=None, reasoning="",
-    )]}
+    return {
+        "worker_results": [WorkerResult(
+            task_id=task["task_id"], task_type="statute",
+            query=task["nl_query"], results=results,
+            source_urls=[],
+            metadata={"expanded_terms": expanded_terms if expanded_terms else []},
+            error=None, reasoning="",
+        )],
+        "process_events": [_worker_found_event("statute", results)],
+    }
 
 
 def func_websearch_to_tsquery(query: str) -> object:
@@ -497,13 +537,16 @@ async def ik_search_worker(
         )
         if cached_results is not None:
             logger.debug("IK search cache hit for: %s", task["nl_query"][:60])
-            return {"worker_results": [WorkerResult(
-                task_id=task["task_id"], task_type="ik_search",
-                query=task["nl_query"], results=cached_results,
-                source_urls=[f"https://indiankanoon.org/doc/{r.get('ik_doc_id', '')}/" for r in cached_results],
-                metadata={"source": "indian_kanoon", "cached": True},
-                error=None, reasoning="",
-            )]}
+            return {
+                "worker_results": [WorkerResult(
+                    task_id=task["task_id"], task_type="ik_search",
+                    query=task["nl_query"], results=cached_results,
+                    source_urls=[f"https://indiankanoon.org/doc/{r.get('ik_doc_id', '')}/" for r in cached_results],
+                    metadata={"source": "indian_kanoon", "cached": True},
+                    error=None, reasoning="",
+                )],
+                "process_events": [_worker_found_event("ik_search", cached_results)],
+            }
 
         logger.info(
             "IK search: nl_query=%s, boolean_query=%s, court=%s, dates=%s-%s",
@@ -665,13 +708,16 @@ async def ik_search_worker(
             error=str(exc), reasoning="",
         )]}
 
-    return {"worker_results": [WorkerResult(
-        task_id=task["task_id"], task_type="ik_search",
-        query=task["nl_query"], results=results,
-        source_urls=source_urls,
-        metadata={"source": "indian_kanoon", "filters_applied": bool(filters)},
-        error=None, reasoning="",
-    )]}
+    return {
+        "worker_results": [WorkerResult(
+            task_id=task["task_id"], task_type="ik_search",
+            query=task["nl_query"], results=results,
+            source_urls=source_urls,
+            metadata={"source": "indian_kanoon", "filters_applied": bool(filters)},
+            error=None, reasoning="",
+        )],
+        "process_events": [_worker_found_event("ik_search", results)],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -731,13 +777,16 @@ async def web_search_worker(
             error=str(exc), reasoning="",
         )]}
 
-    return {"worker_results": [WorkerResult(
-        task_id=task["task_id"], task_type="web",
-        query=task["nl_query"], results=results,
-        source_urls=source_urls,
-        metadata={"source": "web", "country": "IN"},
-        error=None, reasoning="",
-    )]}
+    return {
+        "worker_results": [WorkerResult(
+            task_id=task["task_id"], task_type="web",
+            query=task["nl_query"], results=results,
+            source_urls=source_urls,
+            metadata={"source": "web", "country": "IN"},
+            error=None, reasoning="",
+        )],
+        "process_events": [_worker_found_event("web", results)],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -887,12 +936,15 @@ async def graph_worker(
             error=str(exc), reasoning="",
         )]}
 
-    return {"worker_results": [WorkerResult(
-        task_id=task["task_id"], task_type="graph",
-        query=task["nl_query"], results=results,
-        source_urls=[], metadata={"source": "citation_graph"},
-        error=None, reasoning="",
-    )]}
+    return {
+        "worker_results": [WorkerResult(
+            task_id=task["task_id"], task_type="graph",
+            query=task["nl_query"], results=results,
+            source_urls=[], metadata={"source": "citation_graph"},
+            error=None, reasoning="",
+        )],
+        "process_events": [_worker_found_event("graph", results)],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1050,9 +1102,12 @@ async def graph_community_worker(
     else:
         reasoning += "No pre-computed communities matched — synthesis will rely on individual case analysis."
 
-    return {"worker_results": [WorkerResult(
-        task_id=task["task_id"], task_type="graph_community",
-        query=task["nl_query"], results=community_results,
-        source_urls=[], metadata={"source": "graph_community"},
-        error=None, reasoning=reasoning,
-    )]}
+    return {
+        "worker_results": [WorkerResult(
+            task_id=task["task_id"], task_type="graph_community",
+            query=task["nl_query"], results=community_results,
+            source_urls=[], metadata={"source": "graph_community"},
+            error=None, reasoning=reasoning,
+        )],
+        "process_events": [_worker_found_event("graph_community", community_results)],
+    }

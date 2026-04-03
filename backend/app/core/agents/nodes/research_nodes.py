@@ -875,15 +875,14 @@ async def gather_worker_results_node(state: ResearchState) -> dict:
 
     cross_refs.sort(key=lambda x: x["match_count"], reverse=True)
 
-    # [T1] Emit found events only for NEW workers (not already gathered)
-    found_events = []
-    for wr in new_workers:
-        results_list = wr.get("results", [])
-        top_case = results_list[0].get("title", "")[:80] if results_list else ""
-        found_events.append(emit_status("found", {
-            "worker": wr.get("task_type", "unknown"),
-            "count": len(results_list),
-            "top_case": top_case,
+    # [T1] Workers now emit individual "found" events via process_events in worker_nodes.py.
+    # Gather emits a summary event with cross-ref count instead of per-worker "found" events.
+    gather_events: list[dict] = []
+    if cross_refs:
+        gather_events.append(emit_status("progress", {
+            "stage": "investigate",
+            "progress": 0.45,
+            "detail": f"Gathered {len(deduped)} results, {len(cross_refs)} cross-referenced across workers",
         }))
 
     # Track cumulative worker count
@@ -894,7 +893,7 @@ async def gather_worker_results_node(state: ResearchState) -> dict:
     result: dict = {
         "search_results": deduped,
         "cross_references": cross_refs,
-        "process_events": found_events,
+        "process_events": gather_events,
         "_gathered_task_ids": new_gathered_ids,
         "_total_workers_dispatched": total_dispatched,
     }

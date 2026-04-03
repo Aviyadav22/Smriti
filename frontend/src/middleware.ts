@@ -7,7 +7,7 @@ export function middleware(request: NextRequest) {
   const backendUrl = process.env.BACKEND_URL || "";
 
   const connectSrc = isDev
-    ? `connect-src 'self' ${backendUrl || "http://127.0.0.1:8000"} ws://localhost:*`
+    ? `connect-src 'self' ${backendUrl || "http://127.0.0.1:8000"} http://localhost:8000 ws://localhost:*`
     : `connect-src 'self'${backendUrl ? ` ${backendUrl}` : ""}`;
 
   const csp = [

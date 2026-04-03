@@ -118,7 +118,9 @@ def _categorize_error(exc: Exception) -> dict:
 class ResearchRequest(BaseModel):
     query: str = Field(..., min_length=5, max_length=5000)
     language: str = Field(default="en", pattern="^(en|hi)$")
-    auto_approve: bool = Field(default=False, description="Skip HITL checkpoints, auto-approve all")
+    auto_approve: bool = Field(default=True, description="Skip HITL checkpoints, auto-approve all (default: on for speed)")
+    steer_research: bool = Field(default=False, description="Enable HITL checkpoints to steer the research interactively")
+    skip_verification: bool = Field(default=True, description="Skip citation re-verification step (citations are RAG-grounded)")
 
 
 class CasePrepRequest(BaseModel):
@@ -230,6 +232,23 @@ async def _stream_agent_events(
     _GRAPH_TIMEOUT = 600  # 10 minutes max for entire graph execution
     _SENTINEL = object()  # signals the producer is done
 
+    # Known research graph node names — used to filter astream_events
+    # (only emit SSE for actual graph steps, not internal LangChain sub-chains)
+    _KNOWN_NODES = {
+        "rewrite_query", "classify", "statute_lookup", "element_decomposition",
+        "plan_research", "checkpoint_plan", "pre_warm_embeddings",
+        "dispatch_workers", "gather_results", "batch_cot_with_reflection",
+        "evaluate_and_extract", "gap_analysis", "checkpoint_findings",
+        "adversarial_search", "temporal_validation",
+        "speculative_synthesis", "format_footnotes", "verify_v2", "quality_check",
+        "checkpoint_memo",
+        "fast_path_search", "fast_path_synthesis",
+        # Workers
+        "case_law_worker", "named_case_worker", "statute_worker",
+        "ik_search_worker", "web_search_worker", "graph_worker",
+        "graph_community_worker",
+    }
+
     queue: asyncio.Queue[str | object] = asyncio.Queue()
     is_checkpoint = False
 
@@ -251,11 +270,50 @@ async def _stream_agent_events(
                 )
             graph = build_research_graph(**graph_kwargs, memo_stream_callback=_memo_stream_cb)
 
+        # --- Progress ticker: sends ONE update during long silences ---
+        import time as _time_mod
+        _ticker_state = {"active": True, "last_event": _time_mod.monotonic()}
+
+        async def _progress_ticker() -> None:
+            """Send a progress event only when the graph is silent for >5 seconds."""
+            _MESSAGES = [
+                "Analyzing your legal question...",
+                "Understanding the legal context...",
+                "Identifying relevant statutes...",
+                "Breaking down legal elements...",
+                "Preparing research strategy...",
+                "Searching case databases...",
+                "Querying Indian Kanoon...",
+                "Traversing citation graph...",
+                "Evaluating source relevance...",
+                "Analyzing precedent strength...",
+                "Checking for contradictions...",
+                "Synthesizing findings...",
+            ]
+            idx = 0
+            while _ticker_state["active"]:
+                await asyncio.sleep(5)
+                if not _ticker_state["active"]:
+                    break
+                # Only send if no real event was emitted recently (>4s silence)
+                if _time_mod.monotonic() - _ticker_state["last_event"] < 4.0:
+                    continue
+                msg = _MESSAGES[idx % len(_MESSAGES)]
+                idx += 1
+                await queue.put(f"data: {json.dumps({'type': 'progress', 'data': {'stage': '', 'progress': 0, 'detail': msg}, 'execution_id': str(exec_id)})}\n\n")
+
+        ticker_task = asyncio.create_task(_progress_ticker())
+
+        # Send an immediate event so the frontend never shows empty state
+        await queue.put(f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'understand', 'progress': 0.01, 'detail': 'Starting research...'}, 'execution_id': str(exec_id)})}\n\n")
+
         try:
             async for event in graph.astream(
                 initial_input, config=config, stream_mode="updates"
             ):
                 for node_name, node_output in event.items():
+                    _ticker_state["last_event"] = _time_mod.monotonic()
+
                     # [T1] Forward process_events as rich SSE events
                     if isinstance(node_output, dict):
                         for pe in node_output.get("process_events", []):
@@ -270,6 +328,10 @@ async def _stream_agent_events(
                         "message": f"Completed: {node_name}",
                     }
                     await queue.put(f"data: {json.dumps(sse_event)}\n\n")
+
+            # Stop the progress ticker
+            _ticker_state["active"] = False
+            ticker_task.cancel()
 
             # Check if we are at an interrupt (HITL checkpoint)
             state = await graph.aget_state(config)
@@ -421,6 +483,8 @@ async def _stream_agent_events(
                 await queue.put(f"data: {json.dumps({'type': 'done', 'execution_id': str(exec_id), 'status': 'completed'})}\n\n")
 
         except Exception as exc:
+            _ticker_state["active"] = False
+            ticker_task.cancel()
             logger.exception("Agent execution %s failed", exec_id)
             try:
                 async with async_session_factory() as db:
@@ -665,9 +729,14 @@ async def run_agent(
         )
         graph = None  # Built lazily inside _run_graph for memo streaming
         initial_input = {"query": request_body.query, "language": request_language}
-        # [D10] Pass auto_approve if set
-        if hasattr(request_body, "auto_approve") and request_body.auto_approve:
+        # [D10] steer_research overrides auto_approve; default is auto_approve=True
+        if hasattr(request_body, "steer_research") and request_body.steer_research:
+            initial_input["auto_approve"] = False
+        elif hasattr(request_body, "auto_approve") and request_body.auto_approve:
             initial_input["auto_approve"] = True
+        # [PERF] Skip citation re-verification by default (RAG-grounded)
+        if hasattr(request_body, "skip_verification") and request_body.skip_verification:
+            initial_input["skip_verification"] = True
     elif agent_type == "case_prep":
         graph_store = get_graph_store()
         graph = build_case_prep_graph(
@@ -1900,8 +1969,14 @@ async def create_agent_session(
         )
         graph = None  # Built lazily
         initial_input = {"query": request_body.query, "language": request_language}
-        if hasattr(request_body, "auto_approve") and request_body.auto_approve:
+        # [D10] steer_research overrides auto_approve; default is auto_approve=True
+        if hasattr(request_body, "steer_research") and request_body.steer_research:
+            initial_input["auto_approve"] = False
+        elif hasattr(request_body, "auto_approve") and request_body.auto_approve:
             initial_input["auto_approve"] = True
+        # [PERF] Skip citation re-verification by default (RAG-grounded)
+        if hasattr(request_body, "skip_verification") and request_body.skip_verification:
+            initial_input["skip_verification"] = True
     elif agent_type == "case_prep":
         graph_store_inst = get_graph_store()
         graph = build_case_prep_graph(
@@ -2264,9 +2339,12 @@ async def list_sessions(
     rows = await db.execute(
         text(
             f"SELECT s.id, s.agent_type, s.title, s.created_at, s.updated_at, "
-            f"(SELECT COUNT(*) FROM agent_executions e WHERE e.session_id = s.id) AS execution_count, "
-            f"(SELECT COUNT(*) FROM agent_messages m WHERE m.session_id = s.id) AS message_count "
-            f"FROM agent_sessions s {where_clause} "
+            f"COALESCE(e_cnt.cnt, 0) AS execution_count, "
+            f"COALESCE(m_cnt.cnt, 0) AS message_count "
+            f"FROM agent_sessions s "
+            f"LEFT JOIN (SELECT session_id, COUNT(*) AS cnt FROM agent_executions GROUP BY session_id) e_cnt ON e_cnt.session_id = s.id "
+            f"LEFT JOIN (SELECT session_id, COUNT(*) AS cnt FROM agent_messages GROUP BY session_id) m_cnt ON m_cnt.session_id = s.id "
+            f"{where_clause} "
             f"ORDER BY s.updated_at DESC OFFSET :off LIMIT :lim"
         ),
         {**params, "off": offset, "lim": page_size},
