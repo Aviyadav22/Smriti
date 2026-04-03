@@ -26,12 +26,14 @@ interface AgentCheckpointPromptProps {
 // Detect checkpoint type from context shape
 // ---------------------------------------------------------------------------
 
-type CheckpointType = "findings" | "memo" | "generic";
+type CheckpointType = "findings" | "memo" | "strategy_analysis" | "strategy_arguments" | "strategy_memo" | "generic";
 
 function detectCheckpointType(context?: Record<string, unknown>): CheckpointType {
     if (!context) return "generic";
-    if (context.draft_memo) return "memo";
+    if (context.draft_memo || context.strategy_memo || context.full_draft) return "memo";
     if (context.result_count !== undefined || context.top_cases || context.evidence_gaps) return "findings";
+    if (context.fact_analysis || context.judge_profile !== undefined) return "strategy_analysis";
+    if (context.irac_arguments || context.strength_assessment) return "strategy_arguments";
     return "generic";
 }
 
@@ -50,11 +52,26 @@ function inferSuggestions(type: CheckpointType, context?: Record<string, unknown
             return chips;
         }
         case "memo":
+        case "strategy_memo":
             return [
                 "Looks good, finalize",
                 "Make it more concise",
                 "Add more case citations",
                 "Strengthen the analysis",
+            ];
+        case "strategy_analysis":
+            return [
+                "Looks good, proceed",
+                "Add more legal elements",
+                "Focus on constitutional grounds",
+                "Include procedural aspects",
+            ];
+        case "strategy_arguments":
+            return [
+                "Looks good, proceed to adversarial analysis",
+                "Strengthen the weakest argument",
+                "Add more recent precedents",
+                "Reorder by strength",
             ];
         default:
             return [
@@ -212,7 +229,7 @@ function FindingsContext({ context }: { context: Record<string, unknown> }) {
 
 function MemoContext({ context }: { context: Record<string, unknown> }) {
     const [showDraft, setShowDraft] = useState(false);
-    const draftMemo = context.draft_memo as string | undefined;
+    const draftMemo = (context.draft_memo || context.strategy_memo || context.full_draft) as string | undefined;
     const confidence = context.confidence as number | undefined;
     const footnotes = (context.footnotes as unknown[] | undefined) || [];
 
@@ -259,6 +276,172 @@ function MemoContext({ context }: { context: Record<string, unknown> }) {
                             </ReactMarkdown>
                         </div>
                     )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Strategy analysis context renderer — fact analysis + judge profile
+// ---------------------------------------------------------------------------
+
+function StrategyAnalysisContext({ context }: { context: Record<string, unknown> }) {
+    const factAnalysis = context.fact_analysis as Record<string, unknown> | undefined;
+    const judgeProfile = context.judge_profile as Record<string, unknown> | undefined;
+
+    return (
+        <div className="space-y-4">
+            {factAnalysis && (
+                <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Fact Analysis</p>
+                    <div className="rounded-md bg-muted/30 p-3 space-y-2 text-xs">
+                        {factAnalysis.parties && (
+                            <div>
+                                <p className="font-medium text-muted-foreground">Parties</p>
+                                {typeof factAnalysis.parties === "object" && factAnalysis.parties !== null && (
+                                    <div className="ml-2 mt-1 space-y-1">
+                                        {Object.entries(factAnalysis.parties as Record<string, unknown>).map(([role, info]) => (
+                                            <div key={role} className="flex gap-2">
+                                                <Badge variant="outline" className="text-[10px] shrink-0">{role}</Badge>
+                                                <span className="text-foreground/80">
+                                                    {typeof info === "object" && info !== null
+                                                        ? (info as Record<string, unknown>).name as string || JSON.stringify(info)
+                                                        : String(info)}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        {factAnalysis.causes_of_action && Array.isArray(factAnalysis.causes_of_action) && (
+                            <div>
+                                <p className="font-medium text-muted-foreground">Causes of Action</p>
+                                <ul className="ml-4 mt-1 space-y-0.5">
+                                    {(factAnalysis.causes_of_action as string[]).map((c, i) => (
+                                        <li key={i} className="list-disc text-foreground/80">{typeof c === "string" ? c : JSON.stringify(c)}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                        {factAnalysis.key_facts && Array.isArray(factAnalysis.key_facts) && (
+                            <div>
+                                <p className="font-medium text-muted-foreground">Key Facts</p>
+                                <ul className="ml-4 mt-1 space-y-0.5">
+                                    {(factAnalysis.key_facts as string[]).map((f, i) => (
+                                        <li key={i} className="list-disc text-foreground/80">{typeof f === "string" ? f : JSON.stringify(f)}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                        {factAnalysis.jurisdiction && (
+                            <div>
+                                <p className="font-medium text-muted-foreground">Jurisdiction</p>
+                                <span className="text-foreground/80">{String(factAnalysis.jurisdiction)}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+            {judgeProfile && Object.keys(judgeProfile).length > 0 && (
+                <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Judge Profile</p>
+                    <div className="rounded-md bg-muted/30 p-3 text-xs text-foreground/80">
+                        {judgeProfile.name && <p><span className="font-medium">Judge:</span> {String(judgeProfile.name)}</p>}
+                        {judgeProfile.total_cases && <p><span className="font-medium">Cases:</span> {String(judgeProfile.total_cases)}</p>}
+                        {judgeProfile.disposal_patterns && typeof judgeProfile.disposal_patterns === "object" && (
+                            <p><span className="font-medium">Patterns:</span> {Object.entries(judgeProfile.disposal_patterns as Record<string, number>).map(([k, v]) => `${k}: ${v}`).join(", ")}</p>
+                        )}
+                    </div>
+                </div>
+            )}
+            {!factAnalysis && !judgeProfile && (
+                <p className="text-xs text-muted-foreground">No analysis data available yet.</p>
+            )}
+        </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Strategy arguments context renderer — IRAC arguments + strength
+// ---------------------------------------------------------------------------
+
+interface IracArgument {
+    issue?: string;
+    rule?: string;
+    application?: string;
+    conclusion?: string;
+    strength?: string;
+    precedents?: Array<{ title?: string; citation?: string }>;
+}
+
+function StrategyArgumentsContext({ context }: { context: Record<string, unknown> }) {
+    const [expandedArg, setExpandedArg] = useState<number | null>(null);
+    const iracArgs = (context.irac_arguments as IracArgument[] | undefined) || [];
+    const strength = context.strength_assessment as Record<string, unknown> | undefined;
+
+    return (
+        <div className="space-y-4">
+            {strength && (
+                <div className="flex items-center gap-3 text-sm">
+                    <span className="text-xs text-muted-foreground">Overall Strength:</span>
+                    <Badge variant="secondary" className={
+                        strength.level === "strong" ? "bg-green-100 text-green-800 dark:bg-green-900/30"
+                        : strength.level === "moderate" ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30"
+                        : "bg-red-100 text-red-800 dark:bg-red-900/30"
+                    }>
+                        {String(strength.level || "unknown")}
+                        {strength.score ? ` (${Math.round(Number(strength.score) * 100)}%)` : ""}
+                    </Badge>
+                    {strength.reasoning && (
+                        <span className="text-xs text-muted-foreground">{String(strength.reasoning).slice(0, 100)}</span>
+                    )}
+                </div>
+            )}
+            {iracArgs.length > 0 && (
+                <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">
+                        IRAC Arguments ({iracArgs.length})
+                    </p>
+                    <div className="space-y-2">
+                        {iracArgs.map((arg, i) => (
+                            <div key={i} className="rounded-md border border-border/60 bg-background">
+                                <button
+                                    type="button"
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-muted/30"
+                                    onClick={() => setExpandedArg(expandedArg === i ? null : i)}
+                                >
+                                    <span className="font-mono text-muted-foreground/60 shrink-0 w-4">{i + 1}</span>
+                                    <span className="font-medium text-foreground flex-1 truncate">
+                                        {arg.issue || `Argument ${i + 1}`}
+                                    </span>
+                                    {arg.strength && (
+                                        <Badge variant="outline" className="text-[9px] shrink-0">{arg.strength}</Badge>
+                                    )}
+                                    {expandedArg === i ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+                                </button>
+                                {expandedArg === i && (
+                                    <div className="px-3 pb-3 pt-1 text-xs space-y-2 border-t border-border/40">
+                                        {arg.issue && <div><span className="font-medium text-muted-foreground">Issue:</span> <span className="text-foreground/80">{arg.issue}</span></div>}
+                                        {arg.rule && <div><span className="font-medium text-muted-foreground">Rule:</span> <span className="text-foreground/80">{arg.rule}</span></div>}
+                                        {arg.application && <div><span className="font-medium text-muted-foreground">Application:</span> <span className="text-foreground/80">{arg.application}</span></div>}
+                                        {arg.conclusion && <div><span className="font-medium text-muted-foreground">Conclusion:</span> <span className="text-foreground/80">{arg.conclusion}</span></div>}
+                                        {arg.precedents && arg.precedents.length > 0 && (
+                                            <div>
+                                                <span className="font-medium text-muted-foreground">Precedents:</span>
+                                                <ul className="ml-4 mt-0.5">
+                                                    {arg.precedents.map((p, pi) => (
+                                                        <li key={pi} className="list-disc text-foreground/70">{p.title || p.citation || "Unknown"}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>
@@ -366,9 +549,13 @@ export function AgentCheckpointPrompt({
 
     const checkpointTitle = checkpointType === "findings"
         ? "Review Search Findings"
-        : checkpointType === "memo"
+        : checkpointType === "memo" || checkpointType === "strategy_memo"
             ? "Review Draft Memo"
-            : "Agent needs your input";
+            : checkpointType === "strategy_analysis"
+                ? "Review Fact Analysis"
+                : checkpointType === "strategy_arguments"
+                    ? "Review IRAC Arguments"
+                    : "Agent needs your input";
 
     return (
         <Card className="border-[var(--gold)]/30 shadow-sm">
@@ -386,6 +573,12 @@ export function AgentCheckpointPrompt({
                 )}
                 {context && checkpointType === "memo" && (
                     <MemoContext context={context} />
+                )}
+                {context && checkpointType === "strategy_analysis" && (
+                    <StrategyAnalysisContext context={context} />
+                )}
+                {context && checkpointType === "strategy_arguments" && (
+                    <StrategyArgumentsContext context={context} />
                 )}
                 {context && checkpointType === "generic" && (
                     <GenericContext context={context} />
