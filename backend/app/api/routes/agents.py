@@ -269,7 +269,12 @@ async def _stream_agent_events(
                 await queue.put(
                     f'data: {json.dumps({"type": "memo_stream", "execution_id": str(exec_id), "chunk": chunk})}\n\n'
                 )
-            graph = build_research_graph(**graph_kwargs, memo_stream_callback=_memo_stream_cb)
+            # Build the appropriate graph type with streaming callback
+            _graph_type = graph_kwargs.pop("_graph_type", "research")
+            if _graph_type == "strategy":
+                graph = build_strategy_graph(**graph_kwargs, memo_stream_callback=_memo_stream_cb)
+            else:
+                graph = build_research_graph(**graph_kwargs, memo_stream_callback=_memo_stream_cb)
 
         # --- Progress ticker: sends ONE update during long silences ---
         import time as _time_mod
@@ -772,15 +777,18 @@ async def run_agent(
         initial_input = {"document_id": request_body.document_id, "language": request_language}
     elif agent_type == "strategy":
         graph_store = get_graph_store()
-        graph = build_strategy_graph(
-            llm=llm,
-            flash_llm=get_flash_llm(),
-            embedder=embedder,
-            vector_store=vector_store,
-            reranker=reranker,
-            graph_store=graph_store,
-            checkpointer=checkpointer,
-        )
+        # Defer graph building to SSE handler so memo_stream_callback can access the queue
+        graph_kwargs = {
+            "_graph_type": "strategy",
+            "llm": llm,
+            "flash_llm": get_flash_llm(),
+            "embedder": embedder,
+            "vector_store": vector_store,
+            "reranker": reranker,
+            "graph_store": graph_store,
+            "checkpointer": checkpointer,
+        }
+        graph = None  # Built lazily inside _stream_agent_events
         initial_input = {
             "case_facts": request_body.case_facts,
             "desired_relief": request_body.desired_relief,
@@ -2009,11 +2017,17 @@ async def create_agent_session(
         initial_input = {"document_id": request_body.document_id, "language": request_language}
     elif agent_type == "strategy":
         graph_store_inst = get_graph_store()
-        graph = build_strategy_graph(
-            llm=llm, flash_llm=get_flash_llm(), embedder=embedder,
-            vector_store=vector_store, reranker=reranker,
-            graph_store=graph_store_inst, checkpointer=checkpointer,
-        )
+        graph_kwargs = {
+            "_graph_type": "strategy",
+            "llm": llm,
+            "flash_llm": get_flash_llm(),
+            "embedder": embedder,
+            "vector_store": vector_store,
+            "reranker": reranker,
+            "graph_store": graph_store_inst,
+            "checkpointer": checkpointer,
+        }
+        graph = None  # Built lazily with memo_stream_callback
         initial_input = {
             "case_facts": request_body.case_facts,
             "desired_relief": request_body.desired_relief,

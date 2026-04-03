@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
@@ -73,6 +74,7 @@ def build_strategy_graph(
     reranker: Reranker,
     graph_store: GraphStore,
     checkpointer: BaseCheckpointSaver | None = None,
+    memo_stream_callback: Any | None = None,
 ) -> CompiledStateGraph:
     """Build and compile the Strategy Agent LangGraph graph.
 
@@ -177,7 +179,7 @@ def build_strategy_graph(
         return {**counter_result, **judge_result}
 
     async def synthesize_strategy(state: StrategyState) -> dict:
-        result = await synthesize_strategy_node(state, llm)
+        result = await synthesize_strategy_node(state, llm, stream_callback=memo_stream_callback)
         # Count feedback messages for THIS step only (not shared across checkpoints)
         step_feedback_count = sum(
             1 for m in state.get("messages", [])

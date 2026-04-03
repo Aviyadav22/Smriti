@@ -11,6 +11,8 @@ import asyncio
 import json
 import logging
 import re
+from collections.abc import Callable
+from typing import Any
 
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -732,6 +734,7 @@ async def judge_considerations_node(
 async def synthesize_strategy_node(
     state: StrategyState,
     llm: LLMProvider,
+    stream_callback: Callable[[str], Any] | None = None,
 ) -> dict:
     """Synthesize all analysis into a comprehensive argument memo."""
     case_facts = sanitize_search_query(state.get("case_facts", ""))
@@ -774,12 +777,26 @@ async def synthesize_strategy_node(
     )
 
     try:
-        memo = await llm.generate(
-            prompt=prompt,
-            system=system,
-            temperature=0.2,
-            max_tokens=4096,
-        )
+        if stream_callback:
+            # Real streaming: yield chunks as the LLM generates them
+            memo_chunks: list[str] = []
+            async for chunk in llm.stream(
+                prompt=prompt,
+                system=system,
+                max_tokens=8192,
+            ):
+                memo_chunks.append(chunk)
+                result = stream_callback(chunk)
+                if asyncio.iscoroutine(result):
+                    await result
+            memo = "".join(memo_chunks)
+        else:
+            memo = await llm.generate(
+                prompt=prompt,
+                system=system,
+                temperature=0.2,
+                max_tokens=8192,
+            )
     except Exception as e:
         logger.error("LLM error in synthesize_strategy_node: %s", e, exc_info=True)
         return {"error": f"LLM error in synthesize_strategy_node: {e!s}"}
