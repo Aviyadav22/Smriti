@@ -237,6 +237,10 @@ export default function GraphPage() {
         setFilters(prev => ({ ...prev, communityLabel: label ?? undefined }));
     }
 
+    function handleFilterChange(newFilters: Partial<DashboardFilters>) {
+        setFilters(prev => ({ ...prev, ...newFilters }));
+    }
+
     function handleViewChange(v: ViewMode) {
         setView(v);
         if (v === "dashboard") {
@@ -398,6 +402,8 @@ export default function GraphPage() {
                                         onSelectCommunity={handleCommunitySelect}
                                         onSelectCase={handleSelectCase}
                                         stats={stats}
+                                        onFilterChange={handleFilterChange}
+                                        currentFilters={filters}
                                     />
                                 </div>
                             </div>
