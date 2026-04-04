@@ -387,7 +387,7 @@ async def get_subtopics(
             cypher=(
                 "MATCH (c:Case)-[:CLASSIFIED_AS]->(t:IssueTopic) "
                 f"{category_filter}"
-                "RETURN t.tag AS tag, t.category AS category, t.subtopic AS subtopic, "
+                "RETURN t.id AS tag, t.category AS category, t.subtopic AS subtopic, "
                 "  count(c) AS count "
                 "ORDER BY count DESC "
                 "LIMIT 50"
