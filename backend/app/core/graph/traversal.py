@@ -359,15 +359,14 @@ async def get_graph_stats(
     return stats
 
 
-async def get_dashboard(
+async def get_subtopics(
     *,
     graph_store: GraphStore,
+    category: str | None = None,
     redis_client=None,
-    community_id: int | None = None,
-    limit: int = 10,
-) -> dict:
-    """Get dashboard data: most cited, rising cases, recent negative treatments, communities."""
-    cache_key = f"graph:dashboard:{community_id or 'all'}"
+) -> list[dict]:
+    """Get subtopics from IssueTopic nodes, optionally filtered by category."""
+    cache_key = f"graph:subtopics:{category or 'all'}"
 
     # Check cache
     if redis_client is not None:
@@ -378,17 +377,173 @@ async def get_dashboard(
         except Exception:
             pass
 
-    community_filter = "WHERE n.community_id = $community_id" if community_id is not None else ""
+    category_filter = "WHERE t.category = $category " if category else ""
+    params: dict = {}
+    if category:
+        params["category"] = category
+
+    try:
+        records = await graph_store.query(
+            cypher=(
+                "MATCH (c:Case)-[:CLASSIFIED_AS]->(t:IssueTopic) "
+                f"{category_filter}"
+                "RETURN t.tag AS tag, t.category AS category, t.subtopic AS subtopic, "
+                "  count(c) AS count "
+                "ORDER BY count DESC "
+                "LIMIT 50"
+            ),
+            params=params,
+        )
+    except Exception as exc:
+        logger.warning("Graph subtopics query failed: %s", exc, exc_info=True)
+        return []
+
+    result = [
+        {
+            "tag": r.get("tag"),
+            "category": r.get("category"),
+            "subtopic": r.get("subtopic"),
+            "count": r.get("count", 0),
+        }
+        for r in records
+    ]
+
+    # Cache for 1 hour
+    if redis_client is not None:
+        try:
+            await redis_client.setex(cache_key, 3600, json.dumps(result))
+        except Exception:
+            pass
+
+    return result
+
+
+async def get_statute_sections(
+    *,
+    graph_store: GraphStore,
+    redis_client=None,
+) -> list[dict]:
+    """Get statute sections from StatuteSection nodes with case counts."""
+    cache_key = "graph:statute_sections"
+
+    # Check cache
+    if redis_client is not None:
+        try:
+            cached = await redis_client.get(cache_key)
+            if cached is not None:
+                return json.loads(cached)
+        except Exception:
+            pass
+
+    try:
+        records = await graph_store.query(
+            cypher=(
+                "MATCH (c:Case)-[:INTERPRETS]->(s:StatuteSection) "
+                "RETURN s.id AS id, s.act AS act, s.section AS section, "
+                "  count(c) AS count "
+                "ORDER BY count DESC "
+                "LIMIT 50"
+            ),
+        )
+    except Exception as exc:
+        logger.warning("Graph statute sections query failed: %s", exc, exc_info=True)
+        return []
+
+    result = [
+        {
+            "id": r.get("id"),
+            "act": r.get("act"),
+            "section": r.get("section"),
+            "count": r.get("count", 0),
+        }
+        for r in records
+    ]
+
+    # Cache for 1 hour
+    if redis_client is not None:
+        try:
+            await redis_client.setex(cache_key, 3600, json.dumps(result))
+        except Exception:
+            pass
+
+    return result
+
+
+async def get_dashboard(
+    *,
+    graph_store: GraphStore,
+    redis_client=None,
+    community_label: str | None = None,
+    subtopic: str | None = None,
+    statute_section: str | None = None,
+    bench_type: str | None = None,
+    disposal_nature: str | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    is_reportable: bool | None = None,
+    limit: int = 10,
+) -> dict:
+    """Get dashboard data: most cited, rising cases, recent negative treatments, communities."""
+    # Build cache key including all filter params
+    filter_parts = [
+        community_label or "all",
+        subtopic or "",
+        statute_section or "",
+        bench_type or "",
+        disposal_nature or "",
+        str(year_from or ""),
+        str(year_to or ""),
+        str(is_reportable) if is_reportable is not None else "",
+    ]
+    cache_key = f"graph:dashboard:{':'.join(filter_parts)}"
+
+    # Check cache
+    if redis_client is not None:
+        try:
+            cached = await redis_client.get(cache_key)
+            if cached is not None:
+                return json.loads(cached)
+        except Exception:
+            pass
+
+    community_filter = "AND n.community_label = $community_label " if community_label is not None else ""
+
+    # Build extra filter clauses
+    extra_filters = ""
+    extra_params: dict = {}
+    if subtopic:
+        extra_filters += "AND n.issue_tags CONTAINS $subtopic "
+        extra_params["subtopic"] = subtopic
+    if statute_section:
+        extra_filters += "AND EXISTS { MATCH (n)-[:INTERPRETS]->(s:StatuteSection {id: $statute_section}) } "
+        extra_params["statute_section"] = statute_section
+    if bench_type:
+        extra_filters += "AND n.bench_type = $bench_type "
+        extra_params["bench_type"] = bench_type
+    if disposal_nature:
+        extra_filters += "AND n.disposal_nature = $disposal_nature "
+        extra_params["disposal_nature"] = disposal_nature
+    if year_from:
+        extra_filters += "AND n.year >= $year_from "
+        extra_params["year_from"] = year_from
+    if year_to:
+        extra_filters += "AND n.year <= $year_to "
+        extra_params["year_to"] = year_to
+    if is_reportable is not None:
+        extra_filters += "AND n.is_reportable = $is_reportable "
+        extra_params["is_reportable"] = is_reportable
+
     community_params: dict = {"limit": limit}
-    if community_id is not None:
-        community_params["community_id"] = community_id
+    if community_label is not None:
+        community_params["community_label"] = community_label
+    community_params.update(extra_params)
 
     try:
         # 1. Most cited — ordered by pagerank_global
         most_cited_records = await graph_store.query(
             cypher=(
-                f"MATCH (n:Case) {community_filter} "
-                "WHERE n.pagerank_global IS NOT NULL "
+                "MATCH (n:Case) "
+                f"WHERE n.pagerank_global IS NOT NULL {community_filter}{extra_filters}"
                 "RETURN n.id AS id, n.title AS title, n.citation AS citation, "
                 "  n.court AS court, n.year AS year, "
                 "  COALESCE(n.cited_by_count, 0) AS cited_by_count, "
@@ -405,15 +560,16 @@ async def get_dashboard(
         # 2. Rising — recent_citation_ratio >= 0.4 AND cited_by_count >= 5
         rising_params: dict = {"limit": limit}
         rising_community_filter = ""
-        if community_id is not None:
-            rising_community_filter = "AND n.community_id = $community_id"
-            rising_params["community_id"] = community_id
+        if community_label is not None:
+            rising_community_filter = "AND n.community_label = $community_label"
+            rising_params["community_label"] = community_label
+        rising_params.update(extra_params)
 
         rising_records = await graph_store.query(
             cypher=(
                 "MATCH (n:Case) "
                 "WHERE n.recent_citation_ratio >= 0.4 AND n.cited_by_count >= 5 "
-                f"{rising_community_filter} "
+                f"{rising_community_filter} {extra_filters}"
                 "RETURN n.id AS id, n.title AS title, n.citation AS citation, "
                 "  n.court AS court, n.year AS year, "
                 "  COALESCE(n.cited_by_count, 0) AS cited_by_count, "
@@ -428,17 +584,22 @@ async def get_dashboard(
         )
 
         # 3. Recently negative — negative treatments ordered by citing year
+        # For negative query, filters apply to the cited node
         neg_params: dict = {"limit": limit}
         neg_community_filter = ""
-        if community_id is not None:
-            neg_community_filter = "AND cited.community_id = $community_id"
-            neg_params["community_id"] = community_id
+        if community_label is not None:
+            neg_community_filter = "AND cited.community_label = $community_label"
+            neg_params["community_label"] = community_label
+
+        # Rewrite extra filters to use "cited" alias instead of "n"
+        neg_extra_filters = extra_filters.replace("n.", "cited.").replace("(n)", "(cited)")
+        neg_params.update(extra_params)
 
         neg_records = await graph_store.query(
             cypher=(
                 "MATCH (citing:Case)-[r:CITES]->(cited:Case) "
                 "WHERE r.treatment IN ['overruled','not_followed','per_incuriam','distinguished'] "
-                f"{neg_community_filter} "
+                f"{neg_community_filter} {neg_extra_filters}"
                 "RETURN cited.id AS id, cited.title AS title, cited.citation AS citation, "
                 "  cited.court AS court, cited.year AS year, "
                 "  COALESCE(cited.cited_by_count, 0) AS cited_by_count, "
@@ -459,15 +620,19 @@ async def get_dashboard(
             cypher=(
                 "MATCH (n:Case) "
                 "WHERE n.community_id IS NOT NULL "
-                "RETURN n.community_id AS community_id, "
-                "  n.community_label AS community_label, "
+                "RETURN n.community_label AS community_label, "
+                "  collect(DISTINCT n.community_id) AS community_ids, "
                 "  count(n) AS count "
-                "ORDER BY count DESC"
+                "ORDER BY count DESC "
+                "LIMIT 20"
             ),
         )
     except Exception as exc:
         logger.warning("Graph dashboard query failed: %s", exc, exc_info=True)
-        return {"most_cited": [], "rising": [], "recently_negative": [], "communities": []}
+        return {
+            "most_cited": [], "rising": [], "recently_negative": [],
+            "communities": [], "subtopics": [], "statute_sections": [],
+        }
 
     def _node_dict(r: dict) -> dict:
         return {
@@ -483,6 +648,14 @@ async def get_dashboard(
             "recent_citation_ratio": r.get("recent_citation_ratio"),
         }
 
+    # Fetch subtopics and statute sections
+    subtopics_data = await get_subtopics(
+        graph_store=graph_store, category=community_label, redis_client=redis_client,
+    )
+    statute_sections_data = await get_statute_sections(
+        graph_store=graph_store, redis_client=redis_client,
+    )
+
     result = {
         "most_cited": [_node_dict(r) for r in most_cited_records],
         "rising": [_node_dict(r) for r in rising_records],
@@ -497,12 +670,14 @@ async def get_dashboard(
         ],
         "communities": [
             {
-                "community_id": r.get("community_id"),
                 "community_label": r.get("community_label"),
+                "community_ids": r.get("community_ids", []),
                 "count": r.get("count", 0),
             }
             for r in community_records
         ],
+        "subtopics": subtopics_data,
+        "statute_sections": statute_sections_data,
     }
 
     # Cache for 1 hour
