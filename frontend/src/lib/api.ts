@@ -12,6 +12,7 @@ import type {
     CitationItem,
     CourtStats,
     DashboardData,
+    DashboardFilters,
     DocumentDetail,
     DocumentListResponse,
     DocumentTemplatesResponse,
@@ -667,10 +668,28 @@ export async function getGraphStats(): Promise<GraphStats> {
 }
 
 /** Get the graph dashboard: most cited, rising, negative treatments, communities. */
-export async function getGraphDashboard(communityId?: number, limit = 10): Promise<DashboardData> {
+export async function getGraphDashboard(filters: DashboardFilters = {}, limit = 10): Promise<DashboardData> {
     const params = new URLSearchParams({ limit: String(limit) });
-    if (communityId !== undefined) params.set("community_id", String(communityId));
+    if (filters.communityLabel) params.set("community_label", filters.communityLabel);
+    if (filters.subtopic) params.set("subtopic", filters.subtopic);
+    if (filters.statuteSection) params.set("statute_section", filters.statuteSection);
+    if (filters.benchType) params.set("bench_type", filters.benchType);
+    if (filters.disposalNature) params.set("disposal_nature", filters.disposalNature);
+    if (filters.yearFrom) params.set("year_from", String(filters.yearFrom));
+    if (filters.yearTo) params.set("year_to", String(filters.yearTo));
+    if (filters.isReportable !== undefined) params.set("is_reportable", String(filters.isReportable));
     return apiFetch<DashboardData>(`/graph/dashboard?${params}`);
+}
+
+/** Get subtopic tags with case counts, optionally filtered by category. */
+export async function getGraphSubtopics(category?: string) {
+    const params = category ? `?category=${encodeURIComponent(category)}` : "";
+    return apiFetch<{ tag: string; category: string; subtopic: string; count: number }[]>(`/graph/subtopics${params}`);
+}
+
+/** Get statute sections with case counts. */
+export async function getGraphStatuteSections() {
+    return apiFetch<{ id: string; act: string; section: string; count: number }[]>("/graph/statute-sections");
 }
 
 /** Find the shortest citation path between two cases. */

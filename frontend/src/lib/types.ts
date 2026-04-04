@@ -217,6 +217,15 @@ export interface GraphNode {
     bench_type: string | null;
     case_type: string | null;
     ratio: string | null;
+    // v2.1 enrichment fields
+    jurisdiction: string | null;
+    coram_size: number | null;
+    is_reportable: boolean | null;
+    opinion_type: string | null;
+    issue_tags: string | null;
+    primary_legal_issue: string | null;
+    fact_pattern_summary: string | null;
+    headnote_text: string | null;
 }
 
 export interface GraphEdge {
@@ -251,7 +260,20 @@ export interface DashboardData {
         by_case_title: string | null;
         by_case_year: number | null;
     }[];
-    communities: { id: number; label: string; case_count: number }[];
+    communities: { community_label: string; community_ids: number[]; count: number }[];
+    subtopics: { tag: string; category: string; subtopic: string; count: number }[];
+    statute_sections: { id: string; act: string; section: string; count: number }[];
+}
+
+export interface DashboardFilters {
+    communityLabel?: string;
+    subtopic?: string;
+    statuteSection?: string;
+    benchType?: string;
+    disposalNature?: string;
+    yearFrom?: number;
+    yearTo?: number;
+    isReportable?: boolean;
 }
 
 export interface PathResult {

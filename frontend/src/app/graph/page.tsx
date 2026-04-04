@@ -22,6 +22,7 @@ import type {
     GraphData,
     GraphStats,
     DashboardData,
+    DashboardFilters,
     PathResult,
 } from "@/lib/types";
 import { EDGE_COLORS, LEGEND_TYPES } from "@/lib/graph-utils";
@@ -61,7 +62,7 @@ export default function GraphPage() {
     // Dashboard
     const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
     const [dashboardLoading, setDashboardLoading] = useState(true);
-    const [selectedCommunity, setSelectedCommunity] = useState<number | null>(null);
+    const [filters, setFilters] = useState<DashboardFilters>({});
 
     // Graph data (for timeline and network views)
     const [graphData, setGraphData] = useState<GraphData | null>(null);
@@ -86,36 +87,21 @@ export default function GraphPage() {
     // Effects
     // -----------------------------------------------------------------------
 
-    // Load stats and dashboard on mount
+    // Load stats on mount
     useEffect(() => {
         getGraphStats()
             .then(setStats)
             .catch((err) => console.error("Failed to load graph stats:", err));
-
-        getGraphDashboard()
-            .then((data) => {
-                setDashboardData(data);
-                setDashboardLoading(false);
-            })
-            .catch((err) => {
-                console.error("Failed to load dashboard:", err);
-                setDashboardLoading(false);
-            });
     }, []);
 
-    // Reload dashboard when community filter changes
+    // Load dashboard when filters change
     useEffect(() => {
         setDashboardLoading(true);
-        getGraphDashboard(selectedCommunity ?? undefined)
-            .then((data) => {
-                setDashboardData(data);
-                setDashboardLoading(false);
-            })
-            .catch((err) => {
-                console.error("Failed to load dashboard:", err);
-                setDashboardLoading(false);
-            });
-    }, [selectedCommunity]);
+        getGraphDashboard(filters)
+            .then(setDashboardData)
+            .catch(() => setDashboardData(null))
+            .finally(() => setDashboardLoading(false));
+    }, [filters]);
 
     // Load graph data when activeCaseId, depth, or graphMode changes
     useEffect(() => {
@@ -247,8 +233,8 @@ export default function GraphPage() {
         setView("network");
     }, []);
 
-    function handleCommunitySelect(id: number | null) {
-        setSelectedCommunity(id);
+    function handleCommunitySelect(label: string | null) {
+        setFilters(prev => ({ ...prev, communityLabel: label ?? undefined }));
     }
 
     function handleViewChange(v: ViewMode) {
@@ -408,7 +394,7 @@ export default function GraphPage() {
                                     <GraphDashboard
                                         data={dashboardData}
                                         loading={dashboardLoading}
-                                        selectedCommunity={selectedCommunity}
+                                        selectedCommunity={filters.communityLabel ?? null}
                                         onSelectCommunity={handleCommunitySelect}
                                         onSelectCase={handleSelectCase}
                                         stats={stats}
