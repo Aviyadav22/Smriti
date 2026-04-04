@@ -1,41 +1,37 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import dynamic from "next/dynamic";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
+import GraphDashboard from "@/components/graph/GraphDashboard";
+import TimelineView from "@/components/graph/TimelineView";
+import NetworkView from "@/components/graph/NetworkView";
+import CaseDetailPanel from "@/components/graph/CaseDetailPanel";
+import PathFinder from "@/components/graph/PathFinder";
 import {
     getGraphNeighborhood,
     getGraphChain,
-    getGraphAuthorities,
     getGraphStats,
+    getGraphDashboard,
     search as searchApi,
 } from "@/lib/api";
-import type { GraphNode, GraphData, GraphStats } from "@/lib/types";
-import { EDGE_COLORS, LEGEND_TYPES, isPlaceholderNode, getEdgeColor } from "@/lib/graph-utils";
+import type {
+    GraphNode,
+    GraphData,
+    GraphStats,
+    DashboardData,
+    PathResult,
+} from "@/lib/types";
+import { EDGE_COLORS, LEGEND_TYPES } from "@/lib/graph-utils";
 import {
     Loader2,
     Search,
-    GitBranch,
-    ExternalLink,
-    BarChart3,
+    LayoutDashboard,
+    Clock,
     Network,
-    RotateCcw,
 } from "lucide-react";
-
-// react-force-graph-2d uses canvas/DOM APIs — must load client-side only
-const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
-    ssr: false,
-    loading: () => (
-        <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-    ),
-});
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -43,42 +39,120 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
 
 const DEPTH_OPTIONS = [1, 2, 3];
 
+type ViewMode = "dashboard" | "timeline" | "network";
+type GraphMode = "neighborhood" | "chain" | "path";
+
 // ---------------------------------------------------------------------------
 // Graph Page
 // ---------------------------------------------------------------------------
 
 export default function GraphPage() {
-    const router = useRouter();
+    // View mode
+    const [view, setView] = useState<ViewMode>("dashboard");
 
-    // Search state
+    // Search
     const [searchQuery, setSearchQuery] = useState("");
-    const [searchResults, setSearchResults] = useState<{ id: string; title: string }[]>([]);
+    const [searchResults, setSearchResults] = useState<
+        Array<{ id: string; title: string; citation?: string }>
+    >([]);
     const [searching, setSearching] = useState(false);
     const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Graph data state
+    // Dashboard
+    const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+    const [dashboardLoading, setDashboardLoading] = useState(true);
+    const [selectedCommunity, setSelectedCommunity] = useState<number | null>(null);
+
+    // Graph data (for timeline and network views)
     const [graphData, setGraphData] = useState<GraphData | null>(null);
     const [graphLoading, setGraphLoading] = useState(false);
     const [graphError, setGraphError] = useState<string | null>(null);
+
+    // Node selection
     const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-    const [authorities, setAuthorities] = useState<GraphNode[]>([]);
+    const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
 
     // Controls
     const [depth, setDepth] = useState(1);
-    const [mode, setMode] = useState<"neighborhood" | "chain">("neighborhood");
-    const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+    const [graphMode, setGraphMode] = useState<GraphMode>("neighborhood");
 
     // Stats
     const [stats, setStats] = useState<GraphStats | null>(null);
 
-    // Load global stats on mount
+    // Path mode
+    const [pathLoading, setPathLoading] = useState(false);
+
+    // -----------------------------------------------------------------------
+    // Effects
+    // -----------------------------------------------------------------------
+
+    // Load stats and dashboard on mount
     useEffect(() => {
-        getGraphStats().then(setStats).catch((err) => {
-            console.error("Failed to load graph stats:", err);
-        });
+        getGraphStats()
+            .then(setStats)
+            .catch((err) => console.error("Failed to load graph stats:", err));
+
+        getGraphDashboard()
+            .then((data) => {
+                setDashboardData(data);
+                setDashboardLoading(false);
+            })
+            .catch((err) => {
+                console.error("Failed to load dashboard:", err);
+                setDashboardLoading(false);
+            });
     }, []);
 
-    // Debounced search
+    // Reload dashboard when community filter changes
+    useEffect(() => {
+        setDashboardLoading(true);
+        getGraphDashboard(selectedCommunity ?? undefined)
+            .then((data) => {
+                setDashboardData(data);
+                setDashboardLoading(false);
+            })
+            .catch((err) => {
+                console.error("Failed to load dashboard:", err);
+                setDashboardLoading(false);
+            });
+    }, [selectedCommunity]);
+
+    // Load graph data when activeCaseId, depth, or graphMode changes
+    useEffect(() => {
+        if (!activeCaseId || graphMode === "path") return;
+
+        let cancelled = false;
+        setGraphLoading(true);
+        setGraphError(null);
+
+        const loader =
+            graphMode === "chain"
+                ? getGraphChain(activeCaseId, depth)
+                : getGraphNeighborhood(activeCaseId, depth);
+
+        loader
+            .then((data) => {
+                if (!cancelled) setGraphData(data);
+            })
+            .catch((err) => {
+                if (!cancelled) {
+                    console.error("Failed to load graph data:", err);
+                    setGraphError("Failed to load graph data. Please try again.");
+                }
+            })
+            .finally(() => {
+                if (!cancelled) setGraphLoading(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [activeCaseId, depth, graphMode]);
+
+    // -----------------------------------------------------------------------
+    // Handlers
+    // -----------------------------------------------------------------------
+
     function handleSearchInput(value: string) {
         setSearchQuery(value);
         if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
@@ -96,6 +170,7 @@ export default function GraphPage() {
                     res.results.map((r) => ({
                         id: r.case_id,
                         title: r.title || r.citation || r.case_id,
+                        citation: r.citation ?? undefined,
                     })),
                 );
             } catch {
@@ -106,85 +181,103 @@ export default function GraphPage() {
         }, 400);
     }
 
-    const loadGraph = useCallback(
-        async (caseId: string, d: number = depth, m: string = mode) => {
-            setGraphLoading(true);
-            setGraphError(null);
-            setActiveCaseId(caseId);
-            setSearchResults([]);
-            try {
-                const [data, auth] = await Promise.allSettled([
-                    m === "chain"
-                        ? getGraphChain(caseId, d)
-                        : getGraphNeighborhood(caseId, d),
-                    getGraphAuthorities(caseId),
-                ]);
-                if (data.status === "fulfilled") {
-                    setGraphData(data.value);
-                } else {
-                    console.error("Failed to load graph data:", data.reason);
-                    setGraphError("Failed to load graph data. Please try again.");
-                }
-                if (auth.status === "fulfilled") {
-                    setAuthorities(auth.value);
-                } else {
-                    console.error("Failed to load authorities:", auth.reason);
-                }
-            } catch (err) {
-                console.error("Unexpected error loading graph:", err);
-                setGraphError("An unexpected error occurred. Please try again.");
-            } finally {
-                setGraphLoading(false);
-            }
-        },
-        [depth, mode],
-    );
-
     function handleSelectCase(caseId: string) {
         setSearchQuery("");
         setSearchResults([]);
-        loadGraph(caseId);
+        setActiveCaseId(caseId);
+        setSelectedNode(null);
+        if (view === "dashboard") {
+            setView("timeline");
+        }
     }
 
     function handleDepthChange(d: number) {
         setDepth(d);
-        if (activeCaseId) loadGraph(activeCaseId, d, mode);
     }
 
-    function handleModeChange(m: "neighborhood" | "chain") {
-        setMode(m);
-        if (activeCaseId) loadGraph(activeCaseId, depth, m);
+    function handleGraphModeChange(mode: GraphMode) {
+        setGraphMode(mode);
+        // When switching to path mode, clear graph data so PathFinder takes over
+        if (mode === "path") {
+            setGraphData(null);
+            setGraphError(null);
+        }
     }
 
-    // Prepare data for force-graph (it needs {id, ...} nodes and {source, target} links)
-    const fgData = graphData
-        ? (() => {
-              const nodeIds = new Set(graphData.nodes.map((n) => n.id));
-              return {
-                  nodes: graphData.nodes.map((n) => ({
-                      ...n,
-                      val: isPlaceholderNode(n as Record<string, unknown>)
-                          ? 1.5
-                          : Math.max(2, Math.log2((n.cited_by_count || 0) + 1) * 3),
-                  })),
-                  links: graphData.edges
-                      .filter((e) => nodeIds.has(e.from) && nodeIds.has(e.to))
-                      .map((e) => ({
-                          source: e.from,
-                          target: e.to,
-                          type: e.type,
-                          context: e.context,
-                      })),
-              };
-          })()
-        : { nodes: [], links: [] };
+    const handleNodeClick = useCallback((node: GraphNode) => {
+        setSelectedNode(node);
+    }, []);
+
+    const handleNodeHover = useCallback((_node: GraphNode | null) => {
+        // Tooltip handled internally by TimelineView
+    }, []);
+
+    function handleExploreFromNode(caseId: string) {
+        setActiveCaseId(caseId);
+        setSelectedNode(null);
+        if (graphMode === "path") {
+            setGraphMode("neighborhood");
+        }
+    }
+
+    const handlePathFound = useCallback((result: PathResult) => {
+        // Convert PathResult to GraphData by merging all paths
+        const nodeMap = new Map<string, GraphNode>();
+        const edgeSet = new Set<string>();
+        const allEdges: GraphData["edges"] = [];
+
+        for (const path of result.paths) {
+            for (const node of path.nodes) {
+                nodeMap.set(node.id, node);
+            }
+            for (const edge of path.edges) {
+                const key = `${edge.from}-${edge.to}-${edge.type}`;
+                if (!edgeSet.has(key)) {
+                    edgeSet.add(key);
+                    allEdges.push(edge);
+                }
+            }
+        }
+
+        setGraphData({
+            nodes: Array.from(nodeMap.values()),
+            edges: allEdges,
+        });
+        setGraphError(null);
+        setView("network");
+    }, []);
+
+    function handleCommunitySelect(id: number | null) {
+        setSelectedCommunity(id);
+    }
+
+    function handleViewChange(v: ViewMode) {
+        setView(v);
+        if (v === "dashboard") {
+            // Clear graph state when returning to dashboard
+            setSelectedNode(null);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Derived state
+    // -----------------------------------------------------------------------
+
+    const isGraphView = view === "timeline" || view === "network";
+    const showSidePanel = isGraphView && selectedNode != null;
+    const showGraphControls = isGraphView;
+    const showEmptyGraphMessage = isGraphView && !activeCaseId && !graphLoading;
+
+    // -----------------------------------------------------------------------
+    // Render
+    // -----------------------------------------------------------------------
 
     return (
         <div className="min-h-screen flex flex-col">
             <Header />
 
             <main className="flex-1 flex flex-col">
-                {/* Top bar: search + controls */}
+                {/* Top bar: search + controls + view toggle */}
                 <div className="border-b bg-card/50">
                     <div className="mx-auto max-w-7xl px-4 py-3">
                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
@@ -199,7 +292,7 @@ export default function GraphPage() {
                                 />
                                 {/* Dropdown results */}
                                 {(searchResults.length > 0 || searching) && (
-                                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-card border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                                    <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-card border rounded-md shadow-lg max-h-48 overflow-y-auto">
                                         {searching ? (
                                             <div className="flex items-center gap-2 p-3 text-xs text-muted-foreground">
                                                 <Loader2 className="h-3 w-3 animate-spin" /> Searching...
@@ -211,7 +304,12 @@ export default function GraphPage() {
                                                     className="w-full text-left px-3 py-2 text-xs hover:bg-muted/50 transition-colors border-b last:border-b-0"
                                                     onClick={() => handleSelectCase(r.id)}
                                                 >
-                                                    {r.title}
+                                                    <span className="block font-medium">{r.title}</span>
+                                                    {r.citation && (
+                                                        <span className="block text-muted-foreground text-[10px]">
+                                                            {r.citation}
+                                                        </span>
+                                                    )}
                                                 </button>
                                             ))
                                         )}
@@ -219,40 +317,81 @@ export default function GraphPage() {
                                 )}
                             </div>
 
-                            {/* Depth control */}
-                            <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Depth:</span>
-                                {DEPTH_OPTIONS.map((d) => (
+                            {/* Depth + mode controls (only in graph views) */}
+                            {showGraphControls && (
+                                <>
+                                    {/* Depth control */}
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                                            Depth:
+                                        </span>
+                                        {DEPTH_OPTIONS.map((d) => (
+                                            <Button
+                                                key={d}
+                                                variant="ghost"
+                                                size="sm"
+                                                className={`h-7 w-7 p-0 text-xs rounded-md ${
+                                                    depth === d
+                                                        ? "bg-stone-800 text-white hover:bg-stone-700 hover:text-white"
+                                                        : "bg-white text-stone-600 border hover:bg-stone-50"
+                                                }`}
+                                                onClick={() => handleDepthChange(d)}
+                                            >
+                                                {d}
+                                            </Button>
+                                        ))}
+                                    </div>
+
+                                    {/* Mode toggle */}
+                                    <div className="flex items-center gap-1.5">
+                                        {(
+                                            [
+                                                ["neighborhood", "Neighborhood"],
+                                                ["chain", "Chain"],
+                                                ["path", "Path"],
+                                            ] as const
+                                        ).map(([mode, label]) => (
+                                            <Button
+                                                key={mode}
+                                                variant="ghost"
+                                                size="sm"
+                                                className={`h-7 text-xs rounded-md ${
+                                                    graphMode === mode
+                                                        ? "bg-stone-800 text-white hover:bg-stone-700 hover:text-white"
+                                                        : "bg-white text-stone-600 border hover:bg-stone-50"
+                                                }`}
+                                                onClick={() => handleGraphModeChange(mode)}
+                                            >
+                                                {label}
+                                            </Button>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+
+                            {/* View toggle (always visible) */}
+                            <div className="flex items-center gap-1.5 sm:ml-auto">
+                                {(
+                                    [
+                                        ["dashboard", "Dashboard", LayoutDashboard],
+                                        ["timeline", "Timeline", Clock],
+                                        ["network", "Network", Network],
+                                    ] as const
+                                ).map(([v, label, Icon]) => (
                                     <Button
-                                        key={d}
-                                        variant={depth === d ? "default" : "outline"}
+                                        key={v}
+                                        variant="ghost"
                                         size="sm"
-                                        className="h-7 w-7 p-0 text-xs rounded-md"
-                                        onClick={() => handleDepthChange(d)}
+                                        className={`h-7 text-xs rounded-md gap-1 ${
+                                            view === v
+                                                ? "bg-stone-800 text-white hover:bg-stone-700 hover:text-white"
+                                                : "bg-white text-stone-600 border hover:bg-stone-50"
+                                        }`}
+                                        onClick={() => handleViewChange(v)}
                                     >
-                                        {d}
+                                        <Icon className="h-3 w-3" /> {label}
                                     </Button>
                                 ))}
-                            </div>
-
-                            {/* Mode toggle */}
-                            <div className="flex items-center gap-1.5">
-                                <Button
-                                    variant={mode === "neighborhood" ? "default" : "outline"}
-                                    size="sm"
-                                    className="h-7 text-xs rounded-md gap-1"
-                                    onClick={() => handleModeChange("neighborhood")}
-                                >
-                                    <Network className="h-3 w-3" /> Network
-                                </Button>
-                                <Button
-                                    variant={mode === "chain" ? "default" : "outline"}
-                                    size="sm"
-                                    className="h-7 text-xs rounded-md gap-1"
-                                    onClick={() => handleModeChange("chain")}
-                                >
-                                    <GitBranch className="h-3 w-3" /> Chain
-                                </Button>
                             </div>
                         </div>
                     </div>
@@ -260,183 +399,159 @@ export default function GraphPage() {
 
                 {/* Main content */}
                 <div className="flex-1 flex overflow-hidden">
-                    {/* Graph canvas */}
-                    <div className="flex-1 relative bg-background">
-                        {graphLoading ? (
-                            <div className="flex items-center justify-center h-full">
-                                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                            </div>
-                        ) : graphError ? (
-                            <div className="flex items-center justify-center h-full">
-                                <div className="text-center max-w-sm">
-                                    <p className="text-sm text-red-500 mb-2">{graphError}</p>
-                                    {activeCaseId && (
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => loadGraph(activeCaseId)}
-                                        >
-                                            <RotateCcw className="h-3 w-3 mr-1.5" /> Retry
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                        ) : graphData && graphData.nodes.length > 0 ? (
-                            <>
-                                <ForceGraph2D
-                                    graphData={fgData}
-                                    nodeLabel={(node: Record<string, unknown>) =>
-                                        (node.title as string) || (node.citation as string) || (node.id as string)
-                                    }
-                                    nodeColor={(node: Record<string, unknown>) => {
-                                        if (node.id === activeCaseId) return "#B89B6A";
-                                        if (node.id === selectedNode?.id) return "#60A5FA";
-                                        if (isPlaceholderNode(node)) return "#D1D5DB";
-                                        return "#6B7280";
-                                    }}
-                                    linkColor={(link: Record<string, unknown>) =>
-                                        getEdgeColor((link.type as string) || "cites")
-                                    }
-                                    linkDirectionalArrowLength={4}
-                                    linkDirectionalArrowRelPos={0.9}
-                                    onNodeClick={(node: Record<string, unknown>) => {
-                                        const gNode = graphData.nodes.find(
-                                            (n) => n.id === node.id,
-                                        );
-                                        setSelectedNode(gNode || null);
-                                    }}
-                                    onNodeRightClick={(node: Record<string, unknown>) => {
-                                        router.push(`/case/${node.id}`);
-                                    }}
-                                    enableZoomInteraction={true}
-                                    enablePanInteraction={true}
-                                />
-
-                                {/* Legend */}
-                                <div className="absolute bottom-4 left-4 bg-card/90 border rounded-md px-3 py-2 text-[10px] space-y-1">
-                                    {LEGEND_TYPES.map((type) => (
-                                        <div key={type} className="flex items-center gap-2">
-                                            <span
-                                                className="w-4 h-0.5 inline-block rounded"
-                                                style={{ backgroundColor: EDGE_COLORS[type] }}
-                                            />
-                                            <span className="capitalize text-muted-foreground">{type.replace(/_/g, " ")}</span>
-                                        </div>
-                                    ))}
-                                    <div className="text-muted-foreground/50 mt-1 pt-1 border-t">
-                                        Right-click node to view case
-                                    </div>
-                                </div>
-
-                                {/* Node count */}
-                                <div className="absolute top-4 left-4 text-[10px] text-muted-foreground bg-card/80 rounded px-2 py-1">
-                                    {graphData.nodes.length} nodes &middot; {graphData.edges.length} edges
-                                </div>
-                            </>
-                        ) : (
-                            /* Empty state */
-                            <div className="flex items-center justify-center h-full">
-                                <div className="text-center max-w-sm">
-                                    <GitBranch className="h-8 w-8 mx-auto text-muted-foreground/30 mb-4" />
-                                    <h2 className="text-lg font-semibold font-[family-name:var(--font-lora)] mb-2">
-                                        Citation Graph Explorer
-                                    </h2>
-                                    <p className="text-sm text-muted-foreground mb-4">
-                                        Search for a case above to visualize its citation network.
-                                    </p>
-                                    {stats && (
-                                        <div className="flex justify-center gap-4 text-xs text-muted-foreground">
-                                            <div className="flex items-center gap-1">
-                                                <BarChart3 className="h-3 w-3" />
-                                                {stats.total_judgments.toLocaleString()} judgments
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                                <GitBranch className="h-3 w-3" />
-                                                {stats.total_edges.toLocaleString()} citations
-                                            </div>
-                                        </div>
-                                    )}
+                    {/* Primary content area */}
+                    <div className="flex-1 relative bg-background overflow-hidden">
+                        {/* Dashboard view */}
+                        {view === "dashboard" && (
+                            <div className="h-full overflow-y-auto p-6">
+                                <div className="mx-auto max-w-7xl">
+                                    <GraphDashboard
+                                        data={dashboardData}
+                                        loading={dashboardLoading}
+                                        selectedCommunity={selectedCommunity}
+                                        onSelectCommunity={handleCommunitySelect}
+                                        onSelectCase={handleSelectCase}
+                                        stats={stats}
+                                    />
                                 </div>
                             </div>
                         )}
+
+                        {/* Timeline / Network views */}
+                        {isGraphView && (
+                            <>
+                                {/* Empty state: no case selected */}
+                                {showEmptyGraphMessage && (
+                                    <div className="flex items-center justify-center h-full">
+                                        <div className="text-center max-w-sm">
+                                            <Search className="h-8 w-8 mx-auto text-muted-foreground/30 mb-4" />
+                                            <p className="text-sm text-muted-foreground">
+                                                Select a case to explore its citation graph.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Loading spinner */}
+                                {graphLoading && (
+                                    <div className="flex items-center justify-center h-full">
+                                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                                    </div>
+                                )}
+
+                                {/* Error state */}
+                                {graphError && !graphLoading && (
+                                    <div className="flex items-center justify-center h-full">
+                                        <div className="text-center max-w-sm">
+                                            <p className="text-sm text-red-500 mb-2">{graphError}</p>
+                                            {activeCaseId && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setGraphError(null);
+                                                        setGraphLoading(true);
+                                                        // Trigger re-fetch by toggling a dep
+                                                        setActiveCaseId((prev) => prev);
+                                                    }}
+                                                >
+                                                    Retry
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* PathFinder (when in path mode) */}
+                                {graphMode === "path" && activeCaseId && !graphLoading && (
+                                    <div className="absolute top-4 left-4 z-20 w-80">
+                                        <PathFinder
+                                            onPathFound={handlePathFound}
+                                            loading={pathLoading}
+                                            setLoading={setPathLoading}
+                                        />
+                                    </div>
+                                )}
+
+                                {/* Graph content */}
+                                {!graphLoading &&
+                                    !graphError &&
+                                    !showEmptyGraphMessage &&
+                                    graphData &&
+                                    graphData.nodes.length > 0 && (
+                                        <>
+                                            {view === "timeline" && (
+                                                <TimelineView
+                                                    nodes={graphData.nodes}
+                                                    edges={graphData.edges}
+                                                    queryCaseId={activeCaseId}
+                                                    selectedNodeId={selectedNode?.id ?? null}
+                                                    onNodeClick={handleNodeClick}
+                                                    onNodeHover={handleNodeHover}
+                                                />
+                                            )}
+
+                                            {view === "network" && (
+                                                <NetworkView
+                                                    nodes={graphData.nodes}
+                                                    edges={graphData.edges}
+                                                    queryCaseId={activeCaseId}
+                                                    selectedNodeId={selectedNode?.id ?? null}
+                                                    onNodeClick={handleNodeClick}
+                                                />
+                                            )}
+
+                                            {/* Node count */}
+                                            <div className="absolute top-4 right-4 text-[10px] text-muted-foreground bg-card/80 rounded px-2 py-1">
+                                                {graphData.nodes.length} nodes &middot;{" "}
+                                                {graphData.edges.length} edges
+                                            </div>
+
+                                            {/* Legend */}
+                                            <div className="absolute bottom-4 left-4 bg-card/90 border rounded-md px-3 py-2 text-[10px] space-y-1">
+                                                {LEGEND_TYPES.map((type) => (
+                                                    <div key={type} className="flex items-center gap-2">
+                                                        <span
+                                                            className="w-4 h-0.5 inline-block rounded"
+                                                            style={{
+                                                                backgroundColor: EDGE_COLORS[type],
+                                                            }}
+                                                        />
+                                                        <span className="capitalize text-muted-foreground">
+                                                            {type.replace(/_/g, " ")}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )}
+
+                                {/* Path mode with no graph data yet — show PathFinder centered */}
+                                {graphMode === "path" &&
+                                    !activeCaseId &&
+                                    !graphLoading &&
+                                    !graphData && (
+                                        <div className="flex items-center justify-center h-full">
+                                            <div className="w-80">
+                                                <PathFinder
+                                                    onPathFound={handlePathFound}
+                                                    loading={pathLoading}
+                                                    setLoading={setPathLoading}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                            </>
+                        )}
                     </div>
 
-                    {/* Detail panel */}
-                    {selectedNode && (
-                        <aside className="w-72 xl:w-80 border-l bg-card overflow-y-auto p-4 space-y-4">
-                            <div>
-                                <h3 className="text-sm font-semibold font-[family-name:var(--font-lora)] leading-snug">
-                                    {selectedNode.title || "Untitled"}
-                                </h3>
-                                {selectedNode.citation && (
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        {selectedNode.citation}
-                                    </p>
-                                )}
-                            </div>
-
-                            <div className="flex flex-wrap gap-1.5">
-                                {selectedNode.court && (
-                                    <Badge variant="secondary" className="text-[10px]">
-                                        {selectedNode.court}
-                                    </Badge>
-                                )}
-                                {selectedNode.year && (
-                                    <Badge variant="secondary" className="text-[10px]">
-                                        {selectedNode.year}
-                                    </Badge>
-                                )}
-                                <Badge variant="outline" className="text-[10px]">
-                                    Cited by: {selectedNode.cited_by_count}
-                                </Badge>
-                            </div>
-
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                className="w-full text-xs rounded-md gap-1.5"
-                                onClick={() => router.push(`/case/${selectedNode.id}`)}
-                            >
-                                View Full Case <ExternalLink className="h-3 w-3" />
-                            </Button>
-
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                className="w-full text-xs rounded-md gap-1.5"
-                                onClick={() => loadGraph(selectedNode.id)}
-                            >
-                                <Network className="h-3 w-3" /> Explore This Node
-                            </Button>
-
-                            {/* Authorities */}
-                            {authorities.length > 0 && (
-                                <div>
-                                    <h4 className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground mb-2">
-                                        Top Authorities in Network
-                                    </h4>
-                                    <div className="space-y-1.5">
-                                        {authorities.slice(0, 10).map((a) => (
-                                            <div
-                                                key={a.id}
-                                                className="text-xs p-2 border rounded cursor-pointer hover:bg-muted/50 transition-colors"
-                                                onClick={() => {
-                                                    setSelectedNode(a);
-                                                    loadGraph(a.id);
-                                                }}
-                                            >
-                                                <span className="font-medium line-clamp-2">
-                                                    {a.title || a.citation || "Untitled"}
-                                                </span>
-                                                <div className="text-[10px] text-muted-foreground mt-0.5">
-                                                    {a.court} {a.year && `· ${a.year}`} · Cited {a.cited_by_count}x
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </aside>
+                    {/* Side panel */}
+                    {showSidePanel && selectedNode && (
+                        <CaseDetailPanel
+                            node={selectedNode}
+                            onClose={() => setSelectedNode(null)}
+                            onExplore={handleExploreFromNode}
+                        />
                     )}
                 </div>
             </main>
