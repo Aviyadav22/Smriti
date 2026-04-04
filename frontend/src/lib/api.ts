@@ -11,6 +11,7 @@ import type {
     ChatSession,
     CitationItem,
     CourtStats,
+    DashboardData,
     DocumentDetail,
     DocumentListResponse,
     DocumentTemplatesResponse,
@@ -24,6 +25,7 @@ import type {
     JudgeListResponse,
     JudgeProfile,
     LoginRequest,
+    PathResult,
     RegisterRequest,
     SearchHistoryEntry,
     SearchResponse,
@@ -662,6 +664,36 @@ export async function getGraphAuthorities(
 /** Get global graph statistics. */
 export async function getGraphStats(): Promise<GraphStats> {
     return apiFetch<GraphStats>("/graph/stats");
+}
+
+/** Get the graph dashboard: most cited, rising, negative treatments, communities. */
+export async function getGraphDashboard(communityId?: number, limit = 10): Promise<DashboardData> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (communityId !== undefined) params.set("community_id", String(communityId));
+    return apiFetch<DashboardData>(`/graph/dashboard?${params}`);
+}
+
+/** Find the shortest citation path between two cases. */
+export async function getGraphPath(fromId: string, toId: string): Promise<PathResult> {
+    const params = new URLSearchParams({ from_id: fromId, to_id: toId });
+    return apiFetch<PathResult>(`/graph/path?${params}`);
+}
+
+/** Get treatment summary for a case — how other cases have treated it. */
+export async function getGraphTreatmentSummary(caseId: string): Promise<{
+    case_id: string;
+    treatment_positive_pct: number;
+    verdict: string;
+    total_citations: number;
+    breakdown: Record<string, Array<{
+        id: string;
+        title: string | null;
+        year: number | null;
+        citation: string | null;
+        context: string | null;
+    }>>;
+}> {
+    return apiFetch(`/graph/${caseId}/treatment-summary`);
 }
 
 // ---------------------------------------------------------------------------
