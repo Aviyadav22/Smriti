@@ -54,6 +54,14 @@ async def get_neighborhood(
                 "  neighbor.court AS court, "
                 "  neighbor.year AS year, "
                 "  neighbor.cited_by_count AS cited_by_count, "
+                "  neighbor.pagerank_global AS pagerank_global, "
+                "  neighbor.community_id AS community_id, "
+                "  neighbor.community_label AS community_label, "
+                "  neighbor.recent_citation_ratio AS recent_citation_ratio, "
+                "  neighbor.treatment_positive_pct AS treatment_positive_pct, "
+                "  neighbor.treatment_summary AS treatment_summary, "
+                "  neighbor.bench_type AS bench_type, "
+                "  neighbor.case_type AS case_type, "
                 "  [rel IN rels | {from: startNode(rel).id, to: endNode(rel).id, "
                 "   type: type(rel), treatment: rel.treatment, context: rel.context}] AS edges "
                 "LIMIT $limit"
@@ -80,6 +88,14 @@ async def get_neighborhood(
                 "court": center_node.get("court"),
                 "year": center_node.get("year"),
                 "cited_by_count": center_node.get("cited_by_count", 0),
+                "pagerank_global": center_node.get("pagerank_global"),
+                "community_id": center_node.get("community_id"),
+                "community_label": center_node.get("community_label"),
+                "recent_citation_ratio": center_node.get("recent_citation_ratio"),
+                "treatment_positive_pct": center_node.get("treatment_positive_pct"),
+                "treatment_summary": center_node.get("treatment_summary"),
+                "bench_type": center_node.get("bench_type"),
+                "case_type": center_node.get("case_type"),
             }
         else:
             return {"nodes": [], "edges": [], "error": "Case not found in citation graph"}
@@ -96,6 +112,14 @@ async def get_neighborhood(
                 "court": record.get("court"),
                 "year": record.get("year"),
                 "cited_by_count": record.get("cited_by_count", 0),
+                "pagerank_global": record.get("pagerank_global"),
+                "community_id": record.get("community_id"),
+                "community_label": record.get("community_label"),
+                "recent_citation_ratio": record.get("recent_citation_ratio"),
+                "treatment_positive_pct": record.get("treatment_positive_pct"),
+                "treatment_summary": record.get("treatment_summary"),
+                "bench_type": record.get("bench_type"),
+                "case_type": record.get("case_type"),
             }
 
         for edge in record.get("edges", []):
@@ -142,6 +166,14 @@ async def get_citation_chain(
                 "  cited.court AS court, "
                 "  cited.year AS year, "
                 "  cited.cited_by_count AS cited_by_count, "
+                "  cited.pagerank_global AS pagerank_global, "
+                "  cited.community_id AS community_id, "
+                "  cited.community_label AS community_label, "
+                "  cited.recent_citation_ratio AS recent_citation_ratio, "
+                "  cited.treatment_positive_pct AS treatment_positive_pct, "
+                "  cited.treatment_summary AS treatment_summary, "
+                "  cited.bench_type AS bench_type, "
+                "  cited.case_type AS case_type, "
                 "  [rel IN rels | {from: startNode(rel).id, to: endNode(rel).id, "
                 "   type: type(rel), treatment: rel.treatment}] AS edges "
                 "LIMIT $limit"
@@ -168,6 +200,14 @@ async def get_citation_chain(
                 "court": record.get("court"),
                 "year": record.get("year"),
                 "cited_by_count": record.get("cited_by_count", 0),
+                "pagerank_global": record.get("pagerank_global"),
+                "community_id": record.get("community_id"),
+                "community_label": record.get("community_label"),
+                "recent_citation_ratio": record.get("recent_citation_ratio"),
+                "treatment_positive_pct": record.get("treatment_positive_pct"),
+                "treatment_summary": record.get("treatment_summary"),
+                "bench_type": record.get("bench_type"),
+                "case_type": record.get("case_type"),
             }
 
         for edge in record.get("edges", []):
@@ -217,7 +257,15 @@ async def get_authorities(
                 "  neighbor.court AS court, "
                 "  neighbor.year AS year, "
                 "  COALESCE(neighbor.cited_by_count, 0) AS cited_by_count, "
-                "  COALESCE(neighbor.is_overruled, false) AS is_overruled "
+                "  COALESCE(neighbor.is_overruled, false) AS is_overruled, "
+                "  neighbor.pagerank_global AS pagerank_global, "
+                "  neighbor.community_id AS community_id, "
+                "  neighbor.community_label AS community_label, "
+                "  neighbor.recent_citation_ratio AS recent_citation_ratio, "
+                "  neighbor.treatment_positive_pct AS treatment_positive_pct, "
+                "  neighbor.treatment_summary AS treatment_summary, "
+                "  neighbor.bench_type AS bench_type, "
+                "  neighbor.case_type AS case_type "
                 "ORDER BY cited_by_count DESC "
                 "LIMIT $limit"
             ),
@@ -236,6 +284,14 @@ async def get_authorities(
             "year": r.get("year"),
             "cited_by_count": r.get("cited_by_count", 0),
             "is_overruled": r.get("is_overruled", False),
+            "pagerank_global": r.get("pagerank_global"),
+            "community_id": r.get("community_id"),
+            "community_label": r.get("community_label"),
+            "recent_citation_ratio": r.get("recent_citation_ratio"),
+            "treatment_positive_pct": r.get("treatment_positive_pct"),
+            "treatment_summary": r.get("treatment_summary"),
+            "bench_type": r.get("bench_type"),
+            "case_type": r.get("case_type"),
         }
         for r in records
     ]
@@ -486,6 +542,14 @@ async def get_shortest_path(
             "court": n.get("court"),
             "year": n.get("year"),
             "cited_by_count": n.get("cited_by_count", 0),
+            "pagerank_global": n.get("pagerank_global"),
+            "community_id": n.get("community_id"),
+            "community_label": n.get("community_label"),
+            "recent_citation_ratio": n.get("recent_citation_ratio"),
+            "treatment_positive_pct": n.get("treatment_positive_pct"),
+            "treatment_summary": n.get("treatment_summary"),
+            "bench_type": n.get("bench_type"),
+            "case_type": n.get("case_type"),
         }
 
     from_case = _format_node(from_node)
