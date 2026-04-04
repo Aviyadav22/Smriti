@@ -37,6 +37,25 @@ function getBadgeStyle(type: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Issue tag colors (rotate through a palette)
+// ---------------------------------------------------------------------------
+
+const TAG_COLORS = [
+    "bg-indigo-100 text-indigo-700",
+    "bg-emerald-100 text-emerald-700",
+    "bg-amber-100 text-amber-700",
+    "bg-rose-100 text-rose-700",
+    "bg-sky-100 text-sky-700",
+    "bg-violet-100 text-violet-700",
+    "bg-teal-100 text-teal-700",
+    "bg-orange-100 text-orange-700",
+];
+
+function getTagColor(index: number): string {
+    return TAG_COLORS[index % TAG_COLORS.length];
+}
+
+// ---------------------------------------------------------------------------
 // Treatment summary type
 // ---------------------------------------------------------------------------
 
@@ -67,6 +86,7 @@ export default function CaseDetailPanel({
 }: CaseDetailPanelProps) {
     const [treatment, setTreatment] = useState<TreatmentData | null>(null);
     const [treatmentLoading, setTreatmentLoading] = useState(false);
+    const [showFacts, setShowFacts] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -89,6 +109,11 @@ export default function CaseDetailPanel({
         };
     }, [node.id]);
 
+    // Reset fact toggle when node changes
+    useEffect(() => {
+        setShowFacts(false);
+    }, [node.id]);
+
     // Treatment bar color
     const pct = node.treatment_positive_pct;
     let barColor = "bg-stone-300";
@@ -97,6 +122,11 @@ export default function CaseDetailPanel({
         else if (pct >= 0.5) barColor = "bg-amber-500";
         else barColor = "bg-red-500";
     }
+
+    // Parse issue tags
+    const issueTags = node.issue_tags
+        ? node.issue_tags.split(",").map((t) => t.trim()).filter(Boolean)
+        : [];
 
     return (
         <div className="w-80 flex-shrink-0 border-l border-stone-200 bg-white overflow-y-auto">
@@ -142,6 +172,18 @@ export default function CaseDetailPanel({
                     </div>
                 )}
 
+                {/* Primary legal issue */}
+                {node.primary_legal_issue && (
+                    <div>
+                        <p className="mb-1 text-xs font-medium text-stone-500">
+                            Legal Question
+                        </p>
+                        <p className="text-sm font-medium text-stone-800 italic">
+                            {node.primary_legal_issue}
+                        </p>
+                    </div>
+                )}
+
                 {/* Authority scores */}
                 <div>
                     <p className="mb-1 text-xs font-medium text-stone-500">
@@ -163,6 +205,37 @@ export default function CaseDetailPanel({
                     </div>
                 </div>
 
+                {/* Issue tags */}
+                {issueTags.length > 0 && (
+                    <div>
+                        <p className="mb-1 text-xs font-medium text-stone-500">
+                            Issue Tags
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                            {issueTags.map((tag, i) => (
+                                <span
+                                    key={tag}
+                                    className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${getTagColor(i)}`}
+                                >
+                                    {tag}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Key Holding (headnote) */}
+                {node.headnote_text && (
+                    <div>
+                        <p className="mb-1 text-xs font-medium text-stone-500">
+                            Key Holding
+                        </p>
+                        <p className="text-xs leading-relaxed text-stone-600 line-clamp-4">
+                            {node.headnote_text}
+                        </p>
+                    </div>
+                )}
+
                 {/* Metadata */}
                 <div>
                     <p className="mb-1 text-xs font-medium text-stone-500">
@@ -175,6 +248,12 @@ export default function CaseDetailPanel({
                                 <dd className="text-stone-700">{node.bench_type}</dd>
                             </div>
                         )}
+                        {node.coram_size != null && node.coram_size > 0 && (
+                            <div className="flex justify-between">
+                                <dt className="text-stone-400">Coram</dt>
+                                <dd className="text-stone-700">{node.coram_size} judges</dd>
+                            </div>
+                        )}
                         {node.year && (
                             <div className="flex justify-between">
                                 <dt className="text-stone-400">Year</dt>
@@ -184,7 +263,28 @@ export default function CaseDetailPanel({
                         {node.case_type && (
                             <div className="flex justify-between">
                                 <dt className="text-stone-400">Case Type</dt>
-                                <dd className="text-stone-700">{node.case_type}</dd>
+                                <dd className="flex items-center gap-1.5 text-stone-700">
+                                    {node.case_type}
+                                    {node.is_reportable && (
+                                        <span className="inline-block rounded bg-blue-100 px-1 py-0.5 text-[9px] font-semibold text-blue-700">
+                                            R
+                                        </span>
+                                    )}
+                                </dd>
+                            </div>
+                        )}
+                        {node.opinion_type && (
+                            <div className="flex justify-between">
+                                <dt className="text-stone-400">Opinion</dt>
+                                <dd className="text-stone-700">{node.opinion_type}</dd>
+                            </div>
+                        )}
+                        {node.jurisdiction && (
+                            <div className="flex justify-between">
+                                <dt className="text-stone-400">Jurisdiction</dt>
+                                <dd className="text-stone-700 text-right max-w-[140px] truncate">
+                                    {node.jurisdiction}
+                                </dd>
                             </div>
                         )}
                         {node.court && (
@@ -219,6 +319,29 @@ export default function CaseDetailPanel({
                         <p className="text-xs leading-relaxed text-stone-600 line-clamp-6">
                             {node.ratio}
                         </p>
+                    </div>
+                )}
+
+                {/* Fact pattern (collapsible) */}
+                {node.fact_pattern_summary && (
+                    <div>
+                        <button
+                            type="button"
+                            onClick={() => setShowFacts((p) => !p)}
+                            className="flex items-center gap-1 text-xs font-medium text-stone-500 hover:text-stone-700 transition"
+                        >
+                            <span
+                                className={`inline-block transition-transform text-[10px] ${showFacts ? "rotate-90" : ""}`}
+                            >
+                                &#x25B6;
+                            </span>
+                            Fact Pattern
+                        </button>
+                        {showFacts && (
+                            <p className="mt-1.5 text-xs leading-relaxed text-stone-500">
+                                {node.fact_pattern_summary}
+                            </p>
+                        )}
                     </div>
                 )}
 
