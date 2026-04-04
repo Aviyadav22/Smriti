@@ -1,7 +1,7 @@
 """Tests for graph analytics computation script."""
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import networkx as nx
 import pytest
@@ -122,10 +122,12 @@ class TestComputeCommunities:
 
     def test_labels_from_keywords(self, sample_graph: nx.DiGraph) -> None:
         result = compute_communities(sample_graph)
-        # All labels should contain tokens from the sample data
+        # All labels should contain tokens from the sample data — either
+        # canonical taxonomy labels (e.g. "Criminal Law") or raw keywords
         all_labels = " ".join(info["community_label"] for info in result.values())
-        # At least some known keywords should appear
-        known = {"constitutional", "criminal", "article 21", "article 14", "murder", "theft",
+        # Canonical practice area labels mapped from keywords, OR raw keywords as fallback
+        known = {"Criminal Law", "Constitutional Law",
+                 "constitutional", "criminal", "article 21", "article 14", "murder", "theft",
                  "Constitution of India", "Indian Penal Code"}
         assert any(kw in all_labels for kw in known)
 
@@ -329,7 +331,16 @@ class TestInvalidateCaches:
 
 
 class TestRunAnalytics:
-    async def test_orchestrates_full_pipeline(self) -> None:
+    @patch("app.db.postgres.async_session_factory")
+    async def test_orchestrates_full_pipeline(self, mock_session_factory: MagicMock) -> None:
+        # Mock async_session_factory to return a mock async context manager
+        mock_db_session = AsyncMock()
+        mock_db_session.execute = AsyncMock(return_value=MagicMock(mappings=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))))
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_db_session)
+        mock_cm.__aexit__ = AsyncMock(return_value=False)
+        mock_session_factory.return_value = mock_cm
+
         mock_store = AsyncMock()
         mock_store.query.side_effect = [
             # fetch nodes
@@ -338,12 +349,15 @@ class TestRunAnalytics:
             sample_edges,
             # write batch (all 4 nodes in one batch)
             None,
+            # enrich_neo4j_from_postgres (0 rows -> no calls)
+            # create_issue_topic_nodes (0 rows -> no calls)
+            # create_statute_section_nodes (0 rows -> no calls)
         ]
         mock_redis = AsyncMock()
 
         await run_analytics(mock_store, mock_redis)
 
-        # 2 fetches + 1 write batch
+        # 2 fetches + 1 write batch (enrichment gets 0 rows so no extra writes)
         assert mock_store.query.call_count == 3
         # Cache invalidation
         assert mock_redis.delete.call_count == 3

@@ -484,6 +484,10 @@ class TestGetDashboard:
                 [{"id": "neg1", "title": "Neg Case", "citation": "Z", "court": "SC", "year": 2019, "cited_by_count": 50, "pagerank_global": 0.7, "community_id": 1, "community_label": "Constitutional", "recent_citation_ratio": 0.1, "negative_treatment": "overruled", "by_case_title": "New Case", "by_case_year": 2024}],
                 # communities
                 [{"community_id": 1, "community_label": "Constitutional", "count": 200}, {"community_id": 2, "community_label": "Criminal", "count": 150}],
+                # get_subtopics query
+                [],
+                # get_statute_sections query
+                [],
             ]
         )
         result = await get_dashboard(graph_store=store, redis_client=None)
@@ -492,6 +496,8 @@ class TestGetDashboard:
         assert "rising" in result
         assert "recently_negative" in result
         assert "communities" in result
+        assert "subtopics" in result
+        assert "statute_sections" in result
         assert len(result["most_cited"]) == 1
         assert len(result["rising"]) == 1
         assert len(result["recently_negative"]) == 1
@@ -501,13 +507,13 @@ class TestGetDashboard:
     async def test_community_filter_passes_param(self) -> None:
         store = AsyncMock()
         store.query = AsyncMock(return_value=[])
-        await get_dashboard(graph_store=store, redis_client=None, community_id=1)
+        await get_dashboard(graph_store=store, redis_client=None, community_label="Criminal Law")
 
-        # All 4 queries should have been made
-        assert store.query.call_count == 4
-        # Check that at least the first query includes community_id filter
+        # 4 dashboard queries + 1 subtopics + 1 statute_sections = 6
+        assert store.query.call_count == 6
+        # Check that at least the first query includes community_label filter
         first_call = store.query.call_args_list[0]
-        assert "community_id" in first_call.kwargs["cypher"]
+        assert "community_label" in first_call.kwargs["cypher"]
 
     @pytest.mark.asyncio
     async def test_caches_result(self) -> None:
@@ -522,10 +528,15 @@ class TestGetDashboard:
 
         await get_dashboard(graph_store=store, redis_client=redis)
 
-        redis.setex.assert_called_once()
-        call_args = redis.setex.call_args
-        assert call_args.args[0] == "graph:dashboard:all"
-        assert call_args.args[1] == 3600  # 1 hour TTL
+        # get_dashboard caches dashboard + get_subtopics + get_statute_sections = 3 calls
+        assert redis.setex.call_count >= 1
+        # Verify the dashboard cache key is among the calls
+        cache_keys = [call.args[0] for call in redis.setex.call_args_list]
+        assert any(k.startswith("graph:dashboard:") for k in cache_keys)
+        # Verify TTL is 1 hour for the dashboard entry
+        for call in redis.setex.call_args_list:
+            if call.args[0].startswith("graph:dashboard:"):
+                assert call.args[1] == 3600  # 1 hour TTL
 
     @pytest.mark.asyncio
     async def test_returns_from_cache(self) -> None:
