@@ -46,6 +46,8 @@ from app.db.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
 
+_AGENT_VECTOR_TYPES: list[str] = ["proposition", "ratio", "headnote", "summary"]
+
 
 # ---------------------------------------------------------------------------
 # Helper: emit a per-worker "found" event for live SSE streaming [T1]
@@ -174,7 +176,7 @@ async def case_law_worker(
     # [V3] Proposition-level semantic search (skip FTS — propositions are vector-only)
     try:
         search_filters = search_kwargs.get("filters")
-        prop_filter: dict = {"vector_type": {"$in": ["proposition", "ratio", "headnote"]}}
+        prop_filter: dict = {"vector_type": {"$in": _AGENT_VECTOR_TYPES}}
         if search_filters and search_filters.court:
             prop_filter["court"] = {"$eq": search_filters.court[0]}
         if search_filters and search_filters.year_from:
