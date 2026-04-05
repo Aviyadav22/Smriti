@@ -251,7 +251,7 @@ export default function AgentHistoryPage() {
         <div className="mx-auto max-w-4xl px-4 py-8">
                     <div className="flex items-center gap-3 mb-6">
                         <Button variant="ghost" size="sm" asChild>
-                            <Link href="/agents">
+                            <Link href="/dashboard">
                                 <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Agents
                             </Link>
                         </Button>

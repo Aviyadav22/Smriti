@@ -1,13 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth-context";
-import { Search, Scale, LogOut, Menu, X, MessageSquare, GitBranch, Gavel, Upload, Bot, Building2, FileText, Globe } from "lucide-react";
+import { Scale, LogOut, Menu, X, MessageSquare, GitBranch, Gavel, Upload, Bot, Building2, FileText, Globe } from "lucide-react";
 
 function LanguageToggle() {
     const [locale, setLocaleState] = useState(() => {
@@ -41,19 +39,9 @@ function LanguageToggle() {
 
 export function Header() {
     const { isAuthenticated, logout } = useAuth();
-    const router = useRouter();
-    const [query, setQuery] = useState("");
     const [mobileOpen, setMobileOpen] = useState(false);
     const t = useTranslations("header");
     const tc = useTranslations("common");
-
-    function handleSearch(e: React.FormEvent) {
-        e.preventDefault();
-        if (query.trim()) {
-            router.push(`/search?q=${encodeURIComponent(query.trim())}`);
-            setQuery("");
-        }
-    }
 
     return (
         <header className="sticky top-0 z-50 border-b bg-card/90 backdrop-blur-sm">
@@ -66,26 +54,8 @@ export function Header() {
                     </span>
                 </Link>
 
-                {/* Search bar — desktop */}
-                <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-lg mx-6">
-                    <div className="relative w-full">
-                        <label htmlFor="header-search" className="sr-only">{t("searchPlaceholder")}</label>
-                        <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                            id="header-search"
-                            placeholder={t("searchPlaceholder")}
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            className="pl-9 h-9 text-sm bg-background border focus-visible:ring-1 focus-visible:ring-[var(--gold)]/40 rounded-md"
-                        />
-                    </div>
-                </form>
-
                 {/* Nav — desktop */}
                 <nav className="hidden md:flex items-center gap-0.5 ml-auto">
-                    <Button variant="ghost" size="sm" className="text-xs uppercase tracking-wider font-medium h-8 px-3" asChild>
-                        <Link href="/search">{tc("search")}</Link>
-                    </Button>
                     <Button variant="ghost" size="sm" className="text-xs uppercase tracking-wider font-medium h-8 px-3" asChild>
                         <Link href="/chat"><MessageSquare className="h-3.5 w-3.5 mr-1" /> {t("chat")}</Link>
                     </Button>
@@ -136,17 +106,7 @@ export function Header() {
             {/* Mobile dropdown */}
             {mobileOpen && (
                 <div className="md:hidden border-t px-4 py-3 space-y-2 bg-card">
-                    <form onSubmit={handleSearch}>
-                        <div className="relative">
-                            <label htmlFor="header-search-mobile" className="sr-only">{t("searchPlaceholder")}</label>
-                            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                            <Input id="header-search-mobile" placeholder={t("searchPlaceholder")} value={query} onChange={(e) => setQuery(e.target.value)} className="pl-9 text-sm" />
-                        </div>
-                    </form>
                     <div className="flex flex-col gap-0.5 pt-1">
-                        <Button variant="ghost" size="sm" className="justify-start text-xs" asChild onClick={() => setMobileOpen(false)}>
-                            <Link href="/search">{tc("search")}</Link>
-                        </Button>
                         <Button variant="ghost" size="sm" className="justify-start text-xs" asChild onClick={() => setMobileOpen(false)}>
                             <Link href="/chat"><MessageSquare className="h-3.5 w-3.5 mr-1.5" /> {t("chat")}</Link>
                         </Button>

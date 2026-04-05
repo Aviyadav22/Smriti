@@ -501,7 +501,7 @@ export function AgentWorkspace({
                         {/* Back + sidebar toggle */}
                         <div className="flex items-center gap-3 mb-6">
                             <Button variant="ghost" size="sm" asChild>
-                                <Link href="/agents">
+                                <Link href="/dashboard">
                                     <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Agents
                                 </Link>
                             </Button>
