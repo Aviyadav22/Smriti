@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { renderWithProviders } from "./test-utils";
 import type { GraphStats } from "@/lib/types";
 
@@ -29,6 +29,7 @@ vi.mock("react-force-graph-2d", () => ({
 
 const mockGetGraphStats = vi.fn();
 const mockGetGraphNeighborhood = vi.fn();
+const mockGetGraphDashboard = vi.fn();
 const mockSearch = vi.fn();
 
 vi.mock("@/lib/api", async () => {
@@ -37,6 +38,7 @@ vi.mock("@/lib/api", async () => {
     ...actual,
     getGraphStats: () => mockGetGraphStats(),
     getGraphNeighborhood: (...args: unknown[]) => mockGetGraphNeighborhood(...args),
+    getGraphDashboard: (...args: unknown[]) => mockGetGraphDashboard(...args),
     getGraphChain: vi.fn().mockResolvedValue({ nodes: [], edges: [] }),
     getGraphAuthorities: vi.fn().mockResolvedValue([]),
     search: (...args: unknown[]) => mockSearch(...args),
@@ -68,18 +70,28 @@ describe("GraphPage", () => {
     vi.clearAllMocks();
     mockGetGraphStats.mockResolvedValue(makeStats());
     mockGetGraphNeighborhood.mockResolvedValue({ nodes: [], edges: [] });
+    mockGetGraphDashboard.mockResolvedValue({
+      most_cited: [],
+      rising: [],
+      recently_negative: [],
+      communities: [],
+      subtopics: [],
+      statute_sections: [],
+    });
     mockSearch.mockResolvedValue({ results: [], total_count: 0, page: 1, page_size: 5 });
   });
 
-  it("shows empty state with heading", async () => {
+  it("shows view toggle buttons", async () => {
     renderWithProviders(<GraphPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Citation Graph Explorer")).toBeTruthy();
+      expect(screen.getByText("Dashboard")).toBeTruthy();
+      expect(screen.getByText("Timeline")).toBeTruthy();
+      expect(screen.getByText("Network")).toBeTruthy();
     });
   });
 
-  it("shows global graph stats", async () => {
+  it("shows global graph stats in dashboard view", async () => {
     renderWithProviders(<GraphPage />);
 
     await waitFor(() => {
@@ -97,22 +109,22 @@ describe("GraphPage", () => {
     });
   });
 
-  it("shows depth control buttons", async () => {
+  it("shows depth and mode controls in network view", async () => {
     renderWithProviders(<GraphPage />);
+
+    // Switch to network view to reveal depth + mode controls
+    await waitFor(() => {
+      expect(screen.getByText("Network")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText("Network"));
 
     await waitFor(() => {
       expect(screen.getByText("1")).toBeTruthy();
       expect(screen.getByText("2")).toBeTruthy();
       expect(screen.getByText("3")).toBeTruthy();
-    });
-  });
-
-  it("shows network and chain mode buttons", async () => {
-    renderWithProviders(<GraphPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Network")).toBeTruthy();
+      expect(screen.getByText("Neighborhood")).toBeTruthy();
       expect(screen.getByText("Chain")).toBeTruthy();
+      expect(screen.getByText("Path")).toBeTruthy();
     });
   });
 });

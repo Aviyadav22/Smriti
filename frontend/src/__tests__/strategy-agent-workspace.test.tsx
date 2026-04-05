@@ -50,10 +50,38 @@ vi.mock("@/lib/api", async () => {
     ...actual,
     runStrategyAgent: vi.fn(),
     resumeAgentExecution: vi.fn(),
+    sendAgentFollowUp: vi.fn(),
+    getAgentSessionMessages: vi.fn().mockResolvedValue([]),
     loadTokens: vi.fn(),
     getAccessToken: () => "test-token",
   };
 });
+
+// ---------------------------------------------------------------------------
+// Mock useAgentSession hook
+// ---------------------------------------------------------------------------
+const mockStartSession = vi.fn();
+
+vi.mock("@/hooks/useAgentSession", () => ({
+  useAgentSession: () => ({
+    sessionId: null,
+    sessions: [],
+    isRunning: false,
+    memo: "",
+    confidence: undefined,
+    error: null,
+    executionId: null,
+    sessionMessages: [],
+    abortRef: { current: null },
+    setError: vi.fn(),
+    startSession: mockStartSession,
+    resume: vi.fn(),
+    cancel: vi.fn(),
+    loadSession: vi.fn(),
+    refreshSessions: vi.fn(),
+    deleteSession: vi.fn(),
+  }),
+}));
 
 import StrategyAgentPage from "@/app/agents/strategy/page";
 
@@ -134,11 +162,7 @@ describe("StrategyAgentPage", () => {
     expect(button).not.toBeDisabled();
   });
 
-  it("calls runStrategyAgent on submit with valid inputs", async () => {
-    const { runStrategyAgent } = await import("@/lib/api");
-    const mockRun = vi.mocked(runStrategyAgent);
-    mockRun.mockReturnValue(new AbortController());
-
+  it("calls startSession on submit with valid inputs", async () => {
     renderWithProviders(<StrategyAgentPage />);
     const textarea = screen.getByPlaceholderText(
       "Describe the facts of your case...",
@@ -154,13 +178,12 @@ describe("StrategyAgentPage", () => {
     const button = screen.getByText("Build Arguments");
     fireEvent.click(button);
 
-    expect(mockRun).toHaveBeenCalledWith(
-      "Contract breach facts",
-      "Specific performance",
+    expect(mockStartSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        case_facts: "Contract breach facts",
+        desired_relief: "Specific performance",
+      }),
       expect.any(Function),
-      expect.any(Function),
-      undefined,
-      undefined,
     );
   });
 
@@ -176,7 +199,7 @@ describe("StrategyAgentPage", () => {
   it("renders the page description text", () => {
     renderWithProviders(<StrategyAgentPage />);
     expect(
-      screen.getByText(/Enter your case facts and desired relief/),
+      screen.getByText(/Enter case facts and desired relief/),
     ).toBeInTheDocument();
   });
 
@@ -214,8 +237,8 @@ describe("StrategyAgentPage", () => {
     expect(screen.getByPlaceholderText("Describe the facts of your case...")).toBeInTheDocument();
   });
 
-  it("shows description mentioning argument memorandum", () => {
+  it("shows description mentioning IRAC arguments", () => {
     renderWithProviders(<StrategyAgentPage />);
-    expect(screen.getByText(/argument memorandum/i)).toBeInTheDocument();
+    expect(screen.getByText(/IRAC arguments/i)).toBeInTheDocument();
   });
 });
