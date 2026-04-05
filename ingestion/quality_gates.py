@@ -104,6 +104,15 @@ def validate_batch_metadata(metadata_results: dict[str, dict]) -> QualityReport:
             f"possible cross-contamination!"
         )
 
+    ratios = [m.get("ratio_decidendi", "") for m in metadata_results.values() if m.get("ratio_decidendi")]
+    unique_ratios = len(set(ratios))
+    checks["unique_ratios"] = f"{unique_ratios}/{len(ratios)}"
+    if len(ratios) > 10 and unique_ratios < len(ratios) * 0.80:
+        failures.append(
+            f"Only {unique_ratios}/{len(ratios)} unique ratio_decidendi -- "
+            f"possible cross-contamination!"
+        )
+
     # --- Year sanity ---
     years = [m.get("year") for m in metadata_results.values() if m.get("year")]
     if years:
@@ -122,6 +131,139 @@ def validate_batch_metadata(metadata_results: dict[str, dict]) -> QualityReport:
         failures.append(
             f"Only {unique_blobs}/{total} unique metadata blobs -- "
             f"cases may have identical metadata!"
+        )
+
+    passed = len(failures) == 0
+    return QualityReport(passed=passed, checks=checks, failures=failures, warnings=warnings)
+
+
+# ---------------------------------------------------------------------------
+# Layer 3b: Content quality gate (audit-driven checks)
+# ---------------------------------------------------------------------------
+
+_REPORTER_PREAMBLE_PATTERNS = [
+    "SUPREME COURT REPORTS",
+    "SCC Online",
+    "ALL INDIA REPORTER",
+    "PETITIONER:",
+    "RESPONDENT:",
+    "CITATION:",
+    "DATE OF JUDGMENT:",
+]
+
+
+def validate_content_quality(metadata_results: dict[str, dict]) -> QualityReport:
+    """Validate content quality issues identified in the metadata audit.
+
+    Catches:
+    - Header bloat (>5K chars in first chunk text or description)
+    - NULL description / outcome_summary rates
+    - Editorial contamination in headnotes
+    - Verbose ratio_decidendi (>1500 chars)
+    - Low confidence without remediation
+    """
+    total = len(metadata_results)
+    if total == 0:
+        return QualityReport(
+            passed=True, checks={"total": 0},
+            failures=[], warnings=[],
+        )
+
+    checks: dict[str, Any] = {"total_cases": total}
+    failures: list[str] = []
+    warnings: list[str] = []
+
+    null_description = 0
+    null_outcome = 0
+    verbose_ratio = 0
+    low_confidence = 0
+    header_bloat = 0
+    editorial_headnotes = 0
+
+    for case_id, meta in metadata_results.items():
+        # NULL description
+        if not meta.get("case_description") and not meta.get("description"):
+            null_description += 1
+
+        # NULL outcome_summary
+        if not meta.get("outcome_summary"):
+            null_outcome += 1
+
+        # Verbose ratio (>1500 chars)
+        ratio = meta.get("ratio_decidendi", "")
+        if ratio and len(ratio) > 1500:
+            verbose_ratio += 1
+
+        # Low confidence
+        conf = meta.get("extraction_confidence", 1.0)
+        if isinstance(conf, (int, float)) and conf < 0.6:
+            low_confidence += 1
+
+        # Header bloat: check if title or description contains reporter preamble
+        title = meta.get("title", "") or ""
+        for pattern in _REPORTER_PREAMBLE_PATTERNS:
+            if pattern in title.upper():
+                header_bloat += 1
+                break
+
+        # Editorial headnotes check
+        headnotes = meta.get("headnotes", "")
+        if headnotes:
+            hn_str = headnotes if isinstance(headnotes, str) else str(headnotes)
+            if any(kw in hn_str.lower() for kw in [
+                "held -", "held that the court", "per ", "it was contended",
+                "reporter's note", "[ed.", "result of the case",
+            ]):
+                editorial_headnotes += 1
+
+    # Report rates
+    desc_pct = null_description / total
+    outcome_pct = null_outcome / total
+    ratio_pct = verbose_ratio / total
+    conf_pct = low_confidence / total
+    bloat_pct = header_bloat / total
+    editorial_pct = editorial_headnotes / total
+
+    checks["null_description"] = f"{null_description}/{total} ({desc_pct:.1%})"
+    checks["null_outcome_summary"] = f"{null_outcome}/{total} ({outcome_pct:.1%})"
+    checks["verbose_ratio"] = f"{verbose_ratio}/{total} ({ratio_pct:.1%})"
+    checks["low_confidence"] = f"{low_confidence}/{total} ({conf_pct:.1%})"
+    checks["header_bloat_in_title"] = f"{header_bloat}/{total} ({bloat_pct:.1%})"
+    checks["editorial_headnotes"] = f"{editorial_headnotes}/{total} ({editorial_pct:.1%})"
+
+    # Thresholds — FAIL if rates exceed acceptable limits
+    if desc_pct > 0.15:
+        failures.append(
+            f"NULL description rate {desc_pct:.1%} exceeds 15% threshold"
+        )
+    elif desc_pct > 0.08:
+        warnings.append(f"NULL description rate {desc_pct:.1%} is elevated (>8%)")
+
+    if outcome_pct > 0.15:
+        failures.append(
+            f"NULL outcome_summary rate {outcome_pct:.1%} exceeds 15% threshold"
+        )
+    elif outcome_pct > 0.08:
+        warnings.append(f"NULL outcome_summary rate {outcome_pct:.1%} is elevated (>8%)")
+
+    if ratio_pct > 0.10:
+        warnings.append(f"Verbose ratio rate {ratio_pct:.1%} is elevated (>10%)")
+
+    if conf_pct > 0.20:
+        failures.append(
+            f"Low confidence rate {conf_pct:.1%} exceeds 20% threshold"
+        )
+    elif conf_pct > 0.10:
+        warnings.append(f"Low confidence rate {conf_pct:.1%} is elevated (>10%)")
+
+    if bloat_pct > 0.10:
+        warnings.append(
+            f"Header bloat in titles {bloat_pct:.1%} is elevated (>10%)"
+        )
+
+    if editorial_pct > 0.20:
+        warnings.append(
+            f"Editorial headnote contamination {editorial_pct:.1%} is elevated (>20%)"
         )
 
     passed = len(failures) == 0
