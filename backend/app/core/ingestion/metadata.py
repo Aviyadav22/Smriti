@@ -301,7 +301,7 @@ def _validate_metadata_against_text(
         validated_kw: list[str] = []
         for kw in metadata.keywords:
             # Check if any non-stopword token (4+ chars) from the keyword appears in text
-            tokens = [t for t in re.split(r"\W+", kw.lower()) if len(t) >= 4 and t not in _STOPWORDS]
+            tokens = [t for t in re.split(r"\W+", kw.lower()) if len(t) >= 3 and t not in _STOPWORDS]
             if not tokens:
                 # Short keyword — keep it (e.g., "PIL", "bail")
                 validated_kw.append(kw)
@@ -318,7 +318,7 @@ def _validate_metadata_against_text(
             if len(t) >= 4 and t not in _STOPWORDS
         ]
         matching = sum(1 for t in ratio_tokens if t in text_lower)
-        if ratio_tokens and matching < 3:
+        if ratio_tokens and matching < 2:
             logger.warning(
                 "Ratio decidendi shares only %d/%d tokens with text — nulling",
                 matching, len(ratio_tokens),
@@ -1195,8 +1195,8 @@ def cross_validate_propositions(metadata: CaseMetadata) -> CaseMetadata:
                         for h in headnotes
                         if (h.get("text", "") or h.get("proposition", "")).strip()
                     ]
-            except (json.JSONDecodeError, TypeError, AttributeError):
-                pass  # Malformed headnotes — skip silently
+            except (json.JSONDecodeError, TypeError, AttributeError) as e:
+                logger.debug("Headnote JSON parse failed: %s", e)
 
     return metadata
 

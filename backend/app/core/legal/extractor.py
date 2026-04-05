@@ -99,6 +99,11 @@ SCR_PATTERN: re.Pattern[str] = re.compile(
     r"[(\[](\d{4})[)\]]\s+(\d+)\s+SCR\s+(\d+)"
 )
 
+# Bare SCR format (pre-1970): "3 SCR 150" or "3 S.C.R. 150"
+SCR_BARE_PATTERN: re.Pattern[str] = re.compile(
+    r"(\d{1,2})\s+S\.?C\.?R\.?\s+(\d+)"
+)
+
 # --- CrLJ ---
 
 # 2020 CrLJ 145  (with optional dots in Cr.L.J.)
@@ -366,6 +371,27 @@ _SHORT_ACT_NAMES: dict[str, str] = {
     "MMDRA": "Mines and Minerals (Development and Regulation) Act",
     "MACT": "Motor Accident Claims Tribunal Act",
     "FA": "Foreigners Act",
+    # --- [SA3b] Aliases discovered in blind spot check ---
+    "RFCTLARR ACT": "Right to Fair Compensation and Transparency in Land Acquisition, "
+                    "Rehabilitation and Resettlement Act",
+    "CIVIL PROCEDURE CODE": "Code of Civil Procedure",
+    "CRIMINAL PROCEDURE CODE": "Code of Criminal Procedure",
+    "WILD LIFE ACT": "Wild Life (Protection) Act",
+    "WILDLIFE ACT": "Wild Life (Protection) Act",
+    "ENVIRONMENT PROTECTION ACT": "Environment (Protection) Act",
+    "GWA": "Guardians and Wards Act",
+    "SEBI ACT": "Securities and Exchange Board of India Act",
+    "RBI ACT": "Reserve Bank of India Act",
+    "GRATUITY ACT": "Payment of Gratuity Act",
+    "CAT ACT": "Administrative Tribunals Act",
+    "WC ACT": "Employees' Compensation Act",
+    "RPwD Act": "Rights of Persons with Disabilities Act",
+    "RPWD ACT": "Rights of Persons with Disabilities Act",
+    "EPA": "Environment (Protection) Act",
+    "INDIAN SUCCESSION ACT": "Indian Succession Act",
+    "INDIAN REGISTRATION ACT": "Registration Act",
+    "RP ACT": "Representation of the People Act",
+    "FERA": "Foreign Exchange Regulation Act",
     # --- [SA7] Display-name entries (short code → full name) ---
     "COI": "Constitution of India",
     "IEA": "Indian Evidence Act",
@@ -458,16 +484,28 @@ def get_acts_cited_display(short_codes: list[str] | None) -> list[dict[str, str]
 def normalize_act_name(raw: str) -> str:
     """Map an act name (full or short) to the canonical short code used in the statute DB.
 
+    Always returns the SHORTEST key that maps to the same full act name,
+    so "Limitation Act" → "LA" (not "LIMITATION ACT"), and
+    "Negotiable Instruments Act" → "NI ACT" (not "NEGOTIABLE INSTRUMENTS ACT").
+
     Examples:
         "Indian Penal Code" → "IPC"
         "IPC" → "IPC"
         "Constitution of India" → "COI"
-        "Narcotic Drugs and Psychotropic Substances Act" → "NDPS ACT"
+        "Limitation Act" → "LA"
+        "Negotiable Instruments Act" → "NI ACT"
     """
     stripped = raw.strip()
     upper = stripped.upper()
-    # Direct short-code match
+    # Direct short-code match — but prefer the shortest alias for the same full name.
+    # E.g., "LIMITATION ACT" is a valid key, but "LA" maps to the same full name
+    # and is shorter. We want "LA".
     if upper in _SHORT_ACT_NAMES:
+        full_name = _SHORT_ACT_NAMES[upper]
+        # Check if a shorter key maps to the same full name
+        shortest = _FULL_TO_SHORT.get(full_name.lower())
+        if shortest and len(shortest) < len(upper):
+            return shortest
         return upper
     # Full-name reverse lookup (case-insensitive)
     short = _FULL_TO_SHORT.get(stripped.lower())
@@ -1083,11 +1121,13 @@ _SHORT_ACT_ALTERNATION: str = "|".join(
 )
 
 # "Section 302 of the Indian Penal Code, 1860"
+# Act name boundary: stop at year, punctuation, or common non-act-name words.
+# Allows "/" in act names (SC/ST Act) and matches known abbreviations (IBC, LARR).
 _SECTION_FULL_ACT_PATTERN: re.Pattern[str] = re.compile(
     r"(?:Sections?|Sec\.?|Ss\.|S\.)\s*([\d\w]+(?:\s*\([^)]+\))*)"
     r"\s+of\s+(?:the\s+)?"
-    r"([\w\s]+?)"
-    r"(?:,\s*(\d{4}))?(?=\s*[.,;)\]]|\s+and\s|\s+read\s|\s+r/w\s|$)",
+    r"([\w\s/]+?(?:Act|Code|Sanhita|Adhiniyam|Constitution|Rules|Regulations|Order|IBC|LARR|PMLA|UAPA|NDPS|POCSO|FEMA|RERA|SARFAESI|CGST|IGST))"
+    r"(?:,\s*(\d{4}))?(?=\s*[.,;:)\]\"']|\s+(?:for|in|under|to|which|where|is|shall|was|has|and|read|r/w|that|as|if|or|provides?|requires?|causes?|bars?|grants?|allows?|permits?|prohibits?)\s|$)",
     re.IGNORECASE,
 )
 
@@ -1336,6 +1376,21 @@ def extract_citations(text: str) -> list[Citation]:
             court=None,
             raw_text=match.group(0),
             confidence=0.9,
+        ), match)
+
+    # Bare SCR -- 3 SCR 150 (pre-1970, no year bracket)
+    for match in SCR_BARE_PATTERN.finditer(text):
+        m_start, m_end = match.start(), match.end()
+        if any(not (m_end <= s_start or m_start >= s_end) for s_start, s_end in seen_spans):
+            continue
+        _add(Citation(
+            reporter="SCR",
+            year=None,
+            volume=match.group(1),
+            page=match.group(2),
+            court=None,
+            raw_text=match.group(0),
+            confidence=0.7,
         ), match)
 
     # CrLJ -- 2020 CrLJ 145
