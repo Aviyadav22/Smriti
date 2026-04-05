@@ -158,6 +158,7 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     legal_propositions: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     statute_sections_interpreted: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     fact_pattern_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    primary_legal_issue: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         # --- CHECK constraints ---

@@ -35,11 +35,13 @@ _neo4j_retry = retry(
 _VALID_LABELS = frozenset({
     "Case", "Statute", "Judge", "Act", "Doctrine",
     "Counsel", "LegalPrinciple", "Issue", "Community",
+    "IssueTopic", "StatuteSection",
 })
 _VALID_RELATIONSHIPS = frozenset({
     "CITES", "EQUIVALENT_TO", "APPLIES_DOCTRINE", "DECIDED_BY",
     "REPRESENTED_BY", "APPLIES_PRINCIPLE", "ADDRESSES",
     "BELONGS_TO", "INTERPRETS", "AUTHORED_BY",
+    "CLASSIFIED_AS",
 })
 
 

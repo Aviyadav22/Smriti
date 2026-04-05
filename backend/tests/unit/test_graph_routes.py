@@ -111,7 +111,7 @@ class TestNeighborhood:
         edge = body["edges"][0]
         assert edge["from"] == _CASE_ID
         assert edge["to"] == _NEIGHBOR_ID
-        assert edge["type"] == "CITES"
+        assert edge["type"] == "cites"
         assert edge["context"] == "Section 14"
 
     @patch("app.api.routes.graph.get_graph_store")
@@ -193,7 +193,7 @@ class TestChain:
         edge = body["edges"][0]
         assert edge["from"] == _CASE_ID
         assert edge["to"] == _CITED_ID
-        assert edge["type"] == "CITES"
+        assert edge["type"] == "cites"
 
     @patch("app.api.routes.graph.get_graph_store")
     def test_chain_with_max_depth(
@@ -435,6 +435,170 @@ class TestParameterValidation:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# GET /graph/dashboard
+# ---------------------------------------------------------------------------
+
+
+class TestDashboardRoute:
+    @patch("app.api.routes.graph.get_redis")
+    @patch("app.api.routes.graph.get_graph_store")
+    def test_returns_200(
+        self, mock_get_graph: MagicMock, mock_get_redis: MagicMock, client: TestClient
+    ) -> None:
+        """GET /dashboard returns 200 with all 4 keys."""
+        mock_graph = _mock_graph_store()
+        # 4 queries: most_cited, rising, recently_negative, communities
+        mock_graph.query = AsyncMock(return_value=[])
+        mock_get_graph.return_value = mock_graph
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+        mock_get_redis.return_value = mock_redis
+
+        resp = client.get("/api/v1/graph/dashboard")
+        assert resp.status_code == 200
+
+        body = resp.json()
+        assert "most_cited" in body
+        assert "rising" in body
+        assert "recently_negative" in body
+        assert "communities" in body
+
+    @patch("app.api.routes.graph.get_redis")
+    @patch("app.api.routes.graph.get_graph_store")
+    def test_with_community_filter(
+        self, mock_get_graph: MagicMock, mock_get_redis: MagicMock, client: TestClient
+    ) -> None:
+        """GET /dashboard?community_id=1 returns 200."""
+        mock_graph = _mock_graph_store()
+        mock_graph.query = AsyncMock(return_value=[])
+        mock_get_graph.return_value = mock_graph
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+        mock_get_redis.return_value = mock_redis
+
+        resp = client.get("/api/v1/graph/dashboard?community_id=1")
+        assert resp.status_code == 200
+
+    @patch("app.api.routes.graph.get_dashboard")
+    @patch("app.api.routes.graph.get_redis")
+    @patch("app.api.routes.graph.get_graph_store")
+    def test_502_on_connection_error(
+        self,
+        mock_get_graph: MagicMock,
+        mock_get_redis: MagicMock,
+        mock_get_dashboard: MagicMock,
+        client: TestClient,
+    ) -> None:
+        """Graph connection error returns 502."""
+        mock_get_graph.return_value = _mock_graph_store()
+        mock_get_redis.return_value = AsyncMock()
+        mock_get_dashboard.side_effect = ConnectionError("Neo4j down")
+
+        resp = client.get("/api/v1/graph/dashboard")
+        assert resp.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# GET /graph/path
+# ---------------------------------------------------------------------------
+
+
+class TestPathRoute:
+    @patch("app.api.routes.graph.get_graph_store")
+    def test_returns_200(
+        self, mock_get_graph: MagicMock, client: TestClient
+    ) -> None:
+        """GET /path?from_id=a&to_id=b returns 200."""
+        mock_graph = _mock_graph_store()
+        mock_graph.get_node = AsyncMock(side_effect=[
+            {"id": "a", "title": "A"},
+            {"id": "b", "title": "B"},
+        ])
+        mock_graph.query = AsyncMock(return_value=[])
+        mock_get_graph.return_value = mock_graph
+
+        resp = client.get("/api/v1/graph/path?from_id=a&to_id=b")
+        assert resp.status_code == 200
+
+        body = resp.json()
+        assert "paths" in body
+
+    def test_missing_param_422(self, client: TestClient) -> None:
+        """GET /path without to_id returns 422."""
+        resp = client.get("/api/v1/graph/path?from_id=a")
+        assert resp.status_code == 422
+
+    @patch("app.api.routes.graph.get_graph_store")
+    def test_502_on_connection_error(
+        self, mock_get_graph: MagicMock, client: TestClient
+    ) -> None:
+        """Graph connection error returns 502."""
+        mock_graph = _mock_graph_store()
+        mock_graph.get_node.side_effect = ConnectionError("Neo4j down")
+        mock_get_graph.return_value = mock_graph
+
+        resp = client.get("/api/v1/graph/path?from_id=a&to_id=b")
+        assert resp.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# GET /graph/{case_id}/treatment-summary
+# ---------------------------------------------------------------------------
+
+
+class TestTreatmentSummaryRoute:
+    @patch("app.api.routes.graph.get_redis")
+    @patch("app.api.routes.graph.get_graph_store")
+    def test_returns_200(
+        self, mock_get_graph: MagicMock, mock_get_redis: MagicMock, client: TestClient
+    ) -> None:
+        """GET /{case_id}/treatment-summary returns 200."""
+        mock_graph = _mock_graph_store()
+        mock_graph.get_node = AsyncMock(return_value={"id": _CASE_ID, "title": "Test Case"})
+        mock_graph.query = AsyncMock(return_value=[])
+        mock_get_graph.return_value = mock_graph
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+        mock_get_redis.return_value = mock_redis
+
+        resp = client.get(f"/api/v1/graph/{_CASE_ID}/treatment-summary")
+        assert resp.status_code == 200
+
+        body = resp.json()
+        assert "case_id" in body
+        assert "verdict" in body
+        assert "breakdown" in body
+
+    @patch("app.api.routes.graph.get_redis")
+    @patch("app.api.routes.graph.get_graph_store")
+    def test_502_on_connection_error(
+        self, mock_get_graph: MagicMock, mock_get_redis: MagicMock, client: TestClient
+    ) -> None:
+        """Graph connection error returns 502."""
+        mock_graph = _mock_graph_store()
+        mock_graph.get_node.side_effect = ConnectionError("Neo4j down")
+        mock_get_graph.return_value = mock_graph
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_get_redis.return_value = mock_redis
+
+        resp = client.get(f"/api/v1/graph/{_CASE_ID}/treatment-summary")
+        assert resp.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# Route registration
+# ---------------------------------------------------------------------------
+
+
 class TestRouteRegistration:
     def test_all_graph_endpoints_present(self) -> None:
         """All expected graph routes are registered."""
@@ -443,6 +607,9 @@ class TestRouteRegistration:
         assert "/{case_id}/chain" in paths
         assert "/{case_id}/authorities" in paths
         assert "/stats" in paths
+        assert "/dashboard" in paths
+        assert "/path" in paths
+        assert "/{case_id}/treatment-summary" in paths
 
     def test_all_endpoints_are_get(self) -> None:
         """All graph endpoints use GET method."""

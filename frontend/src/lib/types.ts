@@ -206,6 +206,26 @@ export interface GraphNode {
     court: string | null;
     year: number | null;
     cited_by_count: number;
+    // v2 analytics fields
+    pagerank_global: number | null;
+    pagerank_community: number | null;
+    community_id: number | null;
+    community_label: string | null;
+    recent_citation_ratio: number | null;
+    treatment_positive_pct: number | null;
+    treatment_summary: Record<string, number> | null;
+    bench_type: string | null;
+    case_type: string | null;
+    ratio: string | null;
+    // v2.1 enrichment fields
+    jurisdiction: string | null;
+    coram_size: number | null;
+    is_reportable: boolean | null;
+    opinion_type: string | null;
+    issue_tags: string | null;
+    primary_legal_issue: string | null;
+    fact_pattern_summary: string | null;
+    headnote_text: string | null;
 }
 
 export interface GraphEdge {
@@ -229,6 +249,37 @@ export interface GraphStats {
         citation: string | null;
         cited_by_count: number;
     }[];
+}
+
+export interface DashboardData {
+    most_cited: GraphNode[];
+    rising: GraphNode[];
+    recently_negative: {
+        case: GraphNode;
+        negative_treatment: string;
+        by_case_title: string | null;
+        by_case_year: number | null;
+    }[];
+    communities: { community_label: string; community_ids: number[]; count: number }[];
+    subtopics: { tag: string; category: string; subtopic: string; count: number }[];
+    statute_sections: { id: string; act: string; section: string; count: number }[];
+}
+
+export interface DashboardFilters {
+    communityLabel?: string;
+    subtopic?: string;
+    statuteSection?: string;
+    benchType?: string;
+    disposalNature?: string;
+    yearFrom?: number;
+    yearTo?: number;
+    isReportable?: boolean;
+}
+
+export interface PathResult {
+    paths: { nodes: GraphNode[]; edges: GraphEdge[] }[];
+    from_case: GraphNode;
+    to_case: GraphNode;
 }
 
 // ---------------------------------------------------------------------------

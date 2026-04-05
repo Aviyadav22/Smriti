@@ -11,6 +11,8 @@ import type {
     ChatSession,
     CitationItem,
     CourtStats,
+    DashboardData,
+    DashboardFilters,
     DocumentDetail,
     DocumentListResponse,
     DocumentTemplatesResponse,
@@ -24,6 +26,7 @@ import type {
     JudgeListResponse,
     JudgeProfile,
     LoginRequest,
+    PathResult,
     RegisterRequest,
     SearchHistoryEntry,
     SearchResponse,
@@ -662,6 +665,54 @@ export async function getGraphAuthorities(
 /** Get global graph statistics. */
 export async function getGraphStats(): Promise<GraphStats> {
     return apiFetch<GraphStats>("/graph/stats");
+}
+
+/** Get the graph dashboard: most cited, rising, negative treatments, communities. */
+export async function getGraphDashboard(filters: DashboardFilters = {}, limit = 10): Promise<DashboardData> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (filters.communityLabel) params.set("community_label", filters.communityLabel);
+    if (filters.subtopic) params.set("subtopic", filters.subtopic);
+    if (filters.statuteSection) params.set("statute_section", filters.statuteSection);
+    if (filters.benchType) params.set("bench_type", filters.benchType);
+    if (filters.disposalNature) params.set("disposal_nature", filters.disposalNature);
+    if (filters.yearFrom) params.set("year_from", String(filters.yearFrom));
+    if (filters.yearTo) params.set("year_to", String(filters.yearTo));
+    if (filters.isReportable !== undefined) params.set("is_reportable", String(filters.isReportable));
+    return apiFetch<DashboardData>(`/graph/dashboard?${params}`);
+}
+
+/** Get subtopic tags with case counts, optionally filtered by category. */
+export async function getGraphSubtopics(category?: string) {
+    const params = category ? `?category=${encodeURIComponent(category)}` : "";
+    return apiFetch<{ tag: string; category: string; subtopic: string; count: number }[]>(`/graph/subtopics${params}`);
+}
+
+/** Get statute sections with case counts. */
+export async function getGraphStatuteSections() {
+    return apiFetch<{ id: string; act: string; section: string; count: number }[]>("/graph/statute-sections");
+}
+
+/** Find the shortest citation path between two cases. */
+export async function getGraphPath(fromId: string, toId: string): Promise<PathResult> {
+    const params = new URLSearchParams({ from_id: fromId, to_id: toId });
+    return apiFetch<PathResult>(`/graph/path?${params}`);
+}
+
+/** Get treatment summary for a case — how other cases have treated it. */
+export async function getGraphTreatmentSummary(caseId: string): Promise<{
+    case_id: string;
+    treatment_positive_pct: number;
+    verdict: string;
+    total_citations: number;
+    breakdown: Record<string, Array<{
+        id: string;
+        title: string | null;
+        year: number | null;
+        citation: string | null;
+        context: string | null;
+    }>>;
+}> {
+    return apiFetch(`/graph/${caseId}/treatment-summary`);
 }
 
 // ---------------------------------------------------------------------------

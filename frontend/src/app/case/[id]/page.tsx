@@ -335,7 +335,7 @@ export default function CaseDetailPage() {
                                                         return {
                                                             nodes: graphData.nodes.map((n) => ({
                                                                 ...n,
-                                                                val: isPlaceholderNode(n as Record<string, unknown>)
+                                                                val: isPlaceholderNode(n as unknown as Record<string, unknown>)
                                                                     ? 1.5
                                                                     : n.id === caseId ? 6 : Math.max(2, Math.log2((n.cited_by_count || 0) + 1) * 2),
                                                             })),

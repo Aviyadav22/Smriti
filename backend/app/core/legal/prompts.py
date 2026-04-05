@@ -138,7 +138,15 @@ Extract hearing_count (number of hearings mentioned). Extract urgency_indicators
 ("urgent hearing", "suo motu", "expedited", "day-to-day hearing"). Extract \
 conditions_imposed (bail conditions, compliance timelines). Extract costs_awarded \
 (amount, to_whom, reason). Extract key_observations (max 5 notable obiter dicta). \
-Extract issue_classification as hierarchical tags (e.g., "fundamental_rights.article_21").
+Extract issue_classification: Classify using hierarchical dot-separated tags. Use standard \
+prefixes: criminal_law, constitutional_law, civil_procedure, land_property, tax_law, \
+labour_service, arbitration, family_law, insolvency, company_law, contract_commercial, \
+environmental_law, evidence, motor_accident_tort, consumer_protection, administrative_law, \
+election_law, regulatory_law. Examples: criminal_law.murder, constitutional_law.article_21, \
+arbitration.section_34. Pick 1-3 most relevant tags. \
+Extract primary_legal_issue: A single sentence (max 150 chars) answering "What is the \
+central legal question this case decides?" Describe the question, NOT the outcome. Example: \
+"Whether anticipatory bail can be granted when chargesheet has already been filed."
 30. EDITORIAL CONTENT: The text may contain reporter-added content NOT part of the \
 judgment: page markers like "[2026] 1 S.C.R. 63", "Headnotes prepared by: [Name]", \
 "Result of the case: ...", digest summaries. These are editorial additions by law \
@@ -990,7 +998,7 @@ METADATA_OUTPUT_SCHEMA: Final[dict] = {
             "type": "array",
             "items": {"type": "string"},
             "nullable": True,
-            "description": "Hierarchical legal issue tags (e.g., 'fundamental_rights.article_21')",
+            "description": "1-3 hierarchical dot-separated tags using standard prefixes (criminal_law, constitutional_law, civil_procedure, land_property, tax_law, labour_service, arbitration, family_law, insolvency, company_law, contract_commercial, environmental_law, evidence, motor_accident_tort, consumer_protection, administrative_law, election_law, regulatory_law)",
         },
         "fact_pattern_tags": {
             "type": "array",
@@ -1048,6 +1056,11 @@ METADATA_OUTPUT_SCHEMA: Final[dict] = {
             "nullable": True,
         },
         "fact_pattern_summary": {"type": "string", "nullable": True},
+        "primary_legal_issue": {
+            "type": "string",
+            "nullable": True,
+            "description": "Central legal question decided (single sentence, max 150 chars)",
+        },
     },
     "required": [
         "title", "citation", "court", "judge", "author_judge", "year",
@@ -1070,6 +1083,7 @@ METADATA_OUTPUT_SCHEMA: Final[dict] = {
         "costs_awarded",
         # V3 fields
         "legal_propositions", "statute_sections_interpreted", "fact_pattern_summary",
+        "primary_legal_issue",
     ],
 }
 

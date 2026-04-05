@@ -9,6 +9,7 @@ from dataclasses import dataclass, fields
 from datetime import datetime
 
 from app.core.interfaces.llm import LLMProvider
+from app.core.legal.taxonomy import normalize_issue_tags
 
 logger = logging.getLogger(__name__)
 
@@ -1379,12 +1380,17 @@ def merge_metadata(
         "fact_pattern_tags", "operative_order", "conditions_imposed", "costs_awarded",
         # V3 fields
         "legal_propositions", "statute_sections_interpreted", "fact_pattern_summary",
+        "primary_legal_issue",
     )
     for field in llm_only_fields:
         llm_val = getattr(llm_meta, field, None)
         if llm_val is not None:
             setattr(result, field, llm_val)
             provenance[field] = "llm"
+
+    # Normalize issue classification tags to canonical taxonomy
+    if result.issue_classification:
+        result.issue_classification = normalize_issue_tags(result.issue_classification)
 
     # -- case_type: LLM extraction only (parquet nc_display is a case ID, not a type) --
     # Store nc_display as case_id field instead

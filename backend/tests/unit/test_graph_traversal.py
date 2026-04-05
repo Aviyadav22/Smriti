@@ -11,8 +11,11 @@ from app.core.graph.traversal import (
     _TREATMENT_TO_DISPLAY,
     get_authorities,
     get_citation_chain,
+    get_dashboard,
     get_graph_stats,
     get_neighborhood,
+    get_shortest_path,
+    get_treatment_summary,
 )
 
 
@@ -458,3 +461,229 @@ class TestTreatmentNormalization:
         result = await get_citation_chain("case_1", graph_store=store, max_depth=2)
         assert len(result["edges"]) == 1
         assert result["edges"][0]["type"] == "overrules"
+
+
+# ---------------------------------------------------------------------------
+# get_dashboard
+# ---------------------------------------------------------------------------
+
+
+class TestGetDashboard:
+    """Test dashboard data queries."""
+
+    @pytest.mark.asyncio
+    async def test_returns_all_sections(self) -> None:
+        store = AsyncMock()
+        store.query = AsyncMock(
+            side_effect=[
+                # most_cited
+                [{"id": "mc1", "title": "Most Cited", "citation": "X", "court": "SC", "year": 2020, "cited_by_count": 100, "pagerank_global": 0.9, "community_id": 1, "community_label": "Constitutional", "recent_citation_ratio": 0.3}],
+                # rising
+                [{"id": "r1", "title": "Rising Case", "citation": "Y", "court": "SC", "year": 2023, "cited_by_count": 10, "pagerank_global": 0.5, "community_id": 2, "community_label": "Criminal", "recent_citation_ratio": 0.6}],
+                # recently_negative
+                [{"id": "neg1", "title": "Neg Case", "citation": "Z", "court": "SC", "year": 2019, "cited_by_count": 50, "pagerank_global": 0.7, "community_id": 1, "community_label": "Constitutional", "recent_citation_ratio": 0.1, "negative_treatment": "overruled", "by_case_title": "New Case", "by_case_year": 2024}],
+                # communities
+                [{"community_id": 1, "community_label": "Constitutional", "count": 200}, {"community_id": 2, "community_label": "Criminal", "count": 150}],
+                # get_subtopics query
+                [],
+                # get_statute_sections query
+                [],
+            ]
+        )
+        result = await get_dashboard(graph_store=store, redis_client=None)
+
+        assert "most_cited" in result
+        assert "rising" in result
+        assert "recently_negative" in result
+        assert "communities" in result
+        assert "subtopics" in result
+        assert "statute_sections" in result
+        assert len(result["most_cited"]) == 1
+        assert len(result["rising"]) == 1
+        assert len(result["recently_negative"]) == 1
+        assert len(result["communities"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_community_filter_passes_param(self) -> None:
+        store = AsyncMock()
+        store.query = AsyncMock(return_value=[])
+        await get_dashboard(graph_store=store, redis_client=None, community_label="Criminal Law")
+
+        # 4 dashboard queries + 1 subtopics + 1 statute_sections = 6
+        assert store.query.call_count == 6
+        # Check that at least the first query includes community_label filter
+        first_call = store.query.call_args_list[0]
+        assert "community_label" in first_call.kwargs["cypher"]
+
+    @pytest.mark.asyncio
+    async def test_caches_result(self) -> None:
+        import json
+
+        redis = AsyncMock()
+        redis.get = AsyncMock(return_value=None)
+        redis.setex = AsyncMock()
+
+        store = AsyncMock()
+        store.query = AsyncMock(return_value=[])
+
+        await get_dashboard(graph_store=store, redis_client=redis)
+
+        # get_dashboard caches dashboard + get_subtopics + get_statute_sections = 3 calls
+        assert redis.setex.call_count >= 1
+        # Verify the dashboard cache key is among the calls
+        cache_keys = [call.args[0] for call in redis.setex.call_args_list]
+        assert any(k.startswith("graph:dashboard:") for k in cache_keys)
+        # Verify TTL is 1 hour for the dashboard entry
+        for call in redis.setex.call_args_list:
+            if call.args[0].startswith("graph:dashboard:"):
+                assert call.args[1] == 3600  # 1 hour TTL
+
+    @pytest.mark.asyncio
+    async def test_returns_from_cache(self) -> None:
+        import json
+
+        cached = {"most_cited": [], "rising": [], "recently_negative": [], "communities": []}
+        redis = AsyncMock()
+        redis.get = AsyncMock(return_value=json.dumps(cached))
+
+        store = AsyncMock()
+        store.query = AsyncMock()
+
+        result = await get_dashboard(graph_store=store, redis_client=redis)
+
+        assert result == cached
+        store.query.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# get_shortest_path
+# ---------------------------------------------------------------------------
+
+
+class TestGetShortestPath:
+    """Test shortest path queries."""
+
+    @pytest.mark.asyncio
+    async def test_finds_path(self) -> None:
+        store = AsyncMock()
+        from_node = {"id": "a", "title": "Case A", "citation": "X", "court": "SC", "year": 2020, "cited_by_count": 10}
+        to_node = {"id": "b", "title": "Case B", "citation": "Y", "court": "SC", "year": 2021, "cited_by_count": 5}
+        store.get_node = AsyncMock(side_effect=[from_node, to_node])
+        store.query = AsyncMock(
+            side_effect=[
+                # forward path
+                [{"node_ids": ["a", "b"], "edges": [{"from": "a", "to": "b", "treatment": None, "context": None}]}],
+                # reverse path (empty)
+                [],
+            ]
+        )
+
+        result = await get_shortest_path("a", "b", graph_store=store)
+
+        assert "paths" in result
+        assert len(result["paths"]) == 1
+        assert result["from_case"]["id"] == "a"
+        assert result["to_case"]["id"] == "b"
+
+    @pytest.mark.asyncio
+    async def test_no_path_returns_empty(self) -> None:
+        store = AsyncMock()
+        store.get_node = AsyncMock(side_effect=[
+            {"id": "a", "title": "A"},
+            {"id": "b", "title": "B"},
+        ])
+        store.query = AsyncMock(return_value=[])
+
+        result = await get_shortest_path("a", "b", graph_store=store)
+
+        assert result["paths"] == []
+
+    @pytest.mark.asyncio
+    async def test_missing_node_returns_error(self) -> None:
+        store = AsyncMock()
+        store.get_node = AsyncMock(side_effect=[None, {"id": "b", "title": "B"}])
+
+        result = await get_shortest_path("a", "b", graph_store=store)
+
+        assert "error" in result
+        assert result["paths"] == []
+
+
+# ---------------------------------------------------------------------------
+# get_treatment_summary
+# ---------------------------------------------------------------------------
+
+
+class TestGetTreatmentSummary:
+    """Test treatment summary queries."""
+
+    @pytest.mark.asyncio
+    async def test_returns_breakdown(self) -> None:
+        store = AsyncMock()
+        store.get_node = AsyncMock(return_value={"id": "case_1", "title": "Target"})
+        store.query = AsyncMock(return_value=[
+            {"id": "c1", "title": "Citing 1", "year": 2022, "citation": "X", "context": None, "treatment": "followed"},
+            {"id": "c2", "title": "Citing 2", "year": 2023, "citation": "Y", "context": None, "treatment": "followed"},
+            {"id": "c3", "title": "Citing 3", "year": 2024, "citation": "Z", "context": None, "treatment": "distinguished"},
+        ])
+
+        result = await get_treatment_summary("case_1", graph_store=store, redis_client=None)
+
+        assert result["case_id"] == "case_1"
+        assert result["total_citations"] == 3
+        assert "followed" in result["breakdown"]
+        assert len(result["breakdown"]["followed"]) == 2
+        assert "distinguished" in result["breakdown"]
+        assert len(result["breakdown"]["distinguished"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_verdict_overruled(self) -> None:
+        store = AsyncMock()
+        store.get_node = AsyncMock(return_value={"id": "case_1"})
+        store.query = AsyncMock(return_value=[
+            {"id": "c1", "title": "A", "year": 2022, "citation": None, "context": None, "treatment": "overruled"},
+            {"id": "c2", "title": "B", "year": 2023, "citation": None, "context": None, "treatment": "followed"},
+        ])
+
+        result = await get_treatment_summary("case_1", graph_store=store, redis_client=None)
+        assert result["verdict"] == "Overruled"
+
+    @pytest.mark.asyncio
+    async def test_verdict_followed(self) -> None:
+        store = AsyncMock()
+        store.get_node = AsyncMock(return_value={"id": "case_1"})
+        # All positive: 4 followed + 1 affirmed = 5/5 = 100% positive -> "Followed"
+        store.query = AsyncMock(return_value=[
+            {"id": "c1", "title": "A", "year": 2022, "citation": None, "context": None, "treatment": "followed"},
+            {"id": "c2", "title": "B", "year": 2023, "citation": None, "context": None, "treatment": "followed"},
+            {"id": "c3", "title": "C", "year": 2023, "citation": None, "context": None, "treatment": "followed"},
+            {"id": "c4", "title": "D", "year": 2024, "citation": None, "context": None, "treatment": "affirmed"},
+            {"id": "c5", "title": "E", "year": 2024, "citation": None, "context": None, "treatment": "followed"},
+        ])
+
+        result = await get_treatment_summary("case_1", graph_store=store, redis_client=None)
+        assert result["verdict"] == "Followed"
+
+    @pytest.mark.asyncio
+    async def test_verdict_cautionary(self) -> None:
+        store = AsyncMock()
+        store.get_node = AsyncMock(return_value={"id": "case_1"})
+        # 1 followed + 2 distinguished + 1 doubted = 1/4 positive (25%) -> "Cautionary"
+        # (no severe negatives like overruled/per_incuriam)
+        store.query = AsyncMock(return_value=[
+            {"id": "c1", "title": "A", "year": 2022, "citation": None, "context": None, "treatment": "followed"},
+            {"id": "c2", "title": "B", "year": 2023, "citation": None, "context": None, "treatment": "distinguished"},
+            {"id": "c3", "title": "C", "year": 2023, "citation": None, "context": None, "treatment": "distinguished"},
+            {"id": "c4", "title": "D", "year": 2024, "citation": None, "context": None, "treatment": "doubted"},
+        ])
+
+        result = await get_treatment_summary("case_1", graph_store=store, redis_client=None)
+        assert result["verdict"] == "Cautionary"
+
+    @pytest.mark.asyncio
+    async def test_missing_case(self) -> None:
+        store = AsyncMock()
+        store.get_node = AsyncMock(return_value=None)
+
+        result = await get_treatment_summary("nonexistent", graph_store=store, redis_client=None)
+        assert "error" in result
