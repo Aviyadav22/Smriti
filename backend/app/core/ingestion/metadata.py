@@ -1178,6 +1178,26 @@ def cross_validate_propositions(metadata: CaseMetadata) -> CaseMetadata:
             "related_section": None,
         }]
 
+    # If still no propositions, try to derive from headnotes
+    if not metadata.legal_propositions:
+        headnotes_raw = metadata.headnotes or ""
+        if headnotes_raw.strip():
+            try:
+                headnotes = json.loads(headnotes_raw) if isinstance(headnotes_raw, str) else headnotes_raw
+                if isinstance(headnotes, list):
+                    metadata.legal_propositions = [
+                        {
+                            "proposition_text": (h.get("text", "") or h.get("proposition", "")).strip(),
+                            "paragraph_number": None,
+                            "is_novel": False,
+                            "related_section": None,
+                        }
+                        for h in headnotes
+                        if (h.get("text", "") or h.get("proposition", "")).strip()
+                    ]
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                pass  # Malformed headnotes — skip silently
+
     return metadata
 
 

@@ -7,6 +7,7 @@ from app.core.ingestion.metadata import (
     CaseMetadata,
     _parse_judge_names,
     _strip_unreliable_llm_fields,
+    cross_validate_propositions,
     merge_metadata,
     normalize_case_type,
     validate_cross_fields,
@@ -736,3 +737,94 @@ class TestEraAdaptiveExtraction:
         post = get_era_preamble(2000)
         assert "SCC" in pre
         assert "INSC" in post or "neutral" in post.lower()
+
+
+class TestHeadnoteToProposition:
+    """Tests for headnote-to-proposition derivation in cross_validate_propositions()."""
+
+    def test_generates_propositions_from_headnotes_when_both_empty(self):
+        """When ratio and propositions are empty, derive propositions from headnotes."""
+        import json
+
+        headnotes = [
+            {"text": "Right to life includes right to livelihood"},
+            {"text": "Article 21 has wide amplitude"},
+        ]
+        meta = CaseMetadata(
+            ratio_decidendi="",
+            legal_propositions=None,
+            headnotes=json.dumps(headnotes),
+        )
+        result = cross_validate_propositions(meta)
+        assert result.legal_propositions is not None
+        assert len(result.legal_propositions) == 2
+        assert result.legal_propositions[0]["proposition_text"] == "Right to life includes right to livelihood"
+        assert result.legal_propositions[1]["proposition_text"] == "Article 21 has wide amplitude"
+        assert result.legal_propositions[0]["is_novel"] is False
+
+    def test_skips_when_propositions_already_exist(self):
+        """Don't generate from headnotes if propositions already populated."""
+        import json
+
+        existing_prop = [{
+            "proposition_text": "Existing proposition",
+            "paragraph_number": None,
+            "is_novel": True,
+            "related_section": None,
+        }]
+        headnotes = [{"text": "Headnote text"}]
+        meta = CaseMetadata(
+            ratio_decidendi="",
+            legal_propositions=existing_prop,
+            headnotes=json.dumps(headnotes),
+        )
+        result = cross_validate_propositions(meta)
+        assert len(result.legal_propositions) == 1
+        assert result.legal_propositions[0]["proposition_text"] == "Existing proposition"
+
+    def test_skips_when_headnotes_empty(self):
+        """No crash when headnotes are empty/null."""
+        meta = CaseMetadata(
+            ratio_decidendi="",
+            legal_propositions=None,
+            headnotes=None,
+        )
+        result = cross_validate_propositions(meta)
+        assert result.legal_propositions is None or result.legal_propositions == []
+
+        meta2 = CaseMetadata(
+            ratio_decidendi="",
+            legal_propositions=None,
+            headnotes="",
+        )
+        result2 = cross_validate_propositions(meta2)
+        assert result2.legal_propositions is None or result2.legal_propositions == []
+
+    def test_handles_malformed_headnotes_json(self):
+        """Malformed JSON doesn't crash."""
+        meta = CaseMetadata(
+            ratio_decidendi="",
+            legal_propositions=None,
+            headnotes="{not valid json[",
+        )
+        result = cross_validate_propositions(meta)
+        # Should not crash, propositions remain empty
+        assert result.legal_propositions is None or result.legal_propositions == []
+
+    def test_handles_proposition_key(self):
+        """Headnotes with 'proposition' key instead of 'text' work."""
+        import json
+
+        headnotes = [
+            {"proposition": "Natural justice must be followed"},
+            {"proposition": "Audi alteram partem is fundamental"},
+        ]
+        meta = CaseMetadata(
+            ratio_decidendi="",
+            legal_propositions=None,
+            headnotes=json.dumps(headnotes),
+        )
+        result = cross_validate_propositions(meta)
+        assert result.legal_propositions is not None
+        assert len(result.legal_propositions) == 2
+        assert result.legal_propositions[0]["proposition_text"] == "Natural justice must be followed"
