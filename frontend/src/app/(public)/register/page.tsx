@@ -52,9 +52,9 @@ export default function RegisterPage() {
     return (
         <Card className="w-full max-w-sm p-6 rounded-md">
             <div className="text-center mb-6">
-                <Scale className="h-6 w-6 mx-auto text-[var(--gold)] mb-2" />
-                <h1 className="text-xl font-semibold tracking-tight">Create Account</h1>
-                <p className="text-xs text-muted-foreground mt-1">Start your legal research journey</p>
+                <Scale className="h-8 w-8 mx-auto text-[var(--gold)] mb-3" />
+                <h1 className="text-2xl font-semibold font-[family-name:var(--font-lora)] tracking-tight">Smriti</h1>
+                <p className="text-xs text-muted-foreground mt-1">AI Legal Research</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-3">
@@ -111,7 +111,7 @@ export default function RegisterPage() {
 
                 {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
 
-                <Button type="submit" className="w-full h-9 text-xs rounded-md" disabled={loading || !isFormValid}>
+                <Button type="submit" className="w-full h-9 text-xs rounded-md bg-[var(--gold)] hover:bg-[var(--gold)]/90 text-white" disabled={loading || !isFormValid}>
                     {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Create Account"}
                 </Button>
             </form>
