@@ -5,7 +5,7 @@ import { StrategyInput } from "@/components/agents/inputs/StrategyInput";
 
 const STEPS = [
     "analyze_facts", "element_decomposition", "fetch_judge",
-    "checkpoint_analysis", "search_precedents", "assess_strength",
+    "checkpoint_analysis", "search_precedents", "evaluate_relevance", "assess_strength",
     "generate_arguments_irac", "checkpoint_arguments",
     "adversarial_search", "counter_and_judge", "argument_ordering",
     "synthesize_strategy", "verify",

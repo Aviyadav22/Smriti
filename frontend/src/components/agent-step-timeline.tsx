@@ -39,6 +39,7 @@ const STEP_LABELS: Record<string, string> = {
     fetch_judge: "Fetching judge profile",
     checkpoint_analysis: "Review fact analysis",
     search_precedents: "Searching precedents",
+    evaluate_relevance: "Evaluating relevance",
     assess_strength: "Assessing case strength",
     generate_arguments_irac: "Generating IRAC arguments",
     checkpoint_arguments: "Review IRAC arguments",

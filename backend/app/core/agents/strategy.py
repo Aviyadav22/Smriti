@@ -9,10 +9,10 @@ HITL checkpoints at key decision points.
 
 Graph flow:
   START -> analyze_facts -> element_decomposition -> fetch_judge ->
-  checkpoint_analysis -> search_precedents -> assess_strength ->
-  generate_arguments_irac -> checkpoint_arguments -> adversarial_search ->
-  counter_and_judge -> argument_ordering -> synthesize_strategy ->
-  verify -> checkpoint_memo -> END
+  checkpoint_analysis -> search_precedents -> evaluate_relevance ->
+  assess_strength -> generate_arguments_irac -> checkpoint_arguments ->
+  adversarial_search -> counter_and_judge -> argument_ordering ->
+  synthesize_strategy -> verify -> END
 """
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ from app.core.agents.nodes.strategy_nodes import (
     argument_ordering_node,
     assess_strength_node,
     counter_arguments_node,
+    evaluate_relevance_node,
     fetch_judge_profile_node,
     generate_arguments_irac_node,
     judge_considerations_node,
@@ -127,6 +128,9 @@ def build_strategy_graph(
                 state, llm, embedder, vector_store, reranker, graph_store, session
             )
 
+    async def evaluate_relevance(state: StrategyState) -> dict:
+        return await evaluate_relevance_node(state, flash_llm)
+
     async def assess_strength(state: StrategyState) -> dict:
         return await assess_strength_node(state, llm)
 
@@ -213,6 +217,7 @@ def build_strategy_graph(
     graph.add_node("fetch_judge", fetch_judge)
     graph.add_node("checkpoint_analysis", checkpoint_analysis)
     graph.add_node("search_precedents", search_precedents)
+    graph.add_node("evaluate_relevance", evaluate_relevance)
     graph.add_node("assess_strength", assess_strength)
     graph.add_node("generate_arguments_irac", generate_arguments_irac)
     graph.add_node("checkpoint_arguments", checkpoint_arguments)
@@ -235,7 +240,8 @@ def build_strategy_graph(
         {"analyze_facts": "analyze_facts", "search_precedents": "search_precedents", END: END},
     )
 
-    graph.add_edge("search_precedents", "assess_strength")
+    graph.add_edge("search_precedents", "evaluate_relevance")
+    graph.add_edge("evaluate_relevance", "assess_strength")
     graph.add_edge("assess_strength", "generate_arguments_irac")
     graph.add_edge("generate_arguments_irac", "checkpoint_arguments")
 

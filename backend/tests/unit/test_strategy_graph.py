@@ -9,7 +9,6 @@ from app.core.agents.strategy import (
     build_strategy_graph,
     route_after_analysis,
     route_after_arguments,
-    route_after_memo,
 )
 
 
@@ -213,90 +212,6 @@ class TestRouteAfterArguments:
 
 
 # ---------------------------------------------------------------------------
-# route_after_memo
-# ---------------------------------------------------------------------------
-
-
-class TestRouteAfterMemo:
-    def test_returns_end_when_no_feedback(self) -> None:
-        state = _make_state(messages=[], iteration=0)
-        assert route_after_memo(state) == END
-
-    def test_returns_synthesize_strategy_when_feedback_present_and_iteration_under_3(self) -> None:
-        state = _make_state(
-            messages=[
-                {
-                    "type": "user_feedback",
-                    "step": "memo",
-                    "content": "Please strengthen the opening arguments.",
-                }
-            ],
-            iteration=1,
-        )
-        assert route_after_memo(state) == "synthesize_strategy"
-
-    def test_returns_end_when_iteration_equals_3(self) -> None:
-        state = _make_state(
-            messages=[
-                {"type": "user_feedback", "step": "memo", "content": "One more pass."},
-                {"type": "user_feedback", "step": "memo", "content": "More changes."},
-                {"type": "user_feedback", "step": "memo", "content": "Final try."},
-            ],
-            iteration=3,
-        )
-        assert route_after_memo(state) == END
-
-    def test_returns_end_when_iteration_exceeds_3(self) -> None:
-        state = _make_state(
-            messages=[
-                {"type": "user_feedback", "step": "memo", "content": "Still needs work."},
-                {"type": "user_feedback", "step": "memo", "content": "More changes."},
-                {"type": "user_feedback", "step": "memo", "content": "Again."},
-                {"type": "user_feedback", "step": "memo", "content": "Final."},
-            ],
-            iteration=7,
-        )
-        assert route_after_memo(state) == END
-
-    def test_ignores_feedback_for_other_steps(self) -> None:
-        state = _make_state(
-            messages=[
-                {
-                    "type": "user_feedback",
-                    "step": "arguments",
-                    "content": "Should be ignored by memo router.",
-                }
-            ],
-            iteration=1,
-        )
-        assert route_after_memo(state) == END
-
-    def test_empty_feedback_content_does_not_loop(self) -> None:
-        state = _make_state(
-            messages=[
-                {
-                    "type": "user_feedback",
-                    "step": "memo",
-                    "content": "",
-                }
-            ],
-            iteration=1,
-        )
-        assert route_after_memo(state) == END
-
-    def test_returns_end_when_error_is_set(self) -> None:
-        state = _make_state(error="LLM error in synthesize_strategy_node: timeout")
-        assert route_after_memo(state) == END
-
-    def test_end_constant_value(self) -> None:
-        """END is the langgraph sentinel — confirm route returns the same object."""
-        state = _make_state(messages=[], iteration=0)
-        result = route_after_memo(state)
-        assert result == END
-        assert result == "__end__"
-
-
-# ---------------------------------------------------------------------------
 # build_strategy_graph
 # ---------------------------------------------------------------------------
 
@@ -343,6 +258,7 @@ class TestBuildStrategyGraph:
             "fetch_judge",
             "checkpoint_analysis",
             "search_precedents",
+            "evaluate_relevance",
             "assess_strength",
             "generate_arguments_irac",
             "checkpoint_arguments",
@@ -351,7 +267,6 @@ class TestBuildStrategyGraph:
             "argument_ordering",
             "synthesize_strategy",
             "verify",
-            "checkpoint_memo",
         }
         actual_nodes = {n for n in graph.nodes if not n.startswith("__")}
         assert expected_nodes == actual_nodes, (

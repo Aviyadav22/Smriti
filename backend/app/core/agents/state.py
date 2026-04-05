@@ -247,6 +247,8 @@ class StrategyState(TypedDict):
     strategy_memo: str         # final synthesized output
     confidence: float
     contradictions: list[dict]  # detected contradictions between precedents
+    relevance_scores: list[dict]        # CRAG evaluation scores per result
+    extracted_passages: list[dict]       # Key passages from relevant results
     skip_checkpoints: bool       # when True, all HITL checkpoints auto-approve
     messages: Annotated[list[dict], operator.add]
     iteration: int

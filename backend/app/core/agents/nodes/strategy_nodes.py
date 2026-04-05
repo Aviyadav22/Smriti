@@ -62,6 +62,8 @@ from app.core.legal.prompts import (
     STRATEGY_JUDGE_ANALYSIS_SCHEMA,
     STRATEGY_JUDGE_ANALYSIS_SYSTEM,
     RESEARCH_CONTRADICTIONS_SYSTEM,
+    RESEARCH_EVALUATE_AND_EXTRACT_SYSTEM,
+    EVALUATE_AND_EXTRACT_SCHEMA,
 )
 from app.security.sanitizer import sanitize_search_query
 
@@ -324,6 +326,84 @@ async def search_precedents_node(
         })
 
     return {"search_results": combined, "precedent_map": precedent_map}
+
+
+# ---------------------------------------------------------------------------
+# Node 3b: evaluate_relevance_node (CRAG filtering)
+# ---------------------------------------------------------------------------
+
+
+async def evaluate_relevance_node(
+    state: StrategyState,
+    llm: LLMProvider,
+) -> dict:
+    """CRAG relevance evaluation — score and filter search results for argument quality."""
+    search_results = state.get("search_results", [])
+    case_facts = state.get("case_facts", "")
+    legal_elements = state.get("legal_elements", [])
+
+    if not search_results:
+        return {"relevance_scores": [], "extracted_passages": []}
+
+    elements_text = "\n".join(
+        f"- {e.get('description', '')}" for e in legal_elements[:5]
+    )
+    query_context = f"Case facts: {case_facts[:500]}\n\nLegal elements:\n{elements_text}"
+
+    relevance_scores: list[dict] = []
+    extracted_passages: list[dict] = []
+    kept_ids: set[str] = set()
+
+    # Process in batches of 15
+    for batch_start in range(0, len(search_results), 15):
+        batch = search_results[batch_start:batch_start + 15]
+        formatted = "\n\n".join(
+            f"[Doc {i}] case_id={r.get('case_id', 'N/A')}\n"
+            f"Title: {r.get('title', 'N/A')}\n"
+            f"Court: {r.get('court', 'N/A')} | Year: {r.get('year', 'N/A')} | Bench: {r.get('bench_type', 'N/A')}\n"
+            f"Ratio: {(r.get('ratio', '') or r.get('snippet', '') or r.get('chunk_text', ''))[:500]}"
+            for i, r in enumerate(batch)
+        )
+
+        try:
+            result = await llm.generate_structured(
+                prompt=f"{query_context}\n\nDocuments:\n{formatted}",
+                system=RESEARCH_EVALUATE_AND_EXTRACT_SYSTEM,
+                output_schema=EVALUATE_AND_EXTRACT_SCHEMA,
+            )
+            for ev in result.get("evaluations", []):
+                relevance_scores.append(ev)
+                if ev.get("verdict") in ("correct", "ambiguous"):
+                    kept_ids.add(ev.get("case_id", ""))
+                    if ev.get("passage"):
+                        extracted_passages.append({
+                            "case_id": ev.get("case_id"),
+                            "passage": ev["passage"],
+                            "is_verbatim": ev.get("is_verbatim", False),
+                            "ratio_or_obiter": ev.get("ratio_or_obiter", "uncertain"),
+                        })
+        except Exception as e:
+            logger.warning("CRAG evaluation batch failed: %s — keeping all results in batch", e)
+            for r in batch:
+                kept_ids.add(r.get("case_id", ""))
+
+    # Filter search results to keep only relevant ones
+    kept_results = [r for r in search_results if r.get("case_id") in kept_ids]
+
+    # Safety: keep at least 5 results even if CRAG filtered too aggressively
+    if len(kept_results) < 5 and len(search_results) >= 5:
+        kept_results = search_results[:max(5, len(kept_results))]
+
+    logger.info(
+        "CRAG evaluation: %d/%d results kept (%d passages extracted)",
+        len(kept_results), len(search_results), len(extracted_passages),
+    )
+
+    return {
+        "search_results": kept_results,
+        "relevance_scores": relevance_scores,
+        "extracted_passages": extracted_passages,
+    }
 
 
 # ---------------------------------------------------------------------------
