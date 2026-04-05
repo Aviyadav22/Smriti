@@ -12,7 +12,9 @@ Graph flow:
   checkpoint_analysis -> search_precedents -> evaluate_relevance ->
   assess_strength -> generate_arguments_irac -> checkpoint_arguments ->
   adversarial_search -> counter_and_judge -> argument_ordering ->
-  synthesize_strategy -> verify -> END
+  synthesize_strategy -> format_footnotes -> verify ->
+  quality_check -> [route: pass->checkpoint_memo, fail->synthesize_strategy] ->
+  checkpoint_memo -> END
 """
 from __future__ import annotations
 
@@ -33,8 +35,10 @@ from app.core.agents.nodes.strategy_nodes import (
     counter_arguments_node,
     evaluate_relevance_node,
     fetch_judge_profile_node,
+    format_strategy_footnotes_node,
     generate_arguments_irac_node,
     judge_considerations_node,
+    quality_check_node,
     search_precedents_node,
     synthesize_strategy_node,
     verify_citations_node,
@@ -59,6 +63,15 @@ logger = logging.getLogger(__name__)
 
 route_after_analysis = make_feedback_router("analysis", "analyze_facts", "search_precedents", check_error=True)
 route_after_arguments = make_feedback_router("arguments", "generate_arguments_irac", "adversarial_search", check_error=True)
+route_after_memo = make_feedback_router("memo", "synthesize_strategy", proceed=None, check_error=True)
+
+
+def route_after_quality(state: dict) -> str:
+    """Route after quality check: retry synthesis or proceed to checkpoint."""
+    error = state.get("error", "")
+    if error and "[QUALITY_RETRY]" in error and state.get("quality_attempts", 0) < 3:
+        return "synthesize_strategy"
+    return "checkpoint_memo"
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +209,12 @@ def build_strategy_graph(
         async with async_session_factory() as session:
             return await verify_citations_node(state, session)
 
+    async def format_footnotes(state: StrategyState) -> dict:
+        return await format_strategy_footnotes_node(state)
+
+    async def quality_check(state: StrategyState) -> dict:
+        return await quality_check_node(state, llm)
+
     # -- Checkpoint nodes (HITL via interrupt) ------------------------------
 
     checkpoint_analysis = make_checkpoint_node(
@@ -208,6 +227,18 @@ def build_strategy_graph(
         "arguments",
         "Here are the IRAC-structured arguments and strength assessment. Would you like to adjust?",
         {"irac_arguments": ("irac_arguments", []), "strength_assessment": ("strength_assessment", {})},
+    )
+
+    checkpoint_memo = make_checkpoint_node(
+        "memo",
+        "Here is the argument memo with footnotes and quality assessment. Any revisions?",
+        {
+            "strategy_memo": ("strategy_memo", ""),
+            "confidence": ("confidence", 0.0),
+            "footnotes": ("footnotes", []),
+            "legal_quality_result": ("legal_quality_result", {}),
+            "contradictions": ("contradictions", []),
+        },
     )
 
     # -- Register nodes -----------------------------------------------------
@@ -225,7 +256,10 @@ def build_strategy_graph(
     graph.add_node("counter_and_judge", counter_and_judge)
     graph.add_node("argument_ordering", argument_ordering)
     graph.add_node("synthesize_strategy", synthesize_strategy)
+    graph.add_node("format_footnotes", format_footnotes)
     graph.add_node("verify", verify)
+    graph.add_node("quality_check", quality_check)
+    graph.add_node("checkpoint_memo", checkpoint_memo)
 
     # -- Edges --------------------------------------------------------------
 
@@ -258,8 +292,19 @@ def build_strategy_graph(
     graph.add_edge("adversarial_search", "counter_and_judge")
     graph.add_edge("counter_and_judge", "argument_ordering")
     graph.add_edge("argument_ordering", "synthesize_strategy")
-    graph.add_edge("synthesize_strategy", "verify")
-    graph.add_edge("verify", END)
+    graph.add_edge("synthesize_strategy", "format_footnotes")
+    graph.add_edge("format_footnotes", "verify")
+    graph.add_edge("verify", "quality_check")
+    graph.add_conditional_edges(
+        "quality_check",
+        route_after_quality,
+        {"synthesize_strategy": "synthesize_strategy", "checkpoint_memo": "checkpoint_memo"},
+    )
+    graph.add_conditional_edges(
+        "checkpoint_memo",
+        route_after_memo,
+        {"synthesize_strategy": "synthesize_strategy", END: END},
+    )
 
     # -- Compile ------------------------------------------------------------
 

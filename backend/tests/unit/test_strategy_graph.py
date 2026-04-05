@@ -9,6 +9,7 @@ from app.core.agents.strategy import (
     build_strategy_graph,
     route_after_analysis,
     route_after_arguments,
+    route_after_quality,
 )
 
 
@@ -238,19 +239,19 @@ class TestBuildStrategyGraph:
         assert hasattr(graph, "invoke") or hasattr(graph, "ainvoke")
 
     def test_graph_has_expected_node_count(self) -> None:
-        """Graph must have exactly 14 registered nodes (+ __start__ = 15)."""
+        """Graph must have exactly 17 registered nodes (+ __start__ = 18)."""
         graph = self._build()
         # LangGraph exposes the graph structure via .graph attribute on compiled graphs
         # The underlying StateGraph nodes are accessible via graph.nodes or the builder
         node_count = len(graph.nodes)
-        # 14 user nodes + __start__ = 15
-        assert node_count == 15, (
-            f"Expected 15 nodes, got {node_count}. "
+        # 17 user nodes + __start__ = 18
+        assert node_count == 18, (
+            f"Expected 18 nodes, got {node_count}. "
             f"Nodes: {sorted(graph.nodes)}"
         )
 
     def test_graph_has_expected_nodes(self) -> None:
-        """Compiled graph must include all 14 named nodes."""
+        """Compiled graph must include all 17 named nodes."""
         graph = self._build()
         expected_nodes = {
             "analyze_facts",
@@ -266,7 +267,10 @@ class TestBuildStrategyGraph:
             "counter_and_judge",
             "argument_ordering",
             "synthesize_strategy",
+            "format_footnotes",
             "verify",
+            "quality_check",
+            "checkpoint_memo",
         }
         actual_nodes = {n for n in graph.nodes if not n.startswith("__")}
         assert expected_nodes == actual_nodes, (
@@ -293,3 +297,39 @@ class TestBuildStrategyGraph:
             assert graph is not None
         except Exception as exc:  # noqa: BLE001
             pytest.fail(f"build_strategy_graph raised unexpectedly: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# route_after_quality
+# ---------------------------------------------------------------------------
+
+
+class TestRouteAfterQuality:
+    def test_returns_checkpoint_memo_when_no_error(self) -> None:
+        state = _make_state(error="", quality_attempts=1)
+        assert route_after_quality(state) == "checkpoint_memo"
+
+    def test_returns_synthesize_strategy_on_quality_retry(self) -> None:
+        state = _make_state(
+            error="[QUALITY_RETRY] Quality check failed. Please address:\n- Logical issue: weak reasoning",
+            quality_attempts=1,
+        )
+        assert route_after_quality(state) == "synthesize_strategy"
+
+    def test_returns_checkpoint_memo_when_max_attempts_reached(self) -> None:
+        state = _make_state(
+            error="[QUALITY_RETRY] Quality check failed.",
+            quality_attempts=3,
+        )
+        assert route_after_quality(state) == "checkpoint_memo"
+
+    def test_returns_checkpoint_memo_for_non_quality_error(self) -> None:
+        state = _make_state(error="Some other error", quality_attempts=1)
+        assert route_after_quality(state) == "checkpoint_memo"
+
+    def test_returns_synthesize_strategy_on_second_attempt(self) -> None:
+        state = _make_state(
+            error="[QUALITY_RETRY] Quality check failed.",
+            quality_attempts=2,
+        )
+        assert route_after_quality(state) == "synthesize_strategy"

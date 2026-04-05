@@ -249,6 +249,9 @@ class StrategyState(TypedDict):
     contradictions: list[dict]  # detected contradictions between precedents
     relevance_scores: list[dict]        # CRAG evaluation scores per result
     extracted_passages: list[dict]       # Key passages from relevant results
+    footnotes: list[dict]              # Structured footnote objects from format_footnotes
+    legal_quality_result: dict         # LeMAJ quality assessment
+    quality_attempts: int              # retry counter for quality loop
     skip_checkpoints: bool       # when True, all HITL checkpoints auto-approve
     messages: Annotated[list[dict], operator.add]
     iteration: int

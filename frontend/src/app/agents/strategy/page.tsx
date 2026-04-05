@@ -8,7 +8,8 @@ const STEPS = [
     "checkpoint_analysis", "search_precedents", "evaluate_relevance", "assess_strength",
     "generate_arguments_irac", "checkpoint_arguments",
     "adversarial_search", "counter_and_judge", "argument_ordering",
-    "synthesize_strategy", "verify",
+    "synthesize_strategy", "format_footnotes", "verify",
+    "quality_check", "checkpoint_memo",
 ];
 
 export default function StrategyPage() {

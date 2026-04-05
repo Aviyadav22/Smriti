@@ -43,6 +43,8 @@ from app.core.interfaces import (
 from app.core.legal.precedent_strength import classify_precedent_strength
 from app.core.legal.prompts import (
     LEGAL_DISCLAIMER,
+    LEGAL_QUALITY_CHECK_SCHEMA,
+    LEGAL_QUALITY_CHECK_SYSTEM,
     STRATEGY_ADVERSARIAL_SCHEMA,
     STRATEGY_ADVERSARIAL_SYSTEM,
     STRATEGY_ANALYZE_FACTS_SCHEMA,
@@ -1071,3 +1073,163 @@ async def verify_citations_node(
         )
 
     return {"strategy_memo": memo}
+
+
+# ---------------------------------------------------------------------------
+# Node 10: format_strategy_footnotes_node
+# ---------------------------------------------------------------------------
+
+
+async def format_strategy_footnotes_node(state: StrategyState) -> dict:
+    """Parse [N] references from memo and build structured footnotes."""
+    memo = state.get("strategy_memo", "")
+    precedent_map = state.get("precedent_map", [])
+
+    if not memo:
+        return {"footnotes": []}
+
+    # Find all [N] references in memo
+    ref_numbers = sorted(set(int(n) for n in re.findall(r"\[(\d+)\]", memo)))
+    if not ref_numbers:
+        return {"footnotes": []}
+
+    # Parse the Sources/References section if the LLM wrote one
+    source_defs: dict[int, str] = {}
+    sources_match = re.search(
+        r"(?:Sources|References|Authorities Cited|Bibliography)\s*[-:]*\s*\n(.*)",
+        memo, re.DOTALL | re.IGNORECASE,
+    )
+    if sources_match:
+        for line in sources_match.group(1).strip().split("\n"):
+            ref_match = re.match(r"\[(\d+)\]\s*(.+)", line.strip())
+            if ref_match:
+                source_defs[int(ref_match.group(1))] = ref_match.group(2).strip()
+
+    # Build footnotes by matching each [N] to a precedent
+    footnotes: list[dict] = []
+    for ref_num in ref_numbers:
+        fn: dict = {
+            "number": ref_num,
+            "title": "",
+            "citation": "",
+            "court": "",
+            "year": None,
+            "case_id": None,
+            "bench_size": None,
+            "opinion_type": "",
+            "strength": "",
+            "verification_status": "pending",
+            "source_url": "",
+            "is_used": True,
+        }
+
+        citation_text = source_defs.get(ref_num, "")
+
+        # Match against precedent_map entries
+        matched = False
+        for p in precedent_map:
+            p_title = (p.get("title") or "").upper()
+            p_citation = (p.get("citation") or "").upper()
+            search_in = citation_text.upper() if citation_text else ""
+
+            if (p_title and len(p_title) > 10 and p_title[:30] in search_in) or \
+               (p_citation and p_citation in search_in):
+                fn["title"] = p.get("title", "")
+                fn["citation"] = p.get("citation", "")
+                fn["court"] = p.get("court", "")
+                fn["year"] = p.get("year")
+                fn["case_id"] = p.get("case_id")
+                fn["bench_size"] = p.get("coram_size")
+                fn["opinion_type"] = p.get("opinion_type", "")
+                fn["strength"] = p.get("strength", "")
+                fn["source_url"] = f"/case/{p['case_id']}" if p.get("case_id") else ""
+                fn["verification_status"] = "verified_pg"
+                matched = True
+                break
+
+        if not matched and citation_text:
+            fn["citation"] = citation_text
+            fn["verification_status"] = "unverified"
+
+        footnotes.append(fn)
+
+    # Strip the Sources section from memo (footnotes are now structured data)
+    clean_memo = memo
+    if sources_match:
+        clean_memo = memo[:sources_match.start()].rstrip()
+
+    return {"footnotes": footnotes, "strategy_memo": clean_memo}
+
+
+# ---------------------------------------------------------------------------
+# Node 11: quality_check_node
+# ---------------------------------------------------------------------------
+
+
+async def quality_check_node(
+    state: StrategyState,
+    llm: LLMProvider,
+) -> dict:
+    """LeMAJ-inspired legal quality assessment with retry routing."""
+    memo = state.get("strategy_memo", "")
+    search_results = state.get("search_results", [])
+    quality_attempts = state.get("quality_attempts", 0)
+
+    if not memo:
+        return {
+            "legal_quality_result": {"overall_score": 0, "pass_threshold": False},
+            "quality_attempts": quality_attempts + 1,
+        }
+
+    # Build evidence context
+    evidence_items = []
+    for r in search_results[:30]:
+        evidence_items.append(
+            f"[{r.get('case_id', 'N/A')}] {r.get('title', 'N/A')} ({r.get('citation', '')})\n"
+            f"Ratio: {(r.get('ratio', '') or r.get('snippet', ''))[:300]}"
+        )
+    evidence = "\n\n".join(evidence_items)
+
+    try:
+        result = await llm.generate_structured(
+            prompt=f"MEMO:\n{memo}\n\nEVIDENCE:\n{evidence}",
+            system=LEGAL_QUALITY_CHECK_SYSTEM,
+            output_schema=LEGAL_QUALITY_CHECK_SCHEMA,
+        )
+    except Exception as e:
+        logger.error("Quality check LLM failed: %s", e)
+        return {
+            "legal_quality_result": {"overall_score": 0.5, "pass_threshold": True},
+            "quality_attempts": quality_attempts + 1,
+        }
+
+    overall_score = result.get("overall_score", 0.5)
+    pass_threshold = overall_score >= 0.7
+
+    quality_result = {
+        "overall_score": overall_score,
+        "data_points": result.get("data_points", []),
+        "omissions": result.get("omissions", []),
+        "logical_issues": result.get("logical_issues", []),
+        "pass_threshold": pass_threshold,
+    }
+
+    output: dict = {
+        "legal_quality_result": quality_result,
+        "quality_attempts": quality_attempts + 1,
+    }
+
+    # If failed and can retry, build feedback for synthesis
+    if not pass_threshold and quality_attempts < 2:
+        issues: list[str] = []
+        for lp in result.get("logical_issues", []):
+            issues.append(f"- Logical issue: {lp}")
+        for om in result.get("omissions", []):
+            issues.append(f"- Omission: {om.get('missed_authority', 'N/A')} ({om.get('relevance', '')})")
+        for dp in result.get("data_points", []):
+            if dp.get("supported") == "unsupported":
+                issues.append(f"- Unsupported claim: {dp.get('claim', '')[:100]}")
+        if issues:
+            output["error"] = "[QUALITY_RETRY] Quality check failed. Please address:\n" + "\n".join(issues[:10])
+
+    return output
