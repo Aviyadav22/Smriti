@@ -85,7 +85,16 @@ def _extract_statute_refs(text_input: str) -> list[tuple[str, str]]:
     act_refs = extract_acts_cited(text_input)
     refs: list[tuple[str, str]] = []
     for ref in act_refs:
-        short_name = normalize_act_name(ref.act_name)
+        act_name = ref.act_name
+        # The full-form extractor may capture "LARR Act" with a trailing suffix.
+        # Try normalizing as-is first; if it falls through (returns unchanged),
+        # strip common suffixes and retry.
+        short_name = normalize_act_name(act_name)
+        if short_name == act_name and re.search(r"\s+(?:Act|Code|Sanhita|Adhiniyam)$", act_name, re.IGNORECASE):
+            stripped = re.sub(r"\s+(?:Act|Code|Sanhita|Adhiniyam)$", "", act_name, flags=re.IGNORECASE)
+            alt = normalize_act_name(stripped)
+            if alt != act_name:  # Compare to original, not stripped
+                short_name = alt
         section = ref.section.strip()
         # Handle Article references → (COI, N) — strip "Article " prefix for DB lookup
         if section.startswith("Article "):
@@ -128,11 +137,31 @@ async def _fetch_statute_from_db(
     if not refs:
         return []
 
-    # Batch query: fetch all matching statutes in one round-trip
-    conditions = [
-        and_(Statute.act_short_name == act, Statute.section_number == sec)
-        for act, sec in refs
-    ]
+    # Batch query: fetch all matching statutes in one round-trip.
+    # Use case-insensitive match on act_short_name because the normalizer
+    # outputs uppercase (e.g. "CRPC") while DB may store mixed case ("CrPC").
+    # Also try matching against act_name for full-name references like
+    # "NEGOTIABLE INSTRUMENTS ACT" where act_short_name is "NI Act".
+    from sqlalchemy import func
+
+    conditions = []
+    for act, sec in refs:
+        act_lower = act.lower()
+        # Strip subsection parenthetical: "24(2)" → also try "24"
+        sec_base = re.sub(r"\(.*\)", "", sec).strip() if "(" in sec else sec
+        sec_variants = [sec]
+        if sec_base != sec:
+            sec_variants.append(sec_base)
+
+        conditions.append(
+            and_(
+                or_(
+                    func.lower(Statute.act_short_name) == act_lower,
+                    func.lower(Statute.act_name).contains(act_lower),
+                ),
+                Statute.section_number.in_(sec_variants),
+            )
+        )
     stmt = select(Statute).where(or_(*conditions))
     row_result = await db.execute(stmt)
     rows = row_result.scalars().all()
@@ -149,7 +178,10 @@ async def _fetch_statute_from_db(
     new_code_map: dict[tuple[str, str], str] = {}
     if new_code_refs:
         new_conditions = [
-            and_(Statute.act_short_name == act, Statute.section_number == sec)
+            and_(
+                func.lower(Statute.act_short_name) == act.lower(),
+                Statute.section_number == sec,
+            )
             for act, sec in new_code_refs
         ]
         new_stmt = select(Statute).where(or_(*new_conditions))
@@ -553,7 +585,8 @@ async def enrich_results_with_ratio(
     params["max_len"] = max_ratio_len
 
     query = text(
-        f"SELECT id::text, LEFT(ratio_decidendi, :max_len) AS ratio, bench_type, coram_size "
+        f"SELECT id::text, LEFT(ratio_decidendi, :max_len) AS ratio, bench_type, coram_size, "
+        f"opinion_type, split_ratio, disposal_nature, year "
         f"FROM cases WHERE id::text IN ({placeholders})"
     )
 
@@ -570,6 +603,10 @@ async def enrich_results_with_ratio(
             "ratio": row[1] or "",
             "bench_type": row[2] or "",
             "coram_size": row[3],
+            "opinion_type": row[4] or "",
+            "split_ratio": row[5] or "",
+            "disposal_nature": row[6] or "",
+            "year": row[7],
         }
 
     for r in results:
@@ -581,6 +618,14 @@ async def enrich_results_with_ratio(
                 r["bench_type"] = ratio_map[cid]["bench_type"]
             if not r.get("coram_size") and ratio_map[cid].get("coram_size"):
                 r["coram_size"] = ratio_map[cid]["coram_size"]
+            if not r.get("opinion_type") and ratio_map[cid].get("opinion_type"):
+                r["opinion_type"] = ratio_map[cid]["opinion_type"]
+            if not r.get("split_ratio") and ratio_map[cid].get("split_ratio"):
+                r["split_ratio"] = ratio_map[cid]["split_ratio"]
+            if not r.get("disposal_nature") and ratio_map[cid].get("disposal_nature"):
+                r["disposal_nature"] = ratio_map[cid]["disposal_nature"]
+            if not r.get("year") and ratio_map[cid].get("year"):
+                r["year"] = ratio_map[cid]["year"]
 
     return results
 

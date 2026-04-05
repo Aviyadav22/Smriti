@@ -24,7 +24,7 @@ from app.core.agents.nodes.common import (
     MAX_RESULTS_FOR_LLM,
     apply_language_suffix,
     collect_grounding_citations,
-    deduplicate_by_case_id,
+    deduplicate_with_diversity,
     detect_overruled_cases,
     enrich_results_with_ratio,
     get_citation_neighbors,
@@ -251,8 +251,9 @@ async def search_precedents_node(
         db=db,
     )
 
-    # Deduplicate by case_id, keeping highest score
-    combined = deduplicate_by_case_id(combined)
+    # Deduplicate with diversity — keep top N chunks per case
+    from app.core.config import settings
+    combined = deduplicate_with_diversity(combined, max_chunks_per_case=settings.strategy_max_chunks_per_case)
 
     # Enrich with ratio and bench_type from PostgreSQL
     combined = await enrich_results_with_ratio(combined, db)
@@ -287,13 +288,36 @@ async def search_precedents_node(
                 overruled=is_overruled,
             ).value
 
+        # Compute strength_note based on opinion_type and split_ratio
+        strength_note = ""
+        opinion = r.get("opinion_type", "")
+        split = r.get("split_ratio", "")
+        if opinion == "plurality":
+            strength_note = "plurality opinion (no majority — weakest binding)"
+        elif split and ":" in split:
+            parts = split.split(":")
+            if len(parts) == 2 and parts[0].strip().isdigit() and parts[1].strip().isdigit():
+                minority = int(parts[1].strip())
+                if minority > 0:
+                    strength_note = f"split decision ({split}) — dissent present"
+                else:
+                    strength_note = "unanimous"
+        elif opinion == "unanimous":
+            strength_note = "unanimous"
+
         precedent_map.append({
             "case_id": cid,
             "title": r.get("title"),
             "citation": r.get("citation"),
             "court": court,
+            "year": r.get("year"),
             "bench_type": bench,
+            "coram_size": r.get("coram_size"),
+            "opinion_type": r.get("opinion_type", ""),
+            "split_ratio": r.get("split_ratio", ""),
+            "disposal_nature": r.get("disposal_nature", ""),
             "strength": strength,
+            "strength_note": strength_note,
             "is_overruled": is_overruled,
             "ratio": r.get("ratio", ""),
             "relevance_to_argument": r.get("source_query", ""),
