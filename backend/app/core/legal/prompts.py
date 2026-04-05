@@ -2,6 +2,34 @@
 
 from typing import Final
 
+
+def get_era_preamble(year: int | None) -> str:
+    """Return era-specific extraction guidance based on judgment year."""
+    if year is None:
+        return ""
+    if year < 1970:
+        return (
+            "\n## ERA NOTE: Pre-1970 Supreme Court Judgment\n"
+            "- Citations are typically AIR format (e.g., AIR 1954 SC 300), not SCC or SCALE.\n"
+            "- Judgments are shorter with less structured sections.\n"
+            "- Judge names may use older spellings or honorifics.\n"
+            "- Legal propositions may be stated less explicitly — infer from reasoning.\n"
+            "- case_type is often 'Civil Appeal' or 'Writ Petition'.\n"
+        )
+    if year < 2000:
+        return (
+            "\n## ERA NOTE: 1970-1999 Supreme Court Judgment\n"
+            "- Citations may use SCC, AIR, or SCR formats.\n"
+            "- Structured sections (FACTS, ANALYSIS) emerge but aren't always labeled.\n"
+            "- Look for ratio in 'We hold that...' or 'In our opinion...' paragraphs.\n"
+        )
+    return (
+        "\n## ERA NOTE: 2000+ Supreme Court Judgment\n"
+        "- Neutral citations (YYYY:INSC:NNNN) may be present alongside SCC/SCALE.\n"
+        "- Structured formatting with numbered paragraphs is common.\n"
+        "- Look for explicit headnotes at the start of SCC-reported judgments.\n"
+    )
+
 # ---------------------------------------------------------------------------
 # Metadata extraction from Indian court judgments
 # ---------------------------------------------------------------------------
@@ -23,6 +51,17 @@ header is damaged or unreadable, return null for judge fields rather than guessi
 the case name.
 - If OCR artifacts make any field unreadable, return null — do NOT reconstruct from your \
 knowledge of the case or Indian legal history.
+
+REPORTER EDITORIAL CONTENT — CRITICAL:
+Indian law reporters (SCR, SCC, AIR) add editorial content BEFORE the judgment text. \
+This includes: structured headnote paragraphs (often with margin letters A-H), "HELD:" \
+numbered summaries, "Catchwords:", "Cases Referred:", "Result of the case:" summaries, \
+and page-column markers. These are written by REPORTERS, not by the JUDGES. \
+You MUST distinguish reporter-added content from the judge's actual words. \
+For the "headnotes" field: extract the COURT'S OWN legal propositions from the JUDGMENT \
+body — NOT the reporter's editorial headnote paragraphs. Each headnote proposition should \
+be 1-3 sentences (50-200 words max). If you cannot distinguish reporter headnotes from \
+the court's holdings, return null for headnotes rather than copying editorial content.
 
 EXTRACTION RULES:
 1. Extract ONLY information explicitly stated in the judgment text. If a field \
@@ -3949,6 +3988,23 @@ COMMUNITY_SUMMARY_SCHEMA: Final[dict] = {
     },
     "required": ["title", "summary", "legal_principles"],
 }
+
+# ---------------------------------------------------------------------------
+# Targeted re-extraction for missing fields (fallback, minimal prompt)
+# ---------------------------------------------------------------------------
+
+REEXTRACTION_SYSTEM_PROMPT: Final[str] = """\
+You are an expert Indian legal metadata extractor. Extract ONLY the requested \
+fields from the provided judgment text. Be concise and factual.
+
+- outcome_summary: 1-2 sentences describing the specific outcome \
+(e.g., "Appeal dismissed; conviction under Section 302 IPC upheld.").
+- case_description: 2-4 sentence neutral case digest — what the dispute is \
+about, what was decided, and the key legal issue.
+
+Return valid JSON with only the requested keys. If you cannot determine a \
+field from the text, set it to null.\
+"""
 
 LEGAL_DISCLAIMER: Final[str] = (
     "\n\n---\n"

@@ -350,6 +350,165 @@ def _strip_unreliable_llm_fields(metadata: CaseMetadata) -> CaseMetadata:
     return metadata
 
 
+def synthesize_case_description(metadata: CaseMetadata) -> str | None:
+    """Build a case description from already-extracted structured fields.
+
+    Returns None if insufficient data (title-only is too thin).
+    Pure function — no LLM call.
+    """
+    if not metadata.title:
+        return None
+
+    parts: list[str] = []
+
+    # Lead with case type if available
+    if metadata.case_type:
+        parts.append(f"{metadata.case_type} — {metadata.title}.")
+    else:
+        parts.append(f"{metadata.title}.")
+
+    # Add first sentence of ratio if available
+    if metadata.ratio_decidendi:
+        first_sentence = metadata.ratio_decidendi.split(". ")[0].strip()
+        if len(first_sentence) > 200:
+            first_sentence = first_sentence[:200].rsplit(" ", 1)[0]
+        parts.append(f"The court held that {first_sentence}.")
+    elif metadata.headnotes:
+        # Fallback: first headnote proposition
+        try:
+            hn_list = json.loads(metadata.headnotes) if isinstance(metadata.headnotes, str) else []
+            if hn_list and isinstance(hn_list[0], dict):
+                prop = hn_list[0].get("proposition", "")[:150]
+                if prop:
+                    parts.append(f"Key issue: {prop}.")
+        except (json.JSONDecodeError, TypeError, IndexError):
+            pass
+
+    # Add disposal
+    if metadata.disposal_nature:
+        parts.append(f"The case was {metadata.disposal_nature.lower()}.")
+
+    description = " ".join(parts)
+
+    # Only title was used — too thin to be useful
+    if len(parts) <= 1:
+        return None
+
+    return description[:500]
+
+
+# Regex for extracting operative outcome from judgment tail
+_OUTCOME_RE = re.compile(
+    r"(?:the\s+)?(?:appeal|petition|writ(?:\s+petition)?|suit|case|"
+    r"special\s+leave\s+petition|criminal\s+appeal|civil\s+appeal)"
+    r"\s+(?:is|are|stands?|shall\s+stand)\s+"
+    r"(allowed|dismissed|partly\s+allowed|disposed\s+of|"
+    r"remanded|transferred|withdrawn)",
+    re.IGNORECASE,
+)
+
+
+def synthesize_outcome_summary(
+    metadata: CaseMetadata, full_text: str,
+) -> str | None:
+    """Build an outcome summary from disposal_nature or regex on the operative order.
+
+    Path A: template from disposal_nature + ratio first sentence.
+    Path B: regex extraction from last 3000 chars of judgment text.
+    Returns None if neither path yields a result.
+    """
+    # Path A: structured fields
+    if metadata.disposal_nature:
+        case_label = metadata.case_type or "case"
+        summary = f"The {case_label.lower()} was {metadata.disposal_nature.lower()}."
+
+        # Append first sentence of ratio for richer context
+        if metadata.ratio_decidendi:
+            first_sentence = metadata.ratio_decidendi.split(". ")[0].strip()
+            if len(first_sentence) > 150:
+                first_sentence = first_sentence[:150].rsplit(" ", 1)[0]
+            summary += f" {first_sentence}."
+
+        return summary[:300]
+
+    # Path B: regex from text tail
+    if full_text:
+        tail = full_text[-3000:]
+        match = _OUTCOME_RE.search(tail)
+        if match:
+            # Extract the sentence containing the match
+            start = tail.rfind(".", 0, match.start())
+            start = start + 1 if start != -1 else max(0, match.start() - 50)
+            end = tail.find(".", match.end())
+            end = end + 1 if end != -1 else min(len(tail), match.end() + 50)
+            sentence = tail[start:end].strip()
+            if sentence:
+                return sentence[:200]
+
+    return None
+
+
+async def reextract_missing_fields(
+    metadata: CaseMetadata,
+    full_text: str,
+    llm: LLMProvider,
+    fields_needed: list[str],
+) -> CaseMetadata:
+    """Targeted re-extraction of specific missing fields with a minimal LLM call.
+
+    Only called when confidence < 0.6 and deterministic synthesis failed.
+    Uses a focused prompt with minimal text (5K chars) to reduce cost.
+    Never overwrites existing non-None fields.
+    """
+    from app.core.legal.prompts import REEXTRACTION_SYSTEM_PROMPT
+
+    # Build minimal schema with only requested fields
+    field_schemas: dict[str, dict] = {
+        "outcome_summary": {
+            "type": "string",
+            "nullable": True,
+            "description": "1-2 sentence description of the specific outcome of the case",
+        },
+        "case_description": {
+            "type": "string",
+            "nullable": True,
+            "description": "2-4 sentence summary: what the dispute is about, what was decided, key legal issue",
+        },
+    }
+    schema = {
+        "type": "object",
+        "properties": {k: v for k, v in field_schemas.items() if k in fields_needed},
+    }
+
+    # Use targeted text slice: tail for outcome, head for description
+    if fields_needed == ["outcome_summary"]:
+        text_slice = full_text[-5000:] if len(full_text) > 5000 else full_text
+    elif fields_needed == ["case_description"]:
+        text_slice = full_text[:5000] if len(full_text) > 5000 else full_text
+    else:
+        # Both needed: head + tail
+        text_slice = full_text[:3000] + "\n\n[...]\n\n" + full_text[-3000:] if len(full_text) > 6000 else full_text
+
+    prompt = f"Extract the following fields from this Indian court judgment:\n\n{text_slice}"
+
+    try:
+        result = await llm.generate_structured(
+            prompt,
+            system=REEXTRACTION_SYSTEM_PROMPT,
+            output_schema=schema,
+            temperature=0.0,
+        )
+        for field in fields_needed:
+            value = result.get(field)
+            if value and getattr(metadata, field, None) is None:
+                setattr(metadata, field, value)
+                logger.info("Re-extracted %s successfully", field)
+    except Exception:
+        logger.warning("Targeted re-extraction failed for %s — proceeding without", fields_needed, exc_info=True)
+
+    return metadata
+
+
 def _parse_judge_names(raw: str | list | None) -> list[str] | None:
     """Parse judge names from various formats.
 
@@ -507,6 +666,7 @@ async def extract_metadata_llm(
     llm: LLMProvider,
     *,
     pdf_path: str | None = None,
+    hint_year: int | None = None,
 ) -> CaseMetadata:
     """Use an LLM with structured output to extract metadata from judgment text.
 
@@ -521,7 +681,11 @@ async def extract_metadata_llm(
         METADATA_EXTRACTION_SYSTEM,
         METADATA_EXTRACTION_USER,
         METADATA_OUTPUT_SCHEMA,
+        get_era_preamble,
     )
+
+    era_preamble = get_era_preamble(hint_year)
+    system_prompt = METADATA_EXTRACTION_SYSTEM + era_preamble
 
     # Determine whether to use PDF multimodal or text-only
     can_use_pdf = bool(pdf_path and hasattr(llm, "generate_structured_from_pdf"))
@@ -538,7 +702,7 @@ async def extract_metadata_llm(
                 result = await llm.generate_structured_from_pdf(
                     pdf_path,
                     prompt=prompt,
-                    system=METADATA_EXTRACTION_SYSTEM,
+                    system=system_prompt,
                     output_schema=METADATA_OUTPUT_SCHEMA,
                     temperature=0.1,
                 )
@@ -555,7 +719,7 @@ async def extract_metadata_llm(
             prompt = METADATA_EXTRACTION_USER.format(judgment_text=truncated)
             result = await llm.generate_structured(
                 prompt,
-                system=METADATA_EXTRACTION_SYSTEM,
+                system=system_prompt,
                 output_schema=METADATA_OUTPUT_SCHEMA,
                 temperature=0.1,
             )
@@ -794,7 +958,7 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
     # -- String length validation --
     _MAX_LENGTHS = {
         "title": 500, "citation": 200, "court": 200, "petitioner": 500,
-        "respondent": 500, "ratio_decidendi": 3000,
+        "respondent": 500, "ratio_decidendi": 1500,
         "outcome_summary": 500, "author_judge": 200, "case_type": 100,
         "disposal_nature": 50, "case_number": 200,
         "lower_court": 200, "lower_court_case_number": 200, "appeal_from": 200,
@@ -808,6 +972,129 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
                 field_name, max_len, len(val),
             )
             setattr(metadata, field_name, val[:max_len])
+
+    # --- Headnotes structural validation (editorial contamination defense) ---
+    _EDITORIAL_MARKER_PATTERNS = [
+        re.compile(r"result\s+of\s+the\s+case\s*:", re.IGNORECASE),
+        re.compile(r"catchwords?\s*:", re.IGNORECASE),
+        re.compile(r"cases?\s+referred\s*:", re.IGNORECASE),
+        re.compile(r"legislation\s+cited\s*:", re.IGNORECASE),
+        re.compile(r"headnotes?\s+prepared\s+by", re.IGNORECASE),
+        re.compile(r"reporter'?s?\s+note", re.IGNORECASE),
+    ]
+    # SCR lettered margin markers (A-H standalone on a line)
+    _LETTERED_MARGIN_RE = re.compile(r"^\s*[A-H]\s*$", re.MULTILINE)
+
+    # Reporter summarization prefixes to strip from proposition text.
+    # These are editorial framing phrases, not judicial holdings.
+    _REPORTER_PREFIX_RE = re.compile(
+        r"^\s*(?:"
+        r"Held\s*[-–—:,]\s*|"                          # "Held - ", "Held:"
+        r"Held\s+that\s+the\s+Court\s+(?:reiterated|observed|held|noted)\s+(?:that\s+)?|"
+        r"Per\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s*,?\s*(?:J\.?\s*)?[-–—:,]\s*|"  # "Per Misra, J. -"
+        r"It\s+was\s+(?:contended|submitted|argued|urged)\s+(?:by\s+(?:the\s+)?(?:appellant|respondent|petitioner|counsel)\s+)?that\s+|"
+        r"The\s+(?:Supreme\s+)?Court\s+(?:reiterated|observed|held|noted|stated)\s+that\s+|"
+        r"(?:†\s*)|"                                    # Dagger symbol prefix
+        r"\[Ed\.\s*:?\s*\]?\s*"                         # [Ed.:] or [Ed.]
+        r")",
+        re.IGNORECASE,
+    )
+
+    if metadata.headnotes:
+        try:
+            hn_list = json.loads(metadata.headnotes) if isinstance(metadata.headnotes, str) else metadata.headnotes
+            if isinstance(hn_list, list):
+                cleaned_hn: list[dict] = []
+                total_prop_len = 0
+                for item in hn_list[:6]:  # Cap at 6 propositions
+                    if isinstance(item, dict) and item.get("proposition"):
+                        prop = item["proposition"]
+                        # Check for editorial contamination in each proposition
+                        contaminated = False
+                        for marker_re in _EDITORIAL_MARKER_PATTERNS:
+                            if marker_re.search(prop):
+                                contaminated = True
+                                break
+                        if _LETTERED_MARGIN_RE.search(prop):
+                            contaminated = True
+                        if contaminated:
+                            logger.warning(
+                                "Headnote proposition contains editorial markers, skipping"
+                            )
+                            continue
+                        # Strip reporter summarization prefixes
+                        cleaned_prop = _REPORTER_PREFIX_RE.sub("", prop).strip()
+                        if cleaned_prop and cleaned_prop != prop:
+                            logger.info(
+                                "Stripped reporter prefix from headnote proposition "
+                                "(%d -> %d chars)", len(prop), len(cleaned_prop),
+                            )
+                            prop = cleaned_prop
+                        # Cap individual proposition length
+                        if len(prop) > 500:
+                            prop = prop[:500]
+                            logger.warning("Headnote proposition truncated from %d chars", len(item["proposition"]))
+                        total_prop_len += len(prop)
+                        cleaned_hn.append({**item, "proposition": prop})
+                    elif isinstance(item, str) and item.strip():
+                        cleaned_item = _REPORTER_PREFIX_RE.sub("", item).strip()
+                        if cleaned_item and len(cleaned_item) <= 500:
+                            cleaned_hn.append({"proposition": cleaned_item, "acts_sections": None})
+                            total_prop_len += len(cleaned_item)
+                if cleaned_hn and total_prop_len <= 3000:
+                    metadata.headnotes = json.dumps(cleaned_hn)
+                elif total_prop_len > 3000:
+                    logger.warning(
+                        "Headnotes total length %d > 3000, likely editorial — nulling",
+                        total_prop_len,
+                    )
+                    metadata.headnotes = None
+                else:
+                    metadata.headnotes = None
+            else:
+                metadata.headnotes = None
+        except (json.JSONDecodeError, TypeError):
+            # Raw string, not valid JSON — check if it's editorial garbage
+            if len(metadata.headnotes) > 3000:
+                logger.warning(
+                    "Headnotes is non-JSON string of %d chars, likely editorial — nulling",
+                    len(metadata.headnotes),
+                )
+                metadata.headnotes = None
+
+    # --- Ratio decidendi verbosity check ---
+    # Sentence count check: ratio should be 2-5 sentences per prompt guidance.
+    # If it has >8 sentences, truncate to 5 at sentence boundaries first.
+    if metadata.ratio_decidendi:
+        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', metadata.ratio_decidendi) if s.strip()]
+        if len(sentences) > 8:
+            logger.warning(
+                "ratio_decidendi has %d sentences (>8), truncating to first 5",
+                len(sentences),
+            )
+            metadata.ratio_decidendi = " ".join(sentences[:5])
+
+    # Hard length cap at 1500 chars (lowered from 2000)
+    if metadata.ratio_decidendi and len(metadata.ratio_decidendi) > 1500:
+        logger.warning(
+            "ratio_decidendi is %d chars (>1500), likely contains editorial content — truncating",
+            len(metadata.ratio_decidendi),
+        )
+        truncated = metadata.ratio_decidendi[:1500]
+        last_period = truncated.rfind(". ")
+        if last_period > 800:
+            metadata.ratio_decidendi = truncated[:last_period + 1]
+        else:
+            metadata.ratio_decidendi = truncated
+
+    # --- Fact pattern summary length cap ---
+    if metadata.fact_pattern_summary and len(metadata.fact_pattern_summary) > 1000:
+        truncated = metadata.fact_pattern_summary[:1000]
+        last_period = truncated.rfind(". ")
+        if last_period > 500:
+            metadata.fact_pattern_summary = truncated[:last_period + 1]
+        else:
+            metadata.fact_pattern_summary = truncated
 
     # --- V2 Field Validation ---
 

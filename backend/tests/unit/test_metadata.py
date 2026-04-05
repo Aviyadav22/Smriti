@@ -692,3 +692,47 @@ class TestStripUnreliableLlmFields:
         assert result.court == "Supreme Court of India"
         assert result.year == 2023
         assert result.judge == ["Judge X"]
+
+
+class TestEraAdaptiveExtraction:
+    """Tests for get_era_preamble() era-adaptive prompt generation."""
+
+    def test_pre_1970_preamble(self):
+        from app.core.legal.prompts import get_era_preamble
+
+        preamble = get_era_preamble(1955)
+        assert "AIR" in preamble
+        assert preamble != ""
+
+    def test_modern_preamble(self):
+        from app.core.legal.prompts import get_era_preamble
+
+        preamble = get_era_preamble(1985)
+        assert "SCC" in preamble
+
+    def test_digital_era_preamble(self):
+        from app.core.legal.prompts import get_era_preamble
+
+        preamble = get_era_preamble(2020)
+        assert "neutral citation" in preamble.lower() or "INSC" in preamble
+
+    def test_none_year_returns_empty(self):
+        from app.core.legal.prompts import get_era_preamble
+
+        assert get_era_preamble(None) == ""
+
+    def test_boundary_1970(self):
+        from app.core.legal.prompts import get_era_preamble
+
+        pre = get_era_preamble(1969)
+        post = get_era_preamble(1970)
+        assert "AIR" in pre
+        assert "SCC" in post
+
+    def test_boundary_2000(self):
+        from app.core.legal.prompts import get_era_preamble
+
+        pre = get_era_preamble(1999)
+        post = get_era_preamble(2000)
+        assert "SCC" in pre
+        assert "INSC" in post or "neutral" in post.lower()
