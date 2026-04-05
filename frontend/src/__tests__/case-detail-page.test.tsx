@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "./test-utils";
-import CaseDetailPage from "@/app/case/[id]/page";
+import CaseDetailPage from "@/app/(auth)/case/[id]/page";
 import type { CaseDetail } from "@/lib/types";
 
 const pushMock = vi.fn();

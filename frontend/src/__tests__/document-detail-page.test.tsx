@@ -32,7 +32,7 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-import DocumentDetailPage from "@/app/documents/[id]/page";
+import DocumentDetailPage from "@/app/(auth)/documents/[id]/page";
 
 function makeCompletedDoc(): DocumentDetail {
   return {

@@ -47,7 +47,7 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-import JudgeComparePage from "@/app/judges/compare/page";
+import JudgeComparePage from "@/app/(auth)/judges/compare/page";
 
 function makeJudgeListResponse(
   overrides: Partial<JudgeListResponse> = {},

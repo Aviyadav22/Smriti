@@ -29,7 +29,7 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-import UploadPage from "@/app/upload/page";
+import UploadPage from "@/app/(auth)/upload/page";
 
 describe("UploadPage", () => {
   beforeEach(() => {

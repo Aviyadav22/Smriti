@@ -30,7 +30,7 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-import JudgesPage from "@/app/judges/page";
+import JudgesPage from "@/app/(auth)/judges/page";
 
 function makeJudgeListResponse(
   overrides: Partial<JudgeListResponse> = {},

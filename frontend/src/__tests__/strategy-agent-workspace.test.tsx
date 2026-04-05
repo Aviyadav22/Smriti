@@ -83,7 +83,7 @@ vi.mock("@/hooks/useAgentSession", () => ({
   }),
 }));
 
-import StrategyAgentPage from "@/app/agents/strategy/page";
+import StrategyAgentPage from "@/app/(auth)/agents/strategy/page";
 
 describe("StrategyAgentPage", () => {
   it("renders page heading", () => {

@@ -61,7 +61,7 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-import DraftingAgentPage from "@/app/agents/drafting/page";
+import DraftingAgentPage from "@/app/(auth)/agents/drafting/page";
 import { DraftSectionViewer } from "@/components/draft-section-viewer";
 
 describe("DraftingAgentPage", () => {

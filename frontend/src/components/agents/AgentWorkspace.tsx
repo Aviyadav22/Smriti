@@ -27,8 +27,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LegalDisclaimer } from "@/components/legal-disclaimer";
-import { Header } from "@/components/header";
-import { Footer } from "@/components/footer";
 import Link from "next/link";
 
 // ---------------------------------------------------------------------------
@@ -91,6 +89,9 @@ export interface AgentWorkspaceProps {
 
     /** When true, the default memo Card is not rendered (extras handles its own memo display). */
     suppressDefaultMemo?: boolean;
+
+    /** When true, the default progress feed is not rendered (extras handles its own, e.g. research 5-stage stepper). */
+    suppressDefaultProgress?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +109,7 @@ export function AgentWorkspace({
     onReset,
     newSessionLabel = "New Session",
     suppressDefaultMemo = false,
+    suppressDefaultProgress = false,
 }: AgentWorkspaceProps) {
     const { isAuthenticated, isLoading: authLoading } = useAuth();
     const router = useRouter();
@@ -466,14 +468,7 @@ export function AgentWorkspace({
     // ---------------------------------------------------------------------------
 
     if (authLoading || !isAuthenticated) {
-        return (
-            <div className="min-h-screen flex flex-col">
-                <Header />
-                <div className="flex-1 flex items-center justify-center">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-            </div>
-        );
+        return null;
     }
 
     // ---------------------------------------------------------------------------
@@ -481,10 +476,8 @@ export function AgentWorkspace({
     // ---------------------------------------------------------------------------
 
     return (
-        <div className="min-h-screen flex flex-col">
-            <Header />
-
-            <main className="flex-1 flex">
+        <div className="flex-1 flex flex-col">
+            <div className="flex-1 flex">
                 {/* Session sidebar -- desktop */}
                 <div
                     className={cn(
@@ -550,12 +543,14 @@ export function AgentWorkspace({
                                 )}
 
                                 {/* Live progress — activity feed with streaming events */}
-                                <ResearchProgress
-                                    events={processEvents}
-                                    completedNodes={completedNodes}
-                                    isRunning={session.isRunning}
-                                    startTime={startTime ?? undefined}
-                                />
+                                {!suppressDefaultProgress && (
+                                    <ResearchProgress
+                                        events={processEvents}
+                                        completedNodes={completedNodes}
+                                        isRunning={session.isRunning}
+                                        startTime={startTime ?? undefined}
+                                    />
+                                )}
 
                                 {/* Checkpoint */}
                                 {session.checkpoint && (
@@ -579,7 +574,22 @@ export function AgentWorkspace({
                                         )
                                 )}
 
-                                {/* Skeleton shimmer while waiting */}
+                                {/* Agent-specific extras (rendered before skeleton so progress bar is always on top) */}
+                                {renderResultExtras?.({
+                                    memo: session.memo,
+                                    confidence: session.confidence,
+                                    executionId: session.executionId,
+                                    isRunning: session.isRunning,
+                                    session,
+                                    processEvents,
+                                    completedNodes,
+                                    startTime,
+                                    steps: agentSteps,
+                                    displayMemo,
+                                    isStreaming,
+                                })}
+
+                                {/* Skeleton shimmer while waiting (after extras so progress stays on top) */}
                                 {session.isRunning && !displayMemo && !session.checkpoint && (
                                     <div className="rounded-lg border bg-card p-6 space-y-4">
                                         <div className="space-y-3 animate-pulse">
@@ -608,21 +618,6 @@ export function AgentWorkspace({
                                         </CardContent>
                                     </Card>
                                 )}
-
-                                {/* Agent-specific extras */}
-                                {renderResultExtras?.({
-                                    memo: session.memo,
-                                    confidence: session.confidence,
-                                    executionId: session.executionId,
-                                    isRunning: session.isRunning,
-                                    session,
-                                    processEvents,
-                                    completedNodes,
-                                    startTime,
-                                    steps: agentSteps,
-                                    displayMemo,
-                                    isStreaming,
-                                })}
 
                                 {/* Follow-up conversation thread */}
                                 {showFollowUpArea && session.sessionMessages.length > 0 && (
@@ -724,9 +719,7 @@ export function AgentWorkspace({
                         )}
                     </div>
                 </div>
-            </main>
-
-            <Footer />
+            </div>
         </div>
     );
 }

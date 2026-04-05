@@ -49,7 +49,7 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-import ChatPage from "@/app/chat/page";
+import ChatPage from "@/app/(auth)/chat/page";
 
 describe("ChatPage", () => {
   beforeEach(() => {

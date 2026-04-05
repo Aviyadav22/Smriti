@@ -28,7 +28,7 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-import ResearchAgentPage from "@/app/agents/research/page";
+import ResearchAgentPage from "@/app/(auth)/agents/research/page";
 
 describe("ResearchAgentPage", () => {
   it("renders page heading", () => {
