@@ -37,6 +37,9 @@ from app.core.ingestion.metadata import (
     cross_validate_propositions,
     extract_metadata_llm,
     merge_metadata,
+    reextract_missing_fields,
+    synthesize_case_description,
+    synthesize_outcome_summary,
     validate_cross_fields,
     validate_parquet_data,
     validate_with_regex,
@@ -59,7 +62,7 @@ from app.core.legal.extractor import (
     normalize_acts_cited_list,
 )
 from app.core.legal.statute_enrichment import enrich_statute_cross_references
-from app.core.legal.treatment import detect_treatment_in_text
+from app.core.legal.treatment import CitationTreatment, detect_treatment_in_text
 from app.db.postgres import async_session_factory
 
 logger = logging.getLogger(__name__)
@@ -196,8 +199,9 @@ async def ingest_judgment(
     async def _llm_extract_with_retry() -> CaseMetadata:
         if _llm_limiter:
             await _llm_limiter.acquire()
+        _hint_year = parquet_metadata.get("year") if parquet_metadata else None
         return await asyncio.wait_for(
-            extract_metadata_llm(full_text, llm, pdf_path=pdf_path),
+            extract_metadata_llm(full_text, llm, pdf_path=pdf_path, hint_year=_hint_year),
             timeout=200.0,  # Longer timeout for PDF multimodal
         )
 
@@ -274,6 +278,53 @@ async def ingest_judgment(
         provenance["confidence_action"] = "flagged_for_review"
         provenance["_needs_review"] = provenance.get("_needs_review", "") + ",borderline_confidence"
 
+    # --- Remediation: fill NULL description and outcome_summary ---
+    # Tier 1: deterministic synthesis (no LLM cost, runs always)
+    if metadata.case_description is None:
+        metadata.case_description = synthesize_case_description(metadata)
+        if metadata.case_description:
+            provenance["case_description_source"] = "synthesized"
+
+    if metadata.outcome_summary is None:
+        metadata.outcome_summary = synthesize_outcome_summary(metadata, full_text)
+        if metadata.outcome_summary:
+            provenance["outcome_summary_source"] = "synthesized"
+
+    # Tier 2: targeted LLM re-extraction (only low-confidence + synthesis failed)
+    fields_to_reextract: list[str] = []
+    if confidence < 0.6:
+        if metadata.case_description is None:
+            fields_to_reextract.append("case_description")
+        if metadata.outcome_summary is None:
+            fields_to_reextract.append("outcome_summary")
+
+    if fields_to_reextract:
+        logger.info(
+            "Attempting targeted re-extraction for %s (confidence=%.3f)",
+            fields_to_reextract, confidence,
+        )
+        if llm_rate_limiter:
+            await llm_rate_limiter.acquire()
+        metadata = await reextract_missing_fields(
+            metadata, full_text, llm, fields_to_reextract,
+        )
+        for f in fields_to_reextract:
+            if getattr(metadata, f, None) is not None:
+                provenance[f"{f}_source"] = "reextracted"
+
+    # --- Quality gates: flag cases with suspicious metadata ---
+    if metadata.headnotes:
+        try:
+            hn_list = json.loads(metadata.headnotes) if isinstance(metadata.headnotes, str) else []
+            hn_total = sum(len(h.get("proposition", "")) for h in hn_list if isinstance(h, dict))
+            if hn_total > 3000:
+                provenance["_needs_review"] = provenance.get("_needs_review", "") + ",headnotes_verbose"
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    if quality.editorial_stripped:
+        provenance["editorial_stripped_chars"] = str(len(quality.editorial_stripped))
+
     # Supplement LLM acts_cited with regex extraction
     regex_acts = extract_acts_cited(full_text)
     if regex_acts:
@@ -330,6 +381,29 @@ async def ingest_judgment(
     extraction_confidence = compute_extraction_confidence(metadata)
 
     # ------------------------------------------------------------------
+    # 4c. RATIO CROSS-CONTAMINATION CHECK
+    # ------------------------------------------------------------------
+    if metadata.ratio_decidendi and len(metadata.ratio_decidendi) >= 30:
+        dup_ratio = await db.execute(
+            text(
+                "SELECT id, title FROM cases "
+                "WHERE ratio_decidendi = :ratio AND id != :case_id LIMIT 1"
+            ),
+            {"ratio": metadata.ratio_decidendi, "case_id": case_id},
+        )
+        dup_row = dup_ratio.fetchone()
+        if dup_row:
+            logger.warning(
+                "CROSS-CONTAMINATION: case %s has identical ratio_decidendi "
+                "to existing case %s (%s) — possible batch corruption",
+                case_id, dup_row[0], dup_row[1],
+            )
+            if warnings_out is not None:
+                warnings_out.append(
+                    f"ratio_duplicate:{dup_row[0]}"
+                )
+
+    # ------------------------------------------------------------------
     # 5. INSERT CASE INTO POSTGRESQL (upsert on citation conflict)
     # ------------------------------------------------------------------
     original_case_id = case_id
@@ -367,10 +441,23 @@ async def ingest_judgment(
         # 6. DETECT SECTIONS + CHUNK
         # --------------------------------------------------------------
         sections = detect_judgment_sections(full_text)
-        chunks = chunk_judgment(full_text, sections, case_id=case_id)
+        all_chunks = chunk_judgment(full_text, sections, case_id=case_id)
+
+        # Filter out reporter editorial / procedural boilerplate from
+        # embedding — these pollute vector search with non-substantive text.
+        # They are still persisted in case_sections for reference.
+        _SKIP_EMBEDDING_SECTIONS = frozenset({"EDITORIAL", "TOC", "PROCEDURAL"})
+        chunks = [c for c in all_chunks if c.section_type not in _SKIP_EMBEDDING_SECTIONS]
+        skipped = len(all_chunks) - len(chunks)
+        if skipped:
+            logger.info(
+                "case_id=%s: skipped %d editorial/procedural chunks from embedding",
+                case_id, skipped,
+            )
+
         logger.info(
-            "case_id=%s: %d sections, %d chunks",
-            case_id, len(sections), len(chunks),
+            "case_id=%s: %d sections, %d chunks (%d total, %d skipped)",
+            case_id, len(sections), len(chunks), len(all_chunks), skipped,
         )
 
         # --------------------------------------------------------------
@@ -1242,7 +1329,7 @@ async def _upsert_proposition_vectors(
     # Upsert in batches (use same configurable batch size as chunk vectors)
     _upsert_batch = int(os.environ.get("PINECONE_UPSERT_BATCH", "100"))
     for batch_start in range(0, len(vectors), _upsert_batch):
-        batch = vectors[batch_start : batch_start + _EMBED_BATCH_SIZE]
+        batch = vectors[batch_start : batch_start + _upsert_batch]
         await vector_store.upsert(batch)
 
     logger.info("Upserted %d proposition/ratio/headnote vectors for %s", len(vectors), case_id)
@@ -1339,6 +1426,20 @@ async def _build_citation_graph(
             logger.error("Failed to create case node %s: %s", case_id, exc)
             return
 
+    # Verify Neo4j node ID matches PostgreSQL — catch sync issues early
+    try:
+        verify = await graph_store.query(
+            "MATCH (c:Case {id: $id}) RETURN c.id AS nid LIMIT 1",
+            params={"id": case_id},
+        )
+        if not verify:
+            logger.error(
+                "Neo4j-PostgreSQL ID sync FAILED: case %s exists in PG but "
+                "not found in Neo4j after creation", case_id,
+            )
+    except (OSError, ConnectionError, RuntimeError) as exc:
+        logger.warning("Neo4j ID sync check skipped for %s: %s", case_id, exc)
+
     # Extract citations and detect treatment for each (CPU-only, no I/O)
     citations = extract_citations(full_text)
     if not citations:
@@ -1352,7 +1453,7 @@ async def _build_citation_graph(
         # Skip self-citations (case citing itself)
         if own_citation and cited_ref.strip() == own_citation.strip():
             continue
-        treatment = "referred_to"
+        treatment = CitationTreatment.REFERRED_TO.value
         pos = full_text.find(cited_ref)
         if pos >= 0:
             ctx_start = max(0, pos - 500)

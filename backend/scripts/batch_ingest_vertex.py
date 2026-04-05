@@ -91,6 +91,7 @@ from app.core.legal.prompts import (  # noqa: E402
     METADATA_EXTRACTION_SYSTEM,
     METADATA_EXTRACTION_USER,
     METADATA_OUTPUT_SCHEMA,
+    get_era_preamble,
 )
 from app.core.legal.statute_enrichment import enrich_statute_cross_references  # noqa: E402
 from app.db.postgres import async_session_factory  # noqa: E402
@@ -296,6 +297,11 @@ async def phase1_extract_and_upload(
             skipped_extraction += 1
             continue
 
+        if quality.tier == "low":
+            logger.warning("Low quality text for %s (tier=%s), skipping", pdf_path.name, quality.tier)
+            skipped_extraction += 1
+            continue
+
         # Anonymize PII
         full_text, _pii_masked = anonymize_text(quality.text)
 
@@ -366,7 +372,9 @@ async def phase1_extract_and_upload(
         for e in manifest
     ]
     manifest_path = run_dir / "manifest.json"
-    manifest_path.write_text(json.dumps(manifest_data, indent=2, default=str), encoding="utf-8")
+    tmp_path = manifest_path.with_suffix(".tmp")
+    tmp_path.write_text(json.dumps(manifest_data, indent=2, default=str), encoding="utf-8")
+    os.replace(str(tmp_path), str(manifest_path))
 
     # Save full texts separately (too large for manifest JSON)
     texts_dir = run_dir / "texts"
@@ -387,7 +395,7 @@ async def phase1_extract_and_upload(
 # ---------------------------------------------------------------------------
 
 
-def _build_batch_jsonl_entry(case_id: str, gcs_pdf_uri: str, full_text: str) -> dict:
+def _build_batch_jsonl_entry(case_id: str, gcs_pdf_uri: str, full_text: str, year: int | None = None) -> dict:
     """Build a single JSONL entry for the Vertex AI batch request.
 
     Uses PDF multimodal when GCS URI is available, falls back to text.
@@ -428,7 +436,7 @@ def _build_batch_jsonl_entry(case_id: str, gcs_pdf_uri: str, full_text: str) -> 
             "model": f"publishers/google/models/{BATCH_MODEL}",
             "contents": contents,
             "systemInstruction": {
-                "parts": [{"text": METADATA_EXTRACTION_SYSTEM}],
+                "parts": [{"text": METADATA_EXTRACTION_SYSTEM + get_era_preamble(year)}],
             },
             "generationConfig": {
                 "responseMimeType": "application/json",
@@ -443,6 +451,7 @@ def _build_batch_jsonl_entry(case_id: str, gcs_pdf_uri: str, full_text: str) -> 
 async def phase2_batch_metadata(
     run_id: str,
     manifest: list[ManifestEntry],
+    year: int | None = None,
 ) -> dict[str, dict]:
     """Submit batch metadata extraction job to Vertex AI and poll for results.
 
@@ -459,7 +468,7 @@ async def phase2_batch_metadata(
     jsonl_lines: list[str] = []
     case_id_order: list[str] = []
     for entry in manifest:
-        line = _build_batch_jsonl_entry(entry.case_id, entry.gcs_pdf_uri, entry.full_text)
+        line = _build_batch_jsonl_entry(entry.case_id, entry.gcs_pdf_uri, entry.full_text, year=year)
         jsonl_lines.append(json.dumps(line))
         case_id_order.append(entry.case_id)
 
@@ -501,6 +510,8 @@ async def phase2_batch_metadata(
 
     # Poll until complete
     poll_interval = 120  # 2 minutes
+    max_poll_seconds = 24 * 3600  # 24 hours
+    poll_start = asyncio.get_event_loop().time()
     while True:
         if _shutdown_event.is_set():
             logger.warning("Shutdown requested during Phase 2 polling")
@@ -515,6 +526,13 @@ async def phase2_batch_metadata(
         elif state in ("JOB_STATE_FAILED", "JOB_STATE_CANCELLED"):
             logger.error("Batch job failed with state: %s", state)
             raise RuntimeError(f"Batch job failed: {state}")
+
+        elapsed = asyncio.get_event_loop().time() - poll_start
+        if elapsed > max_poll_seconds:
+            raise RuntimeError(
+                f"Batch polling timed out after {max_poll_seconds}s. "
+                f"Job name: {batch_job.name} — check status manually."
+            )
 
         await asyncio.sleep(poll_interval)
 
@@ -552,25 +570,21 @@ async def phase2_batch_metadata(
                     missing_custom_id_count += 1
                     continue
                 else:
-                    # NO custom_id — positional fallback is UNSAFE
+                    # NO custom_id — skip this result (positional fallback removed)
                     missing_custom_id_count += 1
+                    logger.warning(
+                        "No custom_id in result line %d, skipping",
+                        global_line,
+                    )
+                    failures += 1
                     if missing_custom_id_count > len(case_id_order) * 0.1:
                         logger.error(
                             "HALTING: >10%% of batch results lack custom_id "
-                            "(%d missing). Positional fallback is unreliable.",
+                            "(%d missing).",
                             missing_custom_id_count,
                         )
                         break
-                    if global_line < len(case_id_order):
-                        case_id = case_id_order[global_line]
-                        logger.warning(
-                            "No custom_id in line %d, UNSAFE positional fallback "
-                            "(case_id=%s)", global_line, case_id[:12],
-                        )
-                        global_line += 1  # Only increment on positional fallback
-                    else:
-                        global_line += 1
-                        continue
+                    continue
 
                 # Extract the response content
                 response = result_obj.get("response", {})
@@ -893,6 +907,16 @@ async def _process_single_case(
     metadata = validate_cross_fields(metadata)
     metadata = cross_validate_propositions(metadata)
 
+    # Quality gate: headnotes verbosity check
+    if metadata.headnotes:
+        try:
+            hn_list = json.loads(metadata.headnotes) if isinstance(metadata.headnotes, str) else []
+            hn_total = sum(len(h.get("proposition", "")) for h in hn_list if isinstance(h, dict))
+            if hn_total > 3000:
+                provenance["_needs_review"] = provenance.get("_needs_review", "") + ",headnotes_verbose"
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     # Supplement acts_cited with regex extraction
     regex_acts = extract_acts_cited(full_text)
     if regex_acts:
@@ -973,10 +997,15 @@ async def _process_single_case(
         db_committed = False
         vectors_upserted = False
         try:
-            # D. Chunk
+            # D. Chunk + filter editorial/procedural from embedding
             sections = detect_judgment_sections(full_text)
-            chunks = chunk_judgment(full_text, sections, case_id=case_id)
-            logger.info("case_id=%s: %d sections, %d chunks", case_id, len(sections), len(chunks))
+            all_chunks = chunk_judgment(full_text, sections, case_id=case_id)
+            _SKIP_EMBEDDING_SECTIONS = frozenset({"EDITORIAL", "TOC", "PROCEDURAL"})
+            chunks = [c for c in all_chunks if c.section_type not in _SKIP_EMBEDDING_SECTIONS]
+            skipped = len(all_chunks) - len(chunks)
+            if skipped:
+                logger.info("case_id=%s: skipped %d editorial/procedural chunks from embedding", case_id, skipped)
+            logger.info("case_id=%s: %d sections, %d chunks (%d skipped)", case_id, len(sections), len(chunks), skipped)
 
             # Persist sections + statute interpretations + citation equivalents
             await db.execute(
@@ -1477,7 +1506,7 @@ async def run_pipeline(
 
         # Phase 2: Batch metadata extraction
         try:
-            metadata_results = await phase2_batch_metadata(run_id, manifest)
+            metadata_results = await phase2_batch_metadata(run_id, manifest, year=yr)
         except (RuntimeError, KeyboardInterrupt) as phase2_exc:
             logger.error("Phase 2 failed for year %d: %s", yr, phase2_exc)
             continue
