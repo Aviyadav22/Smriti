@@ -120,6 +120,27 @@ def rrf_merge(
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 
+def apply_legal_signal_boost(
+    merged: list[tuple[str, float]],
+    signal_map: dict[str, float],
+    *,
+    boost_factor: float = 1.0,
+    signal_denominator: float = 500.0,
+) -> list[tuple[str, float]]:
+    """Boost RRF scores for chunks with high legal_signal density.
+
+    Formula: boosted_score = rrf_score * (1 + boost_factor * legal_signal / signal_denominator)
+    """
+    if not signal_map:
+        return merged
+    boosted = [
+        (doc_id, score * (1.0 + boost_factor * signal_map.get(doc_id, 0.0) / signal_denominator))
+        for doc_id, score in merged
+    ]
+    boosted.sort(key=lambda x: x[1], reverse=True)
+    return boosted
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -288,6 +309,10 @@ async def hybrid_search(
             weights=config["weights"],
         )
 
+        # Post-merge boost: reward chunks with high legal_signal density
+        signal_map = {r[0]: r[5] for r in vector_results if len(r) > 5 and r[5] > 0}
+        merged = apply_legal_signal_boost(merged, signal_map)
+
     if not merged:
         return SearchResponse(
             results=[],
@@ -336,7 +361,7 @@ async def hybrid_search(
     vector_chunk_map = {cid: text for cid, _score, text, *_pos in vector_results if text}
     char_pos_map = {
         cid: (cs, ce)
-        for cid, _score, _text, cs, ce in vector_results
+        for cid, _score, _text, cs, ce, *_rest in vector_results
         if cs and ce and ce > cs
     }
     enriched = await _enrich_results(
@@ -484,18 +509,19 @@ async def _vector_search(
     )
 
     # Deduplicate by case_id (chunks map to same case), keeping best chunk text
-    # Also preserve char_start/char_end for passage expansion
-    seen: dict[str, tuple[float, str, int, int]] = {}
+    # Also preserve char_start/char_end for passage expansion and legal_signal score
+    seen: dict[str, tuple[float, str, int, int, float]] = {}
     for r in results:
         case_id = r.metadata.get("case_id", r.id)
         chunk_text = r.metadata.get("text", "") or r.metadata.get("chunk_text", "")
         char_start = int(r.metadata.get("char_start", 0) or 0)
         char_end = int(r.metadata.get("char_end", 0) or 0)
+        legal_signal = float(r.metadata.get("legal_signal", 0.0) or 0.0)
         if case_id not in seen or r.score > seen[case_id][0]:
-            seen[case_id] = (r.score, chunk_text, char_start, char_end)
+            seen[case_id] = (r.score, chunk_text, char_start, char_end, legal_signal)
 
     return sorted(
-        [(cid, score, text, cs, ce) for cid, (score, text, cs, ce) in seen.items()],
+        [(cid, score, text, cs, ce, sig) for cid, (score, text, cs, ce, sig) in seen.items()],
         key=lambda x: x[1],
         reverse=True,
     )
@@ -503,7 +529,7 @@ async def _vector_search(
 
 def _build_snippets_map(
     fts_results: list[FTSResult],
-    vector_results: list[tuple[str, float, str, int, int]],
+    vector_results: list[tuple[str, float, str, int, int, float]],
 ) -> dict[str, str]:
     """Build a map of case_id -> text snippet for reranking.
 

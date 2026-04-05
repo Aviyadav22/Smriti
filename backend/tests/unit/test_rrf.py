@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.core.search.hybrid import rrf_merge
+from app.core.search.hybrid import apply_legal_signal_boost, rrf_merge
 
 
 class TestRRFMerge:
@@ -94,3 +94,55 @@ class TestRRFMerge:
         result = rrf_merge([ranked], k=60)
         scores = [s for _, s in result]
         assert scores == sorted(scores, reverse=True)
+
+
+class TestLegalSignalBoost:
+    """Test the apply_legal_signal_boost function."""
+
+    def test_boost_increases_high_signal_scores(self) -> None:
+        """High legal_signal chunks get boosted above equal-score low-signal chunks."""
+        merged = [("doc_a", 0.5), ("doc_b", 0.5)]
+        signal_map = {"doc_a": 80.0, "doc_b": 5.0}
+        boosted = apply_legal_signal_boost(merged, signal_map)
+        assert boosted[0][0] == "doc_a"
+        assert boosted[0][1] > 0.5
+
+    def test_boost_no_signal_unchanged(self) -> None:
+        """Empty signal_map returns the original merged list unchanged."""
+        merged = [("doc_a", 0.5), ("doc_b", 0.3)]
+        signal_map: dict[str, float] = {}
+        boosted = apply_legal_signal_boost(merged, signal_map)
+        assert boosted == merged
+
+    def test_boost_preserves_order_when_equal_signal(self) -> None:
+        """Equal signal scores preserve the original RRF ranking."""
+        merged = [("doc_a", 0.5), ("doc_b", 0.3)]
+        signal_map = {"doc_a": 10.0, "doc_b": 10.0}
+        boosted = apply_legal_signal_boost(merged, signal_map)
+        assert boosted[0][0] == "doc_a"
+
+    def test_boost_can_reorder_results(self) -> None:
+        """A lower-ranked doc with much higher signal can overtake a higher-ranked one."""
+        merged = [("doc_a", 0.5), ("doc_b", 0.48)]
+        # doc_b has massive signal advantage
+        signal_map = {"doc_a": 0.0, "doc_b": 200.0}
+        boosted = apply_legal_signal_boost(merged, signal_map)
+        assert boosted[0][0] == "doc_b"
+
+    def test_boost_formula_correctness(self) -> None:
+        """Verify the exact boost formula: score * (1 + factor * signal / denom)."""
+        merged = [("doc_a", 0.5)]
+        signal_map = {"doc_a": 100.0}
+        boosted = apply_legal_signal_boost(
+            merged, signal_map, boost_factor=1.0, signal_denominator=500.0
+        )
+        expected = 0.5 * (1.0 + 1.0 * 100.0 / 500.0)
+        assert abs(boosted[0][1] - expected) < 1e-10
+
+    def test_boost_missing_doc_in_signal_map(self) -> None:
+        """Docs not in signal_map get zero boost (score unchanged)."""
+        merged = [("doc_a", 0.5), ("doc_b", 0.3)]
+        signal_map = {"doc_a": 50.0}  # doc_b not present
+        boosted = apply_legal_signal_boost(merged, signal_map)
+        doc_b_score = next(s for d, s in boosted if d == "doc_b")
+        assert doc_b_score == 0.3
