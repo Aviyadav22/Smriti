@@ -544,6 +544,25 @@ async def adversarial_search_strategy_node(
     for batch in batch_results:
         all_results.extend(batch)
 
+    # Fetch arguments_raised for adversarial results
+    if all_results:
+        adv_case_ids = [r.get("case_id") for r in all_results if r.get("case_id") and not str(r["case_id"]).startswith(("ik:", "statute:"))]
+        if adv_case_ids:
+            try:
+                async with async_session_factory() as db:
+                    placeholders = ", ".join(f":id{i}" for i in range(len(adv_case_ids)))
+                    args_result = await db.execute(
+                        sa_text(f"SELECT id::text, arguments_raised FROM cases WHERE id::text IN ({placeholders}) AND arguments_raised IS NOT NULL"),
+                        {f"id{i}": cid for i, cid in enumerate(adv_case_ids)},
+                    )
+                    args_map = {str(row["id"]): row["arguments_raised"] for row in args_result.mappings().all()}
+                    for r in all_results:
+                        cid = r.get("case_id", "")
+                        if cid in args_map:
+                            r["arguments_raised"] = args_map[cid]
+            except Exception as e:
+                logger.warning("Failed to fetch arguments_raised for adversarial results: %s", e)
+
     return {"adversarial_results": all_results}
 
 
@@ -617,13 +636,16 @@ async def counter_arguments_node(
     # Build combined citation pool (precedent_map + adversarial results)
     all_precedents = list(precedent_map[:MAX_RESULTS_FOR_LLM])
     for ar in adversarial_results:
-        all_precedents.append({
+        entry = {
             "title": ar.get("title", ""),
             "citation": ar.get("citation", ""),
             "ratio": ar.get("chunk_text", "") or ar.get("snippet", ""),
             "strength": ar.get("strength", "UNKNOWN"),
             "adversarial": True,
-        })
+        }
+        if ar.get("arguments_raised"):
+            entry["arguments_raised_in_case"] = ar["arguments_raised"]
+        all_precedents.append(entry)
 
     # Build set of known citations for post-generation grounding check
     known_citations: set[str] = set()
