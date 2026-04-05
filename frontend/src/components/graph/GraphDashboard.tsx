@@ -43,13 +43,13 @@ function TreatmentBadge({ pct }: { pct: number | null }) {
     let bg: string;
     let text: string;
     if (pct >= 0.8) {
-        bg = "bg-green-100 text-green-800";
+        bg = "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
         text = `${rounded}% positive`;
     } else if (pct >= 0.5) {
-        bg = "bg-amber-100 text-amber-800";
+        bg = "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
         text = `${rounded}% positive`;
     } else {
-        bg = "bg-red-100 text-red-800";
+        bg = "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
         text = `${rounded}% positive`;
     }
     return (
@@ -62,7 +62,7 @@ function TreatmentBadge({ pct }: { pct: number | null }) {
 function AuthorityScore({ score }: { score: number | null }) {
     if (score == null) return null;
     return (
-        <span className="text-xs text-stone-500" title="Authority score (PageRank)">
+        <span className="text-xs text-muted-foreground" title="Authority score (PageRank)">
             ★ {score.toFixed(4)}
         </span>
     );
@@ -71,13 +71,13 @@ function AuthorityScore({ score }: { score: number | null }) {
 function DisposalBadge({ disposal }: { disposal: string | null | undefined }) {
     if (!disposal) return null;
     const lower = disposal.toLowerCase();
-    let cls = "bg-stone-100 text-stone-600";
+    let cls = "bg-muted text-muted-foreground";
     if (lower.includes("allowed") && !lower.includes("partly")) {
-        cls = "bg-green-100 text-green-700";
+        cls = "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
     } else if (lower.includes("dismissed")) {
-        cls = "bg-red-100 text-red-700";
+        cls = "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
     } else if (lower.includes("partly")) {
-        cls = "bg-amber-100 text-amber-700";
+        cls = "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300";
     }
     return (
         <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${cls}`}>
@@ -105,15 +105,15 @@ function CaseCard({
         <button
             type="button"
             onClick={() => onClick(node.id)}
-            className="w-full rounded-lg border border-stone-200 bg-white p-3 text-left transition hover:border-stone-400 hover:shadow-sm"
+            className="w-full rounded-lg border border-border bg-card p-3 text-left transition hover:border-foreground/30 hover:shadow-sm"
         >
             <div className="flex items-start gap-2">
-                <p className="text-sm font-medium text-stone-900 line-clamp-2 flex-1">
+                <p className="text-sm font-medium text-foreground line-clamp-2 flex-1">
                     {title}
                 </p>
                 <div className="flex items-center gap-1 flex-shrink-0">
                     {node.coram_size != null && node.coram_size > 0 && (
-                        <span className="inline-block rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-stone-600">
+                        <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                             {node.coram_size}J
                         </span>
                     )}
@@ -126,15 +126,15 @@ function CaseCard({
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-2">
                 {node.citation && (
-                    <span className="text-xs text-stone-500">{node.citation}</span>
+                    <span className="text-xs text-muted-foreground">{node.citation}</span>
                 )}
                 {node.year && (
-                    <span className="text-xs text-stone-400">({node.year})</span>
+                    <span className="text-xs text-muted-foreground">({node.year})</span>
                 )}
                 <DisposalBadge disposal={node.case_type} />
             </div>
             {node.primary_legal_issue && (
-                <p className="mt-1 text-xs text-stone-600 italic line-clamp-1">
+                <p className="mt-1 text-xs text-muted-foreground italic line-clamp-1">
                     {node.primary_legal_issue}
                 </p>
             )}
@@ -193,14 +193,14 @@ export default function GraphDashboard({
     if (loading) {
         return (
             <div className="flex h-64 items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-stone-800" />
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-foreground" />
             </div>
         );
     }
 
     if (!data) {
         return (
-            <div className="flex h-64 items-center justify-center text-stone-400">
+            <div className="flex h-64 items-center justify-center text-muted-foreground">
                 No dashboard data available.
             </div>
         );
@@ -220,7 +220,7 @@ export default function GraphDashboard({
         <div className="space-y-4">
             {/* View mode toggle: By Topic / By Statute */}
             <div className="flex items-center gap-2">
-                <span className="text-[10px] uppercase tracking-wider text-stone-400">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
                     Browse:
                 </span>
                 {(["topic", "statute"] as const).map((mode) => (
@@ -239,8 +239,8 @@ export default function GraphDashboard({
                         }}
                         className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
                             viewMode === mode
-                                ? "bg-stone-800 text-white"
-                                : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted text-muted-foreground hover:bg-accent"
                         }`}
                     >
                         {mode === "topic" ? "By Topic" : "By Statute"}
@@ -257,8 +257,8 @@ export default function GraphDashboard({
                             onClick={() => handleCommunityClick(null)}
                             className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                                 selectedCommunity == null
-                                    ? "bg-stone-800 text-white"
-                                    : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                    ? "bg-primary text-primary-foreground"
+                                    : "bg-muted text-muted-foreground hover:bg-accent"
                             }`}
                         >
                             All Topics
@@ -270,8 +270,8 @@ export default function GraphDashboard({
                                 onClick={() => handleCommunityClick(c.community_label)}
                                 className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                                     selectedCommunity === c.community_label
-                                        ? "bg-stone-800 text-white"
-                                        : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                        ? "bg-primary text-primary-foreground"
+                                        : "bg-muted text-muted-foreground hover:bg-accent"
                                 }`}
                             >
                                 {c.community_label} ({c.count})
@@ -286,7 +286,7 @@ export default function GraphDashboard({
                                 <button
                                     type="button"
                                     onClick={() => handleSubtopicClick(null)}
-                                    className="rounded-full border border-stone-300 px-2 py-0.5 text-[11px] font-medium text-stone-500 transition hover:bg-stone-100"
+                                    className="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition hover:bg-accent"
                                 >
                                     Clear subtopic
                                 </button>
@@ -298,8 +298,8 @@ export default function GraphDashboard({
                                     onClick={() => handleSubtopicClick(s.tag)}
                                     className={`rounded-full px-2 py-0.5 text-[11px] font-medium transition ${
                                         currentFilters.subtopic === s.tag
-                                            ? "bg-stone-700 text-white"
-                                            : "bg-stone-50 text-stone-500 hover:bg-stone-200"
+                                            ? "bg-primary text-primary-foreground"
+                                            : "bg-muted text-muted-foreground hover:bg-accent"
                                     }`}
                                 >
                                     {s.subtopic} ({s.count})
@@ -318,8 +318,8 @@ export default function GraphDashboard({
                         onClick={() => handleStatuteSectionClick(null)}
                         className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                             !currentFilters.statuteSection
-                                ? "bg-stone-800 text-white"
-                                : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted text-muted-foreground hover:bg-accent"
                         }`}
                     >
                         All Statutes
@@ -331,8 +331,8 @@ export default function GraphDashboard({
                             onClick={() => handleStatuteSectionClick(s.id)}
                             className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                                 currentFilters.statuteSection === s.id
-                                    ? "bg-stone-800 text-white"
-                                    : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                                    ? "bg-primary text-primary-foreground"
+                                    : "bg-muted text-muted-foreground hover:bg-accent"
                             }`}
                         >
                             {s.section} {s.act} ({s.count})
@@ -346,7 +346,7 @@ export default function GraphDashboard({
                 <button
                     type="button"
                     onClick={() => setFiltersExpanded((p) => !p)}
-                    className="flex items-center gap-1 text-[11px] font-medium text-stone-400 hover:text-stone-600 transition"
+                    className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition"
                 >
                     <span className={`inline-block transition-transform ${filtersExpanded ? "rotate-90" : ""}`}>
                         &#x25B6;
@@ -355,9 +355,9 @@ export default function GraphDashboard({
                 </button>
 
                 {filtersExpanded && (
-                    <div className="mt-2 flex flex-wrap items-center gap-4 rounded-lg border border-stone-200 bg-stone-50 px-4 py-3">
+                    <div className="mt-2 flex flex-wrap items-center gap-4 rounded-lg border border-border bg-muted px-4 py-3">
                         {/* Bench */}
-                        <label className="flex items-center gap-1.5 text-xs text-stone-600">
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                             Bench:
                             <select
                                 value={currentFilters.benchType ?? "Any"}
@@ -369,7 +369,7 @@ export default function GraphDashboard({
                                                 : e.target.value,
                                     })
                                 }
-                                className="rounded border border-stone-300 bg-white px-2 py-1 text-xs text-stone-700"
+                                className="rounded border border-border bg-card px-2 py-1 text-xs text-foreground"
                             >
                                 {BENCH_OPTIONS.map((o) => (
                                     <option key={o} value={o}>
@@ -380,7 +380,7 @@ export default function GraphDashboard({
                         </label>
 
                         {/* Disposal */}
-                        <label className="flex items-center gap-1.5 text-xs text-stone-600">
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                             Disposal:
                             <select
                                 value={currentFilters.disposalNature ?? "Any"}
@@ -392,7 +392,7 @@ export default function GraphDashboard({
                                                 : e.target.value,
                                     })
                                 }
-                                className="rounded border border-stone-300 bg-white px-2 py-1 text-xs text-stone-700"
+                                className="rounded border border-border bg-card px-2 py-1 text-xs text-foreground"
                             >
                                 {DISPOSAL_OPTIONS.map((o) => (
                                     <option key={o} value={o}>
@@ -403,7 +403,7 @@ export default function GraphDashboard({
                         </label>
 
                         {/* Year range */}
-                        <label className="flex items-center gap-1.5 text-xs text-stone-600">
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                             Year:
                             <input
                                 type="number"
@@ -418,9 +418,9 @@ export default function GraphDashboard({
                                             : undefined,
                                     })
                                 }
-                                className="w-16 rounded border border-stone-300 bg-white px-2 py-1 text-xs text-stone-700"
+                                className="w-16 rounded border border-border bg-card px-2 py-1 text-xs text-foreground [&::-webkit-inner-spin-button]:appearance-none"
                             />
-                            <span className="text-stone-400">to</span>
+                            <span className="text-muted-foreground">to</span>
                             <input
                                 type="number"
                                 placeholder="To"
@@ -434,12 +434,12 @@ export default function GraphDashboard({
                                             : undefined,
                                     })
                                 }
-                                className="w-16 rounded border border-stone-300 bg-white px-2 py-1 text-xs text-stone-700"
+                                className="w-16 rounded border border-border bg-card px-2 py-1 text-xs text-foreground [&::-webkit-inner-spin-button]:appearance-none"
                             />
                         </label>
 
                         {/* Reportable only */}
-                        <label className="flex items-center gap-1.5 text-xs text-stone-600 cursor-pointer">
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                             <input
                                 type="checkbox"
                                 checked={currentFilters.isReportable ?? false}
@@ -448,7 +448,7 @@ export default function GraphDashboard({
                                         isReportable: e.target.checked || undefined,
                                     })
                                 }
-                                className="rounded border-stone-300"
+                                className="rounded border-border"
                             />
                             Reportable only
                         </label>
@@ -460,12 +460,12 @@ export default function GraphDashboard({
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 {/* Most Cited Authorities */}
                 <div>
-                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-500">
+                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                         Most Cited Authorities
                     </h3>
                     <div className="space-y-2">
                         {mostCited.length === 0 && (
-                            <p className="text-xs text-stone-400">No cases found.</p>
+                            <p className="text-xs text-muted-foreground">No cases found.</p>
                         )}
                         {mostCited.map((node) => (
                             <CaseCard
@@ -479,12 +479,12 @@ export default function GraphDashboard({
 
                 {/* Rising Authorities */}
                 <div>
-                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-500">
+                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                         Rising Authorities
                     </h3>
                     <div className="space-y-2">
                         {rising.length === 0 && (
-                            <p className="text-xs text-stone-400">No cases found.</p>
+                            <p className="text-xs text-muted-foreground">No cases found.</p>
                         )}
                         {rising.map((node) => (
                             <CaseCard
@@ -493,7 +493,7 @@ export default function GraphDashboard({
                                 onClick={onSelectCase}
                                 extra={
                                     node.recent_citation_ratio != null ? (
-                                        <span className="text-xs text-emerald-600">
+                                        <span className="text-xs text-emerald-600 dark:text-emerald-400">
                                             ↑{" "}
                                             {Math.round(
                                                 node.recent_citation_ratio * 100,
@@ -509,12 +509,12 @@ export default function GraphDashboard({
 
                 {/* Recently Overruled / Distinguished */}
                 <div>
-                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-500">
+                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                         Recently Overruled / Distinguished
                     </h3>
                     <div className="space-y-2">
                         {negative.length === 0 && (
-                            <p className="text-xs text-stone-400">No cases found.</p>
+                            <p className="text-xs text-muted-foreground">No cases found.</p>
                         )}
                         {negative.map((item) => (
                             <CaseCard
@@ -522,7 +522,7 @@ export default function GraphDashboard({
                                 node={item.case}
                                 onClick={onSelectCase}
                                 extra={
-                                    <span className="text-xs text-red-600">
+                                    <span className="text-xs text-red-600 dark:text-red-400">
                                         {item.negative_treatment} by{" "}
                                         {item.by_case_title ?? "Unknown"}{" "}
                                         {item.by_case_year
@@ -538,7 +538,7 @@ export default function GraphDashboard({
 
             {/* Stats footer */}
             {stats && (
-                <div className="flex items-center gap-6 border-t border-stone-200 pt-4 text-xs text-stone-400">
+                <div className="flex items-center gap-6 border-t border-border pt-4 text-xs text-muted-foreground">
                     <span>{stats.total_judgments.toLocaleString()} judgments</span>
                     <span>{stats.total_edges.toLocaleString()} citation links</span>
                 </div>

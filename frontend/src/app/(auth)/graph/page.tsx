@@ -318,8 +318,8 @@ export default function GraphPage() {
                                                 size="sm"
                                                 className={`h-7 w-7 p-0 text-xs rounded-md ${
                                                     depth === d
-                                                        ? "bg-stone-800 text-white hover:bg-stone-700 hover:text-white"
-                                                        : "bg-white text-stone-600 border hover:bg-stone-50"
+                                                        ? "bg-primary text-primary-foreground"
+                                                        : "bg-card text-muted-foreground border border-border hover:bg-accent"
                                                 }`}
                                                 onClick={() => handleDepthChange(d)}
                                             >
@@ -343,8 +343,8 @@ export default function GraphPage() {
                                                 size="sm"
                                                 className={`h-7 text-xs rounded-md ${
                                                     graphMode === mode
-                                                        ? "bg-stone-800 text-white hover:bg-stone-700 hover:text-white"
-                                                        : "bg-white text-stone-600 border hover:bg-stone-50"
+                                                        ? "bg-primary text-primary-foreground"
+                                                        : "bg-card text-muted-foreground border border-border hover:bg-accent"
                                                 }`}
                                                 onClick={() => handleGraphModeChange(mode)}
                                             >
@@ -370,8 +370,8 @@ export default function GraphPage() {
                                         size="sm"
                                         className={`h-7 text-xs rounded-md gap-1 ${
                                             view === v
-                                                ? "bg-stone-800 text-white hover:bg-stone-700 hover:text-white"
-                                                : "bg-white text-stone-600 border hover:bg-stone-50"
+                                                ? "bg-primary text-primary-foreground"
+                                                : "bg-card text-muted-foreground border border-border hover:bg-accent"
                                         }`}
                                         onClick={() => handleViewChange(v)}
                                     >

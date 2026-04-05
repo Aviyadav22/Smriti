@@ -25,7 +25,7 @@ interface NetworkViewProps {
 // Constants
 // ---------------------------------------------------------------------------
 
-const COMMUNITY_HALO_COLORS = [
+const COMMUNITY_HALO_COLORS_LIGHT = [
     "#FEF3C7",
     "#DBEAFE",
     "#D1FAE5",
@@ -38,13 +38,27 @@ const COMMUNITY_HALO_COLORS = [
     "#FFF7ED",
 ];
 
+const COMMUNITY_HALO_COLORS_DARK = [
+    "#78350F",
+    "#1E3A5F",
+    "#064E3B",
+    "#831843",
+    "#312E81",
+    "#7F1D1D",
+    "#365314",
+    "#581C87",
+    "#164E63",
+    "#7C2D12",
+];
+
 function getMainNodeColor(
     node: GraphNode,
     queryCaseId: string | null,
 ): string {
-    if (queryCaseId && node.id === queryCaseId) return "#B89B6A"; // gold
+    const isDark = typeof window !== "undefined" && document.documentElement.classList.contains("dark");
+    if (queryCaseId && node.id === queryCaseId) return isDark ? "#D9B97A" : "#B89B6A"; // gold
     const pct = node.treatment_positive_pct;
-    if (pct == null) return "#6B7280";
+    if (pct == null) return isDark ? "#9B9080" : "#6B7280";
     if (pct >= 0.8) return "#22C55E";
     if (pct >= 0.5) return "#F97316";
     return "#EF4444";
@@ -95,9 +109,11 @@ export default function NetworkView({
             const r = nodeRadius(gn.cited_by_count);
 
             // Community halo
+            const isDarkMode = typeof window !== "undefined" && document.documentElement.classList.contains("dark");
+            const haloColors = isDarkMode ? COMMUNITY_HALO_COLORS_DARK : COMMUNITY_HALO_COLORS_LIGHT;
             if (gn.community_id != null) {
                 const haloColor =
-                    COMMUNITY_HALO_COLORS[gn.community_id % COMMUNITY_HALO_COLORS.length];
+                    haloColors[gn.community_id % haloColors.length];
                 ctx.beginPath();
                 ctx.arc(x, y, r + 4, 0, Math.PI * 2);
                 ctx.fillStyle = haloColor;
