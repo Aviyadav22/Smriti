@@ -50,8 +50,9 @@ SCC_SUB_PATTERN: re.Pattern[str] = re.compile(
 )
 
 # (2020) 3 SCC 145 — also accepts [2020] 3 SCC 145
+# \s* (not \s+) to handle no-space OCR artifacts like (2020)3SCC145
 SCC_PATTERN: re.Pattern[str] = re.compile(
-    r"[\(\[](\d{4})[\)\]]\s+(\d+)\s+SCC\s+(\d+)"
+    r"[\(\[](\d{4})[\)\]]\s*(\d+)\s*SCC\s+(\d+)"
 )
 
 # 2020 SCC OnLine SC 1234 — case-insensitive for "OnLine" variations

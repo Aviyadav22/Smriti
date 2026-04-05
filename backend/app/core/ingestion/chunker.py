@@ -6,8 +6,11 @@ patterns and chunks text while respecting section boundaries.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -29,7 +32,7 @@ class Chunk:
     """A text chunk ready for embedding, annotated with section metadata."""
 
     text: str
-    section_type: str  # HEADER, FACTS, ARGUMENTS, ISSUES, ANALYSIS, RATIO, ORDER, DISSENT, CONCURRENCE, PRELIMINARY, EVIDENCE, STATUTORY, DIRECTIONS, TOC, EDITORIAL, PER_CURIAM, FULL
+    section_type: str  # HEADER, FACTS, ARGUMENTS, ISSUES, ANALYSIS, RATIO, ORDER, DISSENT, CONCURRENCE, PRELIMINARY, EVIDENCE, STATUTORY, DIRECTIONS, TOC, EDITORIAL, PER_CURIAM, PROCEDURAL, JUDGMENT_START, FULL
     chunk_index: int
     case_id: str
     page_number: int | None = None
@@ -53,12 +56,17 @@ _LEGAL_SIGNAL_PHRASES: tuple[str, ...] = (
 )
 
 
+_LEGAL_SIGNAL_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(p) for p in _LEGAL_SIGNAL_PHRASES) + r")\b"
+)
+
+
 def _compute_legal_signal(text: str) -> float:
     """Compute legal signal density: count of signal phrases per 1000 chars."""
     if not text:
         return 0.0
     text_lower = text.lower()
-    count = sum(1 for phrase in _LEGAL_SIGNAL_PHRASES if phrase in text_lower)
+    count = len(_LEGAL_SIGNAL_RE.findall(text_lower))
     return round(count / len(text) * 1000, 2)
 
 
@@ -132,10 +140,17 @@ SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
         r"(?:"
         r"IN\s+THE\s+SUPREME\s+COURT"
         r"|IN\s+THE\s+HIGH\s+COURT"
-        r"|JUDGMENT"
-        r"|J\s*U\s*D\s*G\s*M\s*E\s*N\s*T"
         r"|REPORTABLE"
         r"|NON[\s-]*REPORTABLE"
+        r")",
+        re.IGNORECASE,
+    ),
+    # JUDGMENT marker starts the judgment body — separate from HEADER
+    # so it doesn't create a second bloated HEADER mid-document.
+    "JUDGMENT_START": re.compile(
+        r"(?:"
+        r"JUDGMENT"
+        r"|J\s*U\s*D\s*G\s*M\s*E\s*N\s*T"
         r")",
         re.IGNORECASE,
     ),
@@ -232,7 +247,8 @@ SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
         re.IGNORECASE,
     ),
     "EVIDENCE": re.compile(
-        r"(?:EVIDENCE\s+ON\s+RECORD|APPRECIATION\s+OF\s+EVIDENCE|OCULAR\s+EVIDENCE|EVIDENCE)",
+        r"(?:EVIDENCE\s+ON\s+RECORD|APPRECIATION\s+OF\s+EVIDENCE|OCULAR\s+EVIDENCE"
+        r"|DOCUMENTARY\s+EVIDENCE|MEDICAL\s+EVIDENCE|ORAL\s+EVIDENCE)",
         re.IGNORECASE,
     ),
     "STATUTORY": re.compile(
@@ -284,6 +300,15 @@ CHUNK_OVERLAP: int = 200
 _DENSE_SECTIONS: frozenset[str] = frozenset({"ANALYSIS", "RATIO", "ORDER", "DISSENT", "CONCURRENCE"})
 _DENSE_CHUNK_SIZE: int = 1200
 _DENSE_CHUNK_OVERLAP: int = 300
+
+# All valid section types produced by the chunker.  Used to validate
+# section labels and prevent typos from creating unfilterable chunks.
+VALID_SECTION_TYPES: frozenset[str] = frozenset({
+    "HEADER", "JUDGMENT_START", "FACTS", "ARGUMENTS", "ISSUES",
+    "ANALYSIS", "RATIO", "ORDER", "DISSENT", "CONCURRENCE",
+    "PRELIMINARY", "EVIDENCE", "STATUTORY", "TOC", "EDITORIAL",
+    "DIRECTIONS", "PER_CURIAM", "PROCEDURAL", "FULL",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -429,7 +454,187 @@ def detect_judgment_sections(text: str) -> list[Section]:
         if section_text.strip():  # skip empty sections
             sections.append(Section(type=stype, start=start, end=end, text=section_text))
 
+    # ── Post-processing: split bloated HEADER and fix mislabeled sections ──
+
+    sections = _split_bloated_header(sections, text)
+    sections = _fix_mislabeled_sections(sections)
+
     return sections
+
+
+# Maximum HEADER size before we split it — SCR editorial headnotes
+# often inflate HEADER to 5-20K chars
+_MAX_HEADER_CHARS = 3000
+
+# SCR lettered margin markers (page column indicators)
+_SCR_MARGIN_RE = re.compile(r"^\s*[A-H]\s*$", re.MULTILINE)
+
+# SCR HELD: pattern in editorial headnotes
+_SCR_HELD_RE = re.compile(r"\bHELD\s*:", re.IGNORECASE)
+
+# Bench composition pattern: "[JUDGE1 AND JUDGE2, JJ.]"
+_BENCH_RE = re.compile(r"\[.*?JJ?\.?\s*\]")
+
+# Testimony indicators for section mislabeling check
+_TESTIMONY_KEYWORDS = {
+    "cross-examination", "cross examination", "pw-", "dw-",
+    "witness stated", "witness deposed", "deposed that",
+    "under examination", "it is wrong to suggest",
+}
+
+
+def _split_bloated_header(
+    sections: list[Section], text: str
+) -> list[Section]:
+    """Split a bloated HEADER section into HEADER + EDITORIAL.
+
+    SCR-formatted cases have reporter editorial content (headnotes with
+    lettered A-H margins, HELD: summaries) that inflates the HEADER section
+    to 5-20K chars.  This function detects SCR editorial content within an
+    oversized HEADER and splits it off into a separate EDITORIAL section,
+    leaving HEADER as just the case preamble (title, bench, date).
+    """
+    if not sections or sections[0].type != "HEADER":
+        return sections
+    header = sections[0]
+    if len(header.text) <= _MAX_HEADER_CHARS:
+        return sections  # HEADER is a reasonable size
+
+    header_text = header.text
+
+    # Detect SCR editorial markers in the header
+    margins = list(_SCR_MARGIN_RE.finditer(header_text[:15_000]))
+    held = _SCR_HELD_RE.search(header_text[:5000])
+
+    if len(margins) < 2 and not held:
+        # Not SCR format — don't split, but still cap the header display
+        # by inserting an EDITORIAL section after the bench line
+        bench = _BENCH_RE.search(header_text[:2000])
+        if bench:
+            split_pos = bench.end()
+            # Skip trailing whitespace
+            while split_pos < len(header_text) and header_text[split_pos] in "\n\r \t":
+                split_pos += 1
+            if split_pos < len(header_text) - 200:
+                new_header = Section(
+                    type="HEADER",
+                    start=header.start,
+                    end=header.start + split_pos,
+                    text=header_text[:split_pos],
+                )
+                new_editorial = Section(
+                    type="EDITORIAL",
+                    start=header.start + split_pos,
+                    end=header.end,
+                    text=header_text[split_pos:],
+                )
+                return [new_header, new_editorial] + sections[1:]
+        return sections
+
+    # SCR format detected — find the split point
+    # The editorial starts after the bench/date line
+    bench = _BENCH_RE.search(header_text[:2000])
+    if bench:
+        split_pos = bench.end()
+        while split_pos < len(header_text) and header_text[split_pos] in "\n\r \t":
+            split_pos += 1
+    elif held:
+        # No bench pattern — split at HELD: position (fallback)
+        split_pos = max(held.start() - 50, 0)  # A bit before HELD:
+    else:
+        # Split at first margin
+        split_pos = margins[0].start()
+
+    if split_pos >= len(header_text) - 200:
+        return sections  # Nothing meaningful to split
+
+    new_header = Section(
+        type="HEADER",
+        start=header.start,
+        end=header.start + split_pos,
+        text=header_text[:split_pos],
+    )
+    new_editorial = Section(
+        type="EDITORIAL",
+        start=header.start + split_pos,
+        end=header.end,
+        text=header_text[split_pos:],
+    )
+    return [new_header, new_editorial] + sections[1:]
+
+
+def _fix_mislabeled_sections(sections: list[Section]) -> list[Section]:
+    """Fix sections whose content doesn't match their label.
+
+    - TOC starting with "Headnotes" → relabel as EDITORIAL (SCR reporter content)
+    - ORDER starting with "ORDER AND APPEARANCES" → relabel as PROCEDURAL
+    - ARGUMENTS containing witness testimony → relabel as EVIDENCE
+    - Very small non-primary sections (<100 chars) → merge into previous
+    """
+    fixed: list[Section] = []
+    for sec in sections:
+        # TOC containing SCR reporter headnotes → EDITORIAL
+        if sec.type == "TOC":
+            stripped = sec.text.lstrip()
+            if stripped[:20].upper().startswith("HEADNOTE"):
+                sec = Section(
+                    type="EDITORIAL",
+                    start=sec.start,
+                    end=sec.end,
+                    text=sec.text,
+                )
+
+        # ORDER that's actually an appearance/jurisdiction block → PROCEDURAL
+        if sec.type == "ORDER":
+            stripped = sec.text.lstrip()
+            upper_start = stripped[:60].upper()
+            if ("ORDER AND APPEARANCES" in upper_start
+                    or "APPELLATE JURISDICTION" in upper_start
+                    or "ORIGINAL JURISDICTION" in upper_start):
+                sec = Section(
+                    type="PROCEDURAL",
+                    start=sec.start,
+                    end=sec.end,
+                    text=sec.text,
+                )
+
+        # ARGUMENTS containing witness testimony → EVIDENCE
+        if sec.type == "ARGUMENTS":
+            sample = sec.text[:3000].lower()
+            testimony_hits = sum(
+                1 for kw in _TESTIMONY_KEYWORDS if kw in sample
+            )
+            if testimony_hits >= 2:
+                sec = Section(
+                    type="EVIDENCE",
+                    start=sec.start,
+                    end=sec.end,
+                    text=sec.text,
+                )
+
+        # Merge tiny sections into previous (only for non-primary types)
+        _PRIMARY_TYPES = {"HEADER", "FACTS", "ARGUMENTS", "ANALYSIS", "RATIO", "ORDER",
+                          "DISSENT", "CONCURRENCE", "EVIDENCE", "ISSUES", "EDITORIAL",
+                          "PROCEDURAL", "JUDGMENT_START"}
+        if (fixed and len(sec.text.strip()) < 100
+                and sec.type not in _PRIMARY_TYPES):
+            prev = fixed[-1]
+            merged = Section(
+                type=prev.type,
+                start=prev.start,
+                end=sec.end,
+                text=text_between(prev, sec),
+            )
+            fixed[-1] = merged
+            continue
+
+        fixed.append(sec)
+    return fixed
+
+
+def text_between(s1: Section, s2: Section) -> str:
+    """Combine text from two adjacent sections."""
+    return s1.text + s2.text
 
 
 # ---------------------------------------------------------------------------
@@ -483,6 +688,16 @@ def chunk_judgment(
 
         if section_len == 0:
             continue
+
+        # Validate section type against known set
+        if section.type not in VALID_SECTION_TYPES:
+            logger.warning(
+                "Unknown section type %r in case %s — normalizing to FULL",
+                section.type, case_id,
+            )
+            section = Section(
+                type="FULL", start=section.start, end=section.end, text=section.text,
+            )
 
         # Section-aware chunk sizing
         effective_chunk_size = _DENSE_CHUNK_SIZE if section.type in _DENSE_SECTIONS else CHUNK_SIZE

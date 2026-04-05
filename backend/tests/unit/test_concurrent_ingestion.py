@@ -69,8 +69,9 @@ class TestEmbedChunksRetry:
     """_embed_chunks retry should not produce duplicate embeddings."""
 
     @pytest.mark.asyncio
-    async def test_successful_single_batch(self):
+    async def test_successful_single_batch(self, monkeypatch):
         """Normal case: all chunks embedded in one pass."""
+        monkeypatch.setenv("EMBEDDING_DIMENSION", "2")
         embedder = AsyncMock()
         embedder.embed_batch.return_value = [[0.1, 0.2], [0.3, 0.4]]
 
@@ -81,8 +82,9 @@ class TestEmbedChunksRetry:
         assert result[0] == [0.1, 0.2]
 
     @pytest.mark.asyncio
-    async def test_retry_does_not_duplicate_embeddings(self):
+    async def test_retry_does_not_duplicate_embeddings(self, monkeypatch):
         """When a batch fails and retries, embeddings should not be duplicated."""
+        monkeypatch.setenv("EMBEDDING_DIMENSION", "2")
         embedder = AsyncMock()
         embedder.embed_batch.side_effect = [
             RuntimeError("Transient failure"),  # 1st attempt fails

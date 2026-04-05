@@ -383,7 +383,7 @@ async def ingest_judgment(
     # ------------------------------------------------------------------
     # 4c. RATIO CROSS-CONTAMINATION CHECK
     # ------------------------------------------------------------------
-    if metadata.ratio_decidendi and len(metadata.ratio_decidendi) >= 30:
+    if isinstance(metadata.ratio_decidendi, str) and len(metadata.ratio_decidendi) >= 30:
         dup_ratio = await db.execute(
             text(
                 "SELECT id, title FROM cases "
@@ -1112,6 +1112,13 @@ async def _embed_chunks(
                     raise RuntimeError(
                         f"Embedding batch returned {len(batch_embeddings)} "
                         f"for {len(batch)} inputs (partial failure)"
+                    )
+                # Validate dimension on every batch (not just the first)
+                _expected_dim = int(os.environ.get("EMBEDDING_DIMENSION", "1536"))
+                if batch_embeddings and len(batch_embeddings[0]) != _expected_dim:
+                    raise RuntimeError(
+                        f"Embedding dimension mismatch: expected {_expected_dim}, "
+                        f"got {len(batch_embeddings[0])}"
                     )
                 all_embeddings.extend(batch_embeddings)
                 break

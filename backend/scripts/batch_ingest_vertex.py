@@ -251,6 +251,8 @@ async def phase1_extract_and_upload(
     stem_index: dict[str, str] = {}
     for key in metadata_map:
         stem = Path(str(key)).stem
+        if stem in stem_index:
+            logger.warning("Stem collision: '%s' maps to both '%s' and '%s'", stem, stem_index[stem], key)
         stem_index[stem] = key
 
     # GCS client initialization skipped — per-PDF uploads removed to prevent OOM.
@@ -306,6 +308,8 @@ async def phase1_extract_and_upload(
         full_text, _pii_masked = anonymize_text(quality.text)
 
         # Dedup via text_hash (skip only if fully ingested with chunk_count > 0)
+        # Note: Race condition possible between this check and Phase 1 completion.
+        # DB INSERT ... ON CONFLICT in Phase 3 handles concurrent inserts safely.
         text_hash = _compute_text_hash(full_text)
         async with async_session_factory() as db:
             existing = await db.execute(
@@ -346,6 +350,9 @@ async def phase1_extract_and_upload(
             char_count=quality.char_count,
         )
         manifest.append(entry)
+
+        if (i + 1) % 100 == 0:
+            gc.collect()
 
         if (i + 1) % 10 == 0:
             logger.info(
@@ -1384,7 +1391,10 @@ def _load_manifest_from_disk(run_id: str) -> list[ManifestEntry]:
         case_id = item["case_id"]
         # Load full text from disk
         text_path = texts_dir / f"{case_id}.txt"
-        full_text = text_path.read_text(encoding="utf-8") if text_path.exists() else ""
+        if not text_path.exists():
+            logger.error("Text file missing for case %s, skipping", case_id)
+            continue
+        full_text = text_path.read_text(encoding="utf-8")
 
         entries.append(ManifestEntry(
             case_id=case_id,
