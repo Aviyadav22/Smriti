@@ -56,6 +56,24 @@
     "history": "इतिहास",
     "requiresDocument": "अपलोड किया गया दस्तावेज़ आवश्यक"
   },
+  "sidebar": {
+    "agents": "एजेंट्स",
+    "explore": "अन्वेषण",
+    "myWork": "मेरा कार्य",
+    "research": "अनुसंधान",
+    "casePrep": "केस तैयारी",
+    "argBuilder": "तर्क निर्माता",
+    "drafting": "ड्राफ्टिंग",
+    "citationGraph": "उद्धरण ग्राफ",
+    "judges": "न्यायाधीश",
+    "courts": "न्यायालय",
+    "documents": "दस्तावेज़",
+    "upload": "अपलोड",
+    "settings": "सेटिंग्स",
+    "collapse": "साइडबार छोटा करें",
+    "expand": "साइडबार बड़ा करें",
+    "dashboard": "डैशबोर्ड"
+  },
   "language": {
     "en": "English",
     "hi": "हिन्दी",

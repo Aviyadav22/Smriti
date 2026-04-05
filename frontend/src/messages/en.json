@@ -56,6 +56,24 @@
     "history": "History",
     "requiresDocument": "Requires uploaded document"
   },
+  "sidebar": {
+    "agents": "Agents",
+    "explore": "Explore",
+    "myWork": "My Work",
+    "research": "Research",
+    "casePrep": "Case Prep",
+    "argBuilder": "Argument Builder",
+    "drafting": "Drafting",
+    "citationGraph": "Citation Graph",
+    "judges": "Judges",
+    "courts": "Courts",
+    "documents": "Documents",
+    "upload": "Upload",
+    "settings": "Settings",
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar",
+    "dashboard": "Dashboard"
+  },
   "language": {
     "en": "English",
     "hi": "हिन्दी",

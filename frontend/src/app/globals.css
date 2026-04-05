@@ -90,6 +90,16 @@
   /* Brand gold from marketing site */
   --gold: #B89B6A;
 
+  /* Sidebar */
+  --sidebar: #FFFDF7;
+  --sidebar-foreground: #1A1A1A;
+  --sidebar-primary: #B89B6A;
+  --sidebar-primary-foreground: #FFFDF7;
+  --sidebar-accent: #EDE8DD;
+  --sidebar-accent-foreground: #1A1A1A;
+  --sidebar-border: #D8D0C4;
+  --sidebar-ring: #B8A990;
+
   /* Charts */
   --chart-1: #B89B6A;
   --chart-2: #8B7355;
@@ -132,6 +142,16 @@
 
   /* Gold persists across modes */
   --gold: #D4B98A;
+
+  /* Sidebar */
+  --sidebar: #111418;
+  --sidebar-foreground: #E8ECF1;
+  --sidebar-primary: #D4B98A;
+  --sidebar-primary-foreground: #0B0D0F;
+  --sidebar-accent: #1A1D23;
+  --sidebar-accent-foreground: #E8ECF1;
+  --sidebar-border: #2A2D35;
+  --sidebar-ring: #4A5163;
 
   --chart-1: #D4B98A;
   --chart-2: #7C8594;
