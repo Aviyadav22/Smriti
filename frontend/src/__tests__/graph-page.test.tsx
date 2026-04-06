@@ -47,7 +47,7 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-import GraphPage from "@/app/graph/page";
+import GraphPage from "@/app/(auth)/graph/page";
 
 function makeStats(overrides: Partial<GraphStats> = {}): GraphStats {
   return {

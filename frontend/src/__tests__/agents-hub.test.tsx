@@ -26,7 +26,7 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-import AgentsPage from "@/app/agents/page";
+import AgentsPage from "@/app/(auth)/agents/page";
 
 describe("AgentsPage", () => {
   it("renders both agent cards", () => {

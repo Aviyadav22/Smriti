@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 class CitationTreatment(str, Enum):
     """How a case treats a cited precedent."""
+    REFERRED_TO = "referred_to"  # Neutral reference (default when no specific treatment detected)
     OVERRULED = "overruled"
     DISTINGUISHED = "distinguished"
     AFFIRMED = "affirmed"
@@ -145,14 +146,15 @@ _TREATMENT_CLASSIFICATION_SYSTEM = """You are a legal citation analyst. Classify
 Given a text excerpt around a citation, determine how the citing case treats the cited case.
 
 Valid treatments:
-1. "overruled" — cited case is expressly or impliedly overruled
-2. "distinguished" — cited case is distinguished on facts or law
-3. "affirmed" — cited case is approved/upheld/endorsed
-4. "followed" — cited case is followed as binding/persuasive
-5. "not_followed" — cited case is declined to be followed
-6. "explained" — cited case is explained/interpreted/clarified
-7. "doubted" — cited case is questioned/doubted
-8. "per_incuriam" — cited case is declared per incuriam (decided in ignorance of law)
+1. "referred_to" — cited case is merely mentioned/referenced without specific treatment
+2. "overruled" — cited case is expressly or impliedly overruled
+3. "distinguished" — cited case is distinguished on facts or law
+4. "affirmed" — cited case is approved/upheld/endorsed
+5. "followed" — cited case is followed as binding/persuasive
+6. "not_followed" — cited case is declined to be followed
+7. "explained" — cited case is explained/interpreted/clarified
+8. "doubted" — cited case is questioned/doubted
+9. "per_incuriam" — cited case is declared per incuriam (decided in ignorance of law)
 
 Return ONLY a JSON object: {"treatment": "<type>", "confidence": <0.0-1.0>}"""
 

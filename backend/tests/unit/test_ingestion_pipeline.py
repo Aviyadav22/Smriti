@@ -499,10 +499,12 @@ class TestPlaceholderResolution:
     async def test_placeholder_promoted_when_citation_matches(self) -> None:
         """When a placeholder exists with matching citation, promote it in-place."""
         graph_store = AsyncMock()
-        # Call sequence: 1) placeholder query (found), 2) placeholder MERGE, 3) CITES edges,
-        # 4) cited_by_count targets, 5) cited_by_count self
+        # Call sequence: 1) placeholder query (found), 2) ID sync check,
+        # 3) placeholder MERGE, 4) CITES edges,
+        # 5) cited_by_count targets, 6) cited_by_count self
         graph_store.query = AsyncMock(side_effect=[
             [{"id": "ref_abc123"}],  # placeholder found and promoted
+            [{"nid": "real-uuid"}],  # Neo4j-PG ID sync verification
             [],  # placeholder MERGE for cited nodes
             [],  # CITES edge creation
             [],  # cited_by_count for targets
@@ -530,6 +532,7 @@ class TestPlaceholderResolution:
         graph_store = AsyncMock()
         graph_store.query = AsyncMock(side_effect=[
             [],  # no placeholder found
+            [{"nid": "real-uuid"}],  # Neo4j-PG ID sync verification
             [],  # placeholder MERGE for cited nodes
             [],  # CITES edge creation
             [],  # cited_by_count for targets

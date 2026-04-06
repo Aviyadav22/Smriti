@@ -41,10 +41,13 @@ _JUDGMENT_START_PATTERNS = [
 ]
 
 
+_CASE_TITLE_RE = re.compile(r"\bv[s]?\.\s", re.IGNORECASE)
+
+
 def _strip_leading_judgment_bleed(
     text: str,
     scan_chars: int = 3000,
-    min_bleed: int = 200,
+    min_bleed: int = 100,
 ) -> str:
     """Remove leading text from a previous judgment that bleeds into this PDF.
 
@@ -52,11 +55,17 @@ def _strip_leading_judgment_bleed(
     earliest marker appears after ``min_bleed`` characters, everything before
     it is considered bleed from a previous judgment and is stripped.
 
+    Safety: only strips when the leading text actually looks like bleed —
+    starts mid-sentence (lowercase) or lacks a case title pattern ("v.").
+    If the leading text has a proper case title, it's likely a legitimate
+    preamble and is preserved.
+
     Args:
         text: Full extracted text.
         scan_chars: How many chars from the start to scan for markers.
         min_bleed: Minimum chars before marker to consider it bleed (avoids
-            stripping legitimate short preambles).
+            stripping legitimate short preambles).  Lowered from 200 to 100
+            to catch short reporter preambles in pre-1990 PDFs.
 
     Returns:
         Text with leading bleed removed, or original text if no bleed detected.
@@ -73,14 +82,195 @@ def _strip_leading_judgment_bleed(
             earliest_pos = match.start()
 
     if earliest_pos >= min_bleed and earliest_pos < scan_chars:
-        stripped_len = earliest_pos
-        logger.info(
-            "Stripped %d chars of leading judgment bleed (marker at pos %d)",
-            stripped_len, earliest_pos,
-        )
-        return text[earliest_pos:]
+        candidate = text[:earliest_pos]
+
+        # Safety check: verify the candidate text looks like bleed, not
+        # legitimate preamble.  Bleed typically starts mid-sentence
+        # (lowercase first character) or lacks a case title pattern.
+        first_non_ws = candidate.lstrip()
+        starts_mid_sentence = bool(first_non_ws) and first_non_ws[0].islower()
+        has_case_title = bool(_CASE_TITLE_RE.search(candidate))
+
+        if starts_mid_sentence or not has_case_title:
+            logger.info(
+                "Stripped %d chars of leading judgment bleed (marker at pos %d, "
+                "mid_sentence=%s, has_title=%s)",
+                earliest_pos, earliest_pos, starts_mid_sentence, has_case_title,
+            )
+            return text[earliest_pos:]
+        else:
+            logger.debug(
+                "Bleed candidate (%d chars) has case title and proper start — "
+                "preserving as legitimate preamble",
+                earliest_pos,
+            )
 
     return text
+
+
+# ---------------------------------------------------------------------------
+# SCR editorial content stripping
+# ---------------------------------------------------------------------------
+
+# SCR lettered margin markers: standalone A-H on a line (column indicators)
+_SCR_LETTERED_MARGIN_RE = re.compile(r"^\s*[A-H]\s*$", re.MULTILINE)
+
+# SCR page header: "596 SUPREME COURT REPORTS [2022] 10 S.C.R."
+_SCR_PAGE_HEADER_RE = re.compile(
+    r"^\s*\d+\s+SUPREME\s+COURT\s+REPORTS\b.*$", re.MULTILINE | re.IGNORECASE
+)
+
+# SCR editorial "HELD:" pattern (appears in reporter headnotes, not the judgment)
+_SCR_HELD_RE = re.compile(r"\bHELD\s*:", re.IGNORECASE)
+
+# Author judge announcement: "KRISHNA IYER, J.—" or "Per KRISHNA IYER, J."
+_AUTHOR_ANNOUNCE_RE = re.compile(
+    r"(?:[A-Z][A-Z\s\.]{3,},\s*J\.?\s*[–—-]|"
+    r"Per\s+[A-Z][A-Za-z\s\.]+,?\s*J\.?\s*[):\-–—])",
+)
+
+# Case intro pattern: "This appeal..." / "The appellant..."
+_CASE_INTRO_RE = re.compile(
+    r"(?:This\s+(?:appeal|petition|case|writ|matter|reference|review|application)"
+    r"|The\s+(?:appellant|petitioner|prosecution|respondent|complainant|facts)"
+    r"|Leave\s+granted"
+    r"|We\s+have\s+heard"
+    r"|By\s+this\s+(?:appeal|petition|writ))\s+",
+    re.IGNORECASE,
+)
+
+# SCR case title (appears right after reporter bleed)
+_SCR_CASE_TITLE_END_RE = re.compile(
+    r"\[.*?JJ?\.?\s*\]",  # "[JUDGE1 AND JUDGE2, JJ.]" bench composition
+)
+
+
+def strip_reporter_editorial(
+    text: str,
+    scan_chars: int = 25_000,
+    min_margins: int = 3,
+) -> tuple[str, str]:
+    """Strip SCR/SCC reporter editorial content (headnotes, catchwords, digests).
+
+    SCR-format PDFs contain reporter-added editorial content BEFORE the actual
+    judgment text: structured headnotes with HELD: summaries, lettered page-margin
+    indicators (A-H), catchwords, and case references. This function detects and
+    removes the editorial block between the case preamble and the judgment body.
+
+    Detection uses lettered margin count (A-H standalone lines) as the primary
+    signal — SCR pages consistently have 3+ such indicators.
+
+    The editorial block boundary is identified by (in order of reliability):
+    1. Author judge announcement ("NAME, J.—" or "Per NAME, J.")
+    2. SCR page header ("NNN SUPREME COURT REPORTS [YEAR]...")
+       followed by the actual judgment text
+    3. Transition sentence ("Dismissing the appeals, the Court")
+
+    Note: lettered margins (A-H) appear throughout SCR text as page-column
+    indicators, NOT just in the editorial section. They cannot be used as
+    editorial-end boundaries.
+
+    Args:
+        text: Full extracted text from the PDF.
+        scan_chars: How many characters from the start to scan.
+        min_margins: Minimum lettered margin count to classify as SCR format.
+
+    Returns:
+        Tuple of (cleaned_text, stripped_editorial). If no editorial detected,
+        stripped_editorial is empty and cleaned_text == text.
+    """
+    if len(text) < 500:
+        return text, ""
+
+    scan_region = text[:scan_chars]
+
+    # Step 1: Detect SCR format via lettered margin count in first 10K chars
+    # (first 10K is enough to confirm SCR format without counting margins in
+    # the judgment body)
+    early_margins = list(_SCR_LETTERED_MARGIN_RE.finditer(text[:10_000]))
+    if len(early_margins) < min_margins:
+        return text, ""  # Not SCR format
+
+    # Step 2: Find the bench composition line — marks end of case preamble.
+    bench_match = _SCR_CASE_TITLE_END_RE.search(scan_region[:2000])
+    if not bench_match:
+        # No bench line found — can't reliably identify preamble end
+        return text, ""
+
+    preamble_end = bench_match.end()
+    # Skip trailing whitespace/newlines after bench line
+    while preamble_end < len(scan_region) and scan_region[preamble_end] in "\n\r \t":
+        preamble_end += 1
+
+    # Step 3: Find where the judgment begins (after editorial content).
+    # The editorial typically spans from preamble_end to ~2000-8000 chars.
+    # We look for reliable judgment-start markers AFTER the editorial.
+
+    held_match = _SCR_HELD_RE.search(scan_region[preamble_end:])
+    held_pos = (preamble_end + held_match.start()) if held_match else preamble_end
+
+    # Minimum: must be after HELD: and at least 500 chars of editorial
+    min_judgment_start = max(preamble_end + 500, held_pos + 100)
+
+    judgment_start: int | None = None
+
+    # Strategy a: Author judge announcement (most reliable)
+    for match in _AUTHOR_ANNOUNCE_RE.finditer(scan_region):
+        if match.start() > min_judgment_start:
+            judgment_start = match.start()
+            break
+
+    # Strategy b: Transition sentence ("Dismissing/Allowing the appeal...")
+    if judgment_start is None:
+        _TRANSITION_RE = re.compile(
+            r"(?:Dismissing|Allowing|Disposing\s+of|Setting\s+aside|Affirming)"
+            r"\s+the\s+(?:appeal|petition|writ|review|case)",
+            re.IGNORECASE,
+        )
+        for match in _TRANSITION_RE.finditer(scan_region):
+            if match.start() > min_judgment_start:
+                judgment_start = match.start()
+                break
+
+    # Strategy c: First SCR page header after sufficient editorial
+    if judgment_start is None:
+        for match in _SCR_PAGE_HEADER_RE.finditer(scan_region):
+            # Must be well after preamble (editorial is at least 1500 chars)
+            if match.start() > preamble_end + 1500:
+                judgment_start = match.start()
+                break
+
+    if judgment_start is None:
+        # Could not find a reliable judgment start — don't strip
+        logger.debug(
+            "SCR format detected (%d margins in first 10K) but no judgment "
+            "start found — not stripping editorial",
+            len(early_margins),
+        )
+        return text, ""
+
+    # Sanity: editorial should be at least 300 chars and less than 20K
+    editorial_size = judgment_start - preamble_end
+    if editorial_size < 300 or editorial_size > 20_000:
+        logger.debug(
+            "Editorial size %d chars out of expected range (300-20000) — not stripping",
+            editorial_size,
+        )
+        return text, ""
+
+    preamble = text[:preamble_end]
+    editorial = text[preamble_end:judgment_start]
+    judgment = text[judgment_start:]
+
+    cleaned = preamble.rstrip() + "\n\n" + judgment.lstrip()
+
+    logger.info(
+        "Stripped %d chars of SCR editorial content (%d early margins, "
+        "preamble ends at %d, judgment starts at %d)",
+        len(editorial), len(early_margins), preamble_end, judgment_start,
+    )
+
+    return cleaned, editorial
 
 
 # Characters to strip: zero-width space, BOM, soft hyphen
@@ -144,6 +334,60 @@ _REPORTER_PAGE_MARKER_RE = re.compile(
     re.MULTILINE,
 )
 
+# ---------------------------------------------------------------------------
+# First-page reporter preamble stripping
+# ---------------------------------------------------------------------------
+
+# Reporter preamble lines commonly found on page 1 only (not repeated on later
+# pages, so header/footer dedup misses them).  Stripped before smart join.
+_FIRST_PAGE_PREAMBLE_RE = re.compile(
+    r"^\s*(?:"
+    # SCR header: "SUPREME COURT REPORTS [2022]" / "596 SUPREME COURT REPORTS ..."
+    r"(?:\d+\s+)?SUPREME\s+COURT\s+REPORTS\b.*|"
+    # SCC Online / SCC header
+    r"SCC\s+Online\b.*|"
+    # Reporter volume header: "[2024] 1 S.C.R." standalone
+    r"\[?\d{4}\]?\s+\d+\s+S\.?\s*C\.?\s*R\.?\s*|"
+    # "PETITIONER:" / "RESPONDENT:" labels (reporter formatting, not judgment text)
+    r"(?:PETITIONER|RESPONDENT)\s*:\s*$|"
+    # "DATE OF JUDGMENT:" / "DATE OF ORDER:" labels
+    r"DATE\s+OF\s+(?:JUDGMENT|ORDER)\s*:\s*$|"
+    # "BENCH:" label
+    r"BENCH\s*:\s*$|"
+    # "CITATION:" label
+    r"CITATION\s*:\s*$"
+    r")\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _strip_first_page_preamble(text: str, scan_chars: int = 5000) -> str:
+    """Remove reporter preamble lines from the first ~5000 chars.
+
+    These lines appear only on page 1 (e.g. "SUPREME COURT REPORTS [2022]")
+    and are missed by the 3-page header/footer dedup. Also strips any
+    reporter page markers from the first page region.
+    """
+    if len(text) < 200:
+        return text
+
+    head = text[:scan_chars]
+    tail = text[scan_chars:]
+
+    original_len = len(head)
+    head = _FIRST_PAGE_PREAMBLE_RE.sub("", head)
+    # Also strip reporter page markers from first page
+    head = _REPORTER_PAGE_MARKER_RE.sub("", head)
+
+    stripped = original_len - len(head)
+    if stripped > 0:
+        # Collapse any resulting excess blank lines
+        head = _EXCESS_NEWLINES_RE.sub("\n\n", head).lstrip("\n")
+        logger.info("Stripped %d chars of first-page preamble", stripped)
+
+    return head + tail
+
+
 # Footnote reference in body text: superscript digits or [1], [2] etc.
 _FOOTNOTE_REF_RE = re.compile(r"(?:\[(\d{1,3})\]|(?<!\d)(\d{1,2})(?=\s))")
 
@@ -166,6 +410,7 @@ class TextQuality:
     page_map: list[dict] = field(default_factory=list)
     ocr_truncated: bool = False
     ocr_total_pages: int = 0
+    editorial_stripped: str = ""  # SCR reporter editorial content that was stripped
 
 
 LEGAL_KEYWORDS = {
@@ -772,6 +1017,15 @@ async def extract_and_score(file_path: str) -> TextQuality:
     if text:
         text = _strip_leading_judgment_bleed(text)
 
+    # Strip first-page reporter preamble (missed by 3-page header dedup)
+    if text:
+        text = _strip_first_page_preamble(text)
+
+    # Strip SCR/SCC reporter editorial content (headnotes with A-H margins)
+    editorial_stripped = ""
+    if text:
+        text, editorial_stripped = strip_reporter_editorial(text)
+
     if not text:
         text = ""
 
@@ -779,6 +1033,7 @@ async def extract_and_score(file_path: str) -> TextQuality:
     quality.page_map = page_map
     quality.ocr_truncated = ocr_truncated
     quality.ocr_total_pages = ocr_total_pages
+    quality.editorial_stripped = editorial_stripped
 
     if quality.tier == "low":
         logger.warning(

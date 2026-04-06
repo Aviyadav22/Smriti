@@ -31,7 +31,7 @@ function nodeColor(
     distinguishedTargets: Set<string>,
     positiveTargets: Set<string>,
 ): string {
-    if (queryCaseId && node.id === queryCaseId) return "#B89B6A"; // gold
+    if (queryCaseId && node.id === queryCaseId) return "#D9B97A"; // gold
     if (negativeEdgeTargets.has(node.id)) return "#EF4444"; // red
     if (distinguishedTargets.has(node.id)) return "#F97316"; // orange
     if (positiveTargets.has(node.id)) return "#22C55E"; // green
@@ -68,6 +68,9 @@ export default function TimelineView({
     } | null>(null);
     const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
     const layoutRef = useRef<LayoutNode[]>([]);
+
+    // Dark mode detection
+    const isDark = typeof window !== "undefined" && document.documentElement.classList.contains("dark");
 
     // Classify edges
     const negativeTypes = new Set(["overrules", "not_followed", "per_incuriam"]);
@@ -178,7 +181,7 @@ export default function TimelineView({
         const minYear = Math.min(...years);
         const maxYear = Math.max(...years);
 
-        ctx.strokeStyle = "#D6D3D1"; // stone-300
+        ctx.strokeStyle = isDark ? "#332E28" : "#D6D3D1"; // border
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(padding.left, padding.top);
@@ -187,7 +190,7 @@ export default function TimelineView({
         ctx.stroke();
 
         // Year ticks
-        ctx.fillStyle = "#78716C"; // stone-500
+        ctx.fillStyle = isDark ? "#9B9080" : "#78716C"; // muted text
         ctx.font = "11px system-ui, sans-serif";
         ctx.textAlign = "center";
         const yearSpan = maxYear - minYear || 1;
@@ -207,7 +210,7 @@ export default function TimelineView({
         ctx.translate(16, padding.top + plotH / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.textAlign = "center";
-        ctx.fillStyle = "#78716C";
+        ctx.fillStyle = isDark ? "#9B9080" : "#78716C";
         ctx.font = "12px system-ui, sans-serif";
         ctx.fillText("Authority Score", 0, 0);
         ctx.restore();
@@ -219,7 +222,7 @@ export default function TimelineView({
             if (!fromLn || !toLn) continue;
 
             const isNeg = negativeTypes.has(edge.type);
-            ctx.strokeStyle = isNeg ? "#EF4444" : "#D6D3D1";
+            ctx.strokeStyle = isNeg ? "#EF4444" : (isDark ? "#332E28" : "#D6D3D1");
             ctx.lineWidth = isNeg ? 1.5 : 0.5;
             ctx.globalAlpha = 0.4;
 
@@ -253,7 +256,7 @@ export default function TimelineView({
             if (queryCaseId && ln.node.id === queryCaseId) {
                 ctx.beginPath();
                 ctx.arc(ln.x, ln.y, ln.r + 3, 0, Math.PI * 2);
-                ctx.strokeStyle = "#B89B6A"; // gold
+                ctx.strokeStyle = isDark ? "#D9B97A" : "#B89B6A"; // gold
                 ctx.lineWidth = 2;
                 ctx.stroke();
             }
@@ -344,19 +347,19 @@ export default function TimelineView({
             {/* Tooltip */}
             {tooltip && (
                 <div
-                    className="pointer-events-none fixed z-30 rounded-lg border border-stone-200 bg-white px-3 py-2 shadow-lg"
+                    className="pointer-events-none fixed z-30 rounded-lg border border-border bg-card px-3 py-2 shadow-lg"
                     style={{
                         left: tooltip.x + 12,
                         top: tooltip.y - 10,
                     }}
                 >
-                    <p className="text-sm font-medium text-stone-900 max-w-[240px] line-clamp-2">
+                    <p className="text-sm font-medium text-foreground max-w-[240px] line-clamp-2">
                         {tooltip.node.title ?? "Untitled"}
                     </p>
                     {tooltip.node.citation && (
-                        <p className="text-xs text-stone-500">{tooltip.node.citation}</p>
+                        <p className="text-xs text-muted-foreground">{tooltip.node.citation}</p>
                     )}
-                    <div className="mt-1 flex items-center gap-3 text-xs text-stone-400">
+                    <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
                         {tooltip.node.year && <span>{tooltip.node.year}</span>}
                         {tooltip.node.pagerank_global != null && (
                             <span>★ {tooltip.node.pagerank_global.toFixed(4)}</span>

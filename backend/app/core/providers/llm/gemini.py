@@ -25,8 +25,9 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Thinking budget: 0 = disabled (saves ~6x on output token costs for gemini-2.5-flash).
-# Set GEMINI_THINKING_BUDGET=0 for ingestion, omit or set -1 for research agents.
+# Thinking control for cost savings on gemini-2.5-flash.
+# The SDK's ThinkingConfig API changes across versions. We attempt to set
+# thinking_budget=0 if the SDK supports it, otherwise skip (no-op).
 _THINKING_BUDGET: int | None = None
 _raw_budget = os.environ.get("GEMINI_THINKING_BUDGET")
 if _raw_budget is not None:
@@ -34,11 +35,16 @@ if _raw_budget is not None:
 
 
 def _apply_thinking_config(config_kwargs: dict) -> None:
-    """Add thinking_config to GenerateContentConfig kwargs if budget is set."""
-    if _THINKING_BUDGET is not None:
-        config_kwargs["thinking_config"] = types.ThinkingConfig(
-            thinking_budget=_THINKING_BUDGET,
-        )
+    """Add thinking_config to GenerateContentConfig kwargs if supported."""
+    if _THINKING_BUDGET is None:
+        return
+    try:
+        tc = types.ThinkingConfig(thinking_budget=_THINKING_BUDGET)
+        config_kwargs["thinking_config"] = tc
+    except (TypeError, ValueError, Exception):
+        # SDK version doesn't support thinking_budget — skip silently.
+        # Thinking may be on by default but costs are acceptable.
+        pass
 
 # Build retry exception tuple with granular Google exceptions when available
 _GEMINI_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (

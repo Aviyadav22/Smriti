@@ -696,26 +696,42 @@ class TestStripUnreliableLlmFields:
 
 
 class TestEraAdaptiveExtraction:
-    """Tests for get_era_preamble() era-adaptive prompt generation."""
+    """Tests for get_era_preamble() — 4 eras based on real judgment analysis."""
 
     def test_pre_1970_preamble(self):
         from app.core.legal.prompts import get_era_preamble
 
         preamble = get_era_preamble(1955)
-        assert "AIR" in preamble
-        assert preamble != ""
+        assert "S.C.R." in preamble  # Primary citation format
+        assert "AIR" in preamble  # Secondary format
+        assert "SCC does NOT exist" in preamble
+        assert "OCR" in preamble  # OCR quality warning
+        assert "dissent" in preamble.lower()
 
-    def test_modern_preamble(self):
+    def test_1970_1999_preamble(self):
         from app.core.legal.prompts import get_era_preamble
 
         preamble = get_era_preamble(1985)
         assert "SCC" in preamble
+        assert "S.C.R." in preamble
+        assert "HELD:" in preamble
+        assert "NO numbered paragraphs" in preamble
 
-    def test_digital_era_preamble(self):
+    def test_2000_2019_preamble(self):
         from app.core.legal.prompts import get_era_preamble
 
-        preamble = get_era_preamble(2020)
-        assert "neutral citation" in preamble.lower() or "INSC" in preamble
+        preamble = get_era_preamble(2010)
+        assert "SCC" in preamble
+        assert "numbered paragraphs" in preamble.lower()
+        assert "Case Law Reference" in preamble
+
+    def test_2020_plus_preamble(self):
+        from app.core.legal.prompts import get_era_preamble
+
+        preamble = get_era_preamble(2024)
+        assert "INSC" in preamble
+        assert "Headnotes" in preamble
+        assert "digital" in preamble.lower()
 
     def test_none_year_returns_empty(self):
         from app.core.legal.prompts import get_era_preamble
@@ -727,16 +743,41 @@ class TestEraAdaptiveExtraction:
 
         pre = get_era_preamble(1969)
         post = get_era_preamble(1970)
-        assert "AIR" in pre
-        assert "SCC" in post
+        assert "SCC does NOT exist" in pre  # pre-1970: no SCC
+        assert "SCC" in post and "S.C.R." in post  # 1970-1999: both
 
     def test_boundary_2000(self):
         from app.core.legal.prompts import get_era_preamble
 
         pre = get_era_preamble(1999)
         post = get_era_preamble(2000)
-        assert "SCC" in pre
-        assert "INSC" in post or "neutral" in post.lower()
+        assert "NO numbered paragraphs" in pre
+        assert "numbered paragraphs" in post.lower()
+
+    def test_boundary_2020(self):
+        from app.core.legal.prompts import get_era_preamble
+
+        pre = get_era_preamble(2019)
+        post = get_era_preamble(2020)
+        assert "Case Law Reference" in pre
+        assert "INSC" in post
+
+    def test_float_year_coerced(self):
+        from app.core.legal.prompts import get_era_preamble
+
+        preamble = get_era_preamble(1965.0)
+        assert "S.C.R." in preamble
+
+    def test_string_year_coerced(self):
+        from app.core.legal.prompts import get_era_preamble
+
+        preamble = get_era_preamble("1985")
+        assert "SCC" in preamble
+
+    def test_invalid_string_returns_empty(self):
+        from app.core.legal.prompts import get_era_preamble
+
+        assert get_era_preamble("not_a_year") == ""
 
 
 class TestHeadnoteToProposition:

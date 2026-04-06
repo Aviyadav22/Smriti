@@ -846,7 +846,8 @@ async def gather_worker_results_node(state: ResearchState) -> dict:
 
     # Deduplicate new + prior combined, with diversity control
     combined = prior_results + new_results
-    deduped = deduplicate_with_diversity(combined, max_chunks_per_case=4)
+    from app.core.config import settings
+    deduped = deduplicate_with_diversity(combined, max_chunks_per_case=settings.research_max_chunks_per_case)
 
     # Identify cross-references (cases found by 2+ workers) — use ALL workers
     case_workers: dict[str, set[str]] = {}

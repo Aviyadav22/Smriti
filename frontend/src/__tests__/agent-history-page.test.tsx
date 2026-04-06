@@ -54,7 +54,7 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-import AgentHistoryPage from "@/app/agents/history/page";
+import AgentHistoryPage from "@/app/(auth)/agents/history/page";
 
 // ---------------------------------------------------------------------------
 // Helpers

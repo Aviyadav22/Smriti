@@ -40,7 +40,7 @@ vi.mock("@/lib/api", () => ({
     getAccessToken: () => null,
 }));
 
-import CourtsPage from "@/app/courts/page";
+import CourtsPage from "@/app/(auth)/courts/page";
 
 function makeStats(overrides: Partial<CourtStats> = {}): CourtStats {
     return {

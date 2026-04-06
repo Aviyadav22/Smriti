@@ -13,11 +13,18 @@ import {
 } from "@/lib/api";
 import type { LoginRequest, RegisterRequest } from "@/lib/types";
 
+export interface AuthUser {
+    id: string;
+    role: "admin" | "researcher" | "viewer";
+}
+
 interface AuthState {
     isAuthenticated: boolean;
     isLoading: boolean;
     /** Non-null when the last auth operation failed (login, register, session refresh). */
     authError: string | null;
+    /** Decoded from JWT — available when authenticated. */
+    user: AuthUser | null;
     login: (req: LoginRequest) => Promise<void>;
     register: (req: RegisterRequest) => Promise<void>;
     logout: () => void;
@@ -36,10 +43,23 @@ function isTokenExpired(token: string): boolean {
     }
 }
 
+function decodeAuthUser(token: string): AuthUser | null {
+    try {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        if (payload.sub && payload.role) {
+            return { id: payload.sub, role: payload.role };
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [authError, setAuthError] = useState<string | null>(null);
+    const [user, setUser] = useState<AuthUser | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -52,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Access token is valid — we're good
             if (token && !isTokenExpired(token)) {
                 if (!cancelled) {
+                    setUser(decodeAuthUser(token));
                     setIsAuthenticated(true);
                     setIsLoading(false);
                 }
@@ -64,7 +85,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 const ok = await tryRefreshToken();
                 if (!cancelled) {
                     setIsAuthenticated(ok);
-                    if (!ok) setAuthError("Session expired — please log in again");
+                    if (ok) {
+                        const refreshedToken = getAccessToken();
+                        if (refreshedToken) setUser(decodeAuthUser(refreshedToken));
+                    } else {
+                        setAuthError("Session expired — please log in again");
+                    }
                     setIsLoading(false);
                 }
                 return;
@@ -89,6 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         const unsubscribe = onSessionExpired(() => {
             setIsAuthenticated(false);
+            setUser(null);
             setAuthError("Session expired — please log in again");
         });
         return unsubscribe;
@@ -98,9 +125,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAuthError(null);
         try {
             await apiLogin(req);
+            const token = getAccessToken();
+            if (token) setUser(decodeAuthUser(token));
             setIsAuthenticated(true);
         } catch (err) {
             setIsAuthenticated(false);
+            setUser(null);
             const msg = err instanceof Error ? err.message : "Login failed";
             setAuthError(msg);
             throw err; // Re-throw so login page can also handle it
@@ -111,9 +141,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAuthError(null);
         try {
             await apiRegister(req);
+            const token = getAccessToken();
+            if (token) setUser(decodeAuthUser(token));
             setIsAuthenticated(true);
         } catch (err) {
             setIsAuthenticated(false);
+            setUser(null);
             const msg = err instanceof Error ? err.message : "Registration failed";
             setAuthError(msg);
             throw err;
@@ -123,14 +156,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const logout = useCallback(() => {
         apiLogout();
         setIsAuthenticated(false);
+        setUser(null);
         setAuthError(null);
     }, []);
 
     const clearAuthError = useCallback(() => setAuthError(null), []);
 
     const value = useMemo(
-        () => ({ isAuthenticated, isLoading, authError, login, register, logout, clearAuthError }),
-        [isAuthenticated, isLoading, authError, login, register, logout, clearAuthError],
+        () => ({ isAuthenticated, isLoading, authError, user, login, register, logout, clearAuthError }),
+        [isAuthenticated, isLoading, authError, user, login, register, logout, clearAuthError],
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

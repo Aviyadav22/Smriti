@@ -3,31 +3,64 @@
 from typing import Final
 
 
-def get_era_preamble(year: int | None) -> str:
-    """Return era-specific extraction guidance based on judgment year."""
+def get_era_preamble(year: int | float | str | None) -> str:
+    """Return era-specific extraction guidance based on judgment year.
+
+    Based on analysis of real SC judgments from 1950-2024.
+    """
     if year is None:
+        return ""
+    try:
+        year = int(year)
+    except (ValueError, TypeError):
         return ""
     if year < 1970:
         return (
             "\n## ERA NOTE: Pre-1970 Supreme Court Judgment\n"
-            "- Citations are typically AIR format (e.g., AIR 1954 SC 300), not SCC or SCALE.\n"
-            "- Judgments are shorter with less structured sections.\n"
-            "- Judge names may use older spellings or honorifics.\n"
-            "- Legal propositions may be stated less explicitly — infer from reasoning.\n"
-            "- case_type is often 'Civil Appeal' or 'Writ Petition'.\n"
+            "- Citations use S.C.R. (Supreme Court Reports) format, e.g. [1950] S.C.R. 594. "
+            "AIR citations (e.g. A.I.R. 1954 SC 300) also appear. SCC does NOT exist yet.\n"
+            "- NO numbered paragraphs. Text is dense narrative with marginal letter markers (A, B, C...).\n"
+            "- Judge names use full names with honorifics: 'SHRI HARILAL KANIA C.J.', 'JJ.' suffix.\n"
+            "- Holdings use 'Held per...' or 'Held by Full Court...' format. Dissenting opinions "
+            "are explicitly marked ('dissenting').\n"
+            "- Statutes cited with full Act names and year in parentheses: "
+            "'section 9(1-A) of the Madras Maintenance of Public Order Act, 1949'.\n"
+            "- May cite American/British constitutional precedent (US Supreme Court, Privy Council).\n"
+            "- OCR quality may be poor — expect garbled characters and spacing artifacts.\n"
         )
     if year < 2000:
         return (
             "\n## ERA NOTE: 1970-1999 Supreme Court Judgment\n"
-            "- Citations may use SCC, AIR, or SCR formats.\n"
-            "- Structured sections (FACTS, ANALYSIS) emerge but aren't always labeled.\n"
-            "- Look for ratio in 'We hold that...' or 'In our opinion...' paragraphs.\n"
+            "- Citations use S.C.R. format primarily. SCC (Supreme Court Cases) appears from ~1985 onwards. "
+            "Also Crl.L.J. (Criminal Law Journal) for criminal cases.\n"
+            "- NO numbered paragraphs. Marginal letter markers (A-H) are common. "
+            "No explicit FACTS/ANALYSIS/RATIO section headings.\n"
+            "- Judge names use initials + surname: 'D. A. DESAI AND RANGANATH MISRA, JJ.'\n"
+            "- Holdings appear as 'HELD:' sections with numbered points (1, 2, 3) from ~1985 onwards. "
+            "Earlier cases use 'We are of the opinion that...' or 'We hold...' phrasing.\n"
+            "- Statutes abbreviated: 's.' for section, 'CPC' for Code of Civil Procedure, "
+            "'IPC' for Indian Penal Code.\n"
+            "- Precedent is almost exclusively Indian (rare international references).\n"
+        )
+    if year < 2020:
+        return (
+            "\n## ERA NOTE: 2000-2019 Supreme Court Judgment\n"
+            "- Citations use both S.C.R. and SCC formats interchangeably: "
+            "'[2005] 1 S.C.R. 474' or '(2001) 3 SCC 179'.\n"
+            "- Numbered paragraphs emerge from ~2005 and become standard by 2010+.\n"
+            "- Explicit 'HELD:' sections with numbered sub-points (1.1, 1.2, 2...) are common.\n"
+            "- 'Case Law Reference' sections appear listing cited cases with 'relied on'/'referred to'.\n"
+            "- Judge names use full initials: 'ASHOK BHAN AND A.K. MATHUR, JJ.'\n"
+            "- 'Section' is often spelled out rather than abbreviated as 's.'\n"
         )
     return (
-        "\n## ERA NOTE: 2000+ Supreme Court Judgment\n"
-        "- Neutral citations (YYYY:INSC:NNNN) may be present alongside SCC/SCALE.\n"
-        "- Structured formatting with numbered paragraphs is common.\n"
-        "- Look for explicit headnotes at the start of SCC-reported judgments.\n"
+        "\n## ERA NOTE: 2020+ Supreme Court Judgment\n"
+        "- Neutral citations (YYYY INSC NNN, e.g. '2024 INSC 163') appear alongside SCC/S.C.R.\n"
+        "- Fully structured: numbered paragraphs, explicit 'Issue for Consideration', "
+        "'Headnotes', 'Held:' sections.\n"
+        "- Case law references with paragraph cross-references: 'relied on. Para 4'.\n"
+        "- Author judge marked with asterisk (*) in header.\n"
+        "- OCR quality is excellent — digital-native PDFs.\n"
     )
 
 # ---------------------------------------------------------------------------

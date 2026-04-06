@@ -90,6 +90,16 @@
   /* Brand gold from marketing site */
   --gold: #B89B6A;
 
+  /* Sidebar */
+  --sidebar: #FFFDF7;
+  --sidebar-foreground: #1A1A1A;
+  --sidebar-primary: #B89B6A;
+  --sidebar-primary-foreground: #FFFDF7;
+  --sidebar-accent: #EDE8DD;
+  --sidebar-accent-foreground: #1A1A1A;
+  --sidebar-border: #D8D0C4;
+  --sidebar-ring: #B8A990;
+
   /* Charts */
   --chart-1: #B89B6A;
   --chart-2: #8B7355;
@@ -99,45 +109,62 @@
 }
 
 /* ----------------------------------------------------------------
-   DARK MODE — "Vercel meets Palantir"
-   Ultra-clean, data-dense, enterprise authority
+   DARK MODE — "Candlelit chambers"
+   Warm darks, aged leather, mahogany undertones.
+   Gold glows softly against deep walnut backgrounds.
+   Every surface has warmth — no cold blue-grays anywhere.
    ---------------------------------------------------------------- */
 .dark {
-  --background: #0B0D0F;
-  --foreground: #E8ECF1;
-  --card: #111418;
-  --card-foreground: #E8ECF1;
-  --popover: #111418;
-  --popover-foreground: #E8ECF1;
+  /* Warm dark backgrounds — think dark wood, not cold steel */
+  --background: #141210;
+  --foreground: #EDE8E0;
+  --card: #1F1B17;
+  --card-foreground: #EDE8E0;
+  --popover: #1F1B17;
+  --popover-foreground: #EDE8E0;
 
-  /* Slate-cool primary */
-  --primary: #E8ECF1;
-  --primary-foreground: #0B0D0F;
+  /* Warm cream primary text */
+  --primary: #EDE8E0;
+  --primary-foreground: #151210;
 
-  --secondary: #1A1D23;
-  --secondary-foreground: #E8ECF1;
+  /* Warm dark secondary */
+  --secondary: #231F1B;
+  --secondary-foreground: #EDE8E0;
 
-  --muted: #1A1D23;
-  --muted-foreground: #7C8594;
+  /* Muted — warm, never cold */
+  --muted: #231F1B;
+  --muted-foreground: #9B9080;
 
-  --accent: #1E2128;
-  --accent-foreground: #E8ECF1;
+  /* Accent with a hint of warmth */
+  --accent: #2A2520;
+  --accent-foreground: #EDE8E0;
 
-  --destructive: #E53E3E;
+  --destructive: #D4503A;
 
-  /* Crisp borders */
-  --border: #2A2D35;
-  --input: #2A2D35;
-  --ring: #4A5163;
+  /* Borders — warm charcoal, not steel */
+  --border: #332E28;
+  --input: #332E28;
+  --ring: #5C5347;
 
-  /* Gold persists across modes */
-  --gold: #D4B98A;
+  /* Gold — slightly warmer and brighter in dark mode to glow */
+  --gold: #D9B97A;
 
-  --chart-1: #D4B98A;
-  --chart-2: #7C8594;
-  --chart-3: #4A5163;
-  --chart-4: #B8A990;
-  --chart-5: #9B8B75;
+  /* Sidebar — slightly darker than card for depth */
+  --sidebar: #181512;
+  --sidebar-foreground: #EDE8E0;
+  --sidebar-primary: #D9B97A;
+  --sidebar-primary-foreground: #151210;
+  --sidebar-accent: #252119;
+  --sidebar-accent-foreground: #EDE8E0;
+  --sidebar-border: #2E2922;
+  --sidebar-ring: #5C5347;
+
+  /* Charts — warm gold tones */
+  --chart-1: #D9B97A;
+  --chart-2: #A69480;
+  --chart-3: #5C5347;
+  --chart-4: #C4A878;
+  --chart-5: #8B7D6A;
 }
 
 @layer base {

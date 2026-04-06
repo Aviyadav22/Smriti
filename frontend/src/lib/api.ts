@@ -1171,6 +1171,44 @@ export async function deleteAgentSession(sessionId: string): Promise<void> {
     await apiFetch<unknown>(`/agents/sessions/${sessionId}`, { method: "DELETE" });
 }
 
+/** Revise a single section of a research memo via SSE. Returns revised content or null. */
+export async function reviseResearchSection(
+    executionId: string,
+    sectionHeading: string,
+    feedback: string,
+): Promise<string | null> {
+    const token = getAccessToken();
+    const res = await fetch(`${API_BASE}/agents/research/revise-section/${executionId}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ section_heading: sectionHeading, feedback }),
+    });
+    if (!res.ok) return null;
+    const reader = res.body?.getReader();
+    if (!reader) return null;
+    const decoder = new TextDecoder();
+    let revisedContent: string | null = null;
+    let buffer = "";
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+                const data = JSON.parse(line.slice(6));
+                if (data.type === "section_delta") revisedContent = data.content;
+            } catch { /* skip malformed SSE line */ }
+        }
+    }
+    return revisedContent;
+}
+
 // ---------------------------------------------------------------------------
 // Search History
 // ---------------------------------------------------------------------------
@@ -1277,6 +1315,72 @@ export async function updateUserPreferences(prefs: Record<string, unknown>): Pro
 
 export async function refreshUserPreferences(): Promise<Record<string, unknown>> {
     return apiFetch("/users/me/preferences/refresh", { method: "POST" });
+}
+
+// ---------------------------------------------------------------------------
+// User Profile API
+// ---------------------------------------------------------------------------
+
+import type {
+    UserProfile,
+    UpdateProfileRequest,
+    ChangePasswordRequest,
+    AdminUserListResponse,
+    UpdateAdminUserRequest,
+    AdminUserSummary,
+    AuditLogListResponse,
+} from "@/lib/types";
+
+export async function getUserProfile(): Promise<UserProfile> {
+    return apiFetch("/users/me");
+}
+
+export async function updateUserProfile(data: UpdateProfileRequest): Promise<UserProfile> {
+    return apiFetch("/users/me", { method: "PUT", body: JSON.stringify(data) });
+}
+
+export async function changePassword(data: ChangePasswordRequest): Promise<{ detail: string }> {
+    return apiFetch("/auth/change-password", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function deleteAccount(): Promise<{ detail: string }> {
+    return apiFetch("/auth/me", { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// Admin API
+// ---------------------------------------------------------------------------
+
+export async function getAdminUsers(
+    page = 1,
+    pageSize = 20,
+    search?: string,
+    role?: string,
+): Promise<AdminUserListResponse> {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (search) params.set("search", search);
+    if (role) params.set("role", role);
+    return apiFetch(`/admin/users?${params}`);
+}
+
+export async function updateAdminUser(
+    userId: string,
+    data: UpdateAdminUserRequest,
+): Promise<AdminUserSummary> {
+    return apiFetch(`/admin/users/${userId}`, { method: "PUT", body: JSON.stringify(data) });
+}
+
+export async function getAdminAuditLogs(
+    page = 1,
+    pageSize = 50,
+    filters?: { action?: string; user_id?: string; date_from?: string; date_to?: string },
+): Promise<AuditLogListResponse> {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (filters?.action) params.set("action", filters.action);
+    if (filters?.user_id) params.set("user_id", filters.user_id);
+    if (filters?.date_from) params.set("date_from", filters.date_from);
+    if (filters?.date_to) params.set("date_to", filters.date_to);
+    return apiFetch(`/admin/audit-logs?${params}`);
 }
 
 export { ApiError };

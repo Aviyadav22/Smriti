@@ -31,7 +31,7 @@ vi.mock("@/lib/api", async () => {
   };
 });
 
-import CasePrepAgentPage from "@/app/agents/case-prep/page";
+import CasePrepAgentPage from "@/app/(auth)/agents/case-prep/page";
 
 describe("CasePrepAgentPage", () => {
   it("renders page heading", () => {

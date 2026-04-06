@@ -89,12 +89,12 @@ class TestPineconeFilterConstruction:
 class TestFTSMultiCourtFilter:
     """Test SQL WHERE clause construction for multiple courts."""
 
-    def test_single_court_ilike(self) -> None:
+    def test_single_court_exact(self) -> None:
         filters = SearchFilters(court=["Supreme Court"])
         clauses, params = _build_filter_clauses(filters)
         assert len(clauses) == 1
-        assert "court ILIKE :court_0" in clauses[0]
-        assert params["court_0"] == "%Supreme Court%"
+        assert "LOWER" in clauses[0] and ":court_0" in clauses[0]
+        assert params["court_0"] == "Supreme Court"
 
     def test_two_courts_or_clause(self) -> None:
         filters = SearchFilters(
@@ -104,10 +104,10 @@ class TestFTSMultiCourtFilter:
         assert len(clauses) == 1
         # Should produce an OR clause
         assert "OR" in clauses[0]
-        assert "court ILIKE :court_0" in clauses[0]
-        assert "court ILIKE :court_1" in clauses[0]
-        assert params["court_0"] == "%Supreme Court%"
-        assert params["court_1"] == "%High Court of Delhi%"
+        assert ":court_0" in clauses[0]
+        assert ":court_1" in clauses[0]
+        assert params["court_0"] == "Supreme Court"
+        assert params["court_1"] == "High Court of Delhi"
 
     def test_three_courts_or_clause(self) -> None:
         courts = ["Supreme Court", "Delhi HC", "Bombay HC"]
@@ -115,7 +115,7 @@ class TestFTSMultiCourtFilter:
         clauses, params = _build_filter_clauses(filters)
         assert len(clauses) == 1
         for i in range(3):
-            assert f"court ILIKE :court_{i}" in clauses[0]
+            assert f":court_{i}" in clauses[0]
             assert f"court_{i}" in params
 
     def test_multi_court_with_other_filters(self) -> None:

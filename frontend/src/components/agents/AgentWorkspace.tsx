@@ -16,19 +16,29 @@ import type { AgentSessionState, AgentSessionActions } from "@/hooks/useAgentSes
 import { AgentCheckpointPrompt } from "@/components/agent-checkpoint-prompt";
 import { AgentMemoViewer } from "@/components/agent-memo-viewer";
 import { ResearchProgress } from "@/components/research-progress";
-import { AgentSessionSidebar } from "@/components/agents/AgentSessionSidebar";
+// AgentSessionSidebar removed — sessions now shown in the global AppSidebar
 import { AgentFollowUpThread } from "@/components/agents/AgentFollowUpThread";
 import { AgentFollowUpInput } from "@/components/agents/AgentFollowUpInput";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
+    AlertDialog,
+    AlertDialogContent,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogCancel,
+    AlertDialogAction,
+} from "@/components/ui/alert-dialog";
+import {
     Loader2, ArrowLeft, RotateCcw, XCircle,
-    PanelLeftOpen, PanelLeftClose,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LegalDisclaimer } from "@/components/legal-disclaimer";
-import { Header } from "@/components/header";
-import { Footer } from "@/components/footer";
+import { useSetAgentSidebar } from "@/hooks/useAgentSidebarContext";
+import { useNavigationGuard } from "@/hooks/useNavigationGuard";
+import { cancelExecution } from "@/lib/api";
 import Link from "next/link";
 
 // ---------------------------------------------------------------------------
@@ -91,6 +101,9 @@ export interface AgentWorkspaceProps {
 
     /** When true, the default memo Card is not rendered (extras handles its own memo display). */
     suppressDefaultMemo?: boolean;
+
+    /** When true, the default progress feed is not rendered (extras handles its own, e.g. research 5-stage stepper). */
+    suppressDefaultProgress?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +121,7 @@ export function AgentWorkspace({
     onReset,
     newSessionLabel = "New Session",
     suppressDefaultMemo = false,
+    suppressDefaultProgress = false,
 }: AgentWorkspaceProps) {
     const { isAuthenticated, isLoading: authLoading } = useAuth();
     const router = useRouter();
@@ -116,8 +130,11 @@ export function AgentWorkspace({
     // ---- session hook -------------------------------------------------------
     const session = useAgentSession(agentType);
 
+    // ---- navigation guard (block leaving while agent is running) ------------
+    const navGuard = useNavigationGuard(session.isRunning);
+
     // ---- local UI state -----------------------------------------------------
-    const [sidebarOpen, setSidebarOpen] = useState(true);
+    // Session sidebar removed — sessions are now in the global AppSidebar
     const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
     const [processEvents, setProcessEvents] = useState<ProcessEvent[]>([]);
     const [completedNodes, setCompletedNodes] = useState<Set<string>>(new Set());
@@ -451,6 +468,20 @@ export function AgentWorkspace({
         setCancelled(true);
     }, [session]);
 
+    /** Cancel the running execution and proceed with the pending navigation. */
+    const handleCancelAndLeave = useCallback(async () => {
+        session.abortRef.current?.abort();
+        session.setIsRunning(false);
+        if (session.executionId) {
+            try {
+                await cancelExecution(session.executionId);
+            } catch {
+                // Best-effort — navigate anyway
+            }
+        }
+        navGuard.confirmLeave();
+    }, [session, navGuard]);
+
     // ---------------------------------------------------------------------------
     // Derived state
     // ---------------------------------------------------------------------------
@@ -458,7 +489,7 @@ export function AgentWorkspace({
     const displayMemo = session.memo || streamingMemo;
     const isStreaming = !session.memo && !!streamingMemo;
     const showInputForm = !session.isRunning && !session.memo && !session.checkpoint && completedNodes.size === 0 && processEvents.length === 0 && !session.isFollowUp;
-    const showWorkspace = session.isRunning || !!session.memo || !!session.checkpoint || completedNodes.size > 0 || processEvents.length > 0 || session.isFollowUp;
+    const showWorkspace = session.isRunning || session.isBackgroundRunning || !!session.memo || !!session.checkpoint || completedNodes.size > 0 || processEvents.length > 0 || session.isFollowUp;
     const showFollowUpArea = session.isFollowUp && !session.isRunning && !!session.memo && !session.checkpoint;
 
     // ---------------------------------------------------------------------------
@@ -466,75 +497,77 @@ export function AgentWorkspace({
     // ---------------------------------------------------------------------------
 
     if (authLoading || !isAuthenticated) {
-        return (
-            <div className="min-h-screen flex flex-col">
-                <Header />
-                <div className="flex-1 flex items-center justify-center">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-            </div>
-        );
+        return null;
     }
 
     // ---------------------------------------------------------------------------
     // Render
     // ---------------------------------------------------------------------------
 
+    // Push session data up to the global sidebar via context
+    // Use refs for callbacks to avoid infinite re-render loops
+    const setAgentSidebar = useSetAgentSidebar();
+    const loadSessionRef = useRef(session.loadSession);
+    loadSessionRef.current = session.loadSession;
+    const deleteSessionRef = useRef(session.deleteSession);
+    deleteSessionRef.current = session.deleteSession;
+    const newSessionRef = useRef(handleNewSession);
+    newSessionRef.current = handleNewSession;
+
+    const guardedActionRef = useRef(navGuard.guardedAction);
+    guardedActionRef.current = navGuard.guardedAction;
+
+    useEffect(() => {
+        setAgentSidebar({
+            sessions: session.sessions,
+            activeSessionId: session.sessionId,
+            loading: session.sessionsLoading,
+            onSelectSession: (id: string) => guardedActionRef.current(() => loadSessionRef.current(id)),
+            onDeleteSession: (id: string) => deleteSessionRef.current(id),
+            onNewSession: () => guardedActionRef.current(() => newSessionRef.current()),
+        });
+        return () => setAgentSidebar(null);
+    }, [session.sessions, session.sessionId, session.sessionsLoading, setAgentSidebar]);
+
     return (
-        <div className="min-h-screen flex flex-col">
-            <Header />
-
-            <main className="flex-1 flex">
-                {/* Session sidebar -- desktop */}
-                <div
-                    className={cn(
-                        "hidden md:flex flex-col transition-all duration-200",
-                        sidebarOpen ? "w-64 min-w-[16rem]" : "w-0 min-w-0 overflow-hidden",
-                    )}
-                >
-                    <AgentSessionSidebar
-                        sessions={session.sessions}
-                        activeSessionId={session.sessionId}
-                        onSelectSession={session.loadSession}
-                        onDeleteSession={session.deleteSession}
-                        onNewSession={handleNewSession}
-                        loading={session.sessionsLoading}
-                    />
-                </div>
-
+        <div className="flex-1 flex flex-col h-full">
+            <div className="flex-1 flex h-full">
                 {/* Main content area */}
-                <div className="flex-1 min-w-0">
-                    <div className="mx-auto px-4 py-8 max-w-[1400px]">
-                        {/* Back + sidebar toggle */}
-                        <div className="flex items-center gap-3 mb-6">
+                <div className="flex-1 min-w-0 relative h-full">
+                    {/* Back arrow — pinned top-left */}
+                    <div className="absolute top-4 left-4 z-10">
+                        {session.isRunning ? (
+                            <Button variant="ghost" size="sm" onClick={() => navGuard.guardedNavigate("/dashboard")}>
+                                <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Agents
+                            </Button>
+                        ) : (
                             <Button variant="ghost" size="sm" asChild>
-                                <Link href="/agents">
+                                <Link href="/dashboard">
                                     <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Agents
                                 </Link>
                             </Button>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="hidden md:flex"
-                                onClick={() => setSidebarOpen((prev) => !prev)}
-                            >
-                                {sidebarOpen ? (
-                                    <PanelLeftClose className="h-4 w-4" />
-                                ) : (
-                                    <PanelLeftOpen className="h-4 w-4" />
-                                )}
-                            </Button>
-                        </div>
+                        )}
+                    </div>
 
-                        <h1 className="text-2xl font-semibold font-[family-name:var(--font-lora)] mb-1">
-                            {title}
-                        </h1>
-                        <p className="text-sm text-muted-foreground mb-6">
-                            {description}
-                        </p>
+                    <div className={cn(
+                        "mx-auto px-4 max-w-[1400px]",
+                        showInputForm ? "flex flex-col items-center justify-center h-full" : "py-16",
+                    )}>
 
-                        {/* Input form */}
-                        {showInputForm && renderInput({ onSubmit: handleSubmit, disabled: session.isRunning })}
+                        {/* Input form with title */}
+                        {showInputForm && (
+                            <div className="w-full">
+                                <div className="text-center mb-8">
+                                    <h1 className="text-2xl font-semibold font-[family-name:var(--font-lora)] mb-1">
+                                        {title}
+                                    </h1>
+                                    <p className="text-sm text-muted-foreground">
+                                        {description}
+                                    </p>
+                                </div>
+                                {renderInput({ onSubmit: handleSubmit, disabled: session.isRunning })}
+                            </div>
+                        )}
 
                         {/* Workspace (running / completed) */}
                         {showWorkspace && (
@@ -550,12 +583,14 @@ export function AgentWorkspace({
                                 )}
 
                                 {/* Live progress — activity feed with streaming events */}
-                                <ResearchProgress
-                                    events={processEvents}
-                                    completedNodes={completedNodes}
-                                    isRunning={session.isRunning}
-                                    startTime={startTime ?? undefined}
-                                />
+                                {!suppressDefaultProgress && (
+                                    <ResearchProgress
+                                        events={processEvents}
+                                        completedNodes={completedNodes}
+                                        isRunning={session.isRunning}
+                                        startTime={startTime ?? undefined}
+                                    />
+                                )}
 
                                 {/* Checkpoint */}
                                 {session.checkpoint && (
@@ -579,7 +614,22 @@ export function AgentWorkspace({
                                         )
                                 )}
 
-                                {/* Skeleton shimmer while waiting */}
+                                {/* Agent-specific extras (rendered before skeleton so progress bar is always on top) */}
+                                {renderResultExtras?.({
+                                    memo: session.memo,
+                                    confidence: session.confidence,
+                                    executionId: session.executionId,
+                                    isRunning: session.isRunning,
+                                    session,
+                                    processEvents,
+                                    completedNodes,
+                                    startTime,
+                                    steps: agentSteps,
+                                    displayMemo,
+                                    isStreaming,
+                                })}
+
+                                {/* Skeleton shimmer while waiting (after extras so progress stays on top) */}
                                 {session.isRunning && !displayMemo && !session.checkpoint && (
                                     <div className="rounded-lg border bg-card p-6 space-y-4">
                                         <div className="space-y-3 animate-pulse">
@@ -608,21 +658,6 @@ export function AgentWorkspace({
                                         </CardContent>
                                     </Card>
                                 )}
-
-                                {/* Agent-specific extras */}
-                                {renderResultExtras?.({
-                                    memo: session.memo,
-                                    confidence: session.confidence,
-                                    executionId: session.executionId,
-                                    isRunning: session.isRunning,
-                                    session,
-                                    processEvents,
-                                    completedNodes,
-                                    startTime,
-                                    steps: agentSteps,
-                                    displayMemo,
-                                    isStreaming,
-                                })}
 
                                 {/* Follow-up conversation thread */}
                                 {showFollowUpArea && session.sessionMessages.length > 0 && (
@@ -669,8 +704,37 @@ export function AgentWorkspace({
                                     </Card>
                                 )}
 
+                                {/* Background execution still running — show progress + poll */}
+                                {session.isBackgroundRunning && (
+                                    <div className="rounded-lg border bg-card p-6 text-center space-y-3">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                            <p className="text-sm text-muted-foreground">
+                                                Research in progress&hellip;
+                                            </p>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground/70">
+                                            Results will appear automatically when ready.
+                                        </p>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={async () => {
+                                                if (session.executionId) {
+                                                    try { await cancelExecution(session.executionId); } catch { /* ignore */ }
+                                                }
+                                                handleNewSession();
+                                            }}
+                                            className="text-muted-foreground hover:text-destructive"
+                                        >
+                                            <XCircle className="h-3.5 w-3.5 mr-1" />
+                                            Cancel
+                                        </Button>
+                                    </div>
+                                )}
+
                                 {/* Session loaded but no memo (failed/incomplete) */}
-                                {session.isFollowUp && !session.isRunning && !session.memo && !session.checkpoint && !session.error && (
+                                {session.isFollowUp && !session.isRunning && !session.isBackgroundRunning && !session.memo && !session.checkpoint && !session.error && (
                                     <div className="rounded-lg border bg-card p-6 text-center space-y-3">
                                         <p className="text-sm text-muted-foreground">
                                             This session did not complete successfully.
@@ -724,9 +788,31 @@ export function AgentWorkspace({
                         )}
                     </div>
                 </div>
-            </main>
+            </div>
 
-            <Footer />
+            {/* Navigation guard dialog */}
+            <AlertDialog open={navGuard.showDialog} onOpenChange={(open) => { if (!open) navGuard.cancelLeave(); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Research in progress</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Your research agent is still running. You can let it continue in the background and come back later, or cancel it.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={navGuard.cancelLeave}>Stay</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleCancelAndLeave}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                            Cancel Research
+                        </AlertDialogAction>
+                        <AlertDialogAction onClick={navGuard.confirmLeave}>
+                            Continue in Background
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

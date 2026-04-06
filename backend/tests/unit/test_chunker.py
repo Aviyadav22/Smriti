@@ -122,6 +122,7 @@ class TestChunkJudgment:
                 "ANALYSIS", "RATIO", "ORDER", "FULL",
                 "DISSENT", "CONCURRENCE", "PRELIMINARY",
                 "EVIDENCE", "STATUTORY", "DIRECTIONS", "PER_CURIAM",
+                "TOC", "EDITORIAL", "PROCEDURAL", "JUDGMENT_START",
             )
 
     def test_chunk_indexes_sequential(self):
@@ -273,11 +274,13 @@ class TestParagraphNumberDetection:
 class TestNewSectionTypes:
     """B3: Detect newly added section types."""
 
-    def test_evidence_section(self):
+    def test_bare_evidence_no_longer_matches(self):
+        """Bare 'EVIDENCE' should NOT trigger EVIDENCE section — too many false positives
+        from 'Evidence Act' references in legal text."""
         text = "EVIDENCE\n\nThe witness testified that the accused was present."
         sections = detect_judgment_sections(text)
         types = [s.type for s in sections]
-        assert "EVIDENCE" in types
+        assert "EVIDENCE" not in types
 
     def test_evidence_on_record(self):
         text = "EVIDENCE ON RECORD\n\nExhibit A was produced before the court."

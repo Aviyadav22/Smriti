@@ -43,7 +43,7 @@ vi.mock("@/lib/api", () => ({
     getAccessToken: () => null,
 }));
 
-import JudgeProfilePage from "@/app/judge/[name]/page";
+import JudgeProfilePage from "@/app/(auth)/judge/[name]/page";
 
 function makeProfile(overrides: Partial<JudgeProfile> = {}): JudgeProfile {
     return {

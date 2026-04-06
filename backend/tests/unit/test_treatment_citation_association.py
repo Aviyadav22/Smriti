@@ -71,9 +71,13 @@ class TestTreatmentCitationAssociation:
         calls = graph_store.query.call_args_list
         # Should have at least 2 calls (one for MERGE nodes, one for MERGE edges)
         assert len(calls) >= 2
-        # The edge creation call should include treatment in edge data
-        edge_call = calls[-1]
-        edge_data = edge_call[1]["params"]["edges"]
+        # Find the edge creation call (the one that has "edges" in params)
+        edge_calls = [
+            c for c in calls
+            if c[1].get("params", {}).get("edges") is not None
+        ]
+        assert len(edge_calls) >= 1, f"No edge creation call found in {calls}"
+        edge_data = edge_calls[0][1]["params"]["edges"]
         treatments = [e["treatment"] for e in edge_data]
         # Should have at least one non-default treatment
         assert any(t != "referred_to" for t in treatments) or len(treatments) > 0
@@ -96,8 +100,13 @@ class TestTreatmentCitationAssociation:
         await _build_citation_graph("case-001", metadata, full_text, graph_store)
 
         calls = graph_store.query.call_args_list
-        if len(calls) >= 2:
-            edge_data = calls[-1][1]["params"]["edges"]
+        # Find the edge creation call (the one that has "edges" in params)
+        edge_calls = [
+            c for c in calls
+            if c[1].get("params", {}).get("edges") is not None
+        ]
+        if edge_calls:
+            edge_data = edge_calls[0][1]["params"]["edges"]
             treatments = [e["treatment"] for e in edge_data]
             assert all(t == "referred_to" for t in treatments)
 
@@ -117,6 +126,9 @@ class TestTreatmentCitationAssociation:
 
         await _build_citation_graph("case-001", metadata, full_text, graph_store)
 
-        # Should create the case node but not query for edges
-        graph_store.create_node.assert_called_once()
-        graph_store.query.assert_not_called()
+        # No edge-creation query should be present (only placeholder + sync check)
+        edge_calls = [
+            c for c in graph_store.query.call_args_list
+            if "CITES" in (c.args[0] if c.args else "")
+        ]
+        assert len(edge_calls) == 0, "Should not create CITES edges when no citations"

@@ -238,15 +238,14 @@ def _build_filter_clauses(
 
     if filters.court:
         if len(filters.court) == 1:
-            escaped = _escape_ilike(filters.court[0])
-            clauses.append(f"{prefix}court ILIKE :court_0")
-            params["court_0"] = f"%{escaped}%"
+            clauses.append(f"LOWER({prefix}court) = LOWER(:court_0)")
+            params["court_0"] = filters.court[0]
         else:
             court_clauses = []
             for i, c in enumerate(filters.court):
                 key = f"court_{i}"
-                court_clauses.append(f"{prefix}court ILIKE :{key}")
-                params[key] = f"%{_escape_ilike(c)}%"
+                court_clauses.append(f"LOWER({prefix}court) = LOWER(:{key})")
+                params[key] = c
             clauses.append(f"({' OR '.join(court_clauses)})")
 
     if filters.year_from is not None:
@@ -274,9 +273,9 @@ def _build_filter_clauses(
     if filters.act:
         normalized_act = normalize_act_name(filters.act)
         clauses.append(
-            f"EXISTS (SELECT 1 FROM unnest({prefix}acts_cited) AS a WHERE a ILIKE :act)"
+            f"EXISTS (SELECT 1 FROM unnest({prefix}acts_cited) AS a WHERE LOWER(a) = LOWER(:act))"
         )
-        params["act"] = f"%{_escape_ilike(normalized_act)}%"
+        params["act"] = normalized_act
 
     if filters.disposal_nature:
         clauses.append(f"{prefix}disposal_nature ILIKE :disposal_nature")

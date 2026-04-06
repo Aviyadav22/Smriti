@@ -30,6 +30,8 @@ export interface AgentSessionState {
     // Execution
     executionId: string | null;
     isRunning: boolean;
+    /** True when a background execution is running (started in a prior tab/session). */
+    isBackgroundRunning: boolean;
     memo: string;
     confidence: number | undefined;
     footnotes: ResearchFootnote[];
@@ -95,6 +97,8 @@ export function useAgentSession(agentType: string): AgentSessionState & AgentSes
     const [footnotes, setFootnotes] = useState<ResearchFootnote[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [isFollowUp, setIsFollowUp] = useState(false);
+    const [isBackgroundRunning, setIsBackgroundRunning] = useState(false);
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // Checkpoint
     const [checkpoint, setCheckpoint] = useState<{
@@ -107,7 +111,10 @@ export function useAgentSession(agentType: string): AgentSessionState & AgentSes
 
     // Cleanup on unmount
     useEffect(() => {
-        return () => { abortRef.current?.abort(); };
+        return () => {
+            abortRef.current?.abort();
+            if (pollRef.current) clearInterval(pollRef.current);
+        };
     }, []);
 
     // ---------------------------------------------------------------------------
@@ -242,9 +249,11 @@ export function useAgentSession(agentType: string): AgentSessionState & AgentSes
         setConfidence(undefined);
         setCheckpoint(null);
         setIsRunning(false);
+        setIsBackgroundRunning(false);
         setExecutionId(null);
         setSessionMessages([]);
         setCheckpointError(null);
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
 
         try {
             const [messagesResult, detailResult] = await Promise.allSettled([
@@ -284,6 +293,75 @@ export function useAgentSession(agentType: string): AgentSessionState & AgentSes
                 }
                 if (rd.confidence !== undefined) setConfidence(rd.confidence);
             }
+
+            // Check for a still-running background execution
+            if (!lastMemo && !completedExec) {
+                const runningExec = detail
+                    ? [...(detail.executions || [])].reverse().find(
+                        (e) => e.status === "running",
+                    )
+                    : null;
+
+                if (runningExec) {
+                    // If the execution started more than 20 minutes ago, treat as stale/failed
+                    const createdAt = new Date(runningExec.created_at).getTime();
+                    const STALE_THRESHOLD_MS = 20 * 60 * 1000; // 20 minutes (graph timeout is 15 min)
+                    if (Date.now() - createdAt > STALE_THRESHOLD_MS) {
+                        // Stale execution — show error instead of infinite spinner
+                        setError("This research session appears to have stopped unexpectedly. Please start a new one.");
+                        return;
+                    }
+
+                    setExecutionId(runningExec.id);
+                    setIsBackgroundRunning(true);
+
+                    // Poll for completion every 5 seconds, with a max poll duration
+                    const pollStart = Date.now();
+                    const MAX_POLL_MS = 20 * 60 * 1000; // Stop polling after 20 minutes
+                    pollRef.current = setInterval(async () => {
+                        // Safety: stop polling if we've been at it too long
+                        if (Date.now() - pollStart > MAX_POLL_MS) {
+                            if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+                            setIsBackgroundRunning(false);
+                            setError("Research is taking longer than expected. Please try again.");
+                            return;
+                        }
+
+                        try {
+                            const updated = await getAgentSessionDetail(sid);
+                            const exec = updated?.executions?.find(
+                                (e) => e.id === runningExec.id,
+                            );
+                            if (!exec || exec.status === "running") return;
+
+                            // Execution finished — stop polling
+                            if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+                            setIsBackgroundRunning(false);
+
+                            if (exec.status === "completed" && exec.result_data?.memo) {
+                                setMemo(exec.result_data.memo);
+                                if (exec.result_data.footnotes) {
+                                    setFootnotes(exec.result_data.footnotes as ResearchFootnote[]);
+                                }
+                                if (exec.result_data.confidence !== undefined) {
+                                    setConfidence(exec.result_data.confidence as number);
+                                }
+                                // Also load any messages that were saved
+                                try {
+                                    const msgs = await getAgentSessionMessages(sid);
+                                    if (msgs.length > 0) setSessionMessages(msgs);
+                                } catch { /* non-critical */ }
+                            } else if (exec.status === "failed") {
+                                setError(exec.error_message || "Research failed");
+                            } else if (exec.status === "cancelled") {
+                                setError("Research was cancelled");
+                            }
+                        } catch {
+                            // Network error during poll — keep trying
+                        }
+                    }, 5000);
+                }
+            }
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : "Failed to load session");
         }
@@ -316,10 +394,12 @@ export function useAgentSession(agentType: string): AgentSessionState & AgentSes
 
     const newSession = useCallback(() => {
         abortRef.current?.abort();
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
         setSessionId(null);
         setSessionMessages([]);
         setIsFollowUp(false);
         setIsRunning(false);
+        setIsBackgroundRunning(false);
         setExecutionId(null);
         setCheckpoint(null);
         setMemo("");
@@ -341,7 +421,7 @@ export function useAgentSession(agentType: string): AgentSessionState & AgentSes
     return {
         // State
         sessions, sessionsLoading, sessionId, sessionMessages,
-        executionId, isRunning, memo, confidence, footnotes, error,
+        executionId, isRunning, isBackgroundRunning, memo, confidence, footnotes, error,
         isFollowUp, checkpoint, checkpointError,
         // Actions
         startSession, resume, loadSession, deleteSession, newSession,

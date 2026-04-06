@@ -39,22 +39,45 @@
     "subtitle": "Autonomous legal research and case preparation assistants",
     "research": {
       "title": "Research Agent",
-      "description": "Ask a legal question. The agent decomposes it into sub-queries, searches across case law in parallel, detects contradictions between holdings, and generates a structured research memo with citations."
+      "description": "Ask a legal question. The agent decomposes it into sub-queries, searches across case law in parallel, detects contradictions between holdings, and generates a structured research memo with citations.",
+      "tagline": "Legal question to research memo with citations"
     },
     "casePrep": {
       "title": "Case Prep Agent",
-      "description": "Select a previously analyzed document. The agent prioritizes issues by legal strength, performs deeper precedent searches through citation graphs, and generates a strategy memo with recommended argument ordering."
+      "description": "Select a previously analyzed document. The agent prioritizes issues by legal strength, performs deeper precedent searches through citation graphs, and generates a strategy memo with recommended argument ordering.",
+      "tagline": "Uploaded case to strategy memo with precedents"
     },
     "strategy": {
       "title": "Argument Builder",
-      "description": "Enter case facts and desired relief. The agent generates IRAC-structured arguments with verified precedents, adversarial counter-analysis, and a litigation-ready argument memorandum."
+      "description": "Enter case facts and desired relief. The agent generates IRAC-structured arguments with verified precedents, adversarial counter-analysis, and a litigation-ready argument memorandum.",
+      "tagline": "Case facts to IRAC arguments with counter-analysis"
     },
     "drafting": {
       "title": "Drafting Agent",
-      "description": "Select a document type — bail applications, writ petitions, written statements, and more. The agent drafts the document grounded in verified precedents and current statutory provisions."
+      "description": "Select a document type — bail applications, writ petitions, written statements, and more. The agent drafts the document grounded in verified precedents and current statutory provisions.",
+      "tagline": "Bail applications, writ petitions, and more"
     },
     "history": "History",
     "requiresDocument": "Requires uploaded document"
+  },
+  "sidebar": {
+    "agents": "Agents",
+    "explore": "Explore",
+    "myWork": "My Work",
+    "research": "Research",
+    "casePrep": "Case Prep",
+    "argBuilder": "Argument Builder",
+    "drafting": "Drafting",
+    "citationGraph": "Citation Graph",
+    "judges": "Judges",
+    "courts": "Courts",
+    "vault": "Vault",
+    "documents": "Documents",
+    "upload": "Upload",
+    "settings": "Settings",
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar",
+    "dashboard": "Dashboard"
   },
   "language": {
     "en": "English",
@@ -69,5 +92,179 @@
     "message": "We use essential cookies for authentication and preferences.",
     "acceptAll": "Accept All",
     "essentialOnly": "Essential Only"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Manage your account, preferences, and application settings",
+    "tabs": {
+      "profile": "Profile & Account",
+      "preferences": "Research Preferences",
+      "appearance": "Appearance",
+      "notifications": "Notifications & AI",
+      "billing": "Billing",
+      "userManagement": "User Management",
+      "auditLogs": "Audit Logs"
+    },
+    "profile": {
+      "title": "Profile & Account",
+      "description": "Manage your personal information and account security",
+      "displayName": "Display Name",
+      "namePlaceholder": "Enter your name",
+      "nameSaved": "Name updated successfully",
+      "email": "Email Address",
+      "emailReadOnly": "Email cannot be changed",
+      "role": "Role",
+      "changePassword": "Change Password",
+      "currentPassword": "Current Password",
+      "newPassword": "New Password",
+      "confirmPassword": "Confirm New Password",
+      "passwordMismatch": "Passwords do not match",
+      "passwordTooShort": "Password must be at least 8 characters",
+      "passwordChanged": "Password changed successfully",
+      "updatePassword": "Update Password",
+      "dangerZone": "Danger Zone",
+      "deleteWarning": "Permanently delete your account and all associated data. This action cannot be undone.",
+      "typeDelete": "Type DELETE to confirm",
+      "deleteAccount": "Delete Account",
+      "deleting": "Deleting...",
+      "saving": "Saving...",
+      "saveFailed": "Failed to save changes",
+      "saveChanges": "Save Changes"
+    },
+    "preferences": {
+      "title": "Research Preferences",
+      "description": "Customize your legal research experience",
+      "searchMode": "Default Search Mode",
+      "searchModes": {
+        "semantic": "Semantic — AI-powered meaning-based search",
+        "keyword": "Keyword — Traditional text matching",
+        "hybrid": "Hybrid — Combined semantic + keyword (recommended)"
+      },
+      "citationFormat": "Citation Format",
+      "citationFormats": {
+        "standard": "Standard Indian — (2024) 1 SCC 123",
+        "oscola": "OSCOLA — Oxford citation style",
+        "bluebook": "Bluebook — US citation style"
+      },
+      "resultsPerPage": "Results Per Page",
+      "jurisdictions": "Preferred Jurisdictions",
+      "jurisdictionsHelp": "Add a jurisdiction (e.g., Supreme Court)",
+      "courts": "Preferred Courts",
+      "courtsHelp": "Add a court name",
+      "caseTypes": "Preferred Case Types",
+      "caseTypesHelp": "Add a case type (e.g., Civil, Criminal)",
+      "acts": "Frequently Referenced Acts",
+      "actsHelp": "Add an act name (e.g., IPC, CPC)",
+      "autoRefresh": "Auto-refresh",
+      "saved": "Preferences saved",
+      "saveFailed": "Failed to save preferences",
+      "refreshed": "Preferences refreshed from search history",
+      "refreshFailed": "Failed to refresh preferences",
+      "saving": "Saving...",
+      "saveChanges": "Save Changes"
+    },
+    "appearance": {
+      "title": "Appearance",
+      "description": "Customize the look and feel of the application",
+      "theme": "Theme",
+      "themes": {
+        "light": "Light",
+        "dark": "Dark",
+        "system": "System"
+      },
+      "language": "Language",
+      "languageNote": "Changing language will reload the page",
+      "fontSize": "Font Size",
+      "fontSizes": {
+        "small": "Small (14px)",
+        "medium": "Medium (16px)",
+        "large": "Large (18px)"
+      },
+      "saveFailed": "Failed to save"
+    },
+    "notifications": {
+      "title": "Notifications & AI",
+      "description": "Configure alerts and AI behavior preferences",
+      "emailAlerts": "Email Alerts",
+      "emailAlertsHelp": "Receive email notifications for important updates",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "agentVerbosity": "Agent Response Detail",
+      "verbosity": {
+        "concise": "Concise — Brief, key points only",
+        "detailed": "Detailed — Balanced with analysis (recommended)",
+        "comprehensive": "Comprehensive — Full analysis with all context"
+      },
+      "verbosityHelp": "Controls the level of detail in research agent responses",
+      "ttsVoice": "Text-to-Speech Voice",
+      "voices": {
+        "male": "Male",
+        "female": "Female"
+      },
+      "ttsLanguage": "TTS Language",
+      "responseLanguage": "AI Response Language",
+      "responseLanguageHelp": "Language for AI-generated content (research memos, chat responses)",
+      "saved": "Settings saved",
+      "saveFailed": "Failed to save settings",
+      "saving": "Saving...",
+      "saveChanges": "Save Changes"
+    },
+    "billing": {
+      "title": "Billing & Subscription",
+      "description": "Manage your plan and usage",
+      "freePlan": "Free Plan",
+      "freePlanDescription": "Full access during beta period",
+      "currentPlan": "Current Plan",
+      "searches": "Searches",
+      "agentRuns": "Agent Runs",
+      "documents": "Documents",
+      "unlimited": "Unlimited during beta",
+      "upgradeTitle": "Need more?",
+      "upgradeDescription": "Premium plans with priority processing, higher limits, and team features are coming soon.",
+      "contactUs": "Contact Us",
+      "comingSoon": "Premium plans coming soon"
+    },
+    "adminUsers": {
+      "title": "User Management",
+      "description": "Manage user accounts, roles, and access",
+      "searchPlaceholder": "Search by name or email...",
+      "allRoles": "All Roles",
+      "search": "Search",
+      "name": "Name",
+      "email": "Email",
+      "role": "Role",
+      "status": "Status",
+      "lastLogin": "Last Login",
+      "actions": "Actions",
+      "active": "Active",
+      "inactive": "Inactive",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "roleUpdated": "Role updated",
+      "userActivated": "User activated",
+      "userDeactivated": "User deactivated",
+      "updateFailed": "Update failed",
+      "noUsers": "No users found",
+      "showing": "Showing {from}-{to} of {total}",
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "adminAudit": {
+      "title": "Audit Logs",
+      "description": "Security event log — logins, role changes, and account actions",
+      "allActions": "All Actions",
+      "from": "From",
+      "to": "To",
+      "filter": "Filter",
+      "timestamp": "Timestamp",
+      "action": "Action",
+      "user": "User",
+      "resource": "Resource",
+      "details": "Details",
+      "noLogs": "No audit logs found",
+      "showing": "Showing {from}-{to} of {total}",
+      "previous": "Previous",
+      "next": "Next"
+    }
   }
 }
