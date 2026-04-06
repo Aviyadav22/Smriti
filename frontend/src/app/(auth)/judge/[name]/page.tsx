@@ -20,13 +20,43 @@ import {
 } from "recharts";
 import { ArrowLeft, Gavel, FileText, Users, Scale, BookOpen, Loader2 } from "lucide-react";
 
-const CHART_COLORS = [
-    "hsl(var(--chart-1))",
-    "hsl(var(--chart-2))",
-    "hsl(var(--chart-3))",
-    "hsl(var(--chart-4))",
-    "hsl(var(--chart-5))",
-];
+function useChartColors(): string[] {
+    const [colors, setColors] = useState<string[]>([
+        "#B89B6A", "#8B7355", "#6B6458", "#9B8B75", "#A69478",
+    ]);
+    useEffect(() => {
+        const style = getComputedStyle(document.documentElement);
+        const resolved = [
+            style.getPropertyValue("--chart-1").trim(),
+            style.getPropertyValue("--chart-2").trim(),
+            style.getPropertyValue("--chart-3").trim(),
+            style.getPropertyValue("--chart-4").trim(),
+            style.getPropertyValue("--chart-5").trim(),
+        ].filter(Boolean);
+        if (resolved.length === 5) setColors(resolved);
+    }, []);
+    return colors;
+}
+
+function useThemeColors() {
+    const [theme, setTheme] = useState({ fg: "#4D4839", border: "#D8D0C4", card: "#FFFDF7", text: "#1A1A1A" });
+    useEffect(() => {
+        const resolve = () => {
+            const s = getComputedStyle(document.documentElement);
+            setTheme({
+                fg: s.getPropertyValue("--muted-foreground").trim() || "#4D4839",
+                border: s.getPropertyValue("--border").trim() || "#D8D0C4",
+                card: s.getPropertyValue("--card").trim() || "#FFFDF7",
+                text: s.getPropertyValue("--foreground").trim() || "#1A1A1A",
+            });
+        };
+        resolve();
+        const obs = new MutationObserver(resolve);
+        obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+        return () => obs.disconnect();
+    }, []);
+    return theme;
+}
 
 export default function JudgeProfilePage() {
     const params = useParams();
@@ -37,6 +67,8 @@ export default function JudgeProfilePage() {
     const [cases, setCases] = useState<JudgeCasesResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const chartColors = useChartColors();
+    const themeColors = useThemeColors();
 
     useEffect(() => {
         async function load() {
@@ -153,10 +185,10 @@ export default function JudgeProfilePage() {
                             {yearData.length > 0 ? (
                                 <ResponsiveContainer width="100%" height={280}>
                                     <BarChart data={yearData}>
-                                        <XAxis dataKey="year" tick={{ fontSize: 11 }} />
-                                        <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                                        <Tooltip />
-                                        <Bar dataKey="count" fill={CHART_COLORS[0]} radius={[2, 2, 0, 0]} />
+                                        <XAxis dataKey="year" tick={{ fontSize: 11, fill: themeColors.fg }} axisLine={{ stroke: themeColors.border }} tickLine={{ stroke: themeColors.border }} />
+                                        <YAxis tick={{ fontSize: 11, fill: themeColors.fg }} axisLine={{ stroke: themeColors.border }} tickLine={{ stroke: themeColors.border }} allowDecimals={false} />
+                                        <Tooltip contentStyle={{ backgroundColor: themeColors.card, border: `1px solid ${themeColors.border}`, borderRadius: 6, color: themeColors.text, fontSize: 12 }} />
+                                        <Bar dataKey="count" fill={chartColors[0]} radius={[2, 2, 0, 0]} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             ) : (
@@ -177,14 +209,16 @@ export default function JudgeProfilePage() {
                                             cx="50%"
                                             cy="50%"
                                             outerRadius={100}
+                                            stroke={themeColors.card}
                                             label={({ name }: { name?: string }) => name ?? ""}
+                                            labelLine={{ stroke: themeColors.fg }}
                                         >
                                             {disposalData.map((_, idx) => (
-                                                <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
+                                                <Cell key={idx} fill={chartColors[idx % chartColors.length]} />
                                             ))}
                                         </Pie>
-                                        <Tooltip />
-                                        <Legend />
+                                        <Tooltip contentStyle={{ backgroundColor: themeColors.card, border: `1px solid ${themeColors.border}`, borderRadius: 6, color: themeColors.text, fontSize: 12 }} />
+                                        <Legend wrapperStyle={{ color: themeColors.fg, fontSize: 12 }} />
                                     </PieChart>
                                 </ResponsiveContainer>
                             ) : (
@@ -200,15 +234,17 @@ export default function JudgeProfilePage() {
                             {caseTypeData.length > 0 ? (
                                 <ResponsiveContainer width="100%" height={280}>
                                     <BarChart data={caseTypeData} layout="vertical">
-                                        <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                                        <XAxis type="number" tick={{ fontSize: 11, fill: themeColors.fg }} axisLine={{ stroke: themeColors.border }} tickLine={{ stroke: themeColors.border }} allowDecimals={false} />
                                         <YAxis
                                             type="category"
                                             dataKey="type"
-                                            tick={{ fontSize: 11 }}
+                                            tick={{ fontSize: 11, fill: themeColors.fg }}
+                                            axisLine={{ stroke: themeColors.border }}
+                                            tickLine={{ stroke: themeColors.border }}
                                             width={120}
                                         />
-                                        <Tooltip />
-                                        <Bar dataKey="count" fill={CHART_COLORS[2]} radius={[0, 2, 2, 0]} />
+                                        <Tooltip contentStyle={{ backgroundColor: themeColors.card, border: `1px solid ${themeColors.border}`, borderRadius: 6, color: themeColors.text, fontSize: 12 }} />
+                                        <Bar dataKey="count" fill={chartColors[2]} radius={[0, 2, 2, 0]} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             ) : (
@@ -234,7 +270,7 @@ export default function JudgeProfilePage() {
                                                     className="h-full rounded-full"
                                                     style={{
                                                         width: `${(count / maxActCount) * 100}%`,
-                                                        backgroundColor: CHART_COLORS[1],
+                                                        backgroundColor: chartColors[1],
                                                     }}
                                                 />
                                             </div>

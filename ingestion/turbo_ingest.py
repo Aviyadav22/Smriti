@@ -20,6 +20,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import subprocess
 import sys
 from datetime import datetime
@@ -650,7 +651,7 @@ async def cmd_quality_check() -> None:
     logger.info("QUALITY CHECK")
     logger.info("=" * 60)
 
-    from quality_gates import check_capacity_limits, post_batch_spot_check
+    from quality_gates import check_capacity_limits, post_batch_spot_check, validate_content_quality
 
     # Capacity check
     cap_report = await check_capacity_limits()
@@ -697,6 +698,56 @@ async def cmd_quality_check() -> None:
         logger.error("  FAILURE: %s", f)
     for w in report.warnings:
         logger.warning("  WARNING: %s", w)
+
+    # Content quality check (audit-driven: header bloat, NULL rates, editorial headnotes)
+    logger.info("")
+    logger.info("Running content quality audit on completed metadata...")
+    try:
+        import asyncpg
+        from app.core.config import settings
+        dsn = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
+        pg_conn = await asyncpg.connect(dsn)
+
+        # Sample up to 500 cases for content quality analysis
+        sample_ids = random.sample(all_completed, min(500, len(all_completed)))
+        rows = await pg_conn.fetch(
+            """SELECT id, title, case_description, outcome_summary,
+                      ratio_decidendi, headnotes, extraction_confidence
+               FROM cases WHERE id = ANY($1::uuid[])""",
+            sample_ids,
+        )
+        await pg_conn.close()
+
+        meta_for_audit = {
+            str(row["id"]): {
+                "title": row["title"],
+                "case_description": row["case_description"],
+                "outcome_summary": row["outcome_summary"],
+                "ratio_decidendi": row["ratio_decidendi"],
+                "headnotes": row["headnotes"],
+                "extraction_confidence": row["extraction_confidence"],
+            }
+            for row in rows
+        }
+
+        content_report = validate_content_quality(meta_for_audit)
+        content_path = RUNS_DIR / f"content_quality_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        content_report.save(content_path)
+
+        logger.info("CONTENT QUALITY AUDIT:")
+        for key, val in content_report.checks.items():
+            logger.info("  %s: %s", key, val)
+        for f in content_report.failures:
+            logger.error("  FAILURE: %s", f)
+        for w in content_report.warnings:
+            logger.warning("  WARNING: %s", w)
+
+        if content_report.passed:
+            logger.info("CONTENT QUALITY: PASSED")
+        else:
+            logger.error("CONTENT QUALITY: FAILED — review content_quality report")
+    except Exception as exc:
+        logger.warning("Content quality audit skipped: %s", exc)
 
 
 # ---------------------------------------------------------------------------

@@ -711,8 +711,8 @@ def build_research_graph(
         attempts = state.get("quality_attempts", 0)
         if qr and qr.get("pass_threshold"):
             return "checkpoint_memo"
-        if attempts < 2:
-            # Retry — re-run synthesis with quality feedback
+        if attempts < 1:
+            # Retry once — re-run synthesis with quality feedback (was 2, reduced for speed)
             return "speculative_synthesis"
         # Max attempts reached — proceed with warning
         return "checkpoint_memo"

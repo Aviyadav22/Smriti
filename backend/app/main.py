@@ -268,6 +268,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Run startup health validation (non-blocking, logs warnings only)
     await _validate_startup()
 
+    # Mark stale "running" agent executions as failed (e.g., from a server restart)
+    try:
+        from app.db.postgres import async_session_factory
+        from sqlalchemy import text as _text
+
+        async with async_session_factory() as _db:
+            result = await _db.execute(
+                _text(
+                    "UPDATE agent_executions SET status = 'failed', "
+                    "error_message = 'Server restarted while execution was in progress' "
+                    "WHERE status = 'running' AND created_at < NOW() - INTERVAL '15 minutes'"
+                )
+            )
+            await _db.commit()
+            if result.rowcount:
+                logger.info("Marked %d stale running agent executions as failed on startup", result.rowcount)
+    except Exception:
+        logger.warning("Failed to clean up stale agent executions on startup", exc_info=True)
+
     # Cleanup expired user-uploaded PDFs (DPDP: purpose-limited retention)
     if settings.user_upload_retention_days > 0:
         asyncio.create_task(_cleanup_expired_uploads())
@@ -392,7 +411,9 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 from app.api.routes.admin_corrections import router as admin_corrections_router
+from app.api.routes.admin_audit import router as admin_audit_router
 from app.api.routes.admin_review import router as admin_review_router
+from app.api.routes.admin_users import router as admin_users_router
 from app.api.routes.agents import router as agents_router
 from app.api.routes.audio import router as audio_router
 from app.api.routes.auth import router as auth_router
@@ -409,6 +430,7 @@ from app.api.routes.judges import router as judges_router
 from app.api.routes.search import router as search_router
 from app.api.routes.preferences import router as preferences_router
 from app.api.routes.sharing import router as sharing_router
+from app.api.routes.users import router as users_router
 
 app.include_router(health_router, tags=["health"])
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
@@ -427,4 +449,7 @@ app.include_router(admin_review_router, prefix="/api/v1/admin/review", tags=["ad
 app.include_router(admin_corrections_router, prefix="/api/v1/admin/corrections", tags=["admin"])
 app.include_router(data_quality_router, prefix="/api/v1/admin/data-quality", tags=["admin"])
 app.include_router(preferences_router, prefix="/api/v1", tags=["preferences"])
+app.include_router(users_router, prefix="/api/v1", tags=["users"])
 app.include_router(sharing_router, prefix="/api/v1", tags=["sharing"])
+app.include_router(admin_users_router, prefix="/api/v1/admin/users", tags=["admin"])
+app.include_router(admin_audit_router, prefix="/api/v1/admin/audit-logs", tags=["admin"])

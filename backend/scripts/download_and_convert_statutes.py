@@ -321,11 +321,52 @@ def convert_constitution(data: list[dict] | dict) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
+def _find_body_start(text: str) -> int:
+    """Find where the actual section bodies begin, skipping Table of Contents.
+
+    India Code PDFs have a structure:
+      - Title page + Arrangement of Sections (ToC) — sections listed as one-liners
+      - "CHAPTER I" / "PRELIMINARY" — start of real section bodies
+
+    The ToC entries look like:  "302. Punishment for murder."
+    The real entries look like: "302. Punishment for murder.—Whoever commits murder..."
+    We need to skip the ToC to avoid extracting one-liners instead of full sections.
+    """
+    # Strategy: find "CHAPTER I" (not "CHAPTER II/III/IV") after position 2000
+    # This marks where the real body text begins.
+    chapter_i = re.search(
+        r"^\s*CHAPTER\s+I\b(?!\s*[IVX])",
+        text[2000:],
+        re.MULTILINE | re.IGNORECASE,
+    )
+    if chapter_i:
+        return 2000 + chapter_i.start()
+
+    # Fallback: find first section with em-dash body text (not just a ToC one-liner)
+    # Real sections have em-dash followed by substantive text (10+ chars on same/next line)
+    real_section = re.search(
+        r"^(\d+[A-Z]?)\.\s+.+?[—–]\s*(?:\(1\)|[A-Z])",
+        text[1000:],
+        re.MULTILINE,
+    )
+    if real_section:
+        return 1000 + real_section.start()
+
+    # Last fallback: skip first 15% of text (usually ToC)
+    return min(len(text) // 7, 5000)
+
+
 def extract_sections_from_pdf(pdf_bytes: bytes, act_config: dict) -> list[dict]:
     """Extract sections from an Indian bare act PDF using pdfplumber.
 
     Indian bare acts follow the pattern:
         123. Short title.—Description text continues here...
+
+    Handles India Code PDFs which have:
+      - Table of Contents with one-line section entries (must skip)
+      - Amendment footnotes ("1. Ins. by Act 16 of 2018") (must skip)
+      - Multi-part section numbering (123A, 123B)
+      - Em-dash (—), en-dash (–), or hyphen (-) after title
 
     Args:
         pdf_bytes: Raw PDF content.
@@ -349,46 +390,79 @@ def extract_sections_from_pdf(pdf_bytes: bytes, act_config: dict) -> list[dict]:
         logger.error("No text extracted from PDF for %s", act_config["act_short_name"])
         return []
 
-    # Pattern for Indian bare act sections: "123. Title.—" or "123. Title. —"
-    # Also handles "123A." style numbering
+    # Skip Table of Contents to avoid extracting one-liner ToC entries
+    body_start = _find_body_start(full_text)
+    body_text = full_text[body_start:]
+    logger.info("Body starts at char %d (skipped ToC) for %s", body_start, act_config["act_short_name"])
+
+    # Primary pattern: "123. Title.—" or "123A. Title.—"
+    # The em-dash distinguishes real section headers from ToC entries and footnotes.
+    # India Code PDFs prefix substituted sections with amendment markers like
+    # "1[7." or "2[302." — strip the "N[" prefix when present.
     section_pattern = re.compile(
-        r"^(\d+[A-Z]?)\.\s+(.+?)\.?\s*[—–-]\s*",
+        r"^(?:\d+\[)?(\d+[A-Z]?)\.\s+(.+?)\.?\s*[—–]\s*",
         re.MULTILINE,
     )
 
-    matches = list(section_pattern.finditer(full_text))
-    if not matches:
-        # Try alternative pattern without em-dash
+    matches = list(section_pattern.finditer(body_text))
+
+    if len(matches) < 5:
+        # Fallback: try without em-dash requirement (for older acts)
         section_pattern = re.compile(
-            r"^(\d+[A-Z]?)\.\s+(.+?)\.\s*$",
+            r"^(?:\d+\[)?(\d+[A-Z]?)\.\s+(.+?)\.\s*$",
             re.MULTILINE,
         )
-        matches = list(section_pattern.finditer(full_text))
+        matches = list(section_pattern.finditer(body_text))
 
-    logger.info("Found %d section headers in %s PDF", len(matches), act_config["act_short_name"])
+    # Filter out amendment footnotes: "1. Ins. by Act 16 of 2018, s. 2"
+    _AMEND_RE = re.compile(
+        r"^(?:Ins\.|Subs\.|Omitted|Rep\.|Added|The\s+words|Cl\.|S\.\s+\d)",
+        re.IGNORECASE,
+    )
+    filtered = []
+    for m in matches:
+        title = m.group(2).strip()
+        if _AMEND_RE.match(title):
+            continue
+        # Skip one-liner ToC entries: if text from this match to next match is < 30 chars
+        # it's likely a ToC entry, not a real section
+        idx = matches.index(m)
+        next_start = matches[idx + 1].start() if idx + 1 < len(matches) else len(body_text)
+        section_len = next_start - m.start()
+        if section_len < 30:
+            continue
+        filtered.append(m)
+
+    matches = filtered
+    logger.info("Found %d section headers in %s PDF (after filtering)", len(matches), act_config["act_short_name"])
 
     cross_ref_map = act_config.get("cross_ref_map", {})
     cross_ref_code = act_config.get("cross_ref_code", "")
 
     sections = []
+    seen_sections: dict[str, int] = {}  # sec_num → index in sections list (keep longest)
+
     for i, match in enumerate(matches):
         sec_num = match.group(1)
         sec_title = match.group(2).strip()
 
         # Extract text from this section header to the next
         start = match.start()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
-        raw_text = full_text[start:end].strip()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(body_text)
+        raw_text = body_text[start:end].strip()
 
         # Clean up the text
         raw_text = re.sub(r"\n{3,}", "\n\n", raw_text)
         raw_text = re.sub(r"[ \t]+", " ", raw_text)
 
+        # Strip trailing footnote markers (e.g., "1" at end of lines from superscripts)
+        raw_text = re.sub(r"\s+\d+$", "", raw_text)
+
         # Compute cross-references
         old_sec = cross_ref_map.get(sec_num, "")
         replaces = f"{cross_ref_code}, Section {old_sec}" if old_sec else ""
 
-        sections.append({
+        entry = {
             "act_name": act_config["act_name"],
             "act_short_name": act_config["act_short_name"],
             "act_number": act_config["act_number"],
@@ -404,7 +478,18 @@ def extract_sections_from_pdf(pdf_bytes: bytes, act_config: dict) -> list[dict]:
             "replaced_by": "",
             "replaces": replaces,
             "document_type": "statute",
-        })
+        }
+
+        # Dedup: if this section_number was seen before, keep the LONGER text
+        # (ToC one-liners are short; real body sections are long)
+        if sec_num in seen_sections:
+            prev_idx = seen_sections[sec_num]
+            if len(raw_text) > len(sections[prev_idx]["section_text"]):
+                sections[prev_idx] = entry  # Replace with longer version
+            continue
+
+        seen_sections[sec_num] = len(sections)
+        sections.append(entry)
 
     return sections
 
@@ -758,6 +843,176 @@ PDF_ACT_CONFIGS = {
         "act_number": "27",
         "act_year": 2006,
     },
+    # --- Batch 11: Critical missing acts (discovered via citation gap analysis) ---
+    "LA": {
+        "act_name": "Limitation Act, 1963",
+        "act_short_name": "LA",
+        "act_number": "36",
+        "act_year": 1963,
+    },
+    "LAA": {
+        "act_name": "Land Acquisition Act, 1894",
+        "act_short_name": "LAA",
+        "act_number": "1",
+        "act_year": 1894,
+    },
+    "LARR": {
+        "act_name": "Right to Fair Compensation and Transparency in Land Acquisition, Rehabilitation and Resettlement Act, 2013",
+        "act_short_name": "LARR",
+        "act_number": "30",
+        "act_year": 2013,
+    },
+    "PCA": {
+        "act_name": "Prevention of Corruption Act, 1988",
+        "act_short_name": "PCA",
+        "act_number": "49",
+        "act_year": 1988,
+    },
+    "CPA2019": {
+        "act_name": "Consumer Protection Act, 2019",
+        "act_short_name": "CPA 2019",
+        "act_number": "35",
+        "act_year": 2019,
+    },
+    "CPA1986": {
+        "act_name": "Consumer Protection Act, 1986",
+        "act_short_name": "CPA 1986",
+        "act_number": "68",
+        "act_year": 1986,
+    },
+    "MVA": {
+        "act_name": "Motor Vehicles Act, 1988",
+        "act_short_name": "MVA",
+        "act_number": "59",
+        "act_year": 1988,
+    },
+    "SRA": {
+        "act_name": "Specific Relief Act, 1963",
+        "act_short_name": "SRA",
+        "act_number": "47",
+        "act_year": 1963,
+    },
+    "GCA": {
+        "act_name": "General Clauses Act, 1897",
+        "act_short_name": "GCA",
+        "act_number": "10",
+        "act_year": 1897,
+    },
+    "ARMS": {
+        "act_name": "Arms Act, 1959",
+        "act_short_name": "Arms Act",
+        "act_number": "54",
+        "act_year": 1959,
+    },
+    "POCSO": {
+        "act_name": "Protection of Children from Sexual Offences Act, 2012",
+        "act_short_name": "POCSO",
+        "act_number": "32",
+        "act_year": 2012,
+    },
+    "ELECTRICITY": {
+        "act_name": "Electricity Act, 2003",
+        "act_short_name": "Electricity Act",
+        "act_number": "36",
+        "act_year": 2003,
+    },
+    "DPA": {
+        "act_name": "Dowry Prohibition Act, 1961",
+        "act_short_name": "DPA",
+        "act_number": "28",
+        "act_year": 1961,
+    },
+    # --- Batch 12: Additional missing acts (lower citation count but still important) ---
+    "RPA": {
+        "act_name": "Representation of the People Act, 1951",
+        "act_short_name": "RPA",
+        "act_number": "43",
+        "act_year": 1951,
+    },
+    "SCST": {
+        "act_name": "Scheduled Castes and Scheduled Tribes (Prevention of Atrocities) Act, 1989",
+        "act_short_name": "SC/ST Act",
+        "act_number": "33",
+        "act_year": 1989,
+    },
+    "RTI": {
+        "act_name": "Right to Information Act, 2005",
+        "act_short_name": "RTI Act",
+        "act_number": "22",
+        "act_year": 2005,
+    },
+    "NGT": {
+        "act_name": "National Green Tribunal Act, 2010",
+        "act_short_name": "NGT Act",
+        "act_number": "19",
+        "act_year": 2010,
+    },
+    "SOCIETIES": {
+        "act_name": "Societies Registration Act, 1860",
+        "act_short_name": "Societies Act",
+        "act_number": "21",
+        "act_year": 1860,
+    },
+    "SUCCESSION": {
+        "act_name": "Indian Succession Act, 1925",
+        "act_short_name": "Succession Act",
+        "act_number": "39",
+        "act_year": 1925,
+    },
+    "COMMERCIAL_COURTS": {
+        "act_name": "Commercial Courts Act, 2015",
+        "act_short_name": "Commercial Courts Act",
+        "act_number": "4",
+        "act_year": 2015,
+    },
+    "DRUGS": {
+        "act_name": "Drugs and Cosmetics Act, 1940",
+        "act_short_name": "Drugs Act",
+        "act_number": "23",
+        "act_year": 1940,
+    },
+    "WATER": {
+        "act_name": "Water (Prevention and Control of Pollution) Act, 1974",
+        "act_short_name": "Water Act",
+        "act_number": "6",
+        "act_year": 1974,
+    },
+    "CST": {
+        "act_name": "Central Sales Tax Act, 1956",
+        "act_short_name": "CST Act",
+        "act_number": "74",
+        "act_year": 1956,
+    },
+    "DISABILITY": {
+        "act_name": "Rights of Persons with Disabilities Act, 2016",
+        "act_short_name": "RPD Act",
+        "act_number": "49",
+        "act_year": 2016,
+    },
+    "FOREST": {
+        "act_name": "Indian Forest Act, 1927",
+        "act_short_name": "Forest Act",
+        "act_number": "16",
+        "act_year": 1927,
+    },
+    "ADVOCATES": {
+        "act_name": "Advocates Act, 1961",
+        "act_short_name": "Advocates Act",
+        "act_number": "25",
+        "act_year": 1961,
+    },
+    "AIR": {
+        "act_name": "Air (Prevention and Control of Pollution) Act, 1981",
+        "act_short_name": "Air Act",
+        "act_number": "14",
+        "act_year": 1981,
+    },
+    "ARMY": {
+        "act_name": "Army Act, 1950",
+        "act_short_name": "Army Act",
+        "act_number": "46",
+        "act_year": 1950,
+    },
 }
 
 # Batch groupings for selective download
@@ -769,6 +1024,8 @@ BATCH_ACTS: dict[int, list[str]] = {
     8: ["ITA", "CGST", "CUSTOMS", "CEA", "STAMP", "BENAMI"],
     9: ["TPA", "RA1908", "EASEMENTS", "RERA", "EPA", "WPA", "FCA"],
     10: ["ITA2000", "DPDP", "AADHAAR", "LOKPAL", "CONTEMPT", "ATT", "UAPA", "NIA", "PMLA", "NDPS", "JJA", "INSURANCE", "MSMED"],
+    11: ["LA", "LAA", "LARR", "PCA", "CPA2019", "CPA1986", "MVA", "SRA", "GCA", "ARMS", "POCSO", "ELECTRICITY", "DPA"],
+    12: ["RPA", "SCST", "RTI", "NGT", "SOCIETIES", "SUCCESSION", "COMMERCIAL_COURTS", "DRUGS", "WATER", "CST", "DISABILITY", "FOREST", "ADVOCATES", "AIR", "ARMY"],
 }
 
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { Globe } from "lucide-react";
+import { Languages } from "lucide-react";
 
 interface LanguageToggleProps {
     /** When true, show only the Globe icon (for collapsed sidebar). Default false. */
@@ -35,12 +35,12 @@ export function LanguageToggle({ compact = false }: LanguageToggleProps) {
                 <TooltipTrigger asChild>
                     <Button
                         variant="ghost"
-                        size="sm"
-                        className="w-full justify-center h-9 px-2"
+                        size="icon"
+                        className="h-9 w-9 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
                         onClick={toggleLocale}
                         aria-label={label}
                     >
-                        <Globe className="h-4 w-4" />
+                        <Languages className="h-4.5 w-4.5" />
                     </Button>
                 </TooltipTrigger>
                 <TooltipContent side="right">{label}</TooltipContent>

@@ -586,6 +586,7 @@ class TestGetSession:
                 "status": "completed",
                 "input_data": {"query": "basic structure"},
                 "result_data": {"memo": "test memo"},
+                "error_message": None,
                 "created_at": now,
                 "completed_at": now,
             },

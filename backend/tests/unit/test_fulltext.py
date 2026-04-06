@@ -25,8 +25,8 @@ class TestBuildFilterClauses:
         filters = SearchFilters(court=["Supreme Court"])
         clauses, params = _build_filter_clauses(filters)
         assert len(clauses) == 1
-        assert "court ILIKE :court_0" in clauses[0]
-        assert "%Supreme Court%" in params["court_0"]
+        assert "LOWER" in clauses[0] and "court" in clauses[0] and ":court_0" in clauses[0]
+        assert params["court_0"] == "Supreme Court"
 
     def test_year_range_filter(self) -> None:
         filters = SearchFilters(year_from=2015, year_to=2024)
@@ -62,7 +62,7 @@ class TestBuildFilterClauses:
     def test_act_filter(self) -> None:
         filters = SearchFilters(act="Indian Penal Code")
         clauses, params = _build_filter_clauses(filters)
-        assert "ILIKE :act" in clauses[0]
+        assert "LOWER(a) = LOWER(:act)" in clauses[0]
 
     def test_all_filters_combined(self) -> None:
         """All filters produce separate clauses."""

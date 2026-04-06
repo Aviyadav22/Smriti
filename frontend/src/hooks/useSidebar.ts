@@ -43,12 +43,11 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
     const [isMobileOpen, setMobileOpen] = useState(false);
 
-    // Auto-collapse on agent workspace pages (but not the /agents hub) and chat pages
+    // Auto-collapse on chat pages (they have their own content sidebar)
     const autoCollapse = useMemo(() => {
         if (!pathname) return false;
-        const isAgentWorkspace = pathname.startsWith("/agents/") && pathname !== "/agents/";
         const isChatPage = pathname.startsWith("/chat");
-        return isAgentWorkspace || isChatPage;
+        return isChatPage;
     }, [pathname]);
 
     const toggle = useCallback(() => {

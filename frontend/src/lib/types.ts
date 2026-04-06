@@ -609,6 +609,7 @@ export interface SessionDetailExecution {
         footnotes?: ResearchFootnote[];
         research_audit?: ResearchAudit;
     } | null;
+    error_message: string | null;
     created_at: string;
     completed_at: string | null;
 }
@@ -633,4 +634,95 @@ export interface SearchHistoryEntry {
     result_count: number | null;
     is_bookmarked: boolean;
     created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Settings / User Profile
+// ---------------------------------------------------------------------------
+
+export interface UserProfile {
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+    created_at: string;
+}
+
+export interface UpdateProfileRequest {
+    name: string;
+}
+
+export interface ChangePasswordRequest {
+    current_password: string;
+    new_password: string;
+}
+
+export interface UserPreferences {
+    // Research
+    preferred_jurisdictions?: string[];
+    common_case_types?: string[];
+    preferred_courts?: string[];
+    frequent_acts?: string[];
+    output_preference?: string;
+    search_mode?: string;
+    citation_format?: string;
+    results_per_page?: number;
+    // Appearance
+    theme?: string;
+    language?: string;
+    font_size?: string;
+    // Notifications & AI
+    email_alerts?: boolean;
+    agent_verbosity?: string;
+    tts_voice?: string;
+    tts_language?: string;
+    response_language?: string;
+    // Auto-computed
+    updated_at?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Admin
+// ---------------------------------------------------------------------------
+
+export interface AdminUserSummary {
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+    is_active: boolean;
+    last_login_at: string | null;
+    created_at: string;
+}
+
+export interface AdminUserListResponse {
+    users: AdminUserSummary[];
+    total: number;
+    page: number;
+    page_size: number;
+}
+
+export interface UpdateAdminUserRequest {
+    role?: string;
+    is_active?: boolean;
+}
+
+export interface AuditLogEntry {
+    id: number;
+    user_id: string | null;
+    user_email: string | null;
+    action: string;
+    resource_type: string | null;
+    resource_id: string | null;
+    ip_address: string | null;
+    user_agent: string | null;
+    metadata: Record<string, unknown> | null;
+    created_at: string;
+}
+
+export interface AuditLogListResponse {
+    logs: AuditLogEntry[];
+    total: number;
+    page: number;
+    page_size: number;
 }

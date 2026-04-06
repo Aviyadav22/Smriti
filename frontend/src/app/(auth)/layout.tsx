@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { SidebarProvider } from "@/hooks/useSidebar";
+import { AgentSidebarProvider } from "@/hooks/useAgentSidebarContext";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Menu, Loader2 } from "lucide-react";
@@ -62,7 +63,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
     return (
         <TooltipProvider delayDuration={0}>
             <SidebarProvider>
-                <AuthShell>{children}</AuthShell>
+                <AgentSidebarProvider>
+                    <AuthShell>{children}</AuthShell>
+                </AgentSidebarProvider>
             </SidebarProvider>
         </TooltipProvider>
     );

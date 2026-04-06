@@ -192,14 +192,17 @@ async def case_law_worker(
 
         prop_pinecone_results = await vector_store.search(
             query_embedding,
-            top_k=10,
+            top_k=15,
             filters=prop_filter,
         )
-        # Boost proposition results by 1.5x and merge
+        # Boost proposition/ratio/headnote results by 1.5x (summary gets 1.0x)
         existing_ids = {r.get("case_id") for r in results}
+        _BOOSTED_VECTOR_TYPES = {"proposition", "ratio", "headnote"}
         for r in prop_pinecone_results:
             case_id = r.metadata.get("case_id", r.id)
             if case_id not in existing_ids:
+                vtype = r.metadata.get("vector_type", "chunk")
+                boost = 1.5 if vtype in _BOOSTED_VECTOR_TYPES else 1.0
                 results.append({
                     "case_id": case_id,
                     "title": r.metadata.get("title", ""),
@@ -207,7 +210,7 @@ async def case_law_worker(
                     "court": r.metadata.get("court", ""),
                     "year": r.metadata.get("year"),
                     "snippet": r.metadata.get("text", "")[:500],
-                    "score": r.score * 1.5,
+                    "score": r.score * boost,
                     "source": "proposition_search",
                 })
                 existing_ids.add(case_id)

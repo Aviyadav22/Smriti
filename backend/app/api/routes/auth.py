@@ -94,6 +94,24 @@ class RefreshRequest(BaseModel):
     refresh_token: str | None = None
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password_strength(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least one digit")
+        return v
+
+
 class LogoutRequest(BaseModel):
     refresh_token: str | None = None
 
@@ -355,6 +373,61 @@ async def logout(
 
     _clear_refresh_cookie(response)
     return {"detail": "Successfully logged out"}
+
+
+@router.post(
+    "/change-password",
+    status_code=200,
+    dependencies=[Depends(rate_limit_dependency("5/minute"))],
+)
+async def change_password(
+    body: ChangePasswordRequest,
+    request: Request,
+    current_user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Change the authenticated user's password."""
+    uid = uuid.UUID(current_user.sub)
+
+    result = await db.execute(
+        text("SELECT password_hash FROM users WHERE id = :uid AND is_active = true"),
+        {"uid": uid},
+    )
+    row = result.mappings().one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not verify_password(body.current_password, row["password_hash"]):
+        await create_audit_log(
+            db=db,
+            action="password.change_failed",
+            user_id=current_user.sub,
+            resource_type="auth",
+            resource_id=None,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            metadata={"reason": "invalid_current_password"},
+        )
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    new_hash = hash_password(body.new_password)
+    await db.execute(
+        text("UPDATE users SET password_hash = :hash, updated_at = NOW() WHERE id = :uid"),
+        {"hash": new_hash, "uid": uid},
+    )
+    await db.commit()
+
+    await create_audit_log(
+        db=db,
+        action="password.changed",
+        user_id=current_user.sub,
+        resource_type="auth",
+        resource_id=None,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    return {"detail": "Password changed successfully"}
 
 
 @router.delete("/me", status_code=200, dependencies=[Depends(rate_limit_dependency("3/hour"))])

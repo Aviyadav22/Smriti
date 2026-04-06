@@ -39,7 +39,7 @@ export default function ResearchPage() {
         <AgentWorkspace
             agentType="research"
             title="Research Agent"
-            description="AI-powered legal research with citation verification and adversarial analysis."
+            description="Legal research with verified citations"
             steps={[]}
             suppressDefaultMemo
             suppressDefaultProgress

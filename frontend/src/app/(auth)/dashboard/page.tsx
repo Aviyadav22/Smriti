@@ -28,29 +28,29 @@ const AGENTS = [
         key: "research" as const,
         href: "/agents/research",
         icon: Search,
-        color: "text-blue-600 dark:text-blue-400",
-        bgColor: "bg-blue-50 dark:bg-blue-950/30",
+        color: "text-blue-600 dark:text-blue-300",
+        bgColor: "bg-blue-50 dark:bg-blue-900/20",
     },
     {
         key: "casePrep" as const,
         href: "/agents/case-prep",
         icon: FileText,
-        color: "text-emerald-600 dark:text-emerald-400",
-        bgColor: "bg-emerald-50 dark:bg-emerald-950/30",
+        color: "text-emerald-600 dark:text-emerald-300",
+        bgColor: "bg-emerald-50 dark:bg-emerald-900/20",
     },
     {
         key: "strategy" as const,
         href: "/agents/strategy",
         icon: Scale,
-        color: "text-amber-600 dark:text-amber-400",
-        bgColor: "bg-amber-50 dark:bg-amber-950/30",
+        color: "text-amber-600 dark:text-amber-300",
+        bgColor: "bg-amber-50 dark:bg-amber-900/20",
     },
     {
         key: "drafting" as const,
         href: "/agents/drafting",
         icon: PenTool,
-        color: "text-purple-600 dark:text-purple-400",
-        bgColor: "bg-purple-50 dark:bg-purple-950/30",
+        color: "text-purple-600 dark:text-purple-300",
+        bgColor: "bg-purple-50 dark:bg-purple-900/20",
     },
 ];
 
@@ -76,22 +76,22 @@ export default function DashboardPage() {
             </div>
 
             {/* Agent Cards — 2x2 grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full max-w-2xl">
                 {AGENTS.map((agent) => {
                     const Icon = agent.icon;
                     return (
                         <Link key={agent.key} href={agent.href}>
-                            <Card className="group relative flex items-center gap-4 p-5 border border-border/60 hover:border-[var(--gold)]/40 hover:shadow-sm transition-all duration-200 cursor-pointer">
-                                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${agent.bgColor}`}>
+                            <Card className="group !flex-row items-center gap-4 px-5 !py-4 border border-border/60 hover:border-[var(--gold)]/40 hover:shadow-sm transition-all duration-200 cursor-pointer">
+                                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${agent.bgColor}`}>
                                     <Icon className={`h-5 w-5 ${agent.color}`} />
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <h3 className="text-sm font-semibold">{t(`${agent.key}.title`)}</h3>
-                                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-                                        {t(`${agent.key}.description`)}
+                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                        {t(`${agent.key}.tagline`)}
                                     </p>
                                 </div>
-                                <ArrowRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-[var(--gold)] transition-colors shrink-0" />
+                                <ArrowRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-[var(--gold)] transition-colors shrink-0" />
                             </Card>
                         </Link>
                     );

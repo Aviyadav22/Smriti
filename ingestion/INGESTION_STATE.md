@@ -1,6 +1,6 @@
 # Ingestion State & Execution Plan — Single Source of Truth
 
-**Last updated**: 2026-04-03
+**Last updated**: 2026-04-06
 **Author**: Automated pipeline audit
 **Purpose**: Everything a new agent needs to know to continue ingestion safely.
 
@@ -276,6 +276,18 @@ SPEED (saves 60 LLM calls/case), not for space. Backfill adds them later.
 ---
 
 ## 9. Execution Checklist
+
+### Log — 2026-04-06
+- Account A (`smriti-ingest-a`) SUSPENDED by Google (429 hammering during testing)
+- Appeal submitted, awaiting response
+- Account B (`smriti-ingest-b`) key placed as `account_a.json` — working for LLM + batch
+- Embedding quota on B is low (~5 RPM for gemini-embedding-2-preview)
+- 10-case trial on 2018: Phase 1 (10/10), Phase 2 (10/10), Phase 3 (2/10 — embedding 429)
+- Quality verified: ratio, judges, outcome all correct via web search
+- acts_cited NULL on 1 case: NOT A BUG — source PDF is SCR headnote (5-9K chars), not full judgment
+- GCS bucket for batch: `smriti-batch-b` (set via `GCS_BUCKET` env var)
+- SDK updated: `thinking_budget` no longer supported, `_apply_thinking_config` gracefully degrades
+- Current key is for downstream only — DO NOT use for bulk ingestion, wait for new keys
 
 ### Before Starting
 - [ ] Verify all 4 GCP accounts have Vertex AI API enabled

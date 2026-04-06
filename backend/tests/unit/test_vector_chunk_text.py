@@ -67,14 +67,14 @@ class TestBuildSnippetsMapVectorFallback:
     def test_fts_snippet_takes_priority(self) -> None:
         """When a case has both FTS snippet and vector chunk, FTS wins."""
         fts = [FTSResult(case_id="c1", rank=1.0, snippet="FTS headline text", title="Case 1")]
-        vector = [("c1", 0.95, "Vector passage about Article 21")]
+        vector = [("c1", 0.95, "Vector passage about Article 21", 0, 500, 10.0)]
         result = _build_snippets_map(fts, vector)
         assert result["c1"] == "FTS headline text"
 
     def test_vector_chunk_text_used_when_no_fts(self) -> None:
         """Cases found only via vector search should use chunk text."""
         fts: list[FTSResult] = []
-        vector = [("c1", 0.95, "The petitioner argued right to privacy")]
+        vector = [("c1", 0.95, "The petitioner argued right to privacy", 0, 500, 5.0)]
         result = _build_snippets_map(fts, vector)
         assert result["c1"] == "The petitioner argued right to privacy"
 
@@ -82,8 +82,8 @@ class TestBuildSnippetsMapVectorFallback:
         """FTS case gets FTS snippet; vector-only case gets chunk text."""
         fts = [FTSResult(case_id="c1", rank=1.0, snippet="FTS text", title="Case 1")]
         vector = [
-            ("c1", 0.95, "Vector text for c1"),
-            ("c2", 0.85, "Vector text for c2"),
+            ("c1", 0.95, "Vector text for c1", 0, 500, 10.0),
+            ("c2", 0.85, "Vector text for c2", 0, 400, 5.0),
         ]
         result = _build_snippets_map(fts, vector)
         assert result["c1"] == "FTS text"  # FTS wins
@@ -92,14 +92,14 @@ class TestBuildSnippetsMapVectorFallback:
     def test_empty_vector_chunk_text_not_used(self) -> None:
         """Empty chunk text should not be added to the snippets map."""
         fts: list[FTSResult] = []
-        vector = [("c1", 0.95, "")]
+        vector = [("c1", 0.95, "", 0, 0, 0.0)]
         result = _build_snippets_map(fts, vector)
         assert "c1" not in result
 
     def test_fts_title_fallback_still_works(self) -> None:
         """FTS result with no snippet but with title should use title."""
         fts = [FTSResult(case_id="c1", rank=1.0, snippet=None, title="Case Title")]
-        vector: list[tuple[str, float, str]] = []
+        vector: list[tuple[str, float, str, int, int, float]] = []
         result = _build_snippets_map(fts, vector)
         assert result["c1"] == "Case Title"
 
@@ -111,9 +111,9 @@ class TestBuildSnippetsMapVectorFallback:
         """All vector-only cases should get their chunk text in the map."""
         fts: list[FTSResult] = []
         vector = [
-            ("c1", 0.95, "Text one"),
-            ("c2", 0.85, "Text two"),
-            ("c3", 0.75, "Text three"),
+            ("c1", 0.95, "Text one", 0, 500, 10.0),
+            ("c2", 0.85, "Text two", 0, 400, 5.0),
+            ("c3", 0.75, "Text three", 0, 300, 2.0),
         ]
         result = _build_snippets_map(fts, vector)
         assert result == {"c1": "Text one", "c2": "Text two", "c3": "Text three"}
@@ -203,22 +203,24 @@ class TestVectorSearchChunkText:
     """Test that _vector_search preserves chunk text from metadata."""
 
     @pytest.mark.asyncio
-    async def test_returns_five_tuples(self) -> None:
+    async def test_returns_six_tuples(self) -> None:
         from app.core.search.hybrid import _vector_search
 
         store = MockVectorStore([
             MockVectorResult(id="chunk-1", score=0.95, metadata={
                 "case_id": "c1", "text": "passage one", "char_start": 100, "char_end": 500,
+                "legal_signal": 42.5,
             }),
         ])
         results = await _vector_search("test query", embedder=MockEmbedder(), vector_store=store, filters=None)
         assert len(results) == 1
-        case_id, score, chunk_text, char_start, char_end = results[0]
+        case_id, score, chunk_text, char_start, char_end, legal_signal = results[0]
         assert case_id == "c1"
         assert score == 0.95
         assert chunk_text == "passage one"
         assert char_start == 100
         assert char_end == 500
+        assert legal_signal == 42.5
 
     @pytest.mark.asyncio
     async def test_deduplicates_keeping_best_chunk(self) -> None:

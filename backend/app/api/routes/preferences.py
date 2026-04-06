@@ -22,11 +22,27 @@ router = APIRouter()
 class UpdatePreferencesRequest(BaseModel):
     """Validated request body for preference updates."""
 
+    # Research preferences
     preferred_jurisdictions: list[str] | None = None
     common_case_types: list[str] | None = None
     preferred_courts: list[str] | None = None
     frequent_acts: list[str] | None = None
     output_preference: str | None = None
+    search_mode: str | None = None  # semantic | keyword | hybrid
+    citation_format: str | None = None  # standard | oscola | bluebook
+    results_per_page: int | None = None  # 10 | 20 | 50
+
+    # Appearance
+    theme: str | None = None  # light | dark | system
+    language: str | None = None  # en | hi
+    font_size: str | None = None  # small | medium | large
+
+    # Notifications & AI
+    email_alerts: bool | None = None
+    agent_verbosity: str | None = None  # concise | detailed | comprehensive
+    tts_voice: str | None = None  # male | female
+    tts_language: str | None = None  # en | hi
+    response_language: str | None = None  # en | hi
 
 
 async def _compute_preferences(db: AsyncSession, user_id: str) -> dict:

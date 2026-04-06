@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -53,6 +54,9 @@ from app.security.sanitizer import detect_prompt_injection, sanitize_search_quer
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Module-level set to prevent GC of background agent tasks when client disconnects
+_background_tasks: set[asyncio.Task] = set()
 
 
 # ---------------------------------------------------------------------------
@@ -210,28 +214,25 @@ class ResumeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-async def _stream_agent_events(
+_KEEPALIVE_INTERVAL = 15  # seconds between SSE heartbeats
+_GRAPH_TIMEOUT = 900  # 15 minutes max for entire graph execution
+_SENTINEL = object()  # signals the producer is done
+
+
+def _launch_graph_task(
     graph,
     initial_input: dict,
     config: dict,
     exec_id: uuid.UUID,
+    queue: asyncio.Queue,
     graph_kwargs: dict | None = None,
-) -> AsyncIterator[str]:
-    """Stream SSE events from agent graph execution.
+) -> asyncio.Task:
+    """Launch the graph execution as a background task.
 
-    IMPORTANT: This generator runs AFTER the FastAPI endpoint returns, so the
-    Depends(get_db) session is already closed. All DB updates use independent
-    sessions created via async_session_factory().
-
-    Uses an async queue + background task pattern so we can send SSE keepalive
-    heartbeats every 15 seconds while waiting for long-running graph nodes
-    (e.g. LLM calls that take 30-60s).
+    The task is stored in _background_tasks to prevent GC. It runs to
+    completion regardless of whether the SSE consumer is still alive.
+    Returns the task so the caller can inspect it if needed.
     """
-    import asyncio
-
-    _KEEPALIVE_INTERVAL = 15  # seconds between heartbeat comments
-    _GRAPH_TIMEOUT = 600  # 10 minutes max for entire graph execution
-    _SENTINEL = object()  # signals the producer is done
 
     # Known research graph node names — used to filter astream_events
     # (only emit SSE for actual graph steps, not internal LangChain sub-chains)
@@ -250,8 +251,14 @@ async def _stream_agent_events(
         "graph_community_worker",
     }
 
-    queue: asyncio.Queue[str | object] = asyncio.Queue()
     is_checkpoint = False
+
+    async def _safe_put(item: str | object) -> None:
+        """Put an item on the queue, silently dropping if full (client disconnected)."""
+        try:
+            queue.put_nowait(item)
+        except asyncio.QueueFull:
+            pass  # Client disconnected — events are saved to DB anyway
 
     async def _run_graph() -> None:
         """Producer: iterate graph events and push SSE strings into queue."""
@@ -266,7 +273,7 @@ async def _stream_agent_events(
                 _memo_chunk_count += 1
                 if _memo_chunk_count <= 3 or _memo_chunk_count % 20 == 0:
                     logger.info("memo_stream chunk #%d (%d chars)", _memo_chunk_count, len(chunk))
-                await queue.put(
+                await _safe_put(
                     f'data: {json.dumps({"type": "memo_stream", "execution_id": str(exec_id), "chunk": chunk})}\n\n'
                 )
             # Build the appropriate graph type with streaming callback
@@ -306,12 +313,12 @@ async def _stream_agent_events(
                     continue
                 msg = _MESSAGES[idx % len(_MESSAGES)]
                 idx += 1
-                await queue.put(f"data: {json.dumps({'type': 'progress', 'data': {'stage': '', 'progress': 0, 'detail': msg}, 'execution_id': str(exec_id)})}\n\n")
+                await _safe_put(f"data: {json.dumps({'type': 'progress', 'data': {'stage': '', 'progress': 0, 'detail': msg}, 'execution_id': str(exec_id)})}\n\n")
 
         ticker_task = asyncio.create_task(_progress_ticker())
 
         # Send an immediate event so the frontend never shows empty state
-        await queue.put(f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'understand', 'progress': 0.01, 'detail': 'Starting research...'}, 'execution_id': str(exec_id)})}\n\n")
+        await _safe_put(f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'understand', 'progress': 0.01, 'detail': 'Starting research...'}, 'execution_id': str(exec_id)})}\n\n")
 
         try:
             async for event in graph.astream(
@@ -323,7 +330,7 @@ async def _stream_agent_events(
                     # [T1] Forward process_events as rich SSE events
                     if isinstance(node_output, dict):
                         for pe in node_output.get("process_events", []):
-                            await queue.put(
+                            await _safe_put(
                                 f"data: {json.dumps({**pe, 'execution_id': str(exec_id)})}\n\n"
                             )
 
@@ -333,7 +340,7 @@ async def _stream_agent_events(
                         "step": node_name,
                         "message": f"Completed: {node_name}",
                     }
-                    await queue.put(f"data: {json.dumps(sse_event)}\n\n")
+                    await _safe_put(f"data: {json.dumps(sse_event)}\n\n")
 
             # Stop the progress ticker
             _ticker_state["active"] = False
@@ -384,7 +391,7 @@ async def _stream_agent_events(
                         else {"value": interrupt_value}
                     ),
                 }
-                await queue.put(f"data: {json.dumps(checkpoint_data)}\n\n")
+                await _safe_put(f"data: {json.dumps(checkpoint_data)}\n\n")
             else:
                 # Graph completed normally
                 final_state = state.values
@@ -419,7 +426,7 @@ async def _stream_agent_events(
                             {"id": exec_id, "msg": state_error[:2000]},
                         )
                         await db.commit()
-                    await queue.put(f"data: {json.dumps({'type': 'error', 'execution_id': str(exec_id), 'message': state_error[:500]})}\n\n")
+                    await _safe_put(f"data: {json.dumps({'type': 'error', 'execution_id': str(exec_id), 'message': state_error[:500]})}\n\n")
                     return
 
                 result_data = {
@@ -506,10 +513,10 @@ async def _stream_agent_events(
                     memo_event_data["legal_quality_result"] = result_data["legal_quality_result"]
                 if result_data.get("contradictions"):
                     memo_event_data["contradictions"] = result_data["contradictions"]
-                await queue.put(f"data: {json.dumps({'type': 'memo', 'execution_id': str(exec_id), 'content': result_data['memo'], 'data': memo_event_data})}\n\n")
-                await queue.put(f"data: {json.dumps({'type': 'done', 'execution_id': str(exec_id), 'status': 'completed'})}\n\n")
+                await _safe_put(f"data: {json.dumps({'type': 'memo', 'execution_id': str(exec_id), 'content': result_data['memo'], 'data': memo_event_data})}\n\n")
+                await _safe_put(f"data: {json.dumps({'type': 'done', 'execution_id': str(exec_id), 'status': 'completed'})}\n\n")
 
-        except Exception as exc:
+        except (Exception, asyncio.CancelledError) as exc:
             _ticker_state["active"] = False
             ticker_task.cancel()
             logger.exception("Agent execution %s failed", exec_id)
@@ -529,14 +536,32 @@ async def _stream_agent_events(
                     await db.commit()
             except Exception:
                 logger.exception("Failed to update execution %s status to failed", exec_id)
-            await queue.put(f"data: {json.dumps(_categorize_error(exc))}\n\n")
+            await _safe_put(f"data: {json.dumps(_categorize_error(exc))}\n\n")
         finally:
-            await queue.put(_SENTINEL)
+            await _safe_put(_SENTINEL)
 
     async def _run_graph_with_timeout() -> None:
         """Wrap _run_graph with an overall execution timeout."""
+        logger.info("Background task started for execution %s", exec_id)
         try:
             await asyncio.wait_for(_run_graph(), timeout=_GRAPH_TIMEOUT)
+            logger.info("Background task completed normally for execution %s", exec_id)
+        except asyncio.CancelledError:
+            logger.error("Background task cancelled for execution %s", exec_id)
+            # Update DB so we know it was cancelled
+            try:
+                async with async_session_factory() as db:
+                    await db.execute(
+                        text(
+                            "UPDATE agent_executions SET status = 'failed', "
+                            "error_message = :msg WHERE id = :id"
+                        ),
+                        {"id": exec_id, "msg": "Background task was cancelled (client disconnect?)"},
+                    )
+                    await db.commit()
+            except Exception:
+                logger.exception("Failed to update cancelled execution %s", exec_id)
+            raise
         except asyncio.TimeoutError:
             logger.error("Agent execution %s timed out after %d seconds", exec_id, _GRAPH_TIMEOUT)
             # Update DB status to failed
@@ -553,20 +578,43 @@ async def _stream_agent_events(
             except Exception:
                 logger.exception("Failed to update execution %s status after timeout", exec_id)
             # Send timeout error event to client
-            await queue.put(
+            await _safe_put(
                 f"data: {json.dumps({'type': 'error', 'message': 'Agent execution timed out after 10 minutes', 'recoverable': False})}\n\n"
             )
-            await queue.put(_SENTINEL)
+            await _safe_put(_SENTINEL)
 
-    # Launch the graph producer as a background task (with timeout guard)
+    # Launch the graph producer as a background task.
     task = asyncio.create_task(_run_graph_with_timeout())
+    _background_tasks.add(task)
 
+    def _on_task_done(t: asyncio.Task) -> None:
+        _background_tasks.discard(t)
+        if t.cancelled():
+            logger.error("Background task cancelled for execution %s (done callback)", exec_id)
+        elif t.exception():
+            logger.error("Background task failed for execution %s: %s", exec_id, t.exception())
+        else:
+            logger.info("Background task completed for execution %s", exec_id)
+
+    task.add_done_callback(_on_task_done)
+    return task
+
+
+async def _sse_consumer(
+    queue: asyncio.Queue,
+    exec_id: uuid.UUID,
+) -> AsyncIterator[str]:
+    """Consume SSE events from the queue and yield them to the client.
+
+    This generator is independent of the background task — when the client
+    disconnects and Starlette cancels this generator, the background task
+    continues running.
+    """
     try:
         while True:
             try:
                 item = await asyncio.wait_for(queue.get(), timeout=_KEEPALIVE_INTERVAL)
             except asyncio.TimeoutError:
-                # No event within interval — send SSE keepalive comment
                 yield ": keepalive\n\n"
                 continue
 
@@ -574,8 +622,25 @@ async def _stream_agent_events(
                 break
             yield item  # type: ignore[misc]
     finally:
-        if not task.done():
-            task.cancel()
+        logger.info("SSE consumer exited for execution %s", exec_id)
+
+
+async def _stream_agent_events(
+    graph,
+    initial_input: dict,
+    config: dict,
+    exec_id: uuid.UUID,
+    graph_kwargs: dict | None = None,
+) -> AsyncIterator[str]:
+    """Launch graph as background task and stream SSE events.
+
+    The graph task is created HERE (not inside the generator) so it survives
+    when Starlette cancels the generator on client disconnect.
+    """
+    queue: asyncio.Queue[str | object] = asyncio.Queue(maxsize=200)
+    _launch_graph_task(graph, initial_input, config, exec_id, queue, graph_kwargs=graph_kwargs)
+    async for item in _sse_consumer(queue, exec_id):
+        yield item
 
 
 # ---------------------------------------------------------------------------
@@ -832,8 +897,14 @@ async def run_agent(
         metadata={"agent_type": agent_type, "thread_id": thread_id},
     )
 
+    # Create the queue and launch the graph task BEFORE returning the response.
+    # This ensures the task is created in the endpoint's scope (not inside the
+    # generator), so it survives when Starlette cancels the generator on disconnect.
+    queue: asyncio.Queue[str | object] = asyncio.Queue(maxsize=200)
+    _launch_graph_task(graph, initial_input, config, execution.id, queue, graph_kwargs=graph_kwargs)
+
     return StreamingResponse(
-        _stream_agent_events(graph, initial_input, config, execution.id, graph_kwargs=graph_kwargs),
+        _sse_consumer(queue, execution.id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -2324,6 +2395,8 @@ async def session_follow_up(
                 await queue.put(_SENTINEL)
 
         task = asyncio.create_task(_producer_with_timeout())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
         try:
             while True:
                 try:
@@ -2335,8 +2408,8 @@ async def session_follow_up(
                     break
                 yield item  # type: ignore[misc]
         finally:
-            if not task.done():
-                task.cancel()
+            if task.done():
+                _background_tasks.discard(task)
 
     return StreamingResponse(
         _follow_up_stream(),
@@ -2437,7 +2510,7 @@ async def get_session(
 
     exec_result = await db.execute(
         text(
-            "SELECT id, status, input_data, result_data, created_at, completed_at "
+            "SELECT id, status, input_data, result_data, error_message, created_at, completed_at "
             "FROM agent_executions WHERE session_id = :sid ORDER BY created_at ASC"
         ),
         {"sid": sess_uuid},
@@ -2448,6 +2521,7 @@ async def get_session(
             "status": e["status"],
             "input_data": e["input_data"],
             "result_data": e["result_data"],
+            "error_message": e["error_message"],
             "created_at": str(e["created_at"]),
             "completed_at": str(e["completed_at"]) if e["completed_at"] else None,
         }

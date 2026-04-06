@@ -114,6 +114,9 @@ class Settings(BaseSettings):
     # Research Agent
     research_max_refinement_rounds: int = 2
     research_max_chunks_per_case: int = 4
+
+    # Strategy Agent
+    strategy_max_chunks_per_case: int = 3
     research_max_snippet_len: int = 1500
     research_max_ratio_len: int = 3000
 
