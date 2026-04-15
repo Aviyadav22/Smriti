@@ -5,13 +5,16 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 from google.api_core.exceptions import NotFound
 from google.cloud import storage
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.core.config import settings
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 _gcs_retry = retry(
     stop=stop_after_attempt(3),

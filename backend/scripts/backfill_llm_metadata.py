@@ -112,7 +112,7 @@ async def _update_case_metadata(session, case_id: str, metadata: CaseMetadata,
     params = {"cid": case_id}
     for field, value in update_fields.items():
         if value is not None:
-            if isinstance(value, list) or isinstance(value, bool):
+            if isinstance(value, list | bool):
                 params[field] = value
                 set_clauses.append(f"{field} = :{field}")
             else:

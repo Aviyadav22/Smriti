@@ -7,22 +7,14 @@ import logging
 import re
 import uuid
 from dataclasses import asdict
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.nodes.citation_verifier import (
     check_grounding,
     extract_citations_from_text,
     verify_citations_against_db,
-)
-from app.core.interfaces import (
-    EmbeddingProvider,
-    GraphStore,
-    LLMProvider,
-    Reranker,
-    VectorStore,
 )
 from app.core.legal.amendment_service import build_lookup_from_constants
 from app.core.legal.constants import CRPC_TO_BNSS_MAP, EVIDENCE_TO_BSA_MAP, IPC_TO_BNS_MAP
@@ -33,6 +25,17 @@ from app.core.legal.prompts import (
 )
 from app.core.legal.treatment import has_overruling_language
 from app.core.search.hybrid import hybrid_search
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.core.interfaces import (
+        EmbeddingProvider,
+        GraphStore,
+        LLMProvider,
+        Reranker,
+        VectorStore,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -401,7 +404,7 @@ def _normalize_title_for_dedup(t: str) -> str:
 def _normalize_score(result: dict) -> float:
     """[H7] Normalize scores to 0-1 range by source type."""
     raw = result.get("score", 0)
-    if not isinstance(raw, (int, float)):
+    if not isinstance(raw, int | float):
         return 0.0
     source = result.get("source", "internal")
     if source == "indian_kanoon":
@@ -1079,10 +1082,7 @@ async def _check_holding_accuracy(
                     dot = sum(a * b for a, b in zip(claim_vec, ratio_vec, strict=False))
                     mag_a = sum(a * a for a in claim_vec) ** 0.5
                     mag_b = sum(b * b for b in ratio_vec) ** 0.5
-                    if mag_a > 0 and mag_b > 0:
-                        sim = dot / (mag_a * mag_b)
-                    else:
-                        sim = 0.0
+                    sim = dot / (mag_a * mag_b) if mag_a > 0 and mag_b > 0 else 0.0
 
                     if sim < 0.75:
                         label = "misrepresented" if sim < 0.5 else "partially_accurate"

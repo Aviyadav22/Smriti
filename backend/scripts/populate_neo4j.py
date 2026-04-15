@@ -31,6 +31,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import contextlib
+
 import asyncpg
 from neo4j import AsyncGraphDatabase
 
@@ -251,48 +253,36 @@ async def clear_graph(driver, database: str) -> None:
 async def create_constraints(driver, database: str) -> None:
     """Create uniqueness constraints and indexes."""
     async with driver.session(database=database) as session:
-        try:
+        with contextlib.suppress(Exception):
             await session.run(
                 "CREATE CONSTRAINT case_id_unique IF NOT EXISTS "
                 "FOR (c:Case) REQUIRE c.id IS UNIQUE"
             )
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             await session.run(
                 "CREATE INDEX case_citation_idx IF NOT EXISTS "
                 "FOR (c:Case) ON (c.citation)"
             )
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             await session.run(
                 "CREATE CONSTRAINT judge_name_unique IF NOT EXISTS "
                 "FOR (j:Judge) REQUIRE j.name IS UNIQUE"
             )
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             await session.run(
                 "CREATE CONSTRAINT act_name_unique IF NOT EXISTS "
                 "FOR (a:Act) REQUIRE a.name IS UNIQUE"
             )
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             await session.run(
                 "CREATE CONSTRAINT statute_id_unique IF NOT EXISTS "
                 "FOR (s:Statute) REQUIRE s.id IS UNIQUE"
             )
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             await session.run(
                 "CREATE FULLTEXT INDEX case_search IF NOT EXISTS "
                 "FOR (c:Case) ON EACH [c.title, c.citation]"
             )
-        except Exception:
-            pass
     logger.info("Created constraints and indexes")
 
 

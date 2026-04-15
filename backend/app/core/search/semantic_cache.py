@@ -17,10 +17,12 @@ import json
 import logging
 import struct
 import time
+from typing import TYPE_CHECKING
 
-import redis.asyncio as aioredis
+if TYPE_CHECKING:
+    import redis.asyncio as aioredis
 
-from app.core.interfaces import EmbeddingProvider
+    from app.core.interfaces import EmbeddingProvider
 
 logger = logging.getLogger(__name__)
 

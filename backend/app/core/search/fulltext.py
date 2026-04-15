@@ -8,12 +8,16 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.legal.extractor import normalize_act_name
-from app.core.search.query import SearchFilters
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.core.search.query import SearchFilters
 
 # ---------------------------------------------------------------------------
 # Data classes

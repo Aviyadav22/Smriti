@@ -3,21 +3,24 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from app.core.config import settings
-from app.core.interfaces import (
-    EmbeddingProvider,
-    ExternalDocProvider,
-    FileStorage,
-    GraphStore,
-    LLMProvider,
-    Reranker,
-    TranslationProvider,
-    TTSProvider,
-    VectorStore,
-    WebSearchProvider,
-)
 from app.core.providers.circuit_breaker import CircuitBreaker
+
+if TYPE_CHECKING:
+    from app.core.interfaces import (
+        EmbeddingProvider,
+        ExternalDocProvider,
+        FileStorage,
+        GraphStore,
+        LLMProvider,
+        Reranker,
+        TranslationProvider,
+        TTSProvider,
+        VectorStore,
+        WebSearchProvider,
+    )
 
 # ---------------------------------------------------------------------------
 # Singleton circuit breakers for external service providers

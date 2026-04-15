@@ -7,8 +7,10 @@ Detects POCSO / sexual assault cases for metadata flagging.
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
-from app.core.ingestion.metadata import CaseMetadata
+if TYPE_CHECKING:
+    from app.core.ingestion.metadata import CaseMetadata
 
 # ---------------------------------------------------------------------------
 # PII masking patterns (adapted from logging_config.py but with distinct
@@ -111,7 +113,4 @@ def detect_sensitive_case(full_text: str, metadata: CaseMetadata) -> bool:
                 return True
 
     # Check text for sensitive keywords
-    if _SENSITIVE_KEYWORDS_RE.search(full_text):
-        return True
-
-    return False
+    return bool(_SENSITIVE_KEYWORDS_RE.search(full_text))

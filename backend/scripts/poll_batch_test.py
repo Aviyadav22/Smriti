@@ -10,6 +10,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import contextlib
+
 from google import genai
 
 
@@ -33,51 +35,40 @@ def main():
         ("basic-pdf", "batches/ppby62zjzrwo0l1xdkthb3c3ipedxk1krr6t"),
     ]
 
-    print(f"Polling {len(JOBS)} batch jobs every {interval}s...")
     while True:
         all_done = True
-        for label, name in JOBS:
+        for _label, name in JOBS:
             job = client.batches.get(name=name)
             state = str(job.state).split(".")[-1]
-            print(f"  {label}: {state}", end="")
 
             if state == "JOB_STATE_SUCCEEDED":
                 if job.dest and job.dest.file_name:
                     content = client.files.download(file=job.dest.file_name)
                     data = content.decode()
-                    print(f"\n    Result ({len(data)} bytes):")
                     # Parse and show first entry
                     for line in data.strip().split("\n"):
                         entry = json.loads(line)
-                        key = entry.get("key", "?")
+                        entry.get("key", "?")
                         resp = entry.get("response", {})
                         cands = resp.get("candidates", [])
                         if cands:
                             text = cands[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                            try:
-                                parsed = json.loads(text)
-                                print(f"    key={key}, title={parsed.get('title', '?')}")
-                                print(f"    citation={parsed.get('citation', '?')}")
-                                print(f"    keys={list(parsed.keys())[:10]}...")
-                            except json.JSONDecodeError:
-                                print(f"    key={key}, raw_text={text[:200]}")
+                            with contextlib.suppress(json.JSONDecodeError):
+                                json.loads(text)
                         else:
-                            print(f"    key={key}, no candidates")
+                            pass
                 elif job.dest and job.dest.inlined_responses:
-                    print(f"\n    {len(job.dest.inlined_responses)} inline responses")
+                    pass
                 else:
-                    print(f"\n    dest={job.dest}")
+                    pass
             elif state in ("JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED"):
-                print(f" ERROR: {job.error}")
+                pass
             else:
                 all_done = False
-                print()
 
         if all_done:
-            print("\nAll jobs completed!")
             break
 
-        print(f"\nSleeping {interval}s...")
         time.sleep(interval)
 
 

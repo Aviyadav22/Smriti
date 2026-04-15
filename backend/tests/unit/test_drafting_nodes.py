@@ -1092,7 +1092,7 @@ class TestDraftSectionsStatuteInjection:
             statutory_provisions=[],
         )
 
-        result = await draft_sections_node(state, mock_llm, mock_vector_store, mock_embedder)
+        await draft_sections_node(state, mock_llm, mock_vector_store, mock_embedder)
 
         # embedder/vector_store should not have been called for non-substantive "prayer"
         mock_embedder.embed.assert_not_awaited()
@@ -1148,7 +1148,7 @@ class TestAffidavitGeneration:
                 "fundamental_right_violated": "Art.21",
             },
         )
-        result = await generate_affidavit_node(state, mock_llm)
+        await generate_affidavit_node(state, mock_llm)
         prompt = mock_llm.generate.call_args.kwargs.get("prompt", "")
         assert "Ram Kumar" in prompt
 

@@ -59,9 +59,6 @@ async def run_component_e2e() -> bool:
     }
     state = {"task": task, "precomputed_embeddings": {}}
 
-    print("=" * 60)
-    print("E2E Research Pipeline — Component Tests")
-    print("=" * 60)
 
     # --- Worker Tests ---
     workers = [
@@ -90,26 +87,21 @@ async def run_component_e2e() -> bool:
             r = await fn()
             wr = r["worker_results"][0]
             results = wr.results if hasattr(wr, "results") else wr.get("results", [])
-            count = len(results)
+            len(results)
             all_worker_results.extend(r["worker_results"])
-            elapsed_ms = (time.monotonic() - start) * 1000
-            error = wr.error if hasattr(wr, "error") else wr.get("error", "")
-            status = "PASS" if not error else "WARN"
-            print(f"  {status}: {name} — {count} results ({elapsed_ms:.0f}ms){' [' + error[:60] + ']' if error else ''}")
+            (time.monotonic() - start) * 1000
+            wr.error if hasattr(wr, "error") else wr.get("error", "")
             checks[name] = True  # Worker ran without exception
-        except Exception as e:
-            elapsed_ms = (time.monotonic() - start) * 1000
-            print(f"  FAIL: {name} — {type(e).__name__}: {str(e)[:100]} ({elapsed_ms:.0f}ms)")
+        except Exception:
+            (time.monotonic() - start) * 1000
             checks[name] = False
 
-    total_results = sum(
+    sum(
         len(wr.results if hasattr(wr, "results") else wr.get("results", []))
         for wr in all_worker_results
     )
-    print(f"\n  Total: {total_results} results from {len(all_worker_results)} workers")
 
     # --- Evaluate & Extract (CRAG) ---
-    print("\n--- Evaluate & Extract (CRAG) ---")
     try:
         eval_state = {
             "query": task["nl_query"],
@@ -122,18 +114,14 @@ async def run_component_e2e() -> bool:
         async with async_session_factory() as db:
             eval_result = await evaluate_and_extract_node(eval_state, flash_llm, db)
         passages = eval_result.get("extracted_passages", [])
-        print(f"  Extracted passages: {len(passages)}")
         if passages:
             for p in passages[:3]:
-                title = p.get("case_title", "?")[:50] if isinstance(p, dict) else str(p)[:50]
-                print(f"    - {title}")
+                p.get("case_title", "?")[:50] if isinstance(p, dict) else str(p)[:50]
         checks["evaluate_extract"] = len(passages) >= 0
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {str(e)[:150]}")
+    except Exception:
         checks["evaluate_extract"] = False
 
     # --- Research Plan Test (E2E.2: Competitor Parity) ---
-    print("\n--- E2E.2: Competitor Parity ---")
     try:
         from langgraph.checkpoint.memory import MemorySaver
         from langgraph.types import Command
@@ -159,14 +147,14 @@ async def run_component_e2e() -> bool:
 
         # First run — will hit interrupt at checkpoint_plan (complex)
         # or checkpoint_memo (fast path if classified as simple)
-        async for event in graph.astream(
+        async for _event in graph.astream(
             {"query": query2, "messages": []}, config=config, stream_mode="values"
         ):
             pass
 
         # Resume to get past the interrupt
         try:
-            async for event in graph.astream(
+            async for _event in graph.astream(
                 Command(resume="proceed"), config=config, stream_mode="values"
             ):
                 pass
@@ -176,69 +164,50 @@ async def run_component_e2e() -> bool:
         full_state = await graph.aget_state(config)
         state2 = full_state.values
         plan = state2.get("research_plan", [])
-        complexity = state2.get("complexity", "unknown")
+        state2.get("complexity", "unknown")
         plan_types = {t.get("task_type") for t in plan}
-        elapsed = time.monotonic() - start
+        time.monotonic() - start
 
         if plan:
-            print(f"  Complexity: {complexity}")
-            print(f"  Plan: {len(plan)} tasks, types: {sorted(plan_types)} ({elapsed:.1f}s)")
-            for t in plan[:5]:
-                print(f"    [{t.get('task_type')}] {t.get('nl_query', '')[:70]}")
+            for _t in plan[:5]:
+                pass
             checks["competitor_parity"] = len(plan) >= 3 and len(plan_types) >= 2
         else:
             # Fast path — no plan but graph ran successfully
             has_memo = bool(state2.get("draft_memo"))
             has_results = bool(state2.get("worker_results"))
-            print(f"  Complexity: {complexity} (took fast path)")
-            print(f"  Fast path: memo={'yes' if has_memo else 'no'}, results={'yes' if has_results else 'no'} ({elapsed:.1f}s)")
             # Fast path is valid — graph executed correctly even without full plan
             checks["competitor_parity"] = has_memo or has_results
 
-        print(f"  {'PASS' if checks['competitor_parity'] else 'FAIL'}")
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {str(e)[:150]}")
+    except Exception:
         checks["competitor_parity"] = False
 
     # --- E2E.5: Code Mapping (IPC → BNS) ---
-    print("\n--- E2E.5: Code Mapping (IPC to BNS) ---")
     try:
         from app.core.search.query import expand_statute_references
         expanded_query, expansions = expand_statute_references("Section 498A IPC")
         has_bns = any("BNS" in e for e in expansions) or "BNS" in expanded_query
-        print("  Input:  'Section 498A IPC'")
-        print(f"  Expanded: '{expanded_query}'")
-        print(f"  Expansions: {expansions}")
-        print(f"  BNS mapping: {'PASS' if has_bns else 'FAIL'}")
         checks["code_mapping"] = has_bns
-    except Exception as e:
-        print(f"  ERROR: {e}")
+    except Exception:
         checks["code_mapping"] = False
 
     # --- E2E.8: Semantic Cache ---
-    print("\n--- E2E.8: Semantic Cache Structure ---")
     try:
         from app.core.agents.research_cache import (
             get_memo_cache_hash,
         )
         # Verify cache modules are importable and functional
-        key = get_memo_cache_hash("test query")
-        print(f"  Cache key gen: PASS (key={key[:16]}...)")
+        get_memo_cache_hash("test query")
         checks["semantic_cache"] = True
-    except Exception as e:
-        print(f"  ERROR: {e}")
+    except Exception:
         checks["semantic_cache"] = False
 
     # === SUMMARY ===
-    print("\n" + "=" * 60)
-    print("E2E VERIFICATION SUMMARY")
-    print("=" * 60)
-    for check, passed in checks.items():
-        print(f"  {'PASS' if passed else 'FAIL'}: {check}")
+    for _check, _passed in checks.items():
+        pass
 
-    passed_count = sum(1 for v in checks.values() if v)
-    total = len(checks)
-    print(f"\n  {passed_count}/{total} checks passed")
+    sum(1 for v in checks.values() if v)
+    len(checks)
 
     await cleanup_providers()
     return all(checks.values())
@@ -246,5 +215,4 @@ async def run_component_e2e() -> bool:
 
 if __name__ == "__main__":
     ok = asyncio.run(run_component_e2e())
-    print(f"\nOVERALL: {'ALL PASS' if ok else 'SOME FAILED'}")
     sys.exit(0 if ok else 1)

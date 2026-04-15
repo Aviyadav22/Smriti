@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import TYPE_CHECKING
 
-from app.core.ingestion.rate_limiter import AsyncRateLimiter
-from app.core.interfaces.llm import LLMProvider
+if TYPE_CHECKING:
+    from app.core.ingestion.rate_limiter import AsyncRateLimiter
+    from app.core.interfaces.llm import LLMProvider
 
 logger = logging.getLogger(__name__)
 

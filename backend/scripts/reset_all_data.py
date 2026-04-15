@@ -11,6 +11,8 @@ import sys
 # Add backend to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import contextlib
+
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -21,7 +23,6 @@ async def reset_postgresql():
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    print("\n=== RESETTING POSTGRESQL ===")
     db_url = os.environ["DATABASE_URL"]
     engine = create_async_engine(db_url, echo=False)
 
@@ -34,19 +35,14 @@ async def reset_postgresql():
             "dpdp_audit_log",
         ]
         for table in tables:
-            try:
+            with contextlib.suppress(Exception):
                 await conn.execute(text(f"TRUNCATE TABLE {table} CASCADE"))
-                print(f"  + Truncated {table}")
-            except Exception as e:
-                print(f"  x Failed to truncate {table}: {e}")
 
     await engine.dispose()
-    print("PostgreSQL reset complete.")
 
 
 async def reset_pinecone():
     """Delete all vectors from Pinecone index."""
-    print("\n=== RESETTING PINECONE ===")
     try:
         from pinecone import Pinecone
 
@@ -55,28 +51,22 @@ async def reset_pinecone():
 
         stats = index.describe_index_stats()
         total_before = stats.get("total_vector_count", 0)
-        print(f"  Vectors before: {total_before}")
 
         if total_before > 0:
             index.delete(delete_all=True)
-            print("  + Deleted all vectors from default namespace")
 
             namespaces = stats.get("namespaces", {})
             for ns in namespaces:
                 if ns:
                     index.delete(delete_all=True, namespace=ns)
-                    print(f"  + Deleted all vectors from namespace '{ns}'")
 
         stats = index.describe_index_stats()
-        print(f"  Vectors after: {stats.get('total_vector_count', 0)}")
-        print("Pinecone reset complete.")
-    except Exception as e:
-        print(f"  x Pinecone reset failed: {e}")
+    except Exception:
+        pass
 
 
 async def reset_neo4j():
     """Delete all nodes and relationships from Neo4j."""
-    print("\n=== RESETTING NEO4J ===")
     try:
         from neo4j import AsyncGraphDatabase
 
@@ -88,7 +78,6 @@ async def reset_neo4j():
         async with driver.session(database=os.environ.get("NEO4J_DATABASE", "neo4j")) as session:
             result = await session.run("MATCH (n) RETURN count(n) as count")
             record = await result.single()
-            print(f"  Nodes before: {record['count']}")
 
             # Delete in batches
             deleted = True
@@ -99,48 +88,37 @@ async def reset_neo4j():
                 record = await result.single()
                 deleted = record["deleted"] > 0
                 if deleted:
-                    print(f"  Deleted batch of {record['deleted']} nodes")
+                    pass
 
             result = await session.run("MATCH (n) RETURN count(n) as count")
             record = await result.single()
-            print(f"  Nodes after: {record['count']}")
 
         await driver.close()
-        print("Neo4j reset complete.")
-    except Exception as e:
-        print(f"  x Neo4j reset failed: {e}")
+    except Exception:
+        pass
 
 
 def reset_sqlite_tracker():
     """Delete the SQLite ingestion tracker database."""
-    print("\n=== RESETTING SQLITE TRACKER ===")
     tracker_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data", "ingest_tracker.db"))
     if os.path.exists(tracker_path):
         os.remove(tracker_path)
-        print(f"  + Deleted {tracker_path}")
     else:
-        print("  - Not found (already clean)")
-    print("SQLite tracker reset complete.")
+        pass
 
 
 def reset_local_pdfs():
     """Delete locally stored PDFs."""
-    print("\n=== RESETTING LOCAL PDF STORAGE ===")
     pdf_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data", "pdfs"))
     if os.path.exists(pdf_path):
-        count = sum(1 for _ in os.scandir(pdf_path) if _.is_file() or _.is_dir())
+        sum(1 for _ in os.scandir(pdf_path) if _.is_file() or _.is_dir())
         shutil.rmtree(pdf_path)
         os.makedirs(pdf_path, exist_ok=True)
-        print(f"  + Deleted {count} items from {pdf_path}")
     else:
-        print("  - Not found")
-    print("Local PDF storage reset complete.")
+        pass
 
 
 async def main():
-    print("=" * 60)
-    print("  SMRITI FULL DATA RESET")
-    print("=" * 60)
 
     await reset_postgresql()
     await reset_pinecone()
@@ -148,9 +126,6 @@ async def main():
     reset_sqlite_tracker()
     reset_local_pdfs()
 
-    print("\n" + "=" * 60)
-    print("  ALL DATA STORES RESET COMPLETE")
-    print("=" * 60)
 
 
 if __name__ == "__main__":

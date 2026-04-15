@@ -370,7 +370,7 @@ async def phase1_extract_and_upload(
             "page_map": e.page_map,
             "char_count": e.char_count,
             "parquet_meta": {
-                k: (str(v) if v is not None and not isinstance(v, (str, int, float, bool, list)) else v)
+                k: (str(v) if v is not None and not isinstance(v, str | int | float | bool | list) else v)
                 for k, v in e.parquet_meta.items()
             },
         }
@@ -1340,23 +1340,13 @@ async def phase4_quality_check(run_id: str) -> dict[str, Any]:
     report["overall"] = "PASS" if pass_count == sample_size else "FAIL"
 
     # Print report
-    print("\n" + "=" * 60)
-    print(f"QUALITY CHECK REPORT: {run_id}")
-    print("=" * 60)
-    print(f"Total completed cases: {len(completed)}")
-    print(f"Sample size: {sample_size}")
-    print(f"Pass rate: {pass_count}/{sample_size}")
-    print(f"Overall: {report['overall']}")
-    print("-" * 60)
     for check in report["checks"]:
-        status_str = check["status"]
-        case_str = check["case_id"][:12]
+        check["status"]
+        check["case_id"][:12]
         if check.get("issues"):
-            issues_str = "; ".join(check["issues"])
-            print(f"  [{status_str}] {case_str}... : {issues_str}")
+            "; ".join(check["issues"])
         else:
-            print(f"  [{status_str}] {case_str}...")
-    print("=" * 60)
+            pass
 
     # Save report
     report_path = run_dir / "quality_report.json"

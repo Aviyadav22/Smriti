@@ -135,7 +135,7 @@ class TestPgvectorStoreSearch:
         mock_factory.return_value = mock_session
 
         store = PgvectorStore()
-        results = await store.search([0.1] * 1536, top_k=5, user_scope="user-42")
+        await store.search([0.1] * 1536, top_k=5, user_scope="user-42")
 
         # Verify the SQL includes user_id filter
         call_args = mock_session.execute.call_args

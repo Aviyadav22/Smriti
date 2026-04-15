@@ -26,6 +26,7 @@ Fast path (simple queries):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -648,10 +649,8 @@ def build_research_graph(
 
         parsed = response
         if isinstance(response, str) and response.strip().startswith("{"):
-            try:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
                 parsed = json.loads(response)
-            except (json.JSONDecodeError, TypeError):
-                pass
 
         return {
             "messages": [

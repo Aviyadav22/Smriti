@@ -10,9 +10,9 @@ import asyncio
 import json
 import logging
 from dataclasses import asdict
+from typing import TYPE_CHECKING
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.nodes.common import (
     collect_grounding_citations,
@@ -22,8 +22,6 @@ from app.core.agents.nodes.common import (
     safe_json_parse_list,
     verify_memo_citations,
 )
-from app.core.agents.state import CasePrepState
-from app.core.interfaces import EmbeddingProvider, GraphStore, LLMProvider, Reranker, VectorStore
 from app.core.legal.prompts import (
     CASE_PREP_ARGUMENT_ORDER_SYSTEM,
     CASE_PREP_PRIORITIZE_SCHEMA,
@@ -35,6 +33,18 @@ from app.core.legal.prompts import (
 )
 from app.core.search.hybrid import hybrid_search
 from app.security.sanitizer import sanitize_search_query
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.core.agents.state import CasePrepState
+    from app.core.interfaces import (
+        EmbeddingProvider,
+        GraphStore,
+        LLMProvider,
+        Reranker,
+        VectorStore,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -363,7 +373,7 @@ async def generate_strategy_memo_node(
     """Generate a comprehensive case preparation strategy memo."""
     analysis = state.get("analysis", {})
     prioritized = state.get("prioritized_issues", [])
-    argument_order = state.get("argument_order", [])
+    state.get("argument_order", [])
 
     # Retrieve deep precedent findings from messages
     precedent_findings: list[dict] = []

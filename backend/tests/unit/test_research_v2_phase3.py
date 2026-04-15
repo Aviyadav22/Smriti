@@ -330,7 +330,7 @@ class TestStatuteWorker:
         with patch("app.core.agents.nodes.worker_nodes.async_session_factory", return_value=mock_session):
             with patch("app.core.agents.nodes.worker_nodes.expand_statute_references") as mock_expand:
                 mock_expand.return_value = ("Section 302 IPC", ["Section 103 BNS"])
-                result = await statute_worker(
+                await statute_worker(
                     {"task": task}, embedder, vector_store,
                 )
                 mock_expand.assert_called_once()

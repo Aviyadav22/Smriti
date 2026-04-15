@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 import re
 import uuid as _uuid
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import (
     get_embedder,
@@ -21,9 +21,13 @@ from app.core.dependencies import (
 from app.core.ingestion.chunker import detect_judgment_sections
 from app.core.legal.extractor import get_acts_cited_display
 from app.db.postgres import get_db
-from app.security.auth import TokenPayload
 from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user, get_current_user_optional
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.security.auth import TokenPayload
 
 logger = logging.getLogger(__name__)
 

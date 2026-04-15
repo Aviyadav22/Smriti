@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
 from sqlalchemy import case as sa_case
 from sqlalchemy import func, literal_column, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.case import Case
+
+if TYPE_CHECKING:
+    import uuid
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @dataclass

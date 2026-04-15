@@ -5,14 +5,17 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
-from app.security.auth import TokenPayload
 from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user_optional
+
+if TYPE_CHECKING:
+    from app.security.auth import TokenPayload
 
 logger = logging.getLogger(__name__)
 

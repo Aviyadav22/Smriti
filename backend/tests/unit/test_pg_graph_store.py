@@ -158,7 +158,7 @@ class TestPgGraphStoreBatchEdges:
             {"source_id": "case-1", "target_citation": "2019 SCC 2", "treatment": "DISTINGUISHED"},
             {"source_id": "case-1", "target_citation": "2018 SCC 3"},
         ]
-        total = await store.batch_create_citation_edges(edges)
+        await store.batch_create_citation_edges(edges)
         # execute called twice: once for INSERT, once for UPDATE target_case_id
         assert mock_session.execute.call_count == 2
 
@@ -223,7 +223,7 @@ class TestPgGraphStoreGetNeighbors:
 
         store = PgGraphStore()
         # Depth 10 should be clamped to 5
-        result = await store.get_neighbors("case-1", depth=10)
+        await store.get_neighbors("case-1", depth=10)
         call_args = mock_session.execute.call_args
         params = call_args[0][1]
         assert params["max_depth"] == 5

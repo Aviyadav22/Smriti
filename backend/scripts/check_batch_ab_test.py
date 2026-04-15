@@ -20,7 +20,6 @@ bucket = gcs.bucket("smriti-batch-ingestion")
 
 def check_status():
     batch = client.batches.get(name=BATCH_NAME)
-    print(f"State: {batch.state}")
     return batch
 
 
@@ -65,10 +64,8 @@ def compare(online_path, batch_results):
                 text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "{}")
                 batch_data = json.loads(text)
             else:
-                print(f"  Batch item {i}: NO CANDIDATES (may have failed)")
                 continue
-        except (json.JSONDecodeError, KeyError, IndexError) as e:
-            print(f"  Batch item {i}: PARSE ERROR: {e}")
+        except (json.JSONDecodeError, KeyError, IndexError):
             continue
 
         # Try to match with online result by title
@@ -86,76 +83,63 @@ def compare(online_path, batch_results):
                 matched_online = (fnames[i], online[fnames[i]])
 
         if not matched_online:
-            print(f"\n  Batch item {i} ({batch_title[:50]}): NO ONLINE MATCH")
             continue
 
         fname, online_data = matched_online
-        print(f"\n{'='*70}")
-        print(f"CASE: {fname}")
-        print(f"{'='*70}")
 
         # Compare critical fields
-        print("\n--- CRITICAL FIELDS ---")
         for field in CRITICAL_FIELDS:
             o = online_data.get(field)
             b = batch_data.get(field)
             match = "MATCH" if str(o) == str(b) else "DIFF"
             if match == "DIFF":
-                print(f"  {field}: {match}")
-                print(f"    Online: {str(o)[:100]}")
-                print(f"    Batch:  {str(b)[:100]}")
+                pass
             else:
-                print(f"  {field}: MATCH ✓")
+                pass
 
         # Compare quality fields
-        print("\n--- QUALITY FIELDS ---")
         for field in QUALITY_FIELDS:
             o = online_data.get(field)
             b = batch_data.get(field)
             if isinstance(o, list) and isinstance(b, list):
-                o_count, b_count = len(o), len(b)
-                overlap = len(set(str(x) for x in o) & set(str(x) for x in b))
-                print(f"  {field}: online={o_count}, batch={b_count}, overlap={overlap}")
+                _o_count, _b_count = len(o), len(b)
+                len(set(str(x) for x in o) & set(str(x) for x in b))
             elif isinstance(o, str) and isinstance(b, str):
                 # Compare string length as proxy for completeness
-                o_len, b_len = len(o), len(b)
-                print(f"  {field}: online={o_len}chars, batch={b_len}chars")
+                _o_len, _b_len = len(o), len(b)
             else:
                 match = "MATCH" if str(o) == str(b) else "DIFF"
                 if match == "DIFF":
-                    print(f"  {field}: Online={o}, Batch={b}")
+                    pass
                 else:
-                    print(f"  {field}: MATCH ✓")
+                    pass
 
         # Compare V3 fields
-        print("\n--- V3 FIELDS (research agent critical) ---")
         for field in V3_FIELDS:
             o = online_data.get(field)
             b = batch_data.get(field)
             if isinstance(o, list) and isinstance(b, list):
-                print(f"  {field}: online={len(o)} items, batch={len(b)} items")
                 # Show first proposition from each
                 if o and isinstance(o[0], dict):
                     key = "proposition_text" if "proposition_text" in o[0] else "proposition"
                     if key in o[0]:
-                        print(f"    Online[0]: {str(o[0].get(key, ''))[:100]}")
+                        pass
                     if b and isinstance(b[0], dict) and key in b[0]:
-                        print(f"    Batch[0]:  {str(b[0].get(key, ''))[:100]}")
+                        pass
             elif isinstance(o, str) and isinstance(b, str):
-                print(f"  {field}: online={len(o)}chars, batch={len(b)}chars")
+                pass
             else:
-                print(f"  {field}: Online={type(o).__name__}, Batch={type(b).__name__}")
+                pass
 
         # Overall score
-        online_filled = sum(
+        sum(
             1 for v in online_data.values()
             if v is not None and v != [] and v != ""
         )
-        batch_filled = sum(
+        sum(
             1 for v in batch_data.values()
             if v is not None and v != [] and v != ""
         )
-        print(f"\n  FIELD FILL: online={online_filled}, batch={batch_filled}")
 
 
 if __name__ == "__main__":
@@ -163,13 +147,10 @@ if __name__ == "__main__":
     state_str = str(batch.state)
 
     if "SUCCEEDED" in state_str or "COMPLETED" in state_str:
-        print("\nBatch COMPLETED! Downloading results...\n")
         results = download_results()
-        print(f"Got {len(results)} batch results\n")
         compare("backend/data/ab_test_online.json", results)
     elif "FAILED" in state_str or "CANCELLED" in state_str:
-        print(f"\nBatch FAILED: {batch.state}")
         if hasattr(batch, "error"):
-            print(f"Error: {batch.error}")
+            pass
     else:
-        print(f"\nBatch still running ({batch.state}). Re-run this script to check again.")
+        pass

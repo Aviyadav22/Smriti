@@ -8,9 +8,10 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
-from app.core.interfaces import LLMProvider
+if TYPE_CHECKING:
+    from app.core.interfaces import LLMProvider
 
 logger = logging.getLogger(__name__)
 

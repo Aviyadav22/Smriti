@@ -720,13 +720,12 @@ class TestS6PreWarmEmbeddings:
             reranker=AsyncMock(),
         )
         # Check node exists in compiled graph
-        node_names = set()
         if hasattr(graph, "nodes"):
-            node_names = set(graph.nodes.keys()) if isinstance(graph.nodes, dict) else set()
+            set(graph.nodes.keys()) if isinstance(graph.nodes, dict) else set()
         elif hasattr(graph, "graph"):
             inner = graph.graph
             if hasattr(inner, "nodes"):
-                node_names = set(inner.nodes.keys()) if isinstance(inner.nodes, dict) else set()
+                set(inner.nodes.keys()) if isinstance(inner.nodes, dict) else set()
 
         # The node should exist in some form — test that the build doesn't crash
         assert graph is not None

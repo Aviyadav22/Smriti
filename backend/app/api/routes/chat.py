@@ -5,12 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.chat.rag import rag_respond
 from app.core.dependencies import (
@@ -23,11 +23,15 @@ from app.core.dependencies import (
 from app.db.postgres import async_session_factory, get_db
 from app.db.redis_client import get_redis
 from app.security.audit import create_audit_log
-from app.security.auth import TokenPayload
 from app.security.encryption import safe_decrypt
 from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user
 from app.security.sanitizer import detect_prompt_injection, sanitize_search_query
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.security.auth import TokenPayload
 
 logger = logging.getLogger(__name__)
 

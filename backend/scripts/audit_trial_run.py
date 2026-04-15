@@ -39,9 +39,7 @@ def is_populated(val):
         return False
     if isinstance(val, str) and val.strip() == "":
         return False
-    if isinstance(val, (list,)) and len(val) == 0:
-        return False
-    return True
+    return not (isinstance(val, list) and len(val) == 0)
 
 
 async def main():
@@ -50,16 +48,10 @@ async def main():
     await conn.close()
 
     if not rows:
-        print("NO CASES FOUND in the specified time window.")
         return
 
-    print(f"\n{'='*120}")
-    print(f"INGESTION QUALITY AUDIT — {len(rows)} cases found")
-    print(f"{'='*120}\n")
 
     # ── Per-case summary table ──
-    print(f"{'#':>3} {'Year':>5} {'Conf':>5} {'Chunks':>6} {'TextLen':>8} {'Acts':>5} {'Cases':>6} {'Status':>10}  {'Title (truncated)'}")
-    print(f"{'-'*3} {'-'*5} {'-'*5} {'-'*6} {'-'*8} {'-'*5} {'-'*6} {'-'*10}  {'-'*50}")
 
     issues = []
     field_populated = {f: 0 for f in FIELDS_TO_CHECK}
@@ -72,15 +64,14 @@ async def main():
             if is_populated(rec.get(f)):
                 field_populated[f] += 1
 
-        acts_count = len(rec["acts_cited"]) if rec["acts_cited"] else 0
-        cases_count = len(rec["cases_cited"]) if rec["cases_cited"] else 0
+        len(rec["acts_cited"]) if rec["acts_cited"] else 0
+        len(rec["cases_cited"]) if rec["cases_cited"] else 0
         conf = rec["extraction_confidence"] or 0.0
         title_short = (rec["title"] or "???")[:55]
-        status = rec["ingestion_status"] or "?"
+        rec["ingestion_status"] or "?"
         chunks = rec["chunk_count"] or 0
         tlen = rec["text_length"] or 0
 
-        print(f"{i:>3} {rec['year'] or '?':>5} {conf:>5.2f} {chunks:>6} {tlen:>8} {acts_count:>5} {cases_count:>6} {status:>10}  {title_short}")
 
         # Flag issues
         case_label = f"Case #{i} ({title_short[:30]}...)"
@@ -115,63 +106,22 @@ async def main():
 
     # ── Field completeness ──
     total = len(rows)
-    print(f"\n{'='*120}")
-    print("FIELD COMPLETENESS")
-    print(f"{'='*120}")
-    print(f"{'Field':<25} {'Populated':>10} {'Total':>7} {'%':>7}")
-    print(f"{'-'*25} {'-'*10} {'-'*7} {'-'*7}")
 
     for f in FIELDS_TO_CHECK:
-        pct = (field_populated[f] / total) * 100
-        marker = " !!!" if pct < 80 else ""
-        print(f"{f:<25} {field_populated[f]:>10} {total:>7} {pct:>6.1f}%{marker}")
+        (field_populated[f] / total) * 100
 
-    overall = sum(field_populated.values()) / (len(FIELDS_TO_CHECK) * total) * 100
-    print(f"\nOVERALL COMPLETENESS: {overall:.1f}%")
+    sum(field_populated.values()) / (len(FIELDS_TO_CHECK) * total) * 100
 
     # ── Quality issues ──
-    print(f"\n{'='*120}")
-    print(f"QUALITY ISSUES ({len(issues)} found)")
-    print(f"{'='*120}")
     if issues:
-        for iss in issues:
-            print(iss)
+        for _iss in issues:
+            pass
     else:
-        print("  None! All cases look good.")
+        pass
 
     # ── Detail dump for each case ──
-    print(f"\n{'='*120}")
-    print("DETAILED CASE DATA")
-    print(f"{'='*120}")
     for i, r in enumerate(rows, 1):
         rec = dict(r)
-        print(f"\n--- Case #{i} ---")
-        print(f"  ID:            {rec['id']}")
-        print(f"  Title:         {rec['title']}")
-        print(f"  Citation:      {rec['citation']}")
-        print(f"  Court:         {rec['court']}")
-        print(f"  Year:          {rec['year']}")
-        print(f"  Decision Date: {rec['decision_date']}")
-        print(f"  Petitioner:    {rec['petitioner']}")
-        print(f"  Respondent:    {rec['respondent']}")
-        print(f"  Author Judge:  {rec['author_judge']}")
-        print(f"  Judges:        {rec['judge']}")
-        print(f"  Disposal:      {rec['disposal_nature']}")
-        print(f"  Case Type:     {rec['case_type']}")
-        print(f"  Bench Type:    {rec['bench_type']}")
-        print(f"  Coram Size:    {rec['coram_size']}")
-        print(f"  Jurisdiction:  {rec['jurisdiction']}")
-        print(f"  Reportable:    {rec['is_reportable']}")
-        print(f"  Confidence:    {rec['extraction_confidence']}")
-        print(f"  Chunks:        {rec['chunk_count']}")
-        print(f"  Text Length:   {rec['text_length']}")
-        print(f"  Status:        {rec['ingestion_status']}")
-        print(f"  Keywords:      {rec['keywords']}")
-        print(f"  Acts Cited:    {rec['acts_cited']}")
-        print(f"  Cases Cited:   {rec['cases_cited']}")
-        print(f"  Ratio:         {rec['ratio_snippet']}")
-        print(f"  Headnotes:     {rec['headnotes_snippet']}")
-        print(f"  Outcome:       {rec['outcome_snippet']}")
 
 
 if __name__ == "__main__":

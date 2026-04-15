@@ -140,9 +140,8 @@ class TestRouteRegistration:
                 hasattr(route, "path")
                 and route.path == "/{session_id}"
                 and hasattr(route, "methods")
-            ):
-                if "DELETE" in route.methods:
-                    found = True
+            ) and "DELETE" in route.methods:
+                found = True
         assert found, "DELETE /{session_id} route not found"
 
 

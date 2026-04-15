@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from app.core.agents.case_prep import (
     build_case_prep_graph,
     route_after_issues,
@@ -17,7 +19,9 @@ from app.core.agents.research import (
     route_after_memo,
     route_after_plan,
 )
-from app.core.agents.state import CasePrepState, ResearchState
+
+if TYPE_CHECKING:
+    from app.core.agents.state import CasePrepState, ResearchState
 
 # ---------------------------------------------------------------------------
 # Research Agent — Router tests

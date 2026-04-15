@@ -10,18 +10,22 @@ import json
 import logging
 import uuid as _uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text, update
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import InstrumentedAttribute
 
 from app.db.postgres import get_db
 from app.models.case import Case
-from app.security.auth import TokenPayload
 from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import require_role
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy.orm import InstrumentedAttribute
+
+    from app.security.auth import TokenPayload
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +231,7 @@ async def correction_history(
 
 def _serialize(value: object) -> object:
     """Serialize a value for JSON storage in audit logs."""
-    if isinstance(value, (str, int, float, bool, type(None))):
+    if isinstance(value, str | int | float | bool | type(None)):
         return value
     if isinstance(value, list):
         return value

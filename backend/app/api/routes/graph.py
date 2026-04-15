@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import logging
 import uuid as _uuid
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_graph_store
 from app.core.graph.traversal import (
@@ -21,12 +21,16 @@ from app.core.graph.traversal import (
     get_subtopics,
     get_treatment_summary,
 )
-from app.core.interfaces import GraphStore
 from app.db.postgres import get_db
 from app.db.redis_client import get_redis
-from app.security.auth import TokenPayload
 from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user_optional
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.core.interfaces import GraphStore
+    from app.security.auth import TokenPayload
 
 logger = logging.getLogger(__name__)
 

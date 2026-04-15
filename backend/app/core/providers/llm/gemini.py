@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import os
-from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 import httpx
 from google import genai
@@ -21,6 +21,9 @@ from tenacity import (
 )
 
 from app.core.config import settings
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 logger = logging.getLogger(__name__)
 

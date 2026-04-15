@@ -6,18 +6,22 @@ import logging
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.postgres import get_db
 from app.models.agent_execution import AgentExecution
 from app.models.shared_memo import SharedMemo
-from app.security.auth import TokenPayload
 from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.security.auth import TokenPayload
 
 logger = logging.getLogger(__name__)
 

@@ -64,7 +64,7 @@ SCC_ONLINE_PATTERN: re.Pattern[str] = re.compile(
 
 # AIR 2020 SC 145 — also matches A.I.R. 2020 SC 145
 # Restrict court code to known AIR_COURT_CODES to avoid false positives
-_AIR_CODES = "|".join(re.escape(k) for k in AIR_COURT_CODES.keys())
+_AIR_CODES = "|".join(re.escape(k) for k in AIR_COURT_CODES)
 AIR_PATTERN: re.Pattern[str] = re.compile(
     rf"A\.?I\.?R\.?\s+(\d{{4}})\s+({_AIR_CODES})\s+(\d+)"
 )
@@ -377,22 +377,14 @@ _SHORT_ACT_NAMES: dict[str, str] = {
                     "Rehabilitation and Resettlement Act",
     "CIVIL PROCEDURE CODE": "Code of Civil Procedure",
     "CRIMINAL PROCEDURE CODE": "Code of Criminal Procedure",
-    "WILD LIFE ACT": "Wild Life (Protection) Act",
     "WILDLIFE ACT": "Wild Life (Protection) Act",
     "ENVIRONMENT PROTECTION ACT": "Environment (Protection) Act",
-    "GWA": "Guardians and Wards Act",
-    "SEBI ACT": "Securities and Exchange Board of India Act",
-    "RBI ACT": "Reserve Bank of India Act",
-    "GRATUITY ACT": "Payment of Gratuity Act",
-    "CAT ACT": "Administrative Tribunals Act",
     "WC ACT": "Employees' Compensation Act",
     "RPwD Act": "Rights of Persons with Disabilities Act",
     "RPWD ACT": "Rights of Persons with Disabilities Act",
-    "EPA": "Environment (Protection) Act",
     "INDIAN SUCCESSION ACT": "Indian Succession Act",
     "INDIAN REGISTRATION ACT": "Registration Act",
     "RP ACT": "Representation of the People Act",
-    "FERA": "Foreign Exchange Regulation Act",
     # --- [SA7] Display-name entries (short code → full name) ---
     "COI": "Constitution of India",
     "IEA": "Indian Evidence Act",
@@ -445,7 +437,6 @@ _ACT_YEARS: dict[str, int] = {
     "WLP ACT": 1972, "MSMED ACT": 2006, "POCSO": 2012,
     "BR ACT": 1949, "CUSTOMS ACT": 1962, "EP ACT": 1986,
     "FC ACT": 1980, "LARR": 2013, "ESI ACT": 1948,
-    "HSA": 1956,
 }
 
 
@@ -805,9 +796,7 @@ def _is_valid_act_citation(name: str) -> bool:
     if re.match(r".+\b[IVXLC]+\s+of\s*$", stripped):
         return False
     # Act name ending with year fragment: "Travancore Act XIV of 1124 M"
-    if re.search(r"\d{3,4}\s+[A-Z]$", stripped):
-        return False
-    return True
+    return not re.search("\\d{3,4}\\s+[A-Z]$", stripped)
 
 
 # ---------------------------------------------------------------------------
@@ -867,9 +856,7 @@ def is_bare_citation_ref(text: str) -> bool:
         return True
     if _BARE_MANU_RE.match(stripped):
         return True
-    if _BARE_HC_REPORTER_RE.match(stripped):
-        return True
-    return False
+    return bool(_BARE_HC_REPORTER_RE.match(stripped))
 
 
 def _is_valid_case_citation(text: str) -> bool:
@@ -929,10 +916,7 @@ def _is_valid_case_citation(text: str) -> bool:
         return False
 
     # Act names mistakenly in cases_cited
-    if re.search(r"\b(?:Act|Code|Rules?|Regulations?),?\s+\d{4}\s*$", stripped) and "v." not in stripped.lower():
-        return False
-
-    return True
+    return not (re.search("\\b(?:Act|Code|Rules?|Regulations?),?\\s+\\d{4}\\s*$", stripped) and "v." not in stripped.lower())
 
 
 def classify_case_citations(

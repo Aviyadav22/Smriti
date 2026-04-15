@@ -5,7 +5,6 @@ Checks CRITICAL, HIGH, and MEDIUM issues for every case.
 
 import re
 from collections import Counter, defaultdict
-from datetime import datetime
 
 import psycopg2
 
@@ -28,10 +27,7 @@ VERB_WORDS = {"is", "was", "were", "shall", "should", "hold", "held", "has", "ha
 def has_control_chars(s):
     if not s:
         return False
-    for c in s:
-        if ord(c) < 32 and c not in ('\n', '\r', '\t'):
-            return True
-    return False
+    return any(ord(c) < 32 and c not in ("\n", "\r", "\t") for c in s)
 
 def has_garbled_nonascii(s):
     if not s:
@@ -89,10 +85,7 @@ def is_bare_citation(entry):
         r'^\d{4}\s+Supp',
         r'^MANU/',
     ]
-    for pat in bare_patterns:
-        if re.match(pat, e):
-            return True
-    return False
+    return any(re.match(pat, e) for pat in bare_patterns)
 
 def check_bench_coram_mismatch(bench_type, coram_size):
     if not bench_type or not coram_size:
@@ -105,9 +98,7 @@ def check_bench_coram_mismatch(bench_type, coram_size):
         return True
     if bt == 'constitution bench' and cs < 5:
         return True
-    if bt == 'full bench' and cs < 3:
-        return True
-    return False
+    return bool(bt == "full bench" and cs < 3)
 
 def check_case_type_vs_number(case_type, case_number):
     if not case_type or not case_number:
@@ -117,9 +108,7 @@ def check_case_type_vs_number(case_type, case_number):
     # civil vs criminal contradiction
     if 'criminal' in ct and 'civil' in cn and 'criminal' not in cn:
         return True
-    if 'civil' in ct and 'criminal' in cn and 'civil' not in cn:
-        return True
-    return False
+    return bool("civil" in ct and "criminal" in cn and "civil" not in cn)
 
 # ── main ─────────────────────────────────────────────────────────────────
 
@@ -127,11 +116,6 @@ def main():
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
-    print("=" * 90)
-    print("COMPREHENSIVE QUALITY AUDIT — ALL CASES")
-    print("=" * 90)
-    print(f"Run at: {datetime.now().isoformat()}")
-    print()
 
     query = """
     SELECT id, title, citation, court, year, decision_date,
@@ -148,8 +132,6 @@ def main():
     columns = [desc[0] for desc in cur.description]
     rows = cur.fetchall()
 
-    print(f"Total cases fetched: {len(rows)}")
-    print()
 
     # Issue tracking
     critical_counts = Counter()
@@ -335,7 +317,7 @@ def main():
                 ys['clean_cites'] += 1
 
         # Date stats
-        for sev, name, _ in issues:
+        for sev, _name, _ in issues:
             date_stats[created_date][sev] += 1
 
     # ══════════════════════════════════════════════════════════════════
@@ -344,123 +326,63 @@ def main():
 
     total = len(rows)
     cases_with_issues = len(case_issues)
-    clean_cases = total - cases_with_issues
+    total - cases_with_issues
 
-    print("=" * 90)
-    print("SUMMARY")
-    print("=" * 90)
-    print(f"Total cases checked:       {total}")
-    print(f"Cases with ANY issue:      {cases_with_issues} ({cases_with_issues*100/total:.1f}%)")
-    print(f"Fully CLEAN cases:         {clean_cases} ({clean_cases*100/total:.1f}%)")
-    print()
 
     # CRITICAL
-    print("-" * 90)
-    print("CRITICAL ISSUES (data is wrong/corrupted)")
-    print("-" * 90)
-    total_critical = sum(critical_counts.values())
-    print(f"  Total CRITICAL issue instances: {total_critical}")
-    for issue, count in critical_counts.most_common():
-        print(f"  {count:>5}  {issue}")
-    print()
+    sum(critical_counts.values())
+    for _issue, _count in critical_counts.most_common():
+        pass
 
     # HIGH
-    print("-" * 90)
-    print("HIGH ISSUES (data quality poor)")
-    print("-" * 90)
-    total_high = sum(high_counts.values())
-    print(f"  Total HIGH issue instances: {total_high}")
-    for issue, count in high_counts.most_common():
-        print(f"  {count:>5}  {issue}")
-    print()
+    sum(high_counts.values())
+    for _issue, _count in high_counts.most_common():
+        pass
 
     # MEDIUM
-    print("-" * 90)
-    print("MEDIUM ISSUES")
-    print("-" * 90)
-    total_medium = sum(medium_counts.values())
-    print(f"  Total MEDIUM issue instances: {total_medium}")
-    for issue, count in medium_counts.most_common():
-        print(f"  {count:>5}  {issue}")
-    print()
+    sum(medium_counts.values())
+    for _issue, _count in medium_counts.most_common():
+        pass
 
     # Breakdown by ingestion date
-    print("-" * 90)
-    print("BREAKDOWN BY INGESTION DATE (created_at)")
-    print("-" * 90)
-    print(f"  {'Date':<14} {'CRITICAL':>10} {'HIGH':>10} {'MEDIUM':>10}")
     for date in sorted(date_stats.keys()):
-        dc = date_stats[date]
-        print(f"  {date:<14} {dc.get('CRITICAL',0):>10} {dc.get('HIGH',0):>10} {dc.get('MEDIUM',0):>10}")
-    print()
+        date_stats[date]
 
     # TOP 20 worst cases
-    print("=" * 90)
-    print("TOP 20 WORST CASES (most issues)")
-    print("=" * 90)
     worst = sorted(case_issues.items(), key=lambda x: len(x[1]['issues']), reverse=True)[:20]
-    for i, (cid, info) in enumerate(worst, 1):
-        num_issues = len(info['issues'])
-        crits = sum(1 for s, _, _ in info['issues'] if s == 'CRITICAL')
-        highs = sum(1 for s, _, _ in info['issues'] if s == 'HIGH')
-        meds = sum(1 for s, _, _ in info['issues'] if s == 'MEDIUM')
-        print(f"\n  #{i}  ID={cid}  Year={info['year']}  Issues={num_issues} (C:{crits} H:{highs} M:{meds})")
-        print(f"       Title: {info['title']}")
-        for sev, name, detail in info['issues']:
-            det = f" — {detail}" if detail else ""
-            print(f"       [{sev}] {name}{det}")
+    for _i, (cid, info) in enumerate(worst, 1):
+        len(info['issues'])
+        sum(1 for s, _, _ in info['issues'] if s == 'CRITICAL')
+        sum(1 for s, _, _ in info['issues'] if s == 'HIGH')
+        sum(1 for s, _, _ in info['issues'] if s == 'MEDIUM')
+        for sev, _name, _detail in info['issues']:
+            pass
 
     # GARBAGE acts_cited samples
-    print()
-    print("=" * 90)
-    print("10 WORST acts_cited GARBAGE ENTRIES")
-    print("=" * 90)
     # Sort by how bad they look (sentence fragments first)
     garbage_acts_sorted = sorted(garbage_acts, key=lambda x: len(x[3]) if x[3] else 0, reverse=True)[:10]
-    for i, (cid, yr, title, act_entry, reason) in enumerate(garbage_acts_sorted, 1):
-        print(f"  {i}. [{yr}] {title}")
-        print(f"     Act entry: {act_entry[:120]!r}")
-        print(f"     Reason: {reason}")
-        print()
+    for _i, (cid, yr, _title, _act_entry, reason) in enumerate(garbage_acts_sorted, 1):
+        pass
 
     # Bare citation cases
-    print("=" * 90)
-    print("10 CASES WITH MOST BARE CITATION REFS")
-    print("=" * 90)
     bare_cite_cases.sort(key=lambda x: x[3], reverse=True)
-    for i, (cid, yr, title, bare, total_c) in enumerate(bare_cite_cases[:10], 1):
-        print(f"  {i}. [{yr}] {title}")
-        print(f"     Bare: {bare}/{total_c} citations")
-        print()
+    for _i, (cid, yr, _title, _bare, _total_c) in enumerate(bare_cite_cases[:10], 1):
+        pass
 
     # Low confidence cases
-    print("=" * 90)
-    print(f"CASES WITH extraction_confidence < 0.7  (total: {len(low_confidence_cases)})")
-    print("=" * 90)
     low_confidence_cases.sort(key=lambda x: x[3])
-    for cid, yr, title, conf in low_confidence_cases:
-        print(f"  [{yr}] conf={conf:.2f}  {title}")
-    print()
+    for cid, yr, _title, _conf in low_confidence_cases:
+        pass
 
     # YEAR-BY-YEAR quality
-    print("=" * 90)
-    print("YEAR-BY-YEAR QUALITY SCORE")
-    print("=" * 90)
-    print(f"  {'Year':<6} {'Count':>6} {'Avg Conf':>10} {'% Ratio':>10} {'% Clean Acts':>14} {'% Clean Cites':>15}")
-    print(f"  {'-'*6} {'-'*6} {'-'*10} {'-'*10} {'-'*14} {'-'*15}")
     for yr in sorted(year_stats.keys()):
         ys = year_stats[yr]
         cnt = ys['count']
-        avg_conf = ys['confidence_sum'] / ys['confidence_count'] if ys['confidence_count'] > 0 else 0
-        pct_ratio = ys['ratio_populated'] * 100 / cnt if cnt > 0 else 0
-        pct_clean_acts = ys['clean_acts'] * 100 / cnt if cnt > 0 else 0
-        pct_clean_cites = ys['clean_cites'] * 100 / cnt if cnt > 0 else 0
-        print(f"  {yr:<6} {cnt:>6} {avg_conf:>10.3f} {pct_ratio:>9.1f}% {pct_clean_acts:>13.1f}% {pct_clean_cites:>14.1f}%")
+        ys['confidence_sum'] / ys['confidence_count'] if ys['confidence_count'] > 0 else 0
+        ys['ratio_populated'] * 100 / cnt if cnt > 0 else 0
+        ys['clean_acts'] * 100 / cnt if cnt > 0 else 0
+        ys['clean_cites'] * 100 / cnt if cnt > 0 else 0
 
-    print()
-    print("=" * 90)
-    print("AUDIT COMPLETE")
-    print("=" * 90)
 
     cur.close()
     conn.close()

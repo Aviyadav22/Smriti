@@ -32,6 +32,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 # Ensure the backend package is importable when running as a script.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import contextlib
 import itertools
 
 from sqlalchemy import text
@@ -269,10 +270,7 @@ class IngestTracker:
                 "SELECT warnings FROM ingestion_progress WHERE doc_key = ?",
                 (doc_key,),
             ).fetchone()
-            if row and row[0]:
-                new_warnings = f"{row[0]},{warning}"
-            else:
-                new_warnings = warning
+            new_warnings = f"{row[0]},{warning}" if row and row[0] else warning
             self._conn.execute(
                 "UPDATE ingestion_progress SET warnings = ? WHERE doc_key = ?",
                 (new_warnings, doc_key),
@@ -424,7 +422,7 @@ class IngestTracker:
             for tier in ("high", "medium", "low"):
                 count = self._conn.execute(
                     f"SELECT COUNT(*) FROM ingestion_progress {where} {'AND' if where else 'WHERE'} quality_tier = ?",
-                    params + (tier,),
+                    (*params, tier),
                 ).fetchone()[0]
                 quality[tier] = count
 
@@ -466,13 +464,12 @@ def _download_with_timeout(url: str, dest: Path, timeout: int = 300) -> None:
     tmp_dest = dest.with_suffix(dest.suffix + ".tmp")
     req = urllib.request.Request(url)
     # Use a longer timeout for connection, read in 1MB chunks to avoid MemoryError
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        with open(tmp_dest, "wb") as f:
-            while True:
-                chunk = resp.read(1024 * 1024)  # 1MB chunks
-                if not chunk:
-                    break
-                f.write(chunk)
+    with urllib.request.urlopen(req, timeout=timeout) as resp, open(tmp_dest, "wb") as f:
+        while True:
+            chunk = resp.read(1024 * 1024)  # 1MB chunks
+            if not chunk:
+                break
+            f.write(chunk)
     tmp_dest.rename(dest)
 
 
@@ -907,10 +904,8 @@ async def ingest_year(
             await breaker.record_success()
 
             # Clean up PDF after successful processing
-            try:
+            with contextlib.suppress(OSError):
                 pdf_path.unlink(missing_ok=True)
-            except OSError:
-                pass
 
             # Progress logging with ETA (include all attempted for accurate %)
             if processed % 25 == 0 or total_attempted == len(pdfs_to_process):
@@ -1010,10 +1005,8 @@ async def ingest_year(
     await asyncio.gather(*workers, return_exceptions=True)
 
     # Clean up tar and extracted directory after all cases processed
-    try:
+    with contextlib.suppress(OSError):
         tar_path.unlink(missing_ok=True)
-    except OSError:
-        pass
     if extract_dir.exists():
         shutil.rmtree(extract_dir, ignore_errors=True)
 
@@ -1084,20 +1077,10 @@ async def main() -> None:
 
     if args.command == "report":
         stats = tracker.detailed_stats(year=args.year)
-        year_label = f"Year {args.year}" if args.year else "All years"
-        print(f"\n=== Ingestion Report: {year_label} ===")
-        print(f"Total documents: {stats['total']}")
-        print(f"Completed:       {stats['completed']}")
-        print(f"Failed:          {stats['failed']}")
-        print("\nStage completion:")
-        for stage, count in stats["stages"].items():
-            pct = (count / stats["total"] * 100) if stats["total"] else 0
-            print(f"  {stage:12s}: {count:5d} ({pct:.1f}%)")
-        print("\nQuality distribution:")
-        for tier, count in stats["quality"].items():
-            pct = (count / stats["total"] * 100) if stats["total"] else 0
-            print(f"  {tier:12s}: {count:5d} ({pct:.1f}%)")
-        print()
+        for _stage, count in stats["stages"].items():
+            (count / stats["total"] * 100) if stats["total"] else 0
+        for _tier, count in stats["quality"].items():
+            (count / stats["total"] * 100) if stats["total"] else 0
         tracker.close()
         return
 
@@ -1159,10 +1142,7 @@ async def main() -> None:
             if remaining <= 0:
                 logger.info("Total limit of %d reached — stopping.", total_limit)
                 break
-            if year_limit is not None:
-                year_limit = min(year_limit, remaining)
-            else:
-                year_limit = remaining
+            year_limit = min(year_limit, remaining) if year_limit is not None else remaining
 
         year_stats = await ingest_year(
             year,
@@ -1175,7 +1155,7 @@ async def main() -> None:
             shutdown_event=shutdown_event,
         )
         for k, v in year_stats.items():
-            if isinstance(v, (int, float)):
+            if isinstance(v, int | float):
                 total_stats[k] = total_stats.get(k, 0) + v
 
     # Re-enable FTS trigger and batch-rebuild tsvectors

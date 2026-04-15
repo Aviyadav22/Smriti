@@ -1136,31 +1136,25 @@ def main() -> None:
             else:
                 logger.warning("Unknown batch %d — valid: 4-10", b)
 
-    print("=" * 60)
-    print("Downloading real legal text from authoritative sources")
-    print("  Source: indiacode.nic.in (Government of India)")
-    print("=" * 60)
 
     # GitHub sources (IPC, CrPC, CPC, IEA, Constitution) — Batches 1+3
     github_stats: dict[str, int] = {}
     if not args.batch:  # Only run GitHub acts when no batch filter
         github_stats = download_github_acts(only)
-        for act, count in github_stats.items():
-            print(f"  {act.upper()}: {count} sections")
+        for _act, _count in github_stats.items():
+            pass
 
     # PDF sources
     pdf_stats: dict[str, int] = {}
     if not args.skip_pdf:
         pdf_stats = download_pdf_acts(only, batch_codes)
-        for act, count in sorted(pdf_stats.items()):
-            print(f"  {act.upper()}: {count} sections (from PDF)")
+        for _act, _count in sorted(pdf_stats.items()):
+            pass
     else:
-        print("  Skipping PDF extraction (--skip-pdf)")
+        pass
 
     all_stats = {**github_stats, **pdf_stats}
-    total = sum(all_stats.values())
-    print(f"\nTOTAL: {total} sections across {len(all_stats)} acts")
-    print(f"Output: {OUT_DIR}")
+    sum(all_stats.values())
 
 
 if __name__ == "__main__":

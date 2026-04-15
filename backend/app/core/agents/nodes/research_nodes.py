@@ -8,17 +8,16 @@ are passed via closures when the graph is built.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
 import uuid
-from collections.abc import Callable
 from difflib import SequenceMatcher
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.confidence import calculate_confidence, calculate_confidence_detailed
 from app.core.agents.nodes.common import (
@@ -49,7 +48,6 @@ from app.core.agents.state import (
     SynthesisDraft,
     WorkerResult,
 )
-from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
 from app.core.legal.precedent_strength import classify_precedent_strength
 from app.core.legal.prompts import (
     ADVERSARIAL_MINI_CRAG_SCHEMA,
@@ -83,6 +81,13 @@ from app.core.legal.prompts import (
     SYNTHESIS_RETRY_SYSTEM,
 )
 from app.security.sanitizer import sanitize_search_query
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -147,9 +152,7 @@ def _is_degenerate_output(text: str, min_useful_length: int = 200) -> bool:
     # Check word density — a 300-char memo should have at least 20 words
     word_count = len(text.split())
     min_words = max(20, min_useful_length // 15)
-    if word_count < min_words:
-        return True
-    return False
+    return word_count < min_words
 
 
 def _is_truncated_output(text: str) -> bool:
@@ -168,9 +171,7 @@ def _is_truncated_output(text: str) -> bool:
     if stripped[-1] not in '.!?*\n-\u2014)#':
         # Double-check: if the memo has reasonable structure (headings, sections)
         # and is long enough, it's likely complete even without a period at the end
-        if len(stripped) > 2000 and ("##" in stripped[-2000:]):
-            return False
-        return True
+        return not (len(stripped) > 2000 and "##" in stripped[-2000:])
     return False
 
 
@@ -509,7 +510,6 @@ async def synthesize_memo_node(
                 f"may have been overruled or declared per incuriam."
             )
 
-    cross_ref_text = ""
     if cross_refs:
         parts: list[str] = []
         for cr in cross_refs:
@@ -517,11 +517,11 @@ async def synthesize_memo_node(
                 f"- {cr.get('title', 'Unknown')} ({cr.get('citation', 'N/A')}) "
                 f"— matched {cr.get('match_count', 0)} sub-queries"
             )
-        cross_ref_text = "\n".join(parts)
+        "\n".join(parts)
     else:
-        cross_ref_text = "None identified."
+        pass
 
-    contradictions_text = json.dumps(contradictions, indent=2) if contradictions else "None identified."
+    json.dumps(contradictions, indent=2) if contradictions else "None identified."
 
     treatment_text = ""
     if treatment_warnings:
@@ -949,8 +949,8 @@ async def batch_worker_cot_with_reflection_node(
             citation = r.get("citation", "?")[:60]
             snippet = r.get("snippet", r.get("ratio", ""))[:200]
             top_snippets.append(f"  * {title} ({citation}): {snippet}")
-        top_titles = [r.get("title", "?")[:80] for r in wr.get("results", [])[:3]]
-        top_citations = [r.get("citation", "?")[:60] for r in wr.get("results", [])[:3]]
+        [r.get("title", "?")[:80] for r in wr.get("results", [])[:3]]
+        [r.get("citation", "?")[:60] for r in wr.get("results", [])[:3]]
         worker_summaries.append(
             f"[{wr['task_type']}] Query: {wr['query'][:100]} | "
             f"{n_results} results.\n" + "\n".join(top_snippets)
@@ -2551,10 +2551,8 @@ async def _deterministic_verify(
                         ]
             except Exception:
                 logger.warning("Subsequent history check failed for %s", case_id)
-                try:
+                with contextlib.suppress(Exception):
                     await db.rollback()
-                except Exception:
-                    pass
 
     # 5. URL/case_id existence validation
     for fn in footnotes:
@@ -2577,10 +2575,8 @@ async def _deterministic_verify(
                     })
             except Exception:
                 logger.warning("Case existence check failed for %s", fn.get("case_id"))
-                try:
+                with contextlib.suppress(Exception):
                     await db.rollback()
-                except Exception:
-                    pass
 
     return issues
 
@@ -2614,10 +2610,8 @@ async def _verify_citations_against_sources(
             valid_pg_ids = await verify_case_ids(pg_case_ids, db)
         except Exception:
             logger.warning("Batch PG verification failed", exc_info=True)
-            try:
+            with contextlib.suppress(Exception):
                 await db.rollback()
-            except Exception:
-                pass
 
     sem = asyncio.Semaphore(5)  # Max 5 concurrent IK/Neo4j verifications
 
@@ -2997,7 +2991,7 @@ async def adversarial_search_node(
         return {}
 
     worker_results = state.get("worker_results", [])
-    elements = state.get("legal_elements", [])
+    state.get("legal_elements", [])
     reasonings = state.get("worker_reasonings", [])
     query = state.get("rewritten_query", "") or state.get("query", "")
 

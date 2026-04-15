@@ -19,11 +19,15 @@ from sqlalchemy import select
 # Ensure backend is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from typing import TYPE_CHECKING
+
 from app.core.agents.nodes.worker_nodes import _detect_communities
 from app.core.agents.state import CommunitySummary
-from app.core.interfaces import EmbeddingProvider, GraphStore, LLMProvider, VectorStore
 from app.core.legal.prompts import COMMUNITY_SUMMARY_SCHEMA, COMMUNITY_SUMMARY_SYSTEM
 from app.db.postgres import async_session_factory
+
+if TYPE_CHECKING:
+    from app.core.interfaces import EmbeddingProvider, GraphStore, LLMProvider, VectorStore
 
 logger = logging.getLogger(__name__)
 

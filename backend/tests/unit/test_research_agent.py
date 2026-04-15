@@ -1,6 +1,7 @@
 """Tests for the Research Agent LangGraph graph."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -12,7 +13,9 @@ from app.core.agents.research import (
     route_after_memo,
     route_after_plan,
 )
-from app.core.agents.state import ResearchState
+
+if TYPE_CHECKING:
+    from app.core.agents.state import ResearchState
 
 # ---------------------------------------------------------------------------
 # Helpers

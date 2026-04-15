@@ -157,7 +157,7 @@ async def purge(dry_run: bool) -> None:
 
     # Also clean up stale vectors from previously deleted cases
     # Get all keep IDs as a set for checking
-    keep_set = set(keep_ids)
+    set(keep_ids)
 
     # We can't enumerate all Pinecone vectors efficiently, but we've deleted
     # all vectors for the 2,314 delete_ids. The stale vectors from even older

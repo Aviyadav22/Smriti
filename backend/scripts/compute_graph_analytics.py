@@ -25,8 +25,12 @@ import networkx as nx
 # Ensure backend is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.core.interfaces import GraphStore
+from typing import TYPE_CHECKING
+
 from app.core.legal.taxonomy import get_category_for_tag, normalize_issue_tags
+
+if TYPE_CHECKING:
+    from app.core.interfaces import GraphStore
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +217,7 @@ def compute_pagerank(
         for nid, info in communities.items():
             comm_members.setdefault(info["community_id"], []).append(nid)
 
-        for comm_id, members in comm_members.items():
+        for _comm_id, members in comm_members.items():
             if len(members) == 1:
                 nid = members[0]
                 result.setdefault(nid, {})["pagerank_community"] = 100.0

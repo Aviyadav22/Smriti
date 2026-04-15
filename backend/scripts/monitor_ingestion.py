@@ -85,9 +85,6 @@ async def monitor_loop():
     prev_time = time.time()
     iteration = 0
 
-    print("=" * 70)
-    print("  INGESTION MONITOR — checking every 5 minutes")
-    print("=" * 70)
 
     while True:
         iteration += 1
@@ -96,8 +93,7 @@ async def monitor_loop():
 
         try:
             status = await check_all()
-        except Exception as e:
-            print(f"\n[{time.strftime('%H:%M:%S')}] Monitor error: {e}")
+        except Exception:
             await asyncio.sleep(300)
             continue
 
@@ -108,43 +104,30 @@ async def monitor_loop():
         total = pg.get("total", 0)
         rate = (total - prev_total) / (elapsed / 60) if elapsed > 0 and prev_total > 0 else 0
 
-        print(f"\n[{time.strftime('%H:%M:%S')}] === Check #{iteration} ===")
 
         if "error" in pg:
-            print(f"  PG ERROR: {pg['error']}")
+            pass
         else:
-            print(f"  PG: {total} cases (complete={pg['complete']}, "
-                  f"review={pg['needs_review']}, failed={pg['failed']})")
-            print(f"      null_type={pg['null_type']}, null_court={pg['null_court']}, "
-                  f"no_fts={pg['no_fts']}")
             if rate > 0:
                 remaining = 6000 - total
-                eta_min = remaining / rate if rate > 0 else float("inf")
-                print(f"      Rate: {rate:.1f} cases/min | "
-                      f"ETA: {eta_min:.0f} min ({eta_min/60:.1f} hrs)")
+                remaining / rate if rate > 0 else float("inf")
 
         if "error" in pc:
-            print(f"  PC ERROR: {pc['error']}")
+            pass
         else:
-            print(f"  Pinecone: {pc['total_vectors']} vectors, "
-                  f"fullness={pc['fullness']}")
             if pc.get("fullness", 0) > 0.8:
-                print("  ⚠ WARNING: Pinecone index >80% full!")
+                pass
 
         if "error" in neo:
-            print(f"  Neo4j ERROR: {neo['error']}")
+            pass
         else:
-            print(f"  Neo4j: {neo['case_nodes']} case nodes, "
-                  f"{neo['relationships']} relationships")
+            pass
 
         prev_total = total
         prev_time = now
 
         # Stop if target reached
         if total >= 6000:
-            print(f"\n{'=' * 70}")
-            print(f"  TARGET REACHED: {total} cases ingested!")
-            print(f"{'=' * 70}")
             break
 
         await asyncio.sleep(300)  # 5 minutes

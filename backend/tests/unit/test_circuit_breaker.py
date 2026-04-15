@@ -61,7 +61,7 @@ class TestCircuitBreakerOpenState:
     async def test_trips_at_threshold(self):
         """Reaching the failure threshold should trip the breaker open."""
         breaker = CircuitBreaker(threshold=3)
-        for i in range(3):
+        for _i in range(3):
             tripped = await breaker.record_failure()
         assert tripped is True
         assert breaker.is_tripped

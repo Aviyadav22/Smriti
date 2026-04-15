@@ -148,7 +148,4 @@ def detect_prompt_injection(text: str) -> bool:
     special_char_count = sum(
         1 for c in text if c in "`|<>{}[]"
     )
-    if len(text) > 0 and special_char_count / len(text) > 0.15:
-        return True
-
-    return False
+    return bool(len(text) > 0 and special_char_count / len(text) > 0.15)

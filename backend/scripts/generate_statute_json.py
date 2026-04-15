@@ -271,11 +271,8 @@ def main() -> None:
         out_path = OUT_DIR / filename
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(sections, f, indent=2, ensure_ascii=False)
-        print(f"{filename}: {len(sections)} sections")
         total += len(sections)
 
-    print(f"\nTOTAL: {total} statute sections across {len(generators)} files")
-    print(f"Output: {OUT_DIR}")
 
 
 if __name__ == "__main__":

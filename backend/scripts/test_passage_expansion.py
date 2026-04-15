@@ -39,9 +39,6 @@ async def main():
     from app.core.search.hybrid import hybrid_search
 
     query = "right to privacy fundamental right"
-    print(f"\n{'='*60}")
-    print(f"Query: {query}")
-    print(f"{'='*60}\n")
 
     async with async_session_factory() as db:
         response = await hybrid_search(
@@ -53,25 +50,15 @@ async def main():
             db=db,
         )
 
-        print(f"Search returned {len(response.results)} results\n")
 
         # Check char_start/char_end propagation
         has_positions = 0
-        for i, r in enumerate(response.results[:10]):
-            snippet_len = len(r.snippet or "")
-            chunk_len = len(r.chunk_text or "")
-            print(
-                f"  [{i}] {r.citation or r.title or r.case_id[:20]}"
-                f"  score={r.score:.3f}"
-                f"  snippet={snippet_len}chars"
-                f"  chunk={chunk_len}chars"
-                f"  char_start={r.char_start}"
-                f"  char_end={r.char_end}"
-            )
+        for _i, r in enumerate(response.results[:10]):
+            len(r.snippet or "")
+            len(r.chunk_text or "")
             if r.char_start and r.char_end:
                 has_positions += 1
 
-        print(f"\nResults with char_start/char_end: {has_positions}/{min(10, len(response.results))}")
 
         # Now test passage expansion directly
         from dataclasses import asdict
@@ -80,41 +67,23 @@ async def main():
 
         result_dicts = [asdict(r) for r in response.results[:8]]  # Simulate post-CRAG top 8
 
-        print(f"\n{'='*60}")
-        print(f"Running expand_passages_from_full_text on top {len(result_dicts)} results...")
-        print(f"{'='*60}\n")
 
         expanded = await expand_passages_from_full_text(result_dicts, db)
 
         # Report
         expansion_count = 0
-        for i, r in enumerate(expanded):
+        for _i, r in enumerate(expanded):
             exp_text = r.get("expanded_text")
-            snippet = r.get("snippet") or r.get("chunk_text") or ""
+            r.get("snippet") or r.get("chunk_text") or ""
             if exp_text:
                 expansion_count += 1
-                print(
-                    f"  [{i}] EXPANDED: {len(snippet)} -> {len(exp_text)} chars "
-                    f"({len(exp_text)/max(len(snippet),1):.1f}x) "
-                    f"  case={r['case_id'][:20]}"
-                )
-                print(f"       snippet[:80]:  {snippet[:80]!r}")
-                print(f"       expanded[:80]: {exp_text[:80]!r}")
             else:
-                print(
-                    f"  [{i}] NOT EXPANDED: snippet={len(snippet)}chars "
-                    f"  case={r['case_id'][:20]}"
-                )
+                pass
 
-        print(f"\n{'='*60}")
-        print(f"RESULT: {expansion_count}/{len(expanded)} results had passages expanded")
-        if expansion_count == 0:
-            print("WARNING: No passages were expanded! Check logs above for failure reasons.")
-        elif expansion_count < len(expanded) // 2:
-            print("PARTIAL: Less than half expanded. Check logs for non-expanded results.")
+        if expansion_count == 0 or expansion_count < len(expanded) // 2:
+            pass
         else:
-            print("SUCCESS: Passage expansion is working.")
-        print(f"{'='*60}")
+            pass
 
 
 if __name__ == "__main__":

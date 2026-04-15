@@ -88,7 +88,7 @@ def _compare_scalar(gold: object, predicted: object) -> tuple[bool, bool]:
     if predicted is None:
         return True, False
     # Numeric comparison
-    if isinstance(gold, (int, float)) and isinstance(predicted, (int, float)):
+    if isinstance(gold, int | float) and isinstance(predicted, int | float):
         return True, gold == predicted
     # Boolean
     if isinstance(gold, bool):
@@ -213,32 +213,20 @@ async def run_benchmark(
 
 def print_results(results: BenchmarkResults) -> None:
     """Print benchmark results in a formatted table."""
-    print(f"\n{'='*60}")
-    print(f" Benchmark Results: {results.total_cases} cases evaluated")
-    print(f"{'='*60}")
-    print(f"{'Field':<25} {'Precision':>9} {'Recall':>9} {'F1':>9} {'TP':>5} {'FP':>5} {'FN':>5}")
-    print(f"{'-'*25} {'-'*9} {'-'*9} {'-'*9} {'-'*5} {'-'*5} {'-'*5}")
 
     for field_name in sorted(results.field_metrics.keys()):
-        m = results.field_metrics[field_name]
-        print(
-            f"{field_name:<25} {m.precision:>9.3f} {m.recall:>9.3f} {m.f1:>9.3f} "
-            f"{m.true_positive:>5} {m.false_positive:>5} {m.false_negative:>5}"
-        )
+        results.field_metrics[field_name]
 
     # Macro averages
     all_metrics = list(results.field_metrics.values())
     if all_metrics:
-        avg_p = sum(m.precision for m in all_metrics) / len(all_metrics)
-        avg_r = sum(m.recall for m in all_metrics) / len(all_metrics)
-        avg_f1 = sum(m.f1 for m in all_metrics) / len(all_metrics)
-        print(f"{'-'*25} {'-'*9} {'-'*9} {'-'*9}")
-        print(f"{'MACRO AVERAGE':<25} {avg_p:>9.3f} {avg_r:>9.3f} {avg_f1:>9.3f}")
+        sum(m.precision for m in all_metrics) / len(all_metrics)
+        sum(m.recall for m in all_metrics) / len(all_metrics)
+        sum(m.f1 for m in all_metrics) / len(all_metrics)
 
     if results.errors:
-        print(f"\nErrors ({len(results.errors)}):")
-        for err in results.errors:
-            print(f"  - {err}")
+        for _err in results.errors:
+            pass
 
 
 def main() -> None:
@@ -264,19 +252,6 @@ def main() -> None:
         fields_filter = set(args.fields.split(","))
 
     if not args.gold_dir.exists():
-        print(f"Gold standard directory not found: {args.gold_dir}")
-        print("Create it with manually verified JSON files. Example format:")
-        print(json.dumps({
-            "pdf_path": "case_001.pdf",
-            "text": "(or provide text directly instead of pdf_path)",
-            "metadata": {
-                "title": "State of X v. Y",
-                "citation": "(2022) 8 SCC 215",
-                "year": 2022,
-                "court": "Supreme Court of India",
-                "judge": ["Judge A", "Judge B"],
-            }
-        }, indent=2))
         sys.exit(1)
 
     # Create a mock LLM for dry-run or use real one
@@ -284,7 +259,6 @@ def main() -> None:
         from app.core.dependencies import create_llm_provider
         llm = create_llm_provider()
     except Exception:
-        print("ERROR: Could not create LLM provider. Set GEMINI_API_KEY.")
         sys.exit(1)
 
     results = asyncio.run(run_benchmark(args.gold_dir, llm, fields_filter))

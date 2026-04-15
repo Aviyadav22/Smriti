@@ -100,20 +100,15 @@ def main():
     args = parser.parse_args()
 
     if args.list:
-        for tier_num, tier_name, tier_acts in [
+        for _tier_num, _tier_name, tier_acts in [
             (0, "RE-EXTRACT (have data but missing sections)", TIER_0_REEXTRACT),
             (1, "MISSING (not in DB at all)", TIER_1_MISSING),
             (2, "INCOMPLETE (in DB but most sections missing)", TIER_2_INCOMPLETE),
         ]:
-            print(f"\n{'='*80}")
-            print(f"TIER {tier_num}: {tier_name}")
-            print(f"{'='*80}")
             for stem, config_key in tier_acts.items():
                 config = PDF_ACT_CONFIGS.get(config_key, {})
-                act_name = config.get("act_name", "?")
-                act_year = config.get("act_year", "?")
-                print(f"  {stem}.pdf{' '*(25-len(stem))} {act_name}, {act_year}")
-        print(f"\nTotal: {len(ALL_ACTS)} PDFs expected in backend/data/statute_pdfs/")
+                config.get("act_name", "?")
+                config.get("act_year", "?")
         return
 
     PDF_DIR.mkdir(parents=True, exist_ok=True)
@@ -158,18 +153,12 @@ def main():
         converted += 1
         logger.info("  -> %d sections saved to %s", len(sections), out_filename)
 
-    print()
-    print(f"Results: {converted} converted, {skipped} skipped (PDF not found), {failed} failed")
-    print(f"Total: {total_sections} sections extracted")
     if skipped > 0:
         missing = [s for s in targets if not (PDF_DIR / f"{s}.pdf").exists()]
-        print(f"\nMissing PDFs ({skipped}):")
         for stem in missing:
             config = PDF_ACT_CONFIGS.get(targets[stem], {})
-            print(f"  {stem}.pdf  ->  {config.get('act_name', '?')}")
     if converted > 0:
-        print("\nNext step:")
-        print("  cd backend && python scripts/ingest_statutes.py --source data/statutes/ --all")
+        pass
 
 
 if __name__ == "__main__":

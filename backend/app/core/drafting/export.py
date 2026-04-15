@@ -24,10 +24,9 @@ from reportlab.platypus import (  # type: ignore[import-untyped]
     Spacer,
 )
 
-from app.core.drafting.templates import DocumentTemplate
-
 if TYPE_CHECKING:
     from app.core.drafting.court_profiles import CourtProfile
+    from app.core.drafting.templates import DocumentTemplate
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -39,9 +38,7 @@ def _is_heading(line: str) -> bool:
     if stripped.startswith("#"):
         return True
     # All-caps lines of 4+ characters (e.g. "PRAYER", "FACTS OF THE CASE")
-    if len(stripped) >= 4 and stripped == stripped.upper() and stripped.replace(" ", "").isalpha():
-        return True
-    return False
+    return bool(len(stripped) >= 4 and stripped == stripped.upper() and stripped.replace(" ", "").isalpha())
 
 
 def _clean_heading(line: str) -> str:

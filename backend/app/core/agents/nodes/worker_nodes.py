@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 from sqlalchemy import select
@@ -30,19 +30,21 @@ from app.core.agents.research_cache import (
     set_cached_ik_search,
 )
 from app.core.agents.state import WorkerResult
-from app.core.interfaces import (
-    EmbeddingProvider,
-    ExternalDocProvider,
-    GraphStore,
-    LLMProvider,
-    Reranker,
-    VectorStore,
-    WebSearchProvider,
-)
 from app.core.search.hybrid import _exact_citation_search
 from app.core.search.query import expand_statute_references
 from app.db.postgres import async_session_factory
 from app.db.redis_client import get_redis
+
+if TYPE_CHECKING:
+    from app.core.interfaces import (
+        EmbeddingProvider,
+        ExternalDocProvider,
+        GraphStore,
+        LLMProvider,
+        Reranker,
+        VectorStore,
+        WebSearchProvider,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -381,7 +383,7 @@ async def statute_worker(
         _, expanded_terms = expand_statute_references(original_query)
 
         # All queries to search (original + expanded old/new code refs)
-        all_queries = [original_query] + expanded_terms
+        all_queries = [original_query, *expanded_terms]
 
         async with async_session_factory() as db:
             from app.models.statute import Statute

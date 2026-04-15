@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from app.core.interfaces import LLMProvider
+if TYPE_CHECKING:
+    from app.core.interfaces import LLMProvider
 
 logger = logging.getLogger(__name__)
 

@@ -10,10 +10,9 @@ Run with:
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import (
     get_embedder,
@@ -25,6 +24,9 @@ from app.core.dependencies import (
 )
 from app.core.search.hybrid import SearchResponse, hybrid_search
 from app.db.postgres import async_session_factory
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 # ---------------------------------------------------------------------------
 # Database session

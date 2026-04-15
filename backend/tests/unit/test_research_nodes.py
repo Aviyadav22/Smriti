@@ -139,7 +139,7 @@ class TestDecomposeQueryNode:
                 {"type": "user_feedback", "step": "plan", "content": "Focus on criminal law only"},
             ]
         )
-        result = await decompose_query_node(state, llm)
+        await decompose_query_node(state, llm)
 
         # Verify the LLM received the feedback in the prompt
         call_kwargs = llm.generate_structured.call_args
@@ -442,7 +442,7 @@ class TestSynthesizeMemoNode:
         )
 
         with patch("app.core.agents.nodes.research_nodes.calculate_confidence", wraps=calculate_confidence) as spy:
-            result = await synthesize_memo_node(state, llm)
+            await synthesize_memo_node(state, llm)
 
             spy.assert_called_once()
             call_kwargs = spy.call_args
@@ -514,7 +514,7 @@ class TestSynthesizeMemoNode:
             cross_references=[],
             contradictions=[],
         )
-        result = await synthesize_memo_node(state, llm)
+        await synthesize_memo_node(state, llm)
 
         # Verify the LLM received treatment warnings in the prompt
         call_kwargs = llm.generate.call_args
@@ -548,7 +548,7 @@ class TestSynthesizeMemoNode:
             from app.core.legal.precedent_strength import PrecedentStrength
             mock_classify.return_value = PrecedentStrength.OVERRULED
 
-            result = await synthesize_memo_node(state, llm)
+            await synthesize_memo_node(state, llm)
 
             mock_classify.assert_called_once()
             call_kwargs = mock_classify.call_args
@@ -574,7 +574,7 @@ class TestSynthesizeMemoNode:
             cross_references=[],
             contradictions=[],
         )
-        result = await synthesize_memo_node(state, llm)
+        await synthesize_memo_node(state, llm)
 
         call_kwargs = llm.generate.call_args
         prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")

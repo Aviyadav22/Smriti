@@ -108,9 +108,8 @@ class TestRouteRegistration:
                 hasattr(route, "path")
                 and route.path == "/executions"
                 and hasattr(route, "methods")
-            ):
-                if "GET" in route.methods:
-                    return
+            ) and "GET" in route.methods:
+                return
         pytest.fail("GET /executions route not found")
 
     def test_resume_is_post(self) -> None:
@@ -128,9 +127,8 @@ class TestRouteRegistration:
                 hasattr(route, "path")
                 and route.path == "/executions/{execution_id}"
                 and hasattr(route, "methods")
-            ):
-                if "DELETE" in route.methods:
-                    found = True
+            ) and "DELETE" in route.methods:
+                found = True
         assert found, "DELETE /executions/{execution_id} route not found"
 
 

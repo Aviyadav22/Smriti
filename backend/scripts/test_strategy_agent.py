@@ -55,15 +55,8 @@ async def main() -> None:
     from app.core.providers.rerankers.cohere_reranker import CohereReranker
     from app.core.providers.vector.pinecone_store import PineconeStore
 
-    print("=" * 80)
-    print("ARGUMENT BUILDER AGENT — QUALITY TEST")
-    print("=" * 80)
-    print("\nCase: Anti-corruption bail application")
-    print(f"Relief sought: {TEST_CASE['desired_relief']}")
-    print()
 
     # Create providers
-    print("[1/2] Initializing providers...")
     llm = GeminiLLM()
     flash_llm = GeminiLLM(model=settings.gemini_flash_model)
     embedder = GeminiEmbedder()
@@ -76,7 +69,6 @@ async def main() -> None:
 
     checkpointer = MemorySaver()
 
-    print("[2/2] Building graph (14 nodes, with MemorySaver)...")
     graph = build_strategy_graph(
         llm=llm,
         flash_llm=flash_llm,
@@ -90,9 +82,6 @@ async def main() -> None:
     initial_input = {**TEST_CASE}
     config = {"configurable": {"thread_id": "test-strategy-001"}}
 
-    print("\n" + "-" * 80)
-    print("RUNNING AGENT (auto-approving HITL checkpoints)...")
-    print("-" * 80)
 
     start = time.time()
     node_times: list[str] = []
@@ -106,17 +95,15 @@ async def main() -> None:
                 for node_name, node_output in event.items():
                     elapsed = time.time() - start
                     node_times.append(f"  [{elapsed:6.1f}s] {node_name}")
-                    print(f"  [{elapsed:6.1f}s] Completed: {node_name}")
 
                     if isinstance(node_output, dict) and node_output.get("error"):
-                        print(f"           ERROR: {node_output['error'][:200]}")
+                        pass
 
             # Check if we're at an interrupt (HITL checkpoint)
             state = await graph.aget_state(config)
             if state.next:
-                checkpoint_name = state.next[0]
+                state.next[0]
                 elapsed = time.time() - start
-                print(f"  [{elapsed:6.1f}s] HITL checkpoint: {checkpoint_name} -> auto-approving")
                 # Resume with "proceed"
                 initial_input = Command(resume="proceed")
             else:
@@ -124,15 +111,13 @@ async def main() -> None:
                 final_state = state.values if state else {}
                 break
 
-    except Exception as e:
-        print(f"\nAGENT FAILED: {e}")
+    except Exception:
         import traceback
         traceback.print_exc()
         # Try to get partial state
         try:
             state = await graph.aget_state(config)
             final_state = state.values if state else {}
-            print(f"\nPartial state recovered ({len(final_state)} keys)")
         except Exception:
             return
         if not final_state:
@@ -140,128 +125,77 @@ async def main() -> None:
 
     elapsed_total = time.time() - start
 
-    print("\n" + "=" * 80)
-    print("RESULTS")
-    print("=" * 80)
 
     # Node execution timeline
-    print(f"\n### Execution Timeline ({elapsed_total:.1f}s total)")
-    for nt in node_times:
-        print(nt)
+    for _nt in node_times:
+        pass
 
     # Fact Analysis
     fa = final_state.get("fact_analysis", {})
-    print("\n### Fact Analysis")
-    print(f"  Parties: {fa.get('parties', {}).get('petitioner', {}).get('name', 'N/A')} v. State")
-    print(f"  Causes of action: {len(fa.get('causes_of_action', []))}")
-    for coa in fa.get("causes_of_action", []):
-        print(f"    - {coa.get('title', 'N/A')} ({coa.get('statutory_basis', 'N/A')})")
-    print(f"  Jurisdictional issues: {fa.get('jurisdictional_issues', [])}")
+    for _coa in fa.get("causes_of_action", []):
+        pass
 
     # Legal Elements
     elements = final_state.get("legal_elements", [])
-    print(f"\n### Legal Elements ({len(elements)} elements)")
-    for el in elements:
-        print(f"  - [{el.get('element_id', 'N/A')}] {el.get('description', 'N/A')[:80]}")
+    for _el in elements:
+        pass
 
     # Search Results
     sr = final_state.get("search_results", [])
     pm = final_state.get("precedent_map", [])
-    print("\n### Search & Precedents")
-    print(f"  Search results: {len(sr)}")
-    print(f"  Precedent map: {len(pm)}")
     for p in pm[:5]:
-        strength = p.get("strength", "UNKNOWN")
-        print(f"  - [{strength}] {p.get('title', 'N/A')[:60]} ({p.get('citation', 'N/A')})")
+        p.get("strength", "UNKNOWN")
 
     # Strength Assessment
     sa = final_state.get("strength_assessment", {})
-    print("\n### Strength Assessment")
-    print(f"  Level: {sa.get('level', 'N/A')}")
-    print(f"  Score: {sa.get('score', 'N/A')}")
-    print(f"  Key strengths: {sa.get('key_strengths', [])}")
-    print(f"  Key weaknesses: {sa.get('key_weaknesses', [])}")
 
     # IRAC Arguments
     irac = final_state.get("irac_arguments", [])
-    print(f"\n### IRAC Arguments ({len(irac)} arguments)")
-    for i, arg in enumerate(irac):
-        print(f"\n  Argument {i+1}: {arg.get('title', 'N/A')}")
-        print(f"    ISSUE: {arg.get('issue', 'N/A')[:100]}")
-        print(f"    RULE: {arg.get('rule', 'N/A')[:100]}")
+    for _i, arg in enumerate(irac):
         authorities = arg.get("rule_authorities", [])
-        for auth in authorities[:3]:
-            print(f"      Authority: [{auth.get('strength', '?')}] {auth.get('citation', 'N/A')}")
-        print(f"    STATUTORY: {arg.get('statutory_basis', 'N/A')[:80]}")
-        print(f"    APPLICATION: {arg.get('application', 'N/A')[:150]}")
-        print(f"    CONCLUSION: {arg.get('conclusion', 'N/A')[:100]}")
-        print(f"    Effectiveness: {arg.get('effectiveness_score', 'N/A')}/10")
+        for _auth in authorities[:3]:
+            pass
 
     # Adversarial Results
     adv = final_state.get("adversarial_results", [])
-    print(f"\n### Adversarial Search ({len(adv)} opposing cases)")
-    for a in adv[:3]:
-        print(f"  - {a.get('title', 'N/A')[:60]} (weakness: {a.get('target_weakness', 'N/A')[:60]})")
+    for _a in adv[:3]:
+        pass
 
     # Counter Arguments
     ca = final_state.get("counter_arguments", [])
-    print(f"\n### Counter-Arguments ({len(ca)} anticipated)")
-    for c in ca[:3]:
-        print(f"  - [{c.get('impact', '?')}] {c.get('title', 'N/A')[:80]}")
+    for _c in ca[:3]:
+        pass
 
     # Argument Order
     ao = final_state.get("argument_order", [])
-    print(f"\n### Argument Order: {ao}")
 
     # Contradictions
     contras = final_state.get("contradictions", [])
-    print(f"\n### Contradictions ({len(contras)} found)")
-    for c in contras:
-        print(f"  - {c.get('case_a', 'N/A')} vs {c.get('case_b', 'N/A')}")
-        print(f"    {c.get('description', 'N/A')[:100]}")
+    for _c in contras:
+        pass
 
     # Confidence
     conf = final_state.get("confidence", 0)
-    print(f"\n### Confidence: {conf:.2f}")
 
     # Final Memo
     memo = final_state.get("strategy_memo", "")
-    print(f"\n### Strategy Memo ({len(memo)} chars)")
-    print("-" * 80)
-    print(memo[:3000] if memo else "(empty)")
     if len(memo) > 3000:
-        print(f"\n... [truncated, {len(memo) - 3000} more chars]")
-    print("-" * 80)
+        pass
 
     # Quality Metrics
-    print("\n### Quality Metrics")
-    print(f"  Total execution time: {elapsed_total:.1f}s")
-    print(f"  Nodes completed: {len(node_times)}")
-    print(f"  Fact analysis fields: {len(fa)}")
-    print(f"  Legal elements: {len(elements)}")
-    print(f"  Search results: {len(sr)}")
-    print(f"  Precedent map entries: {len(pm)}")
-    print(f"  IRAC arguments: {len(irac)}")
-    print(f"  Adversarial cases: {len(adv)}")
-    print(f"  Counter-arguments: {len(ca)}")
-    print(f"  Contradictions: {len(contras)}")
-    print(f"  Confidence: {conf:.2f}")
-    print(f"  Memo length: {len(memo)} chars")
 
     # Check for IPC/BNS dual citations in memo
     import re
-    dual_citations = len(re.findall(r'(?:IPC|CrPC|IEA).*?(?:BNS|BNSS|BSA)|(?:BNS|BNSS|BSA).*?(?:IPC|CrPC|IEA)', memo))
-    print(f"  Dual citations (IPC/BNS): {dual_citations}")
+    len(re.findall(r'(?:IPC|CrPC|IEA).*?(?:BNS|BNSS|BSA)|(?:BNS|BNSS|BSA).*?(?:IPC|CrPC|IEA)', memo))
 
     # Check for IRAC structure markers in memo
-    irac_markers = sum(1 for keyword in ["ISSUE:", "RULE:", "APPLICATION:", "CONCLUSION:"] if keyword in memo.upper())
-    print(f"  IRAC markers in memo: {irac_markers}/4")
+    sum(1 for keyword in ["ISSUE:", "RULE:", "APPLICATION:", "CONCLUSION:"] if keyword in memo.upper())
 
     # Verification warnings
     if "Verification Warnings" in memo:
-        print("  Verification warnings: PRESENT")
+        pass
     else:
-        print("  Verification warnings: none")
+        pass
 
     # Save full output
     output_path = Path(__file__).parent.parent / "trial_reports" / "strategy_agent_test.json"
@@ -283,7 +217,6 @@ async def main() -> None:
             "search_result_count": len(sr),
             "execution_time_seconds": elapsed_total,
         }, f, indent=2, default=str)
-    print(f"\n  Full output saved to: {output_path}")
 
 
 if __name__ == "__main__":

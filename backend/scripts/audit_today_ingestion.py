@@ -174,7 +174,7 @@ def determine_verdict(issues):
     if not issues:
         return "OK", "No issues found"
 
-    issue_str = ' '.join(issues)
+    ' '.join(issues)
     null_count = sum(1 for i in issues if 'NULL/empty' in i)
     ocr_count = sum(1 for i in issues if 'OCR' in i or 'garbled' in i)
 
@@ -194,94 +194,45 @@ async def main():
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         rows = await conn.fetch(QUERY, date(2026, 3, 31))
-        print("=" * 100)
-        print("INGESTION QUALITY AUDIT - Cases ingested on 2026-03-31")
-        print(f"Total cases found: {len(rows)}")
-        print("=" * 100)
-        print()
 
         verdicts = {"OK": [], "MODIFY": [], "RE-INGEST": [], "DELETE": []}
 
-        for i, row in enumerate(rows, 1):
+        for _i, row in enumerate(rows, 1):
             r = dict(row)
             issues = assess_case(r)
             verdict, reason = determine_verdict(issues)
             verdicts[verdict].append(r['id'])
 
-            title_short = (r['title'] or 'NULL')[:60]
-            print(f"--- Case {i}/{len(rows)} ---")
-            print(f"  ID:       {r['id']}")
-            print(f"  Year:     {r['year']}")
-            print(f"  Title:    {title_short}")
-            print(f"  Citation: {r['citation'] or 'NULL'}")
-            print(f"  Court:    {r['court'] or 'NULL'}")
-            print(f"  Case#:    {r['case_number'] or 'NULL'}")
-            print(f"  Type:     {r['case_type'] or 'NULL'}")
-            print(f"  Bench:    {r['bench_type'] or 'NULL'} (coram: {r['coram_size']})")
-            print(f"  Judge:    {r['author_judge'] or 'NULL'}")
-            print(f"  Judges:   {r['judge'] or 'NULL'}")
-            print(f"  Date:     {r['decision_date'] or 'NULL'}")
-            pet = (r['petitioner'] or 'NULL')[:60]
-            resp = (r['respondent'] or 'NULL')[:60]
-            print(f"  Pet:      {pet}")
-            print(f"  Resp:     {resp}")
-            print(f"  Conf:     {r['extraction_confidence']}")
-            print(f"  TextLen:  {r['text_length']}")
-            print(f"  Opinion:  {r['opinion_type'] or 'NULL'}")
-            print(f"  Tone:     {r['judicial_tone'] or 'NULL'}")
-            print(f"  Report:   {r['is_reportable']}")
-            print(f"  Keywords: {r['keywords']}")
-            print(f"  Acts:     {r['acts_cited']}")
-            cases_count = len(r['cases_cited']) if r['cases_cited'] else 0
-            print(f"  Cases:    {cases_count} cited")
+            (r['title'] or 'NULL')[:60]
+            (r['petitioner'] or 'NULL')[:60]
+            (r['respondent'] or 'NULL')[:60]
+            len(r['cases_cited']) if r['cases_cited'] else 0
             if r['cases_cited']:
-                for cc in r['cases_cited']:
-                    print(f"            - {cc[:100]}")
-            hn_count = len(r['headnotes']) if r['headnotes'] else 0
-            print(f"  Headnotes: {hn_count} entries")
+                for _cc in r['cases_cited']:
+                    pass
+            len(r['headnotes']) if r['headnotes'] else 0
             if r['headnotes']:
-                for hn in r['headnotes']:
-                    print(f"            - {str(hn)[:120]}")
-            ratio_disp = (r['ratio_decidendi'] or 'NULL')[:150]
-            outcome_disp = (r['outcome_summary'] or 'NULL')[:150]
-            print(f"  Ratio:    {ratio_disp}")
-            print(f"  Outcome:  {outcome_disp}")
-            print(f"  Disposal: {r['disposal_nature'] or 'NULL'}")
-            print(f"  Jurisd:   {r['jurisdiction'] or 'NULL'}")
-            print()
+                for _hn in r['headnotes']:
+                    pass
+            (r['ratio_decidendi'] or 'NULL')[:150]
+            (r['outcome_summary'] or 'NULL')[:150]
 
             if issues:
-                print(f"  ISSUES ({len(issues)}):")
-                for iss in issues:
-                    print(f"    - {iss}")
+                for _iss in issues:
+                    pass
             else:
-                print("  ISSUES: None")
+                pass
 
-            print(f"  VERDICT:  {verdict} - {reason}")
-            print()
 
         # Summary
-        print()
-        print("=" * 100)
-        print("SUMMARY")
-        print("=" * 100)
-        print(f"  Total cases:  {len(rows)}")
-        print(f"  OK:           {len(verdicts['OK'])}")
-        print(f"  MODIFY:       {len(verdicts['MODIFY'])}")
-        print(f"  RE-INGEST:    {len(verdicts['RE-INGEST'])}")
-        print(f"  DELETE:       {len(verdicts['DELETE'])}")
-        print()
 
         for v in ["OK", "MODIFY", "RE-INGEST", "DELETE"]:
             if verdicts[v]:
-                print(f"  {v} case IDs:")
                 for cid in verdicts[v]:
-                    title = next(
+                    next(
                         ((dict(r)['title'] or '?')[:60] for r in rows if dict(r)['id'] == cid),
                         '?'
                     )
-                    print(f"    - {cid}  {title}")
-            print()
 
     finally:
         await conn.close()

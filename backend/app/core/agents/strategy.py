@@ -20,11 +20,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.state import CompiledStateGraph
 
 from app.core.agents.nodes.common import element_decomposition_node
 from app.core.agents.nodes.strategy_nodes import (
@@ -45,14 +43,19 @@ from app.core.agents.nodes.strategy_nodes import (
 )
 from app.core.agents.routing_utils import compile_graph, make_checkpoint_node, make_feedback_router
 from app.core.agents.state import StrategyState
-from app.core.interfaces import (
-    EmbeddingProvider,
-    GraphStore,
-    LLMProvider,
-    Reranker,
-    VectorStore,
-)
 from app.db.postgres import async_session_factory
+
+if TYPE_CHECKING:
+    from langgraph.checkpoint.base import BaseCheckpointSaver
+    from langgraph.graph.state import CompiledStateGraph
+
+    from app.core.interfaces import (
+        EmbeddingProvider,
+        GraphStore,
+        LLMProvider,
+        Reranker,
+        VectorStore,
+    )
 
 logger = logging.getLogger(__name__)
 

@@ -28,7 +28,7 @@ class TestPineconeUserScope:
 
         from app.core.providers.vector.pinecone_store import PineconeStore
         store = PineconeStore()
-        results = await store.search([0.1] * 1536, top_k=5, filters={"court": "SC"})
+        await store.search([0.1] * 1536, top_k=5, filters={"court": "SC"})
 
         call_kwargs = mock_index.query.call_args
         actual_filter = call_kwargs.kwargs.get("filter") or call_kwargs[1].get("filter")
@@ -44,7 +44,7 @@ class TestPineconeUserScope:
 
         from app.core.providers.vector.pinecone_store import PineconeStore
         store = PineconeStore()
-        results = await store.search([0.1] * 1536, top_k=5, user_scope="user-42")
+        await store.search([0.1] * 1536, top_k=5, user_scope="user-42")
 
         call_kwargs = mock_index.query.call_args
         filt = call_kwargs.kwargs.get("filter") or call_kwargs[1].get("filter")
@@ -60,7 +60,7 @@ class TestPineconeUserScope:
 
         from app.core.providers.vector.pinecone_store import PineconeStore
         store = PineconeStore()
-        results = await store.search([0.1] * 1536, filters={"court": "SC"}, user_scope="user-42")
+        await store.search([0.1] * 1536, filters={"court": "SC"}, user_scope="user-42")
 
         call_kwargs = mock_index.query.call_args
         filt = call_kwargs.kwargs.get("filter") or call_kwargs[1].get("filter")

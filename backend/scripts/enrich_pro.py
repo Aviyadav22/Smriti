@@ -115,7 +115,7 @@ async def run(args):
                 for field_name in PRO_FIELDS:
                     value = enriched.get(field_name)
                     if value is not None:
-                        if isinstance(value, (dict, list)):
+                        if isinstance(value, dict | list):
                             update_params[field_name] = json.dumps(value)
                         else:
                             update_params[field_name] = value

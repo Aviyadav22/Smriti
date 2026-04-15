@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
 import uuid
-from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from langgraph.types import Command
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.case_prep import build_case_prep_graph
 from app.core.agents.drafting import build_drafting_graph
@@ -45,11 +45,17 @@ from app.db.redis_client import get_redis
 from app.models.agent_execution import AgentExecution, AgentStatus, AgentType
 from app.models.agent_session import AgentMessage, AgentSession
 from app.security.audit import create_audit_log
-from app.security.auth import TokenPayload
 from app.security.encryption import encrypt_field, safe_decrypt
 from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user
 from app.security.sanitizer import detect_prompt_injection, sanitize_search_query
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.security.auth import TokenPayload
 
 logger = logging.getLogger(__name__)
 
@@ -1604,10 +1610,8 @@ async def draft_from_document(
         raise HTTPException(status_code=500, detail="Failed to extract text from PDF.")
     finally:
         import os
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            pass
 
     if not text.strip():
         raise HTTPException(status_code=400, detail="Document contains no extractable text.")

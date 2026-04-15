@@ -23,7 +23,6 @@ import sys
 from collections import Counter
 from dataclasses import dataclass, field
 from dataclasses import fields as dc_fields
-from datetime import datetime
 
 import psycopg2
 
@@ -121,9 +120,8 @@ class CaseAuditResult:
     def issue_count(self) -> int:
         count = 0
         for f in dc_fields(self):
-            if f.type == "bool":
-                if getattr(self, f.name):
-                    count += 1
+            if f.type == "bool" and getattr(self, f.name):
+                count += 1
         if self.missing_critical_fields:
             count += 1
         return count
@@ -209,7 +207,6 @@ def audit_case(
     else:
         # Try parsing as JSON
         total_len = 0
-        hn_text = headnotes
         try:
             hn_list = json.loads(headnotes)
             if isinstance(hn_list, list):
@@ -217,10 +214,8 @@ def audit_case(
                     if isinstance(item, dict):
                         prop = item.get("proposition", "")
                         total_len += len(prop)
-                        hn_text = prop  # use last for marker check
                     elif isinstance(item, str):
                         total_len += len(item)
-                        hn_text = item
         except (json.JSONDecodeError, TypeError):
             total_len = len(headnotes)
 
@@ -283,11 +278,6 @@ def main():
     parser.add_argument("--limit", type=int, default=0, help="Limit cases to audit (0=all)")
     args = parser.parse_args()
 
-    print("=" * 90)
-    print("METADATA QUALITY AUDIT — Section Detection & Editorial Contamination")
-    print("=" * 90)
-    print(f"Run at: {datetime.now().isoformat()}")
-    print()
 
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
@@ -303,12 +293,9 @@ def main():
     if args.limit > 0:
         query += f" LIMIT {args.limit}"
 
-    print("Querying database (includes full_text — may take a moment)...")
     cur.execute(query)
     columns = [desc[0] for desc in cur.description]
     rows = cur.fetchall()
-    print(f"Fetched {len(rows)} cases.")
-    print()
 
     # ── Run audit on each case ──────────────────────────────────────
     results: list[CaseAuditResult] = []
@@ -367,59 +354,33 @@ def main():
 
         # Progress indicator
         if (i + 1) % 200 == 0:
-            print(f"  Audited {i + 1}/{len(rows)} cases...")
+            pass
 
-    print(f"  Audited {len(rows)}/{len(rows)} cases.")
-    print()
 
     total = len(results)
 
     # ── Summary ─────────────────────────────────────────────────────
-    print("=" * 90)
-    print("SEVERITY SUMMARY")
-    print("=" * 90)
     for sev in ["CRITICAL", "HIGH", "MEDIUM", "CLEAN"]:
         cnt = severity_counts.get(sev, 0)
         pct = cnt * 100 / total if total else 0
-        bar = "#" * int(pct / 2)
-        print(f"  {sev:<10} {cnt:>6} ({pct:>5.1f}%)  {bar}")
-    print()
+        "#" * int(pct / 2)
 
     # ── Flag breakdown ──────────────────────────────────────────────
-    print("=" * 90)
-    print("FLAG BREAKDOWN (individual checks)")
-    print("=" * 90)
-    for flag, cnt in flag_counts.most_common():
+    for _flag, cnt in flag_counts.most_common():
         pct = cnt * 100 / total if total else 0
-        print(f"  {cnt:>6} ({pct:>5.1f}%)  {flag}")
-    print()
 
     # ── SCR format analysis ─────────────────────────────────────────
     scr_cases = [r for r in results if r.is_scr_format]
     non_scr_cases = [r for r in results if not r.is_scr_format]
-    print("=" * 90)
-    print("SCR FORMAT ANALYSIS")
-    print("=" * 90)
-    print(f"  SCR-format cases:     {len(scr_cases)} ({len(scr_cases)*100/total:.1f}%)")
-    print(f"  Non-SCR cases:        {len(non_scr_cases)} ({len(non_scr_cases)*100/total:.1f}%)")
     if scr_cases:
-        scr_bloated = sum(1 for r in scr_cases if r.header_bloated)
-        scr_contaminated = sum(1 for r in scr_cases if r.headnotes_editorial_contaminated)
-        print(f"  SCR with bloated HEADER:              {scr_bloated} ({scr_bloated*100/len(scr_cases):.1f}%)")
-        print(f"  SCR with editorial in headnotes:      {scr_contaminated} ({scr_contaminated*100/len(scr_cases):.1f}%)")
-        avg_header = sum(r.header_section_chars for r in scr_cases) / len(scr_cases)
-        print(f"  SCR avg HEADER section size:          {avg_header:,.0f} chars")
+        sum(1 for r in scr_cases if r.header_bloated)
+        sum(1 for r in scr_cases if r.headnotes_editorial_contaminated)
+        sum(r.header_section_chars for r in scr_cases) / len(scr_cases)
     if non_scr_cases:
-        non_scr_bloated = sum(1 for r in non_scr_cases if r.header_bloated)
-        avg_header_nonscr = sum(r.header_section_chars for r in non_scr_cases) / len(non_scr_cases)
-        print(f"  Non-SCR with bloated HEADER:          {non_scr_bloated} ({non_scr_bloated*100/len(non_scr_cases):.1f}%)")
-        print(f"  Non-SCR avg HEADER section size:      {avg_header_nonscr:,.0f} chars")
-    print()
+        sum(1 for r in non_scr_cases if r.header_bloated)
+        sum(r.header_section_chars for r in non_scr_cases) / len(non_scr_cases)
 
     # ── HEADER section size distribution ────────────────────────────
-    print("=" * 90)
-    print("HEADER SECTION SIZE DISTRIBUTION")
-    print("=" * 90)
     buckets = {"<1K": 0, "1-3K": 0, "3-5K": 0, "5-10K": 0, "10-20K": 0, ">20K": 0}
     for r in results:
         chars = r.header_section_chars
@@ -435,16 +396,11 @@ def main():
             buckets["10-20K"] += 1
         else:
             buckets[">20K"] += 1
-    for bucket, cnt in buckets.items():
+    for _bucket, cnt in buckets.items():
         pct = cnt * 100 / total if total else 0
-        bar = "#" * int(pct / 2)
-        print(f"  {bucket:<8} {cnt:>6} ({pct:>5.1f}%)  {bar}")
-    print()
+        "#" * int(pct / 2)
 
     # ── Top 15 worst cases ──────────────────────────────────────────
-    print("=" * 90)
-    print("TOP 15 WORST CASES (most issues)")
-    print("=" * 90)
     worst = sorted(results, key=lambda r: r.issue_count, reverse=True)[:15]
     for i, r in enumerate(worst, 1):
         flags = []
@@ -467,23 +423,13 @@ def main():
         if r.missing_critical_fields:
             flags.append(f"missing:[{','.join(r.missing_critical_fields)}]")
 
-        print(f"\n  #{i}  [{r.severity}]  Year={r.year}  Issues={r.issue_count}")
-        print(f"       {r.title}")
-        print(f"       {', '.join(flags)}")
 
     # ── Cases with HEADNOTE before JUDGMENT (SCR editorial block) ───
     hn_before_j = [r for r in results if r.has_headnote_before_judgment]
-    print()
-    print("=" * 90)
-    print(f"CASES WITH HEADNOTE BEFORE JUDGMENT MARKER ({len(hn_before_j)} total)")
-    print("=" * 90)
     for r in hn_before_j[:20]:
-        status = "CONTAMINATED" if r.headnotes_editorial_contaminated else "ok"
-        header_note = f"HEADER={r.header_section_chars:,}ch" if r.header_bloated else ""
-        print(f"  [{r.year}] headnotes={status:<13} {header_note:<20} {r.title}")
+        pass
     if len(hn_before_j) > 20:
-        print(f"  ... and {len(hn_before_j) - 20} more")
-    print()
+        pass
 
     # ── CSV export ──────────────────────────────────────────────────
     csv_path = args.csv
@@ -530,11 +476,6 @@ def main():
             }
             writer.writerow(row)
 
-    print(f"CSV exported to: {csv_path}")
-    print()
-    print("=" * 90)
-    print("AUDIT COMPLETE")
-    print("=" * 90)
 
     cur.close()
     conn.close()

@@ -148,10 +148,7 @@ def compare_types(model_type: str, db_type: str) -> bool:
         return True
 
     # BIGINT / BIGSERIAL
-    if mt == "BIGINT" and dt in ("BIGINT", "BIGSERIAL"):
-        return True
-
-    return False
+    return bool(mt == "BIGINT" and dt in ("BIGINT", "BIGSERIAL"))
 
 
 def get_db_type_name(db_type_obj) -> str:
@@ -171,7 +168,7 @@ def get_db_type_name(db_type_obj) -> str:
     )
 
     # Check for TIMESTAMP with timezone attribute
-    if isinstance(db_type_obj, (sa_types.TIMESTAMP, sa_types.DateTime)):
+    if isinstance(db_type_obj, sa_types.TIMESTAMP | sa_types.DateTime):
         if getattr(db_type_obj, 'timezone', False):
             return "TIMESTAMP WITH TIME ZONE"
         return "TIMESTAMP WITHOUT TIME ZONE"
@@ -197,7 +194,7 @@ def get_db_type_name(db_type_obj) -> str:
         return "DATE"
     if isinstance(db_type_obj, sa_types.Text):
         return "TEXT"
-    if isinstance(db_type_obj, (sa_types.String, sa_types.VARCHAR)):
+    if isinstance(db_type_obj, sa_types.String | sa_types.VARCHAR):
         length = getattr(db_type_obj, 'length', None)
         if length:
             return f"VARCHAR({length})"
@@ -353,21 +350,13 @@ def audit_table(inspector, table_name: str, model_table) -> list[str]:
 
 
 def main() -> None:
-    print("=" * 70)
-    print("SMRITI: SQLAlchemy Models vs VPS Database Audit")
-    print("=" * 70)
-    print()
 
     engine = create_engine(DB_URL)
     inspector = inspect(engine)
 
     db_tables = set(inspector.get_table_names())
-    print(f"DB tables found: {sorted(db_tables)}")
-    print()
 
     model_tables = Base.metadata.tables
-    print(f"Model tables: {sorted(model_tables.keys())}")
-    print()
 
     overall_pass = True
     results = {}
@@ -379,12 +368,10 @@ def main() -> None:
 
         if issues:
             overall_pass = False
-            print(f"[FAIL] {table_name}")
-            for issue in issues:
-                print(issue)
+            for _issue in issues:
+                pass
         else:
-            print(f"[PASS] {table_name}")
-        print()
+            pass
 
     # Check for DB tables not in models (informational)
     model_table_names = set(model_tables.keys())
@@ -392,19 +379,14 @@ def main() -> None:
     # Filter out alembic and internal tables
     extra_db_tables = {t for t in extra_db_tables if not t.startswith("alembic") and not t.startswith("_")}
     if extra_db_tables:
-        print("--- Extra DB tables (not in models, informational) ---")
-        for t in sorted(extra_db_tables):
-            print(f"  {t}")
-        print()
+        for _t in sorted(extra_db_tables):
+            pass
 
-    print("=" * 70)
     if overall_pass:
-        print("OVERALL RESULT: PASS  -- All model tables match the database")
+        pass
     else:
-        fail_count = sum(1 for v in results.values() if v)
-        total = len(results)
-        print(f"OVERALL RESULT: FAIL  -- {fail_count}/{total} tables have mismatches")
-    print("=" * 70)
+        sum(1 for v in results.values() if v)
+        len(results)
 
     engine.dispose()
 

@@ -9,15 +9,12 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
-from app.core.interfaces.graph_store import GraphStore
 from app.core.legal.prompts import CHAT_SYSTEM_PROMPT, CHAT_USER_WITH_CONTEXT
 from app.core.legal.treatment import (
     classify_treatment_llm,
@@ -27,6 +24,14 @@ from app.core.legal.treatment import (
 from app.core.search.hybrid import hybrid_search
 from app.security.encryption import encrypt_field, safe_decrypt
 from app.security.sanitizer import sanitize_search_query
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
+    from app.core.interfaces.graph_store import GraphStore
 
 logger = logging.getLogger(__name__)
 

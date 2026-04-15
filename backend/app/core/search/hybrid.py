@@ -12,12 +12,11 @@ import json
 import logging
 import re
 from dataclasses import asdict, dataclass, field
+from typing import TYPE_CHECKING
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
 from app.core.legal.extractor import normalize_act_name
 from app.core.legal.treatment import has_overruling_language
 from app.core.search.fulltext import FTSResult, search_fulltext
@@ -28,6 +27,11 @@ from app.core.search.query import (
     expand_statute_references,
     understand_query,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
 
 logger = logging.getLogger(__name__)
 

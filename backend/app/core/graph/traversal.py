@@ -6,10 +6,13 @@ neighborhood exploration, citation chains, authority ranking, and statistics.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+from typing import TYPE_CHECKING
 
-from app.core.interfaces import GraphStore
+if TYPE_CHECKING:
+    from app.core.interfaces import GraphStore
 
 logger = logging.getLogger(__name__)
 
@@ -351,10 +354,8 @@ async def get_graph_stats(
 
     # Cache for 15 minutes
     if redis_client is not None:
-        try:
+        with contextlib.suppress(Exception):
             await redis_client.setex(cache_key, 900, json.dumps(stats))
-        except Exception:
-            pass
 
     return stats
 
@@ -410,10 +411,8 @@ async def get_subtopics(
 
     # Cache for 1 hour
     if redis_client is not None:
-        try:
+        with contextlib.suppress(Exception):
             await redis_client.setex(cache_key, 3600, json.dumps(result))
-        except Exception:
-            pass
 
     return result
 
@@ -461,10 +460,8 @@ async def get_statute_sections(
 
     # Cache for 1 hour
     if redis_client is not None:
-        try:
+        with contextlib.suppress(Exception):
             await redis_client.setex(cache_key, 3600, json.dumps(result))
-        except Exception:
-            pass
 
     return result
 
@@ -682,10 +679,8 @@ async def get_dashboard(
 
     # Cache for 1 hour
     if redis_client is not None:
-        try:
+        with contextlib.suppress(Exception):
             await redis_client.setex(cache_key, 3600, json.dumps(result))
-        except Exception:
-            pass
 
     return result
 
@@ -853,7 +848,6 @@ async def get_treatment_summary(
 
     total = len(records)
     positive_treatments = {"affirmed", "followed", "referred_to", "explained"}
-    negative_treatments = {"overruled", "not_followed", "per_incuriam"}
 
     positive_count = sum(
         len(breakdown.get(t, [])) for t in positive_treatments
@@ -881,9 +875,7 @@ async def get_treatment_summary(
 
     # Cache for 15 minutes
     if redis_client is not None:
-        try:
+        with contextlib.suppress(Exception):
             await redis_client.setex(cache_key, 900, json.dumps(result))
-        except Exception:
-            pass
 
     return result

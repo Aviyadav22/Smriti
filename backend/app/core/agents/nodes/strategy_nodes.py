@@ -11,11 +11,9 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text as sa_text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.confidence import calculate_confidence
 from app.core.agents.nodes.common import (
@@ -29,14 +27,6 @@ from app.core.agents.nodes.common import (
     get_latest_feedback,
     parallel_hybrid_search,
     verify_memo_citations,
-)
-from app.core.agents.state import StrategyState
-from app.core.interfaces import (
-    EmbeddingProvider,
-    GraphStore,
-    LLMProvider,
-    Reranker,
-    VectorStore,
 )
 from app.core.legal.precedent_strength import classify_precedent_strength
 from app.core.legal.prompts import (
@@ -67,6 +57,20 @@ from app.core.legal.prompts import (
 )
 from app.db.postgres import async_session_factory
 from app.security.sanitizer import sanitize_search_query
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.core.agents.state import StrategyState
+    from app.core.interfaces import (
+        EmbeddingProvider,
+        GraphStore,
+        LLMProvider,
+        Reranker,
+        VectorStore,
+    )
 
 logger = logging.getLogger(__name__)
 

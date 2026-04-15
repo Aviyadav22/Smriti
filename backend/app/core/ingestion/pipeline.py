@@ -11,6 +11,7 @@ bulk_insert_citations, ingest_batch).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -19,11 +20,10 @@ import re
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from app.core.ingestion.anonymizer import anonymize_text, detect_sensitive_case
@@ -48,12 +48,6 @@ from app.core.ingestion.pdf import (
     MAX_OCR_PAGES,
     extract_and_score,
 )
-from app.core.ingestion.rate_limiter import AsyncRateLimiter
-from app.core.interfaces.embedder import EmbeddingProvider
-from app.core.interfaces.graph_store import GraphStore
-from app.core.interfaces.llm import LLMProvider
-from app.core.interfaces.storage import FileStorage
-from app.core.interfaces.vector_store import VectorStore
 from app.core.legal.extractor import (
     classify_case_citations,
     extract_acts_cited,
@@ -63,6 +57,16 @@ from app.core.legal.extractor import (
 from app.core.legal.statute_enrichment import enrich_statute_cross_references
 from app.core.legal.treatment import CitationTreatment, detect_treatment_in_text
 from app.db.postgres import async_session_factory
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.core.ingestion.rate_limiter import AsyncRateLimiter
+    from app.core.interfaces.embedder import EmbeddingProvider
+    from app.core.interfaces.graph_store import GraphStore
+    from app.core.interfaces.llm import LLMProvider
+    from app.core.interfaces.storage import FileStorage
+    from app.core.interfaces.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +196,7 @@ async def ingest_judgment(
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=2, min=2, max=30),
-        retry=retry_if_exception(lambda e: not isinstance(e, (ValueError, asyncio.CancelledError))),
+        retry=retry_if_exception(lambda e: not isinstance(e, ValueError | asyncio.CancelledError)),
         reraise=True,
     )
     async def _llm_extract_with_retry() -> CaseMetadata:
@@ -405,7 +409,6 @@ async def ingest_judgment(
     # ------------------------------------------------------------------
     # 5. INSERT CASE INTO POSTGRESQL (upsert on citation conflict)
     # ------------------------------------------------------------------
-    original_case_id = case_id
     case_id, already_ingested = await _insert_case(
         db, case_id, metadata, full_text, storage_path, parquet_metadata,
         provenance=provenance, text_hash=text_hash,
@@ -787,10 +790,8 @@ async def _insert_case(
     # Parse decision_date to a proper date object
     decision_date: date | None = None
     if metadata.decision_date:
-        try:
+        with contextlib.suppress(ValueError):
             decision_date = datetime.fromisoformat(metadata.decision_date).date()
-        except ValueError:
-            pass
 
     params = {
         "id": case_id,

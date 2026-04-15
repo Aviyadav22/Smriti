@@ -316,7 +316,7 @@ class TestBuildDraftingGraph:
         embedder = AsyncMock()
         vector_store = AsyncMock()
         reranker = AsyncMock()
-        db = AsyncMock()
+        AsyncMock()
 
         graph = build_drafting_graph(
             llm=llm,
@@ -336,7 +336,7 @@ class TestBuildDraftingGraph:
         embedder = AsyncMock()
         vector_store = AsyncMock()
         reranker = AsyncMock()
-        db = AsyncMock()
+        AsyncMock()
 
         graph = build_drafting_graph(
             llm=llm,
@@ -374,7 +374,7 @@ class TestBuildDraftingGraph:
         embedder = AsyncMock()
         vector_store = AsyncMock()
         reranker = AsyncMock()
-        db = AsyncMock()
+        AsyncMock()
         checkpointer = MagicMock()
 
         # Some versions of LangGraph inspect the checkpointer; this test just

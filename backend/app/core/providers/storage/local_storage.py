@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import os
 import shutil
-from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from app.core.config import settings
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 class LocalStorage:

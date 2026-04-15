@@ -337,9 +337,7 @@ def _is_heading_position(text: str, match_start: int) -> bool:
     if not prefix:
         return True
     # Allow Roman numerals, digits, letters with dots: "I.", "1.", "A)", "(a)"
-    if re.match(r'^(?:[IVXLC]+[\.\):]|[0-9]+[\.\):]|[A-Z][\.\)]|\([a-zA-Z0-9]+\))\s*$', prefix):
-        return True
-    return False
+    return bool(re.match("^(?:[IVXLC]+[\\.\\):]|[0-9]+[\\.\\):]|[A-Z][\\.\\)]|\\([a-zA-Z0-9]+\\))\\s*$", prefix))
 
 
 # ---------------------------------------------------------------------------

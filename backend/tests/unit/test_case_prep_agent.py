@@ -1,6 +1,8 @@
 """Tests for the Case Prep Agent LangGraph graph."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from langgraph.graph import END
 
 from app.core.agents.case_prep import (
@@ -9,7 +11,9 @@ from app.core.agents.case_prep import (
     route_after_memo,
     route_after_strategy,
 )
-from app.core.agents.state import CasePrepState
+
+if TYPE_CHECKING:
+    from app.core.agents.state import CasePrepState
 
 # ---------------------------------------------------------------------------
 # Helpers

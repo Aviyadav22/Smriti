@@ -7,9 +7,12 @@ import logging
 import re
 from dataclasses import dataclass, fields
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from app.core.interfaces.llm import LLMProvider
 from app.core.legal.taxonomy import normalize_issue_tags
+
+if TYPE_CHECKING:
+    from app.core.interfaces.llm import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -950,10 +953,9 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
             metadata.coram_size = None
 
     # -- Validate split_ratio format (e.g., "3:2", "4:1") --
-    if metadata.split_ratio is not None:
-        if not re.match(r'^\d+:\d+$', metadata.split_ratio):
-            logger.warning("Invalid split_ratio '%s', clearing field", metadata.split_ratio)
-            metadata.split_ratio = None
+    if metadata.split_ratio is not None and not re.match(r'^\d+:\d+$', metadata.split_ratio):
+        logger.warning("Invalid split_ratio '%s', clearing field", metadata.split_ratio)
+        metadata.split_ratio = None
 
     # -- String length validation --
     _MAX_LENGTHS = {

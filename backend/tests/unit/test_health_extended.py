@@ -172,7 +172,7 @@ class TestHealthTiming:
         deps = body["dependencies"]
         for name in ("postgres", "redis", "pinecone", "neo4j"):
             assert "response_ms" in deps[name], f"{name} missing response_ms"
-            assert isinstance(deps[name]["response_ms"], (int, float))
+            assert isinstance(deps[name]["response_ms"], int | float)
 
 
 class TestHealthUnauthenticated:

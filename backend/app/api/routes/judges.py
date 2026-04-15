@@ -6,15 +6,18 @@ import dataclasses
 import json
 import logging
 import urllib.parse
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.analytics.judge_analytics import JudgeAnalyticsService
 from app.core.analytics.judge_prediction import predict_outcome
 from app.db.postgres import get_db
 from app.db.redis_client import get_redis
 from app.security.rate_limiter import rate_limit_dependency
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

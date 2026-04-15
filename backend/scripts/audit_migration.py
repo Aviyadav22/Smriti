@@ -21,9 +21,6 @@ async def audit():
     # ──────────────────────────────────────────────────
     # AUDIT 1: TABLE COMPARISON
     # ──────────────────────────────────────────────────
-    print("=" * 80)
-    print("AUDIT 1: TABLE COMPARISON")
-    print("=" * 80)
 
     src_tables = sorted(
         r["tablename"]
@@ -45,20 +42,15 @@ async def audit():
         if in_src and in_dst:
             pass  # both have it
         elif in_src:
-            print(f"  {tbl}: SUPABASE ONLY")
+            pass
         else:
-            print(f"  {tbl}: VPS ONLY")
-    print(f"Total: Supabase={len(src_tables)}, VPS={len(dst_tables)}")
+            pass
 
     common_tables = [t for t in all_tables if t in src_tables and t in dst_tables]
 
     # ──────────────────────────────────────────────────
     # AUDIT 2: COLUMN-BY-COLUMN COMPARISON
     # ──────────────────────────────────────────────────
-    print()
-    print("=" * 80)
-    print("AUDIT 2: COLUMN-BY-COLUMN COMPARISON (every table)")
-    print("=" * 80)
 
     col_mismatches = 0
 
@@ -116,40 +108,26 @@ async def audit():
                     issues.append(f"    {col}: {' | '.join(diffs)}")
 
         if issues:
-            print(f"  {tbl}:")
             for i in issues:
-                print(i)
                 col_mismatches += 1
 
     if col_mismatches == 0:
-        print("  All columns match perfectly!")
+        pass
     else:
-        print(f"\n  Total column mismatches: {col_mismatches}")
+        pass
 
     # ──────────────────────────────────────────────────
     # AUDIT 3: ROW COUNTS
     # ──────────────────────────────────────────────────
-    print()
-    print("=" * 80)
-    print("AUDIT 3: ROW COUNTS")
-    print("=" * 80)
 
     for tbl in common_tables:
         src_count = await src.fetchval(f"SELECT COUNT(*) FROM {tbl}")
         dst_count = await dst.fetchval(f"SELECT COUNT(*) FROM {tbl}")
-        if src_count == dst_count:
-            match = "OK"
-        else:
-            match = f"MISMATCH (diff={dst_count - src_count})"
-        print(f"  {tbl:<35} Supabase={src_count:<8} VPS={dst_count:<8} {match}")
+        "OK" if src_count == dst_count else f"MISMATCH (diff={dst_count - src_count})"
 
     # ──────────────────────────────────────────────────
     # AUDIT 4: INDEX COMPARISON
     # ──────────────────────────────────────────────────
-    print()
-    print("=" * 80)
-    print("AUDIT 4: INDEX COMPARISON")
-    print("=" * 80)
 
     src_idx = await src.fetch(
         "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname='public' ORDER BY indexname"
@@ -166,13 +144,11 @@ async def audit():
     common_idx = set(src_idx_map.keys()) & set(dst_idx_map.keys())
 
     if missing_on_vps:
-        print(f"  Missing on VPS ({len(missing_on_vps)}):")
         for idx in sorted(missing_on_vps):
-            print(f"    {idx}: {src_idx_map[idx][:100]}")
+            pass
     if extra_on_vps:
-        print(f"  Extra on VPS ({len(extra_on_vps)}):")
         for idx in sorted(extra_on_vps):
-            print(f"    {idx}: {dst_idx_map[idx][:100]}")
+            pass
 
     # Check if common indexes have same definition
     idx_diffs = 0
@@ -180,25 +156,16 @@ async def audit():
         s_def = src_idx_map[idx]
         d_def = dst_idx_map[idx]
         if s_def != d_def:
-            print(f"  INDEX DEF DIFF: {idx}")
-            print(f"    Supabase: {s_def[:120]}")
-            print(f"    VPS:      {d_def[:120]}")
             idx_diffs += 1
 
     if not missing_on_vps and not extra_on_vps and idx_diffs == 0:
-        print("  All indexes match!")
+        pass
     else:
-        print(
-            f"\n  Missing: {len(missing_on_vps)}, Extra: {len(extra_on_vps)}, Diffs: {idx_diffs}"
-        )
+        pass
 
     # ──────────────────────────────────────────────────
     # AUDIT 5: CONSTRAINT COMPARISON
     # ──────────────────────────────────────────────────
-    print()
-    print("=" * 80)
-    print("AUDIT 5: CONSTRAINTS (PK, FK, UNIQUE, CHECK)")
-    print("=" * 80)
 
     constraint_query = """
         SELECT tc.table_name, tc.constraint_name, tc.constraint_type,
@@ -231,23 +198,17 @@ async def audit():
     dst_c = group_constraints(dst_constraints)
 
     missing_constraints = set(src_c.keys()) - set(dst_c.keys())
-    extra_constraints = set(dst_c.keys()) - set(dst_c.keys())
+    set(dst_c.keys()) - set(dst_c.keys())
 
     if missing_constraints:
-        print(f"  Missing on VPS ({len(missing_constraints)}):")
         for key in sorted(missing_constraints):
             c = src_c[key]
-            print(f"    {key[0]}.{key[1]} ({c['type']}): {c['columns']}")
     else:
-        print("  All constraints present on VPS!")
+        pass
 
     # ──────────────────────────────────────────────────
     # AUDIT 6: TRIGGER COMPARISON
     # ──────────────────────────────────────────────────
-    print()
-    print("=" * 80)
-    print("AUDIT 6: TRIGGERS")
-    print("=" * 80)
 
     trigger_query = """
         SELECT trigger_name, event_object_table, event_manipulation, action_statement
@@ -272,23 +233,17 @@ async def audit():
     extra_trigs = dst_trig_set - src_trig_set
 
     if missing_trigs:
-        print(f"  Missing on VPS ({len(missing_trigs)}):")
-        for t in sorted(missing_trigs):
-            print(f"    {t[1]}.{t[0]} ({t[2]})")
+        for _t in sorted(missing_trigs):
+            pass
     if extra_trigs:
-        print(f"  Extra on VPS ({len(extra_trigs)}):")
-        for t in sorted(extra_trigs):
-            print(f"    {t[1]}.{t[0]} ({t[2]})")
+        for _t in sorted(extra_trigs):
+            pass
     if not missing_trigs and not extra_trigs:
-        print("  All triggers match!")
+        pass
 
     # ──────────────────────────────────────────────────
     # AUDIT 7: ROW-LEVEL DATA INTEGRITY (checksums)
     # ──────────────────────────────────────────────────
-    print()
-    print("=" * 80)
-    print("AUDIT 7: ROW-LEVEL DATA CHECKSUMS")
-    print("=" * 80)
 
     # For each table with data, compute MD5 of all rows sorted by PK
     tables_to_check = [
@@ -340,26 +295,21 @@ async def audit():
             )
 
             if len(src_rows) != len(dst_rows):
-                print(
-                    f"  {tbl}: ROW COUNT MISMATCH src={len(src_rows)} dst={len(dst_rows)}"
-                )
                 # Show which rows are extra/missing
                 src_ids = set(r[pk] for r in src_rows)
                 dst_ids = set(r[pk] for r in dst_rows)
                 extra = dst_ids - src_ids
                 missing = src_ids - dst_ids
                 if extra:
-                    print(f"    Extra on VPS: {len(extra)} rows")
                     # Show first 5
                     for eid in sorted(list(extra))[:5]:
-                        row = [r for r in dst_rows if r[pk] == eid][0]
+                        row = next(r for r in dst_rows if r[pk] == eid)
                         # Print identifying info
                         info = dict(row)
                         # Only show first few fields
-                        short = {k: str(v)[:60] for k, v in list(info.items())[:4]}
-                        print(f"      {eid}: {short}")
+                        {k: str(v)[:60] for k, v in list(info.items())[:4]}
                 if missing:
-                    print(f"    Missing on VPS: {len(missing)} rows")
+                    pass
                 continue
 
             # Compare row by row
@@ -374,37 +324,27 @@ async def audit():
                 if src_hash != dst_hash:
                     mismatched_rows += 1
                     if mismatched_rows <= 3:
-                        row_id = src_rows[i][pk]
+                        src_rows[i][pk]
                         # Find differing columns
                         for col in common:
                             sv = src_rows[i][col]
                             dv = dst_rows[i][col]
                             if str(sv) != str(dv):
-                                print(
-                                    f"  {tbl} row {row_id}: col '{col}' differs"
-                                )
-                                print(f"    Supabase: {str(sv)[:80]}")
-                                print(f"    VPS:      {str(dv)[:80]}")
+                                pass
 
             if mismatched_rows == 0:
-                print(f"  {tbl}: {len(src_rows)} rows - ALL MATCH")
+                pass
             else:
-                print(
-                    f"  {tbl}: {mismatched_rows}/{len(src_rows)} rows DIFFER"
-                )
+                pass
 
-        except Exception as e:
-            print(f"  {tbl}: ERROR - {e}")
+        except Exception:
+            pass
 
     # ──────────────────────────────────────────────────
     # AUDIT 8: EXTENSIONS
     # ──────────────────────────────────────────────────
-    print()
-    print("=" * 80)
-    print("AUDIT 8: EXTENSIONS")
-    print("=" * 80)
 
-    src_exts = sorted(
+    sorted(
         r["extname"]
         for r in await src.fetch("SELECT extname FROM pg_extension")
     )
@@ -413,15 +353,13 @@ async def audit():
         for r in await dst.fetch("SELECT extname FROM pg_extension")
     )
 
-    print(f"  Supabase: {src_exts}")
-    print(f"  VPS:      {dst_exts}")
 
     required = {"uuid-ossp", "pgcrypto", "pg_trgm", "vector"}
     missing_ext = required - set(dst_exts)
     if missing_ext:
-        print(f"  MISSING REQUIRED: {missing_ext}")
+        pass
     else:
-        print("  All required extensions present!")
+        pass
 
     await src.close()
     await dst.close()

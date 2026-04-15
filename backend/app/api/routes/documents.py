@@ -2,22 +2,27 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
 import uuid
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_storage
 from app.db.postgres import get_db
 from app.security.audit import create_audit_log
-from app.security.auth import TokenPayload
 from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.security.auth import TokenPayload
 
 logger = logging.getLogger(__name__)
 
@@ -80,10 +85,8 @@ async def upload_document(
         )
     finally:
         if tmp_path:
-            try:
+            with contextlib.suppress(OSError):
                 Path(tmp_path).unlink(missing_ok=True)
-            except OSError:
-                pass
 
     await db.execute(
         text(

@@ -15,8 +15,10 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING
 
-from app.core.interfaces import LLMProvider
+if TYPE_CHECKING:
+    from app.core.interfaces import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -102,12 +104,11 @@ def detect_treatment_in_text(text: str) -> list[TreatmentResult]:
     for treatment, pattern in TREATMENT_PATTERNS:
         for match in pattern.finditer(text):
             # For positive FOLLOWED, skip matches that overlap a negative span
-            if treatment == CitationTreatment.FOLLOWED:
-                if any(
-                    ns <= match.start() < ne or ns < match.end() <= ne
-                    for ns, ne in negative_spans
-                ):
-                    continue
+            if treatment == CitationTreatment.FOLLOWED and any(
+                ns <= match.start() < ne or ns < match.end() <= ne
+                for ns, ne in negative_spans
+            ):
+                continue
 
             # Record spans for NOT_FOLLOWED so FOLLOWED can be excluded later
             if treatment == CitationTreatment.NOT_FOLLOWED:

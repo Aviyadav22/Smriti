@@ -110,7 +110,7 @@ def fix_case(row: dict) -> dict[str, object]:
     """Apply all quality fixes to a single case row. Returns dict of changed fields."""
     changes: dict[str, object] = {}
 
-    case_id = row["id"]
+    row["id"]
     year = row["year"]
     citation = row.get("citation") or ""
     acts_cited = row.get("acts_cited") or []
@@ -180,10 +180,9 @@ def fix_case(row: dict) -> dict[str, object]:
     # 8. Judge array completion
     if (coram_size and judge and author_judge
             and isinstance(coram_size, int)
-            and coram_size > len(judge)):
-        if author_judge.lower() not in [j.lower() for j in judge]:
-            new_judge = judge + [author_judge]
-            changes["judge"] = new_judge
+            and coram_size > len(judge)) and author_judge.lower() not in [j.lower() for j in judge]:
+        new_judge = [*judge, author_judge]
+        changes["judge"] = new_judge
 
     # 9. Disposal nature normalization
     if disposal_nature and disposal_nature not in _VALID_DISPOSALS:

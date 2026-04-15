@@ -73,10 +73,7 @@ async def sync_pinecone_metadata(
 
         client = Pinecone(api_key=settings.pinecone_api_key)
         host = settings.pinecone_host
-        if host:
-            index = client.Index(host=host)
-        else:
-            index = client.Index(settings.pinecone_index_name)
+        index = client.Index(host=host) if host else client.Index(settings.pinecone_index_name)
 
     except Exception as exc:
         logger.error("Failed to initialize Pinecone client: %s", exc)

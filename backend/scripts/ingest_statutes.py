@@ -36,8 +36,10 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import contextlib
+from typing import TYPE_CHECKING
+
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ingestion.contextual_embeddings import generate_contextual_prefix
 from app.core.legal.constants import (
@@ -46,6 +48,9 @@ from app.core.legal.constants import (
     IPC_TO_BNS_MAP,
 )
 from app.db.postgres import async_session_factory
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -174,10 +179,8 @@ async def upsert_statute(
     except Exception as exc:
         logger.error("Failed to upsert statute %s %s: %s",
                      statute.get("act_short_name"), statute.get("section_number"), exc)
-        try:
+        with contextlib.suppress(Exception):
             await db.rollback()
-        except Exception:
-            pass
         return None
 
 

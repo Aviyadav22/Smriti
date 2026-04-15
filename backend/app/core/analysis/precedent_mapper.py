@@ -5,11 +5,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
 from app.core.search.hybrid import SearchResultItem, hybrid_search
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.core.interfaces import EmbeddingProvider, LLMProvider, Reranker, VectorStore
 
 logger = logging.getLogger(__name__)
 

@@ -11,10 +11,9 @@ import asyncio
 import json
 import logging
 from dataclasses import asdict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agents.nodes.citation_verifier import verify_citations_against_db
 from app.core.agents.nodes.common import (
@@ -25,10 +24,8 @@ from app.core.agents.nodes.common import (
     safe_json_parse_list,
     verify_memo_citations,
 )
-from app.core.agents.state import DraftingState
 from app.core.drafting.court_profiles import get_court_profile
 from app.core.drafting.templates import get_template
-from app.core.interfaces import LLMProvider
 from app.core.legal.prompts import (
     DRAFT_AFFIDAVIT_COMPANION_SYSTEM,
     DRAFT_AFFIDAVIT_SYSTEM,
@@ -53,6 +50,12 @@ from app.core.legal.prompts import (
     LEGAL_DISCLAIMER,
 )
 from app.security.sanitizer import sanitize_search_query
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.core.agents.state import DraftingState
+    from app.core.interfaces import LLMProvider
 
 logger = logging.getLogger(__name__)
 

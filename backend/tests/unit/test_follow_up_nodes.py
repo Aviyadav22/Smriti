@@ -391,17 +391,16 @@ class TestTargetedSearchNode:
             "app.core.agents.nodes.follow_up_nodes.hybrid_search",
             new_callable=AsyncMock,
             side_effect=RuntimeError("Search failed"),
-        ):
-            with pytest.raises(RuntimeError, match="Search failed"):
-                await targeted_search_node(
-                    state,
-                    embedder=deps["embedder"],
-                    vector_store=deps["vector_store"],
-                    reranker=deps["reranker"],
-                    db_session_factory=deps["db_session_factory"],
-                    redis_client=deps["redis_client"],
-                    llm=deps["llm"],
-                )
+        ), pytest.raises(RuntimeError, match="Search failed"):
+            await targeted_search_node(
+                state,
+                embedder=deps["embedder"],
+                vector_store=deps["vector_store"],
+                reranker=deps["reranker"],
+                db_session_factory=deps["db_session_factory"],
+                redis_client=deps["redis_client"],
+                llm=deps["llm"],
+            )
 
     @pytest.mark.asyncio
     async def test_redis_client_none_accepted(self) -> None:

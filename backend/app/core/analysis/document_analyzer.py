@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from app.core.interfaces.llm import LLMProvider
 from app.core.legal.prompts import (
     DOCUMENT_COUNTER_ARGUMENTS_SYSTEM,
     DOCUMENT_COUNTER_ARGUMENTS_USER,
@@ -16,6 +16,9 @@ from app.core.legal.prompts import (
     DOCUMENT_RESEARCH_MEMO_SYSTEM,
     DOCUMENT_RESEARCH_MEMO_USER,
 )
+
+if TYPE_CHECKING:
+    from app.core.interfaces.llm import LLMProvider
 
 logger = logging.getLogger(__name__)
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import tempfile
@@ -109,10 +110,8 @@ async def _generate_audio_async(case_id: str, language: str) -> dict:
 
             storage_path = await storage.store(tmp_path, f"{audio_dir}/{audio_filename}")
 
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
 
             # Estimate duration
             word_count = len(summary_text.split())

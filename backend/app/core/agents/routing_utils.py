@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langgraph.graph import END
 from langgraph.types import interrupt
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -142,10 +145,8 @@ def make_checkpoint_node(
         # Parse JSON strings from frontend into dicts
         parsed = response
         if isinstance(response, str) and response.strip().startswith("{"):
-            try:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
                 parsed = json.loads(response)
-            except (json.JSONDecodeError, TypeError):
-                pass
         result: dict[str, Any] = {
             "messages": [
                 {"type": "user_feedback", "step": step, "content": parsed}

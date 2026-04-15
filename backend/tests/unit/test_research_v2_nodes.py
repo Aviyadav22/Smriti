@@ -795,7 +795,7 @@ class TestBatchWorkerCotWithReflectionNode:
             ]
         )]
         state = _make_v2_state(worker_results=worker_results)
-        result = await batch_worker_cot_with_reflection_node(state, llm)
+        await batch_worker_cot_with_reflection_node(state, llm)
 
         # Verify the LLM prompt includes case titles for quality reasoning
         call_kwargs = llm.generate_structured.call_args
@@ -1135,7 +1135,7 @@ class TestDispatchWorkersIntegration:
         # Import the dispatch_workers function from the graph builder
         # We need to test the inner function, so we build the graph first
         llm = _make_llm()
-        graph = build_research_graph(
+        build_research_graph(
             llm=llm, flash_llm=llm, embedder=AsyncMock(),
             vector_store=AsyncMock(), reranker=AsyncMock(),
         )

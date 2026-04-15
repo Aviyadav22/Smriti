@@ -5,19 +5,22 @@ Provides bidirectional old↔new section lookups, reading from the
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from datetime import date
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.legal.constants import (
     CRPC_TO_BNSS_MAP,
     EVIDENCE_TO_BSA_MAP,
     IPC_TO_BNS_MAP,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -112,10 +115,8 @@ async def get_amendment_maps(
     entries = await _load_all(db)
 
     if redis:
-        try:
+        with contextlib.suppress(Exception):
             await redis.setex(CACHE_KEY, CACHE_TTL, json.dumps(entries))
-        except Exception:
-            pass
 
     return entries
 

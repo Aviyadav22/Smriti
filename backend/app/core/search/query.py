@@ -9,14 +9,17 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from app.core.interfaces import LLMProvider
 from app.core.legal.amendment_service import build_lookup_from_constants
 from app.core.legal.constants import (
     CRPC_TO_BNSS_MAP,
     EVIDENCE_TO_BSA_MAP,
     IPC_TO_BNS_MAP,
 )
+
+if TYPE_CHECKING:
+    from app.core.interfaces import LLMProvider
 
 logger = logging.getLogger(__name__)
 

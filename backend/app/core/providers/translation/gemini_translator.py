@@ -6,7 +6,6 @@ import unicodedata
 from typing import TYPE_CHECKING
 
 from app.core.config import settings
-from app.core.interfaces.translator import TranslationProvider
 from app.security.sanitizer import sanitize_search_query
 
 logger = logging.getLogger(__name__)
@@ -115,4 +114,5 @@ class GeminiTranslator:
 
 # Verify protocol compliance at type-check time
 if TYPE_CHECKING:
+    from app.core.interfaces.translator import TranslationProvider
     _: type[TranslationProvider] = GeminiTranslator

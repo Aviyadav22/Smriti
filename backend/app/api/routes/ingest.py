@@ -5,18 +5,21 @@ import os
 import uuid
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import text, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import InstrumentedAttribute
 
 from app.db.postgres import get_db
 from app.models.case import Case
 from app.security.auth import TokenPayload
 from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user, require_role
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import InstrumentedAttribute
 
 logger = logging.getLogger(__name__)
 

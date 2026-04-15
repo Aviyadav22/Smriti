@@ -25,9 +25,8 @@ class TestDocumentRoutes:
                 hasattr(route, "path")
                 and route.path == "/{document_id}"
                 and hasattr(route, "methods")
-            ):
-                if "DELETE" in route.methods:
-                    found = True
+            ) and "DELETE" in route.methods:
+                found = True
         assert found, "DELETE route not found for /{document_id}"
 
     def test_list_is_get(self) -> None:
@@ -36,7 +35,6 @@ class TestDocumentRoutes:
                 hasattr(route, "path")
                 and route.path == ""
                 and hasattr(route, "methods")
-            ):
-                if "GET" in route.methods:
-                    return
+            ) and "GET" in route.methods:
+                return
         pytest.fail("GET route not found for list documents")

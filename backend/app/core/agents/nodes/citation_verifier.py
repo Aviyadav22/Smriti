@@ -11,11 +11,11 @@ like "(2023) 5 SCC 123" that was never in the search results and may not exist.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import sqlalchemy
 import sqlalchemy.exc
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.legal.extractor import (
     AIR_PATTERN,
@@ -37,6 +37,9 @@ from app.core.legal.extractor import (
     extract_citations,
     normalize_citation,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

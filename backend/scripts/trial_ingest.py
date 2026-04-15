@@ -42,6 +42,8 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+import contextlib
+
 import asyncpg  # noqa: E402
 
 from app.core.config import settings  # noqa: E402
@@ -255,7 +257,7 @@ async def trial_phase1_with_sampling(
             "page_map": e.page_map,
             "char_count": e.char_count,
             "parquet_meta": {
-                k: (str(v) if v is not None and not isinstance(v, (str, int, float, bool, list)) else v)
+                k: (str(v) if v is not None and not isinstance(v, str | int | float | bool | list) else v)
                 for k, v in e.parquet_meta.items()
             },
         }
@@ -374,7 +376,7 @@ async def run_trial_years(
             "page_map": e.page_map,
             "char_count": e.char_count,
             "parquet_meta": {
-                k: (str(v) if v is not None and not isinstance(v, (str, int, float, bool, list)) else v)
+                k: (str(v) if v is not None and not isinstance(v, str | int | float | bool | list) else v)
                 for k, v in e.parquet_meta.items()
             },
         }
@@ -508,7 +510,7 @@ async def audit_year(year: int, case_ids: list[str], conn: asyncpg.Connection) -
         for r in rows:
             val = r[fld]
             if val is not None:
-                if isinstance(val, (list,)):
+                if isinstance(val, list):
                     count += 1 if len(val) > 0 else 0
                 elif isinstance(val, str):
                     count += 1 if val.strip() else 0
@@ -689,52 +691,33 @@ def print_report_table(
     sample_size: int,
 ) -> None:
     """Print year-by-year comparison table to console."""
-    total_cases = sum(r.sample_size for r in reports.values())
-    years_with_data = [y for y, r in reports.items() if r.case_ids]
+    sum(r.sample_size for r in reports.values())
+    [y for y, r in reports.items() if r.case_ids]
 
-    print()
-    print("=" * 85)
-    print(f"  Trial Ingestion Report: {tag}")
-    print(f"  Years: {min(reports.keys())}-{max(reports.keys())} | "
-          f"Sample: {sample_size}/year | Total: {total_cases} cases")
-    print("=" * 85)
-    print()
-    print(f"  {'Year':<6} {'Health':>7} {'Fields%':>8} {'Conf':>6} "
-          f"{'Chunks':>7} {'Acts.Err':>9} {'TxtLen':>8} {'Anomalies'}")
-    print(f"  {'-' * 6} {'-' * 7} {'-' * 8} {'-' * 6} "
-          f"{'-' * 7} {'-' * 9} {'-' * 8} {'-' * 25}")
 
     flagged: list[tuple[int, list[str]]] = []
 
     for year in sorted(reports.keys()):
         r = reports[year]
         if not r.case_ids:
-            print(f"  {year:<6} {'—':>7} {'—':>8} {'—':>6} "
-                  f"{'—':>7} {'—':>9} {'—':>8} no data")
             continue
 
-        health = f"{r.health_score:.2f}"
-        fields_pct = f"{r.overall_completeness * 100:.0f}%"
-        conf = f"{r.confidence.get('avg', 0):.2f}"
-        chunks_avg = f"{r.chunks.get('avg', 0):.0f}"
-        acts_err = str(r.acts_quality.get("garbage", 0))
-        txt_len = f"{r.text_length.get('avg', 0) / 1000:.1f}K"
-        anomaly_str = ", ".join(r.anomalies[:3]) if r.anomalies else ""
+        f"{r.overall_completeness * 100:.0f}%"
+        f"{r.confidence.get('avg', 0):.2f}"
+        f"{r.chunks.get('avg', 0):.0f}"
+        str(r.acts_quality.get("garbage", 0))
+        f"{r.text_length.get('avg', 0) / 1000:.1f}K"
+        ", ".join(r.anomalies[:3]) if r.anomalies else ""
 
-        print(f"  {year:<6} {health:>7} {fields_pct:>8} {conf:>6} "
-              f"{chunks_avg:>7} {acts_err:>9} {txt_len:>8} {anomaly_str}")
 
         if r.health_score < 0.75 and r.case_ids:
             flagged.append((year, r.anomalies))
 
-    print()
     if flagged:
-        print("  FLAGGED YEARS (health < 0.75):")
-        for year, anomalies in flagged:
-            print(f"    {year}: {', '.join(anomalies)}")
+        for year, _anomalies in flagged:
+            pass
     else:
-        print("  All years healthy (score >= 0.75)")
-    print()
+        pass
 
 
 def save_report(
@@ -808,10 +791,8 @@ async def async_main(args: argparse.Namespace) -> None:
     loop = asyncio.get_running_loop()
     handler = _make_shutdown_handler(loop)
     for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
+        with contextlib.suppress(OSError, ValueError):
             signal.signal(sig, handler)
-        except (OSError, ValueError):
-            pass
 
     output_dir = Path(args.output_dir)
     tag = f"trial_{datetime.now().strftime('%Y%m%d_%H%M%S')}"

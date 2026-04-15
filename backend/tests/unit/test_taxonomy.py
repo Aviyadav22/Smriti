@@ -54,7 +54,7 @@ class TestLegalTaxonomy:
                 assert "." in tag, f"Tag '{tag}' in '{cat}' is not dot-separated"
 
     def test_tags_are_lowercase_with_underscores(self) -> None:
-        for cat, subtopics in LEGAL_TAXONOMY.items():
+        for _cat, subtopics in LEGAL_TAXONOMY.items():
             for tag in subtopics:
                 assert tag == tag.lower(), f"Tag '{tag}' contains uppercase"
                 assert " " not in tag, f"Tag '{tag}' contains spaces"
