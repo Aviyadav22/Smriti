@@ -36,7 +36,7 @@ jobs:
           pip-audit --desc -r /tmp/audit-requirements.txt
 
       - name: Test
-        run: pytest tests/unit/ -x
+        run: pytest tests/unit/ -x --timeout=60
 
   frontend:
     runs-on: ubuntu-latest
