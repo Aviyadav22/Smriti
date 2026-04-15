@@ -56,3 +56,12 @@ htmlcov/
 # Logs
 *.log
 .worktrees/
+
+# Deployment secrets — NEVER commit these (contain plaintext API keys / DB passwords)
+scripts/setup-secrets-*.sh
+
+# Claude Code runtime
+.claude/scheduled_tasks.lock
+
+# Ad-hoc audit outputs
+backend/audit_results.csv

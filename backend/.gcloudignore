@@ -1,0 +1,55 @@
+.gcloudignore
+.git
+.gitignore
+.dockerignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Testing
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Linting
+.ruff_cache/
+.mypy_cache/
+
+# Data directories (huge)
+data/
+audit_results.csv
+*.csv
+*.sql
+*.parquet
+*.db
+*.sqlite
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Docs
+*.md
+docs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Node (just in case)
+node_modules/
+
+# Logs
+logs/
+*.log
