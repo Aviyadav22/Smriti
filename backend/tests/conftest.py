@@ -16,11 +16,11 @@ os.environ.setdefault("PINECONE_HOST", "https://test.pinecone.io")
 os.environ.setdefault("COHERE_API_KEY", "test-cohere-key")
 os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 
-from unittest.mock import AsyncMock, patch  # noqa: E402
+from unittest.mock import AsyncMock, patch
 
-import pytest  # noqa: E402
+import pytest
 
-from app.security import rate_limiter as _rl_module  # noqa: E402
+from app.security import rate_limiter as _rl_module
 
 
 @pytest.fixture(autouse=True)
