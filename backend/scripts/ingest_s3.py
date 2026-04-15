@@ -467,10 +467,12 @@ def _download_with_timeout(url: str, dest: Path, timeout: int = 300) -> None:
     downloads don't leave partial files that pass the exists() check on resume.
     Uses chunked streaming to avoid loading entire file into memory.
     """
+    if not url.startswith(("http://", "https://")):
+        raise ValueError(f"Only http(s) URLs are allowed, got: {url}")
     tmp_dest = dest.with_suffix(dest.suffix + ".tmp")
-    req = urllib.request.Request(url)
+    req = urllib.request.Request(url)  # noqa: S310  # scheme validated above
     # Use a longer timeout for connection, read in 1MB chunks to avoid MemoryError
-    with urllib.request.urlopen(req, timeout=timeout) as resp, open(tmp_dest, "wb") as f:
+    with urllib.request.urlopen(req, timeout=timeout) as resp, open(tmp_dest, "wb") as f:  # noqa: S310
         while True:
             chunk = resp.read(1024 * 1024)  # 1MB chunks
             if not chunk:
@@ -817,7 +819,8 @@ async def ingest_year(
         if len(bad_indices) == len(llm_pool):
             logger.error("ALL %d API keys are invalid — aborting", len(llm_pool))
             return {
-                "skipped": len(pdfs_to_process) if "pdfs_to_process" in dir() else 0,
+                # `pdfs_to_process` isn't assigned until later; report 0 here.
+                "skipped": 0,
                 "error_keys": len(llm_pool),
             }
         logger.warning(
@@ -851,7 +854,8 @@ async def ingest_year(
                 pc_dim,
             )
             return {
-                "skipped": len(pdfs_to_process) if "pdfs_to_process" in dir() else 0,
+                # `pdfs_to_process` isn't assigned until later; report 0 here.
+                "skipped": 0,
                 "error_dimension": 1,
             }
         logger.info(

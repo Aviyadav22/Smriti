@@ -6,7 +6,7 @@ enabling cross-format search and display.
 
 from __future__ import annotations
 
-import uuid
+import uuid  # noqa: TC003  # runtime-needed by SQLAlchemy Mapped[uuid.UUID] resolution
 
 from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID

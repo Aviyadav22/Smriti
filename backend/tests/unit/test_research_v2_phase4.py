@@ -1009,8 +1009,8 @@ class TestCitationPatternMatcher:
         assert not _matches_indian_citation_pattern("")
 
 
-class TestFuzzyMatch:
-    """Test _fuzzy_match helper."""
+class TestFuzzyMatchBasic:
+    """Test _fuzzy_match helper — basic coverage."""
 
     def test_exact_substring(self) -> None:
         from app.core.agents.nodes.research_nodes import _fuzzy_match

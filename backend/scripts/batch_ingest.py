@@ -215,9 +215,16 @@ async def submit_year(
         sem = asyncio.Semaphore(concurrency)
         batch_entries: list[dict] = []
 
-        async def _process_pdf(pdf_path: Path) -> dict | None:
+        async def _process_pdf(
+            pdf_path: Path,
+            # Bind loop-scoped variables as defaults so they're captured by
+            # value at function-creation time, not by reference (closure bug).
+            _sem: asyncio.Semaphore = sem,
+            _client: object = client,
+            _key_idx: int = current_key_idx,
+        ) -> dict | None:
             doc_key = _normalize_doc_key(year, pdf_path)
-            async with sem:
+            async with _sem:
                 try:
                     # Extract text for dedup check
                     text_quality = await extract_and_score(str(pdf_path))
@@ -235,7 +242,7 @@ async def submit_year(
                         return None
 
                     # Upload PDF to Gemini Files API
-                    file_uri = await _upload_pdf(client, pdf_path)
+                    file_uri = await _upload_pdf(_client, pdf_path)
 
                     # Match parquet metadata
                     from scripts.ingest_s3 import _match_pdf_to_metadata
@@ -251,7 +258,7 @@ async def submit_year(
                         full_text_len=text_quality.char_count,
                         parquet_meta=parquet_meta,
                         pdf_path=str(pdf_path),
-                        api_key_index=current_key_idx,
+                        api_key_index=_key_idx,
                     )
 
                     # Build batch request entry

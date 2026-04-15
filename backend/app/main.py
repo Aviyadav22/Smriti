@@ -287,9 +287,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         logger.warning("Failed to clean up stale agent executions on startup", exc_info=True)
 
-    # Cleanup expired user-uploaded PDFs (DPDP: purpose-limited retention)
+    # Cleanup expired user-uploaded PDFs (DPDP: purpose-limited retention).
+    # Hold a reference in app.state so the task isn't garbage-collected.
     if settings.user_upload_retention_days > 0:
-        asyncio.create_task(_cleanup_expired_uploads())
+        app.state.cleanup_task = asyncio.create_task(_cleanup_expired_uploads())
 
     yield
     # Shutdown — with timeout guards to avoid blocking Cloud Run termination

@@ -106,7 +106,7 @@ def main():
             (1, "MISSING (not in DB at all)", TIER_1_MISSING),
             (2, "INCOMPLETE (in DB but most sections missing)", TIER_2_INCOMPLETE),
         ]:
-            for stem, config_key in tier_acts.items():
+            for _stem, config_key in tier_acts.items():
                 config = PDF_ACT_CONFIGS.get(config_key, {})
                 config.get("act_name", "?")
                 config.get("act_year", "?")

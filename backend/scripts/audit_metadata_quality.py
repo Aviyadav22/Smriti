@@ -411,7 +411,7 @@ def main():
 
     # ── Top 15 worst cases ──────────────────────────────────────────
     worst = sorted(results, key=lambda r: r.issue_count, reverse=True)[:15]
-    for i, r in enumerate(worst, 1):
+    for _i, r in enumerate(worst, 1):
         flags = []
         if r.header_bloated:
             flags.append(f"HEADER={r.header_section_chars:,}chars")
@@ -434,7 +434,7 @@ def main():
 
     # ── Cases with HEADNOTE before JUDGMENT (SCR editorial block) ───
     hn_before_j = [r for r in results if r.has_headnote_before_judgment]
-    for r in hn_before_j[:20]:
+    for _r in hn_before_j[:20]:
         pass
     if len(hn_before_j) > 20:
         pass

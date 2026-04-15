@@ -44,14 +44,14 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import contextlib
 
-import asyncpg  # noqa: E402
+import asyncpg
 
-from app.core.config import settings  # noqa: E402
-from app.core.ingestion.anonymizer import anonymize_text  # noqa: E402
-from app.core.ingestion.pdf import extract_and_score  # noqa: E402
-from app.core.ingestion.pipeline import _compute_text_hash  # noqa: E402
-from app.core.legal.extractor import _is_valid_act_citation  # noqa: E402
-from scripts.batch_ingest_vertex import (  # noqa: E402
+from app.core.config import settings
+from app.core.ingestion.anonymizer import anonymize_text
+from app.core.ingestion.pdf import extract_and_score
+from app.core.ingestion.pipeline import _compute_text_hash
+from app.core.legal.extractor import _is_valid_act_citation
+from scripts.batch_ingest_vertex import (
     BATCH_RUNS_DIR,
     GCS_BUCKET,
     ManifestEntry,
@@ -61,7 +61,7 @@ from scripts.batch_ingest_vertex import (  # noqa: E402
     phase2_batch_metadata,
     phase3_process_cases,
 )
-from scripts.ingest_s3 import (  # noqa: E402
+from scripts.ingest_s3 import (
     _match_pdf_to_metadata,
     download_year_data,
     extract_tar,
@@ -752,7 +752,7 @@ def print_report_table(
             flagged.append((year, r.anomalies))
 
     if flagged:
-        for year, _anomalies in flagged:
+        for _year, _anomalies in flagged:
             pass
     else:
         pass

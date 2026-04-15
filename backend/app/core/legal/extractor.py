@@ -337,7 +337,8 @@ _SHORT_ACT_NAMES: dict[str, str] = {
     "EPF ACT": "Employees' Provident Funds and Miscellaneous Provisions Act",
     "PW ACT": "Payment of Wages Act",
     "TU ACT": "Trade Unions Act",
-    "WC ACT": "Workmen's Compensation Act",
+    # "WC ACT" is defined below with the post-2009 renamed form
+    # ("Employees' Compensation Act")
     "CODE ON WAGES": "Code on Wages",
     "CODE ON SOCIAL SECURITY": "Code on Social Security",
     "CODE ON INDUSTRIAL RELATIONS": "Code on Industrial Relations",
@@ -353,7 +354,7 @@ _SHORT_ACT_NAMES: dict[str, str] = {
     "CAT ACT": "Administrative Tribunals Act",
     # --- [A3] Property ---
     "EASEMENTS ACT": "Indian Easements Act",
-    "RFCTLARR ACT": "Right to Fair Compensation and Transparency in Land Acquisition Act",
+    # "RFCTLARR ACT" is defined below with the complete multi-line name
     # --- [A3] Environmental ---
     "FOREST ACT": "Indian Forest Act",
     "FC ACT": "Forest Conservation Act",
@@ -1267,7 +1268,7 @@ _SECTION_FULL_ACT_PATTERN: re.Pattern[str] = re.compile(
 # Captures comma/slash/and-separated section lists (including ranges) in group(1)
 # A "section token" is a number/word optionally followed by parenthetical,
 # optionally forming a range with - / – / "to".
-_SEC_TOKEN = r"[\d\w]+(?:\s*\([^)]+\))*"
+_SEC_TOKEN = r"[\d\w]+(?:\s*\([^)]+\))*"  # noqa: S105  # regex pattern, not a password
 _SEC_RANGE = rf"{_SEC_TOKEN}(?:\s*[-–]\s*\d+|\s+to\s+\d+)?"
 _SECTION_SHORT_ACT_PATTERN: re.Pattern[str] = re.compile(
     r"(?:Sections?|Sec\.?|Ss\.|S\.)\s*(" + _SEC_RANGE + r"(?:\s*[,/]\s*" + _SEC_RANGE + r")*"

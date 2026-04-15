@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import logging
+from typing import ClassVar
 
 import httpx
 from tenacity import (
@@ -56,9 +57,9 @@ _sarvam_retry = retry(
 class SarvamTTS:
     """Sarvam AI TTS provider supporting 22 Indian languages."""
 
-    _BASE_URL = "https://api.sarvam.ai/text-to-speech"
+    _BASE_URL: ClassVar[str] = "https://api.sarvam.ai/text-to-speech"
 
-    _LANGUAGE_VOICES: dict[str, str] = {
+    _LANGUAGE_VOICES: ClassVar[dict[str, str]] = {
         "en": "meera",
         "hi": "meera",
     }

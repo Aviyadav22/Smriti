@@ -139,8 +139,8 @@ async def main():
         pass
 
     # ── Detail dump for each case ──
-    for i, r in enumerate(rows, 1):
-        rec = dict(r)
+    for _i, r in enumerate(rows, 1):
+        rec = dict(r)  # detail dump, inspection-only
 
 
 if __name__ == "__main__":

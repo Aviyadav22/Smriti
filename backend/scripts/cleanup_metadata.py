@@ -33,7 +33,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
-import asyncpg  # noqa: E402
+import asyncpg
 
 logging.basicConfig(
     level=logging.INFO,

@@ -119,7 +119,7 @@ class LogoutRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105  # OAuth2 token type label, not a secret
     expires_in: int
     refresh_token: str  # Always included — dev proxy may not forward httpOnly cookies
 

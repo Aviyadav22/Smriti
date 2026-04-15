@@ -104,7 +104,7 @@ async def audit():
                     issues.append(f"    {col}: {' | '.join(diffs)}")
 
         if issues:
-            for i in issues:
+            for _i in issues:
                 col_mismatches += 1
 
     if col_mismatches == 0:
@@ -140,10 +140,10 @@ async def audit():
     common_idx = set(src_idx_map.keys()) & set(dst_idx_map.keys())
 
     if missing_on_vps:
-        for idx in sorted(missing_on_vps):
+        for _idx in sorted(missing_on_vps):
             pass
     if extra_on_vps:
-        for idx in sorted(extra_on_vps):
+        for _idx in sorted(extra_on_vps):
             pass
 
     # Check if common indexes have same definition
@@ -303,8 +303,9 @@ async def audit():
             # Compare row by row
             mismatched_rows = 0
             for i in range(len(src_rows)):
-                src_hash = hashlib.md5(str(dict(src_rows[i])).encode()).hexdigest()
-                dst_hash = hashlib.md5(str(dict(dst_rows[i])).encode()).hexdigest()
+                # md5 used as a non-cryptographic row fingerprint for equality check
+                src_hash = hashlib.md5(str(dict(src_rows[i])).encode(), usedforsecurity=False).hexdigest()
+                dst_hash = hashlib.md5(str(dict(dst_rows[i])).encode(), usedforsecurity=False).hexdigest()
                 if src_hash != dst_hash:
                     mismatched_rows += 1
                     if mismatched_rows <= 3:

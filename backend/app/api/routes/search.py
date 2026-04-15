@@ -28,6 +28,10 @@ from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user, get_current_user_optional
 from app.security.sanitizer import detect_prompt_injection, sanitize_search_query
 
+# Module-level set to hold references to fire-and-forget background tasks so
+# they're not garbage-collected mid-flight (RUF006).
+_background_tasks: set[asyncio.Task] = set()
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -210,7 +214,9 @@ async def search(
                 except Exception:
                     logger.debug("Failed to save search history", exc_info=True)
 
-            asyncio.create_task(_save_search_history())
+            _task = asyncio.create_task(_save_search_history())
+            _background_tasks.add(_task)
+            _task.add_done_callback(_background_tasks.discard)
         except Exception:
             pass  # best-effort
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from app.core.legal.taxonomy import (
     LEGAL_TAXONOMY,
     NORMALIZATION_MAP,
@@ -16,7 +18,7 @@ from app.core.legal.taxonomy import (
 class TestLegalTaxonomy:
     """Verify taxonomy structure and integrity."""
 
-    EXPECTED_CATEGORIES = [
+    EXPECTED_CATEGORIES: ClassVar[list[str]] = [
         "Criminal Law",
         "Constitutional Law",
         "Civil Procedure",

@@ -7,7 +7,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import async_engine_from_config  # noqa: F401
+from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.models.base import Base
 

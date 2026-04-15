@@ -442,12 +442,12 @@ def main():
 
     # TOP 20 worst cases
     worst = sorted(case_issues.items(), key=lambda x: len(x[1]["issues"]), reverse=True)[:20]
-    for _i, (cid, info) in enumerate(worst, 1):
+    for _i, (_cid, info) in enumerate(worst, 1):
         len(info["issues"])
         sum(1 for s, _, _ in info["issues"] if s == "CRITICAL")
         sum(1 for s, _, _ in info["issues"] if s == "HIGH")
         sum(1 for s, _, _ in info["issues"] if s == "MEDIUM")
-        for sev, _name, _detail in info["issues"]:
+        for _sev, _name, _detail in info["issues"]:
             pass
 
     # GARBAGE acts_cited samples
@@ -455,17 +455,17 @@ def main():
     garbage_acts_sorted = sorted(
         garbage_acts, key=lambda x: len(x[3]) if x[3] else 0, reverse=True
     )[:10]
-    for _i, (cid, yr, _title, _act_entry, reason) in enumerate(garbage_acts_sorted, 1):
+    for _i, (_cid, _yr, _title, _act_entry, _reason) in enumerate(garbage_acts_sorted, 1):
         pass
 
     # Bare citation cases
     bare_cite_cases.sort(key=lambda x: x[3], reverse=True)
-    for _i, (cid, yr, _title, _bare, _total_c) in enumerate(bare_cite_cases[:10], 1):
+    for _i, (_cid, _yr, _title, _bare, _total_c) in enumerate(bare_cite_cases[:10], 1):
         pass
 
     # Low confidence cases
     low_confidence_cases.sort(key=lambda x: x[3])
-    for cid, yr, _title, _conf in low_confidence_cases:
+    for _cid, _yr, _title, _conf in low_confidence_cases:
         pass
 
     # YEAR-BY-YEAR quality

@@ -6,7 +6,7 @@ Reasoning, Order) for section-aware search and targeted retrieval.
 
 from __future__ import annotations
 
-import uuid
+import uuid  # noqa: TC003  # runtime-needed by SQLAlchemy Mapped[uuid.UUID] resolution
 
 from sqlalchemy import ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID

@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     app_name: str = "smriti"
     app_env: str = "development"
     app_debug: bool = False
-    app_host: str = "0.0.0.0"
+    app_host: str = "0.0.0.0"  # noqa: S104  # Cloud Run requires binding to 0.0.0.0
     app_port: int = 8000
     app_version: str = "0.1.0"
     cors_origins: str = "http://localhost:3000"
@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     graph_provider: str = "neo4j"
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
-    neo4j_password: str = "smriti_dev"
+    neo4j_password: str = "smriti_dev"  # noqa: S105  # dev default; prod validated separately
     neo4j_database: str = "neo4j"
 
     # Cohere
@@ -191,7 +191,7 @@ class Settings(BaseSettings):
             if not self.cohere_api_key:
                 raise ValueError("cohere_api_key must not be empty in production")
             # Enforce no dev defaults in production
-            if self.neo4j_password == "smriti_dev":
+            if self.neo4j_password == "smriti_dev":  # noqa: S105
                 raise ValueError("neo4j_password must not use default 'smriti_dev' in production")
             if "localhost" in self.database_url:
                 raise ValueError("database_url must not contain 'localhost' in production")

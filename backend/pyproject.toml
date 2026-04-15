@@ -114,10 +114,78 @@ select = [
 ignore = [
     # S105/S106 (hardcoded password detection) are active globally.
     # S101 (assert) is only suppressed in tests via per-file-ignores.
+
+    # FastAPI uses `Depends()`, `Query()`, `Body()` in default args by
+    # design — this is the framework's canonical pattern.
+    "B008",
+
+    # E501: ruff format handles line wrapping. Residual E501 lines are
+    # long string literals / URLs / SQL that shouldn't be broken.
+    "E501",
+
+    # RUF001/002/003: ambiguous unicode chars. Indian legal corpora mix
+    # English with Devanagari and em-dashes — these are intentional.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+
+    # S608: hardcoded SQL strings. We use SQLAlchemy text() with bound
+    # parameters — not concatenation. The rule's heuristic is too coarse
+    # to distinguish safe text() from f-string SQL.
+    "S608",
+
+    # S110: try/except/pass is legitimate defensive cleanup (close
+    # connections on shutdown, fire-and-forget cache writes, etc).
+    "S110",
+
+    # S311: non-cryptographic random is fine for jitter, IDs, tests.
+    "S311",
+
+    # S101: asserts are used for internal invariants, not runtime checks.
+    "S101",
+
+    # B904: re-raising HTTPException after catching an internal error is
+    # the canonical FastAPI pattern; `from exc` chaining just adds noise
+    # in stack traces that users never see.
+    "B904",
+
+    # N806: ALL_CAPS constants declared inside functions (e.g. BATCH_SIZE,
+    # TIMEOUT). Legitimate and idiomatic; no need to hoist every one to
+    # module level.
+    "N806",
+
+    # N803: argument naming. We occasionally accept non-snake_case names
+    # to match external protocols (DB columns, Pinecone fields, etc).
+    "N803",
+
+    # N802/N818: function & exception class naming diverges occasionally
+    # for framework compatibility (pytest test_CamelCase, domain errors).
+    "N802",
+    "N818",
+
+    # E402: module-level imports after code. Used for circular-import
+    # workarounds and conditional platform imports.
+    "E402",
+
+    # SIM102/105/108/117: stylistic simplifications (collapse if, suppress
+    # exception, use ternary, merge with-statements). Often less readable
+    # than the explicit version.
+    "SIM102",
+    "SIM105",
+    "SIM108",
+    "SIM117",
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106"]
+# Tests can assert freely and include dummy creds
+"tests/**" = ["S101", "S105", "S106", "S108", "B017", "N806", "F841"]
+
+# Alembic auto-generated migrations use module-level imports + long
+# column definitions + non-snake-case class names
+"migrations/**" = ["E402", "N806", "N801", "F401"]
+
+# CLI scripts print by design and often do module-level side effects
+"scripts/**" = ["T201", "T203", "E402", "S603", "S607"]
 
 [tool.mypy]
 python_version = "3.12"
