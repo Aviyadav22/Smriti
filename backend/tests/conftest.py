@@ -1,10 +1,26 @@
 """Shared test fixtures and configuration."""
 
-from unittest.mock import AsyncMock, patch
+# IMPORTANT: set default env vars BEFORE any `app.*` import. Pydantic Settings
+# reads the environment at module-import time, so we need these in place
+# before `app.core.config` is pulled in by anything else in this file.
+# These are test-only fake values — real production secrets come from
+# Secret Manager, not from this conftest.
+import os
 
-import pytest
+os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret-key-" + "x" * 40)
+os.environ.setdefault("JWT_REFRESH_SECRET_KEY", "test-jwt-refresh-" + "x" * 40)
+# 64-char hex = 32 bytes, matches app.security.encryption's validation.
+os.environ.setdefault("ENCRYPTION_KEY", "a" * 64)
+os.environ.setdefault("PINECONE_API_KEY", "test-pinecone-key")
+os.environ.setdefault("PINECONE_HOST", "https://test.pinecone.io")
+os.environ.setdefault("COHERE_API_KEY", "test-cohere-key")
+os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 
-from app.security import rate_limiter as _rl_module
+from unittest.mock import AsyncMock, patch  # noqa: E402
+
+import pytest  # noqa: E402
+
+from app.security import rate_limiter as _rl_module  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
