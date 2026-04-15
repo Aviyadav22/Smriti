@@ -4,9 +4,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 
 WORKDIR /app
 
-# Copy package files for reproducible installs
-COPY package.json package-lock.json ./
-RUN npm ci
+# Copy package.json and install deps.
+# NOTE: we intentionally don't use `npm ci` + committed lockfile because the
+# lockfile has been stale in git since before this deployment (package.json
+# was bumped without regenerating). Fixing it properly + CI is a separate PR.
+COPY package.json ./
+RUN npm install --no-audit --no-fund
 
 COPY . .
 

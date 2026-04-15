@@ -11,7 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/components/ui/input";
 import { Check, CheckCircle2, ChevronDown, Clipboard, Copy, Download, HelpCircle, Info, Link as LinkIcon, Loader2, Pencil, Share2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createMemoShare, getMemoShareStatus, revokeMemoShare } from "@/lib/api";
+import { createMemoShare, getMemoShareStatus, revokeMemoShare, exportResearchMemo } from "@/lib/api";
 import type { ReactNode } from "react";
 import type { ResearchFootnote } from "@/lib/types";
 
@@ -542,10 +542,6 @@ export function AgentMemoViewer({ content, confidence, onFootnoteClick, maxFootn
                         )}
                         {copied ? "Copied" : "Copy"}
                     </Button>
-                    <Button variant="outline" size="sm" onClick={handleDownload}>
-                        <Download className="h-3.5 w-3.5 mr-1.5" />
-                        Download MD
-                    </Button>
                     {executionId && (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -559,7 +555,22 @@ export function AgentMemoViewer({ content, confidence, onFootnoteClick, maxFootn
                                 {(["docx", "pdf"] as const).map((fmt) => (
                                     <DropdownMenuItem
                                         key={fmt}
-                                        onClick={() => window.open(`/api/agents/research/export/${executionId}?format=${fmt}`, "_blank")}
+                                        onClick={async () => {
+                                            try {
+                                                const blob = await exportResearchMemo(executionId, fmt);
+                                                const url = URL.createObjectURL(blob);
+                                                const a = document.createElement("a");
+                                                a.href = url;
+                                                a.download = `research-memo-${executionId}.${fmt}`;
+                                                document.body.appendChild(a);
+                                                a.click();
+                                                document.body.removeChild(a);
+                                                URL.revokeObjectURL(url);
+                                            } catch (err) {
+                                                console.error("Export failed:", err);
+                                                alert("Failed to export memo. Please try again.");
+                                            }
+                                        }}
                                     >
                                         Download {fmt.toUpperCase()}
                                     </DropdownMenuItem>
