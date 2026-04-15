@@ -136,20 +136,14 @@ _dev_memory_saver: object | None = None
 
 
 def get_checkpointer() -> object:
-    """Return the appropriate LangGraph checkpointer for the current environment.
+    """Return a shared MemorySaver singleton for LangGraph state.
 
-    In production/staging, uses AsyncPostgresSaver backed by the main PostgreSQL
-    database. In development/testing, uses a shared in-memory MemorySaver singleton
-    so that HITL interrupt/resume works across endpoint calls.
+    Note: AsyncPostgresSaver.from_conn_string() returns an async context manager
+    that must be entered, which is incompatible with the current sync callers.
+    Until refactored, we use MemorySaver in all environments — state is lost on
+    container restart, which is acceptable for MVP.
     """
     global _dev_memory_saver
-
-    if settings.app_env in ("production", "staging"):
-        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-
-        from app.core.agents.checkpointer import get_checkpointer_connection_string
-
-        return AsyncPostgresSaver.from_conn_string(get_checkpointer_connection_string())
     from langgraph.checkpoint.memory import MemorySaver
 
     if _dev_memory_saver is None:

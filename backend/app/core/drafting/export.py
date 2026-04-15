@@ -398,6 +398,133 @@ async def export_to_pdf(
 # ---------------------------------------------------------------------------
 
 
+_INLINE_RE = __import__("re").compile(r"(\*\*[^\*]+\*\*|\*[^\*]+\*|`[^`]+`)")
+
+
+def _add_inline_runs(paragraph, text: str, base_size: int = 12) -> None:
+    """Add runs to a docx paragraph, parsing **bold**, *italic*, and `code`."""
+    parts = _INLINE_RE.split(text)
+    for part in parts:
+        if not part:
+            continue
+        run = paragraph.add_run()
+        run.font.name = "Times New Roman"
+        run.font.size = Pt(base_size)
+        if part.startswith("**") and part.endswith("**") and len(part) > 4:
+            run.text = part[2:-2]
+            run.font.bold = True
+        elif part.startswith("*") and part.endswith("*") and len(part) > 2:
+            run.text = part[1:-1]
+            run.font.italic = True
+        elif part.startswith("`") and part.endswith("`") and len(part) > 2:
+            run.text = part[1:-1]
+            run.font.name = "Courier New"
+        else:
+            run.text = part
+
+
+def _render_markdown_to_docx(doc, content: str, body_size: int = 12, heading_size: int = 14) -> None:
+    """Render markdown content into a docx Document.
+
+    Handles: # headings, **bold**, *italic*, | tables |, - bullets, 1. numbered,
+    paragraph breaks, and <br> line breaks.
+    """
+    lines = content.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # Blank line
+        if not stripped:
+            i += 1
+            continue
+
+        # Heading
+        if stripped.startswith("#"):
+            level = 0
+            while level < len(stripped) and stripped[level] == "#":
+                level += 1
+            text = stripped[level:].strip()
+            level = min(max(level, 1), 4)
+            h = doc.add_heading(text, level=level)
+            for run in h.runs:
+                run.font.name = "Times New Roman"
+                run.font.size = Pt(heading_size if level <= 2 else body_size + 1)
+                run.font.bold = True
+            i += 1
+            continue
+
+        # Horizontal rule
+        if stripped in ("---", "***", "___"):
+            doc.add_paragraph("_" * 60)
+            i += 1
+            continue
+
+        # Table (starts with |, next line is separator |---|---|)
+        if stripped.startswith("|") and i + 1 < len(lines) and "---" in lines[i + 1]:
+            header_cells = [c.strip() for c in stripped.strip("|").split("|")]
+            i += 2  # Skip header and separator
+            rows = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                row_cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
+                rows.append(row_cells)
+                i += 1
+            if header_cells:
+                table = doc.add_table(rows=1 + len(rows), cols=len(header_cells))
+                table.style = "Light Grid Accent 1"
+                for idx, hc in enumerate(header_cells):
+                    cell = table.rows[0].cells[idx]
+                    cell.text = ""
+                    p = cell.paragraphs[0]
+                    run = p.add_run(hc.replace("<br>", " "))
+                    run.font.name = "Times New Roman"
+                    run.font.size = Pt(body_size - 1)
+                    run.font.bold = True
+                for r_idx, row in enumerate(rows):
+                    for c_idx, cell_text in enumerate(row):
+                        if c_idx < len(header_cells):
+                            cell = table.rows[r_idx + 1].cells[c_idx]
+                            cell.text = ""
+                            for sub_line in cell_text.split("<br>"):
+                                p = cell.paragraphs[0] if sub_line == cell_text.split("<br>")[0] else cell.add_paragraph()
+                                _add_inline_runs(p, sub_line.strip(), base_size=body_size - 1)
+                doc.add_paragraph()  # Spacer
+            continue
+
+        # Bullet list
+        if stripped.startswith(("- ", "* ", "+ ")):
+            while i < len(lines) and lines[i].strip().startswith(("- ", "* ", "+ ")):
+                item_text = lines[i].strip()[2:]
+                para = doc.add_paragraph(style="List Bullet")
+                _add_inline_runs(para, item_text, base_size=body_size)
+                i += 1
+            continue
+
+        # Numbered list
+        if stripped[0].isdigit() and ". " in stripped[:5]:
+            while i < len(lines) and lines[i].strip() and lines[i].strip()[0:1].isdigit() and ". " in lines[i].strip()[:5]:
+                item_text = lines[i].strip().split(". ", 1)[1] if ". " in lines[i].strip() else lines[i].strip()
+                para = doc.add_paragraph(style="List Number")
+                _add_inline_runs(para, item_text, base_size=body_size)
+                i += 1
+            continue
+
+        # Regular paragraph — collect until blank line
+        para_lines = []
+        while i < len(lines) and lines[i].strip() and not lines[i].strip().startswith(("#", "|", "- ", "* ", "+ ")):
+            s = lines[i].strip()
+            if s[0:1].isdigit() and ". " in s[:5]:
+                break
+            para_lines.append(s)
+            i += 1
+        if para_lines:
+            para_text = " ".join(para_lines).replace("<br>", " ")
+            para = doc.add_paragraph()
+            para.paragraph_format.space_after = Pt(6)
+            _add_inline_runs(para, para_text, base_size=body_size)
+
+
 async def export_research_memo_docx(
     content: str,
     *,
@@ -426,27 +553,8 @@ async def export_research_memo_docx(
         run.font.size = Pt(16)
         run.font.bold = True
 
-    # Body
-    sections = _parse_sections(content)
-    for heading, body_lines in sections:
-        if heading is not None:
-            h = doc.add_heading(heading, level=1)
-            for run in h.runs:
-                run.font.name = "Times New Roman"
-                run.font.size = Pt(14)
-                run.font.bold = True
-        body_text = "\n".join(body_lines).strip()
-        if not body_text:
-            continue
-        for para_text in body_text.split("\n\n"):
-            para_text = para_text.strip()
-            if not para_text:
-                continue
-            para = doc.add_paragraph()
-            para.paragraph_format.space_after = Pt(6)
-            run = para.add_run(para_text.replace("\n", " "))
-            run.font.name = "Times New Roman"
-            run.font.size = Pt(12)
+    # Body with proper markdown rendering
+    _render_markdown_to_docx(doc, content, body_size=12, heading_size=14)
 
     # Bibliography from footnotes
     if footnotes:

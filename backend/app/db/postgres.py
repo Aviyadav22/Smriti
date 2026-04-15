@@ -16,16 +16,16 @@ _logger = logging.getLogger(__name__)
 _connect_args: dict = {}
 _use_nullpool = False
 if settings.app_env == "production" or "supabase" in settings.database_url:
+    import os
     _ssl_ctx = ssl.create_default_context()
-    if settings.app_env not in ("production", "staging"):
-        # Local dev connecting to Supabase pooler: skip cert verification.
-        # In production/staging, full SSL certificate validation is enforced.
+    _insecure = os.environ.get("DATABASE_SSL_INSECURE", "").lower() in ("1", "true", "yes")
+    if settings.app_env not in ("production", "staging") or _insecure:
         _ssl_ctx.check_hostname = False
         _ssl_ctx.verify_mode = ssl.CERT_NONE
         _logger.warning(
-            "PostgreSQL SSL certificate verification DISABLED (app_env=%s). "
-            "This is acceptable for local development only.",
+            "PostgreSQL SSL certificate verification DISABLED (app_env=%s, insecure=%s).",
             settings.app_env,
+            _insecure,
         )
     _connect_args["ssl"] = _ssl_ctx
     # Supabase Supavisor (transaction pooling) doesn't support prepared statements.
