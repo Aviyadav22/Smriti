@@ -1,6 +1,5 @@
 """Unit tests for legal-aware text chunking."""
 
-
 from app.core.ingestion.chunker import (
     CHUNK_OVERLAP,
     CHUNK_SIZE,
@@ -117,11 +116,25 @@ class TestChunkJudgment:
         chunks = chunk_judgment(SAMPLE_JUDGMENT, case_id="test")
         for chunk in chunks:
             assert chunk.section_type in (
-                "HEADER", "FACTS", "ARGUMENTS", "ISSUES",
-                "ANALYSIS", "RATIO", "ORDER", "FULL",
-                "DISSENT", "CONCURRENCE", "PRELIMINARY",
-                "EVIDENCE", "STATUTORY", "DIRECTIONS", "PER_CURIAM",
-                "TOC", "EDITORIAL", "PROCEDURAL", "JUDGMENT_START",
+                "HEADER",
+                "FACTS",
+                "ARGUMENTS",
+                "ISSUES",
+                "ANALYSIS",
+                "RATIO",
+                "ORDER",
+                "FULL",
+                "DISSENT",
+                "CONCURRENCE",
+                "PRELIMINARY",
+                "EVIDENCE",
+                "STATUTORY",
+                "DIRECTIONS",
+                "PER_CURIAM",
+                "TOC",
+                "EDITORIAL",
+                "PROCEDURAL",
+                "JUDGMENT_START",
             )
 
     def test_chunk_indexes_sequential(self):
@@ -169,7 +182,7 @@ class TestLegalAbbreviationBreakPoint:
         # The break should happen at "death. " not at "I.P.C. "
         bp = _find_break_point(text, 0, len(text))
         # Should break at "death. " (position after the period+space)
-        assert bp == len(text) or text[bp - 2:bp] == ". "
+        assert bp == len(text) or text[bp - 2 : bp] == ". "
         # The break should NOT be right after "I.P.C. "
         ipc_pos = text.index("I.P.C. ")
         assert bp != ipc_pos + 6  # "I.P.C. " is 7 chars, period at +5
@@ -201,10 +214,14 @@ class TestLegalAbbreviationBreakPoint:
     def test_find_break_skips_abbreviation(self):
         """_find_break_point should skip abbreviation periods and find real sentence end."""
         # Build text where the only ". " is after an abbreviation, plus a real sentence end earlier
-        text = "A" * 500 + "The court decided the matter. " + "The accused was charged under I.P.C. Section 302 of the code"
+        text = (
+            "A" * 500
+            + "The court decided the matter. "
+            + "The accused was charged under I.P.C. Section 302 of the code"
+        )
         bp = _find_break_point(text, 0, len(text))
         # Should break at "matter. " not "I.P.C. "
-        assert "matter. " in text[bp - 8:bp] or bp == len(text)
+        assert "matter. " in text[bp - 8 : bp] or bp == len(text)
 
 
 # ---------------------------------------------------------------------------
@@ -584,6 +601,7 @@ class TestIsHeadingPositionLineLengthHeuristic:
 
 def test_dense_sections_get_smaller_chunks():
     from app.core.ingestion.chunker import Section, chunk_judgment
+
     # Create a long ANALYSIS section (3000 chars)
     analysis_text = "The court held that " * 150  # ~3000 chars
     sections = [Section(type="ANALYSIS", start=0, end=len(analysis_text), text=analysis_text)]
@@ -596,7 +614,12 @@ def test_dense_sections_get_smaller_chunks():
 
 def test_legal_signal_scoring():
     from app.core.ingestion.chunker import _compute_legal_signal
-    high = _compute_legal_signal("We held that the appeal is dismissed. In our opinion, the principle is well settled.")
-    low = _compute_legal_signal("The petitioner filed a complaint on 15th March 2020 regarding the property dispute.")
+
+    high = _compute_legal_signal(
+        "We held that the appeal is dismissed. In our opinion, the principle is well settled."
+    )
+    low = _compute_legal_signal(
+        "The petitioner filed a complaint on 15th March 2020 regarding the property dispute."
+    )
     assert high > low
     assert high > 0

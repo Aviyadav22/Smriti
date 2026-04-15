@@ -31,6 +31,7 @@ _MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 def _sanitize_filename(filename: str | None) -> str:
     """Sanitize uploaded filename to prevent path traversal and injection."""
     import re as _re
+
     if not filename:
         return "upload.pdf"
     safe = Path(filename).name
@@ -151,7 +152,12 @@ async def data_completeness_dashboard(
     total = total_result.scalar() or 0
 
     if total == 0:
-        return {"total_cases": 0, "field_coverage": {}, "status_distribution": {}, "confidence_distribution": {}}
+        return {
+            "total_cases": 0,
+            "field_coverage": {},
+            "status_distribution": {},
+            "confidence_distribution": {},
+        }
 
     # Field coverage — percentage of non-null values per key field
     field_coverage_sql = text("""
@@ -175,7 +181,9 @@ async def data_completeness_dashboard(
         FROM cases
     """)
     coverage_row = (await db.execute(field_coverage_sql)).mappings().one()
-    field_coverage = {k.replace("_pct", ""): round(float(v or 0), 1) for k, v in coverage_row.items()}
+    field_coverage = {
+        k.replace("_pct", ""): round(float(v or 0), 1) for k, v in coverage_row.items()
+    }
 
     # Ingestion status distribution
     status_sql = text(
@@ -258,7 +266,9 @@ class MetadataUpdateRequest(BaseModel):
     )
 
 
-@router.patch("/cases/{case_id}/metadata", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+@router.patch(
+    "/cases/{case_id}/metadata", dependencies=[Depends(rate_limit_dependency("30/minute"))]
+)
 async def update_case_metadata(
     case_id: str,
     body: MetadataUpdateRequest,
@@ -277,18 +287,32 @@ async def update_case_metadata(
 
     # Explicit column mapping — prevents SQL injection via field names
     _allowed_columns: dict[str, InstrumentedAttribute] = {
-        "title": Case.title, "citation": Case.citation, "court": Case.court,
-        "year": Case.year, "case_type": Case.case_type, "bench_type": Case.bench_type,
-        "jurisdiction": Case.jurisdiction, "judge": Case.judge,
-        "author_judge": Case.author_judge, "petitioner": Case.petitioner,
-        "respondent": Case.respondent, "decision_date": Case.decision_date,
-        "disposal_nature": Case.disposal_nature, "ratio_decidendi": Case.ratio_decidendi,
-        "acts_cited": Case.acts_cited, "cases_cited": Case.cases_cited,
-        "keywords": Case.keywords, "case_number": Case.case_number,
-        "is_reportable": Case.is_reportable, "headnotes": Case.headnotes,
-        "outcome_summary": Case.outcome_summary, "coram_size": Case.coram_size,
-        "lower_court": Case.lower_court, "opinion_type": Case.opinion_type,
-        "petitioner_type": Case.petitioner_type, "respondent_type": Case.respondent_type,
+        "title": Case.title,
+        "citation": Case.citation,
+        "court": Case.court,
+        "year": Case.year,
+        "case_type": Case.case_type,
+        "bench_type": Case.bench_type,
+        "jurisdiction": Case.jurisdiction,
+        "judge": Case.judge,
+        "author_judge": Case.author_judge,
+        "petitioner": Case.petitioner,
+        "respondent": Case.respondent,
+        "decision_date": Case.decision_date,
+        "disposal_nature": Case.disposal_nature,
+        "ratio_decidendi": Case.ratio_decidendi,
+        "acts_cited": Case.acts_cited,
+        "cases_cited": Case.cases_cited,
+        "keywords": Case.keywords,
+        "case_number": Case.case_number,
+        "is_reportable": Case.is_reportable,
+        "headnotes": Case.headnotes,
+        "outcome_summary": Case.outcome_summary,
+        "coram_size": Case.coram_size,
+        "lower_court": Case.lower_court,
+        "opinion_type": Case.opinion_type,
+        "petitioner_type": Case.petitioner_type,
+        "respondent_type": Case.respondent_type,
         "is_pil": Case.is_pil,
     }
 
@@ -305,9 +329,7 @@ async def update_case_metadata(
         raise HTTPException(status_code=400, detail="No updates provided")
 
     # Check case exists
-    exists = await db.execute(
-        text("SELECT id FROM cases WHERE id = :id"), {"id": case_id}
-    )
+    exists = await db.execute(text("SELECT id FROM cases WHERE id = :id"), {"id": case_id})
     if exists.fetchone() is None:
         raise HTTPException(status_code=404, detail="Case not found")
 
@@ -329,10 +351,12 @@ async def update_case_metadata(
         ),
         {
             "case_id": case_id,
-            "meta": _json.dumps({
-                "updated_fields": list(updates.keys()),
-                "admin_user": current_user.sub,
-            }),
+            "meta": _json.dumps(
+                {
+                    "updated_fields": list(updates.keys()),
+                    "admin_user": current_user.sub,
+                }
+            ),
         },
     )
     await db.commit()

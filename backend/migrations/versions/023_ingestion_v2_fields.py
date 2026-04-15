@@ -55,17 +55,34 @@ def upgrade() -> None:
     op.add_column("cases", sa.Column("page_map", JSONB, nullable=True))
 
     # Enrichment Tracking
-    op.add_column("cases", sa.Column("enrichment_status", sa.String(20), nullable=False, server_default="flash_only"))
+    op.add_column(
+        "cases",
+        sa.Column("enrichment_status", sa.String(20), nullable=False, server_default="flash_only"),
+    )
 
     # Indexes
     op.create_index("ix_cases_judicial_tone", "cases", ["judicial_tone"])
     op.create_index("ix_cases_filing_date", "cases", ["filing_date"])
-    op.create_index("ix_cases_fact_pattern_tags", "cases", ["fact_pattern_tags"], postgresql_using="gin")
-    op.create_index("ix_cases_issue_classification", "cases", ["issue_classification"], postgresql_using="gin")
-    op.create_index("ix_cases_legal_principles", "cases", ["legal_principles_applied"], postgresql_using="gin")
-    op.create_index("ix_cases_distinguished", "cases", ["distinguished_cases"], postgresql_using="gin")
+    op.create_index(
+        "ix_cases_fact_pattern_tags", "cases", ["fact_pattern_tags"], postgresql_using="gin"
+    )
+    op.create_index(
+        "ix_cases_issue_classification", "cases", ["issue_classification"], postgresql_using="gin"
+    )
+    op.create_index(
+        "ix_cases_legal_principles", "cases", ["legal_principles_applied"], postgresql_using="gin"
+    )
+    op.create_index(
+        "ix_cases_distinguished", "cases", ["distinguished_cases"], postgresql_using="gin"
+    )
     op.create_index("ix_cases_overruled", "cases", ["overruled_cases"], postgresql_using="gin")
-    op.create_index("ix_cases_party_counsel", "cases", ["party_counsel"], postgresql_using="gin", postgresql_ops={"party_counsel": "jsonb_path_ops"})
+    op.create_index(
+        "ix_cases_party_counsel",
+        "cases",
+        ["party_counsel"],
+        postgresql_using="gin",
+        postgresql_ops={"party_counsel": "jsonb_path_ops"},
+    )
     op.create_index("ix_cases_enrichment_status", "cases", ["enrichment_status"])
 
     # Update FTS trigger to include new fields
@@ -128,12 +145,29 @@ def downgrade() -> None:
     op.drop_index("ix_cases_judicial_tone")
 
     for col in [
-        "enrichment_status", "page_map",
-        "costs_awarded", "conditions_imposed", "operative_order",
-        "fact_pattern_tags", "issue_classification", "party_counsel",
-        "urgency_indicators", "filing_date", "interim_orders", "procedural_history",
-        "legal_principles_applied", "overruled_cases", "distinguished_cases", "citation_treatments",
-        "hearing_count", "key_observations", "judicial_tone", "damages_awarded",
-        "sentence_details", "relief_sought", "relief_granted", "arguments_raised",
+        "enrichment_status",
+        "page_map",
+        "costs_awarded",
+        "conditions_imposed",
+        "operative_order",
+        "fact_pattern_tags",
+        "issue_classification",
+        "party_counsel",
+        "urgency_indicators",
+        "filing_date",
+        "interim_orders",
+        "procedural_history",
+        "legal_principles_applied",
+        "overruled_cases",
+        "distinguished_cases",
+        "citation_treatments",
+        "hearing_count",
+        "key_observations",
+        "judicial_tone",
+        "damages_awarded",
+        "sentence_details",
+        "relief_sought",
+        "relief_granted",
+        "arguments_raised",
     ]:
         op.drop_column("cases", col)

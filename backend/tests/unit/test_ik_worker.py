@@ -1,4 +1,5 @@
 """Tests for IK search worker — filter propagation and cost control."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -25,9 +26,16 @@ def _make_task(**overrides) -> dict:
 @pytest.fixture
 def mock_ik_client():
     client = AsyncMock()
-    client.search = AsyncMock(return_value=[
-        {"tid": 123, "title": "Test Case", "citation": "(2020) 5 SCC 1", "court": "Supreme Court"}
-    ])
+    client.search = AsyncMock(
+        return_value=[
+            {
+                "tid": 123,
+                "title": "Test Case",
+                "citation": "(2020) 5 SCC 1",
+                "court": "Supreme Court",
+            }
+        ]
+    )
     client.get_fragment = AsyncMock(return_value={"headline": ["Relevant passage"]})
     return client
 
@@ -39,7 +47,11 @@ def _mock_redis():
     mock_redis.get = AsyncMock(return_value=None)
     mock_redis.set = AsyncMock(return_value=True)
     mock_redis.setex = AsyncMock(return_value=True)
-    with patch("app.core.agents.nodes.worker_nodes.get_redis", new_callable=AsyncMock, return_value=mock_redis):
+    with patch(
+        "app.core.agents.nodes.worker_nodes.get_redis",
+        new_callable=AsyncMock,
+        return_value=mock_redis,
+    ):
         yield mock_redis
 
 
@@ -136,12 +148,21 @@ class TestIKWorkerFilterPropagation:
         """Worker should extract docsource, author, publishdate, numcites from search results."""
         from app.core.agents.nodes.worker_nodes import ik_search_worker
 
-        mock_ik_client.search = AsyncMock(return_value=[{
-            "tid": 123, "title": "Test Case", "citation": "(2020) 5 SCC 1",
-            "docsource": "Supreme Court of India", "author": "D Y Chandrachud",
-            "publishdate": "2020-03-15", "numcites": 12, "numcitedby": 45,
-            "headline": "A" * 60,  # long enough to skip fragment call
-        }])
+        mock_ik_client.search = AsyncMock(
+            return_value=[
+                {
+                    "tid": 123,
+                    "title": "Test Case",
+                    "citation": "(2020) 5 SCC 1",
+                    "docsource": "Supreme Court of India",
+                    "author": "D Y Chandrachud",
+                    "publishdate": "2020-03-15",
+                    "numcites": 12,
+                    "numcitedby": 45,
+                    "headline": "A" * 60,  # long enough to skip fragment call
+                }
+            ]
+        )
         state = {"task": _make_task()}
         result = await ik_search_worker(state, mock_ik_client)
 
@@ -196,10 +217,11 @@ class TestIKWorkerCostControl:
         from app.core.agents.nodes.worker_nodes import _MAX_IK_FRAGMENT_CALLS, ik_search_worker
 
         mock_ik = AsyncMock()
-        mock_ik.search = AsyncMock(return_value=[
-            {"tid": i, "title": f"Case {i}", "citation": f"(2020) {i} SCC 1"}
-            for i in range(10)
-        ])
+        mock_ik.search = AsyncMock(
+            return_value=[
+                {"tid": i, "title": f"Case {i}", "citation": f"(2020) {i} SCC 1"} for i in range(10)
+            ]
+        )
         mock_ik.get_fragment = AsyncMock(return_value={"headline": ["test passage"]})
 
         state = {"task": _make_task()}
@@ -213,9 +235,9 @@ class TestIKWorkerCostControl:
         from app.core.agents.nodes.worker_nodes import ik_search_worker
 
         mock_ik = AsyncMock()
-        mock_ik.search = AsyncMock(return_value=[
-            {"tid": i, "title": f"Case {i}"} for i in range(8)
-        ])
+        mock_ik.search = AsyncMock(
+            return_value=[{"tid": i, "title": f"Case {i}"} for i in range(8)]
+        )
         mock_ik.get_fragment = AsyncMock(return_value={"headline": ["frag"]})
 
         state = {"task": _make_task()}
@@ -233,12 +255,14 @@ class TestIKWorkerCostControl:
 
         # Top 3 always get fragment; result at index 3+ uses headline if long enough
         mock_ik = AsyncMock()
-        mock_ik.search = AsyncMock(return_value=[
-            {"tid": 1, "title": "Case 1", "headline": "A" * 60},
-            {"tid": 2, "title": "Case 2", "headline": "B" * 60},
-            {"tid": 3, "title": "Case 3", "headline": "C" * 60},
-            {"tid": 4, "title": "Case 4", "headline": "D" * 60},  # idx 3: headline used
-        ])
+        mock_ik.search = AsyncMock(
+            return_value=[
+                {"tid": 1, "title": "Case 1", "headline": "A" * 60},
+                {"tid": 2, "title": "Case 2", "headline": "B" * 60},
+                {"tid": 3, "title": "Case 3", "headline": "C" * 60},
+                {"tid": 4, "title": "Case 4", "headline": "D" * 60},  # idx 3: headline used
+            ]
+        )
         mock_ik.get_fragment = AsyncMock(return_value={"headline": ["frag"]})
 
         state = {"task": _make_task()}
@@ -254,10 +278,14 @@ class TestIKWorkerCostControl:
         from app.core.agents.nodes.worker_nodes import ik_search_worker
 
         mock_ik = AsyncMock()
-        mock_ik.search = AsyncMock(return_value=[
-            {"tid": 1, "title": "Case 1", "headline": "short"},
-        ])
-        mock_ik.get_fragment = AsyncMock(return_value={"headline": ["Detailed fragment passage about the case"]})
+        mock_ik.search = AsyncMock(
+            return_value=[
+                {"tid": 1, "title": "Case 1", "headline": "short"},
+            ]
+        )
+        mock_ik.get_fragment = AsyncMock(
+            return_value={"headline": ["Detailed fragment passage about the case"]}
+        )
 
         state = {"task": _make_task()}
         result = await ik_search_worker(state, mock_ik)

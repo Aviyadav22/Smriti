@@ -83,9 +83,7 @@ class TestAgentExecutionModel:
 
     def test_repr(self) -> None:
         uid = uuid.uuid4()
-        execution = AgentExecution(
-            id=uid, agent_type="research", status="running"
-        )
+        execution = AgentExecution(id=uid, agent_type="research", status="running")
         r = repr(execution)
         assert "AgentExecution" in r
         assert "research" in r

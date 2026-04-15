@@ -4,6 +4,7 @@ Uses a weighted formula considering result relevance (reranker scores),
 coverage (cross-reference ratio), source authority (precedent strength),
 contradiction penalty, source diversity [5E.4], and evidence gap coverage [5E.4].
 """
+
 from __future__ import annotations
 
 from typing import TypedDict
@@ -24,6 +25,7 @@ class ConfidenceBreakdown(TypedDict):
     legal_confidence: float
     consistency_confidence: float
 
+
 # Component weights (must sum to 1.0)
 _W_RELEVANCE = 0.25
 _W_COVERAGE = 0.10
@@ -40,9 +42,13 @@ def _compute_source_diversity(worker_types: list[str]) -> float:
     Returns 0-1 based on how many distinct data tiers contributed results.
     """
     tier_groups = {
-        "case_law": "db", "named_case": "db", "statute": "db",
-        "ik_search": "ik", "web": "web",
-        "graph": "graph", "graph_community": "graph",
+        "case_law": "db",
+        "named_case": "db",
+        "statute": "db",
+        "ik_search": "ik",
+        "web": "web",
+        "graph": "graph",
+        "graph_community": "graph",
     }
     unique_tiers = {tier_groups.get(wt, wt) for wt in worker_types if wt in tier_groups}
     # 4 possible tiers: db, ik, web, graph
@@ -103,9 +109,7 @@ def calculate_confidence(
 
     # 3. Source authority -- mean precedent strength score
     if precedent_strengths:
-        strength_values = [
-            _STRENGTH_SCORES.get(s, 0.5) for s in precedent_strengths
-        ]
+        strength_values = [_STRENGTH_SCORES.get(s, 0.5) for s in precedent_strengths]
         authority = sum(strength_values) / len(strength_values)
     else:
         authority = 0.3  # unknown = low-ish
@@ -193,9 +197,7 @@ def calculate_confidence_detailed(
     if effective_strengths:
         legal_confidence = sum(effective_strengths) / len(effective_strengths)
     elif precedent_strengths:
-        strength_values = [
-            _STRENGTH_SCORES.get(s, 0.5) for s in precedent_strengths
-        ]
+        strength_values = [_STRENGTH_SCORES.get(s, 0.5) for s in precedent_strengths]
         legal_confidence = sum(strength_values) / len(strength_values)
     else:
         legal_confidence = 0.3

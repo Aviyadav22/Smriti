@@ -317,9 +317,7 @@ class TestNewlineStrippingInListFields:
     """Tests for embedded newline removal in list fields (Task 2)."""
 
     def test_newlines_stripped_from_cases_cited(self):
-        meta = CaseMetadata(
-            cases_cited=["Union of India\nv.\nState of Kerala", "Ram\nv. Shyam"]
-        )
+        meta = CaseMetadata(cases_cited=["Union of India\nv.\nState of Kerala", "Ram\nv. Shyam"])
         result = validate_with_regex(meta)
         assert result.cases_cited == [
             "Union of India v. State of Kerala",
@@ -327,24 +325,18 @@ class TestNewlineStrippingInListFields:
         ]
 
     def test_newlines_stripped_from_acts_cited(self):
-        meta = CaseMetadata(
-            acts_cited=["Indian Penal\nCode, 1860", "Code of Criminal\nProcedure"]
-        )
+        meta = CaseMetadata(acts_cited=["Indian Penal\nCode, 1860", "Code of Criminal\nProcedure"])
         result = validate_with_regex(meta)
         # Both should have newlines replaced with spaces
         assert all("\n" not in a for a in result.acts_cited)
 
     def test_double_spaces_collapsed(self):
-        meta = CaseMetadata(
-            cases_cited=["Union of India  v.   State of Kerala"]
-        )
+        meta = CaseMetadata(cases_cited=["Union of India  v.   State of Kerala"])
         result = validate_with_regex(meta)
         assert result.cases_cited == ["Union of India v. State of Kerala"]
 
     def test_carriage_return_stripped(self):
-        meta = CaseMetadata(
-            keywords=["constitutional\r\nlaw", "fundamental\rrights"]
-        )
+        meta = CaseMetadata(keywords=["constitutional\r\nlaw", "fundamental\rrights"])
         result = validate_with_regex(meta)
         assert result.keywords == ["constitutional law", "fundamental rights"]
 
@@ -354,9 +346,7 @@ class TestNewlineStrippingInListFields:
         assert result.cases_cited == ["Real Case v. Real"]
 
     def test_deduplication_after_strip(self):
-        meta = CaseMetadata(
-            cases_cited=["A v. B", "A v.  B", "A v.\nB"]
-        )
+        meta = CaseMetadata(cases_cited=["A v. B", "A v.  B", "A v.\nB"])
         result = validate_with_regex(meta)
         assert result.cases_cited == ["A v. B"]
 
@@ -381,16 +371,12 @@ class TestSelfCitationRemoval:
         assert result.cases_cited == ["Other Case"]
 
     def test_docket_number_removed(self):
-        meta = CaseMetadata(
-            cases_cited=["5095 Of 2025", "1040 of 2022", "Real Case v. State"]
-        )
+        meta = CaseMetadata(cases_cited=["5095 Of 2025", "1040 of 2022", "Real Case v. State"])
         result = validate_cross_fields(meta)
         assert result.cases_cited == ["Real Case v. State"]
 
     def test_all_docket_numbers_yields_none(self):
-        meta = CaseMetadata(
-            cases_cited=["5095 Of 2025", "1040 of 2022"]
-        )
+        meta = CaseMetadata(cases_cited=["5095 Of 2025", "1040 of 2022"])
         result = validate_cross_fields(meta)
         assert result.cases_cited is None
 
@@ -458,6 +444,7 @@ class TestDisposalNatureMerge:
         parquet = {"disposal_nature": "Appeal(s) allowed"}
         llm = CaseMetadata(disposal_nature=None)
         from app.core.ingestion.metadata import validate_parquet_data
+
         cleaned = validate_parquet_data(parquet)
         result, prov = merge_metadata(cleaned, llm)
         assert result.disposal_nature == "Allowed"
@@ -584,6 +571,7 @@ class TestIsReportableSCRInference:
 
 def test_cross_validate_synthesizes_ratio_from_propositions():
     from app.core.ingestion.metadata import CaseMetadata, cross_validate_propositions
+
     meta = CaseMetadata(
         legal_propositions=[
             {"proposition_text": "Section 302 requires mens rea.", "is_novel": False},
@@ -598,6 +586,7 @@ def test_cross_validate_synthesizes_ratio_from_propositions():
 
 def test_cross_validate_creates_proposition_from_ratio():
     from app.core.ingestion.metadata import CaseMetadata, cross_validate_propositions
+
     meta = CaseMetadata(
         ratio_decidendi="The right to privacy is a fundamental right under Article 21.",
         legal_propositions=None,
@@ -798,7 +787,10 @@ class TestHeadnoteToProposition:
         result = cross_validate_propositions(meta)
         assert result.legal_propositions is not None
         assert len(result.legal_propositions) == 2
-        assert result.legal_propositions[0]["proposition_text"] == "Right to life includes right to livelihood"
+        assert (
+            result.legal_propositions[0]["proposition_text"]
+            == "Right to life includes right to livelihood"
+        )
         assert result.legal_propositions[1]["proposition_text"] == "Article 21 has wide amplitude"
         assert result.legal_propositions[0]["is_novel"] is False
 
@@ -806,12 +798,14 @@ class TestHeadnoteToProposition:
         """Don't generate from headnotes if propositions already populated."""
         import json
 
-        existing_prop = [{
-            "proposition_text": "Existing proposition",
-            "paragraph_number": None,
-            "is_novel": True,
-            "related_section": None,
-        }]
+        existing_prop = [
+            {
+                "proposition_text": "Existing proposition",
+                "paragraph_number": None,
+                "is_novel": True,
+                "related_section": None,
+            }
+        ]
         headnotes = [{"text": "Headnote text"}]
         meta = CaseMetadata(
             ratio_decidendi="",
@@ -867,4 +861,6 @@ class TestHeadnoteToProposition:
         result = cross_validate_propositions(meta)
         assert result.legal_propositions is not None
         assert len(result.legal_propositions) == 2
-        assert result.legal_propositions[0]["proposition_text"] == "Natural justice must be followed"
+        assert (
+            result.legal_propositions[0]["proposition_text"] == "Natural justice must be followed"
+        )

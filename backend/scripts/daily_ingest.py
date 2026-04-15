@@ -73,11 +73,11 @@ def main() -> None:
     parser.add_argument("--year", type=int, help="Year to ingest (default: current)")
     parser.add_argument("--full", action="store_true", help="Full ingestion, all years")
     parser.add_argument("--limit", type=int, help="Max documents to process")
+    parser.add_argument("--skip-graph", action="store_true", help="Skip Neo4j population step")
     parser.add_argument(
-        "--skip-graph", action="store_true", help="Skip Neo4j population step"
-    )
-    parser.add_argument(
-        "--timeout", type=int, default=14400,
+        "--timeout",
+        type=int,
+        default=14400,
         help="Timeout in seconds for ingestion (default: 4 hours)",
     )
     args = parser.parse_args()

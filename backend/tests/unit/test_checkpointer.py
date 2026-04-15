@@ -1,4 +1,5 @@
 """Tests for LangGraph checkpointer setup."""
+
 from unittest.mock import patch
 
 from app.core.agents.checkpointer import (

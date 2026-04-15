@@ -1,4 +1,5 @@
 """Tests for limitation period calculator."""
+
 from datetime import date
 
 from app.core.legal.limitation import (

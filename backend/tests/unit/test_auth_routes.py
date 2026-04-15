@@ -87,7 +87,6 @@ def mock_db() -> AsyncMock:
     return _mock_db_session()
 
 
-
 @pytest.fixture
 def client(app: FastAPI, mock_db: AsyncMock) -> TestClient:
     """Client with DB dependency overridden."""
@@ -126,9 +125,9 @@ class TestRegister:
 
         mock_db.execute.side_effect = [
             select_result,  # email check
-            None,           # INSERT users
-            None,           # INSERT consents
-            None,           # INSERT audit_logs (registration)
+            None,  # INSERT users
+            None,  # INSERT consents
+            None,  # INSERT audit_logs (registration)
         ]
 
         resp = client.post(
@@ -260,7 +259,7 @@ class TestLogin:
 
         mock_db.execute.side_effect = [
             select_result,  # SELECT user
-            None,           # UPDATE reset failed count
+            None,  # UPDATE reset failed count
         ]
 
         resp = client.post(
@@ -297,7 +296,7 @@ class TestLogin:
 
         mock_db.execute.side_effect = [
             select_result,  # SELECT user
-            None,           # UPDATE failed count
+            None,  # UPDATE failed count
         ]
 
         resp = client.post(
@@ -537,7 +536,7 @@ class TestAccountLock:
 
         mock_db.execute.side_effect = [
             select_result,  # SELECT user
-            None,           # UPDATE failed count
+            None,  # UPDATE failed count
         ]
 
         resp = client.post(
@@ -646,4 +645,7 @@ class TestInactiveUser:
         )
 
         assert resp.status_code == 401
-        assert "deactivated" in resp.json()["detail"].lower() or "not found" in resp.json()["detail"].lower()
+        assert (
+            "deactivated" in resp.json()["detail"].lower()
+            or "not found" in resp.json()["detail"].lower()
+        )

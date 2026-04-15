@@ -22,12 +22,30 @@ logger = logging.getLogger(__name__)
 _UPSERT_BATCH_SIZE = 100
 
 # Allowlist of valid metadata filter keys to prevent SQL injection via dict keys.
-_ALLOWED_FILTER_KEYS = frozenset({
-    "case_id", "chunk_index", "section_type", "court", "year", "case_type",
-    "jurisdiction", "bench_type", "disposal_nature", "title", "citation",
-    "author_judge", "judge", "acts_cited", "opinion_author", "para_start",
-    "para_end", "language", "is_reportable", "user_id",
-})
+_ALLOWED_FILTER_KEYS = frozenset(
+    {
+        "case_id",
+        "chunk_index",
+        "section_type",
+        "court",
+        "year",
+        "case_type",
+        "jurisdiction",
+        "bench_type",
+        "disposal_nature",
+        "title",
+        "citation",
+        "author_judge",
+        "judge",
+        "acts_cited",
+        "opinion_author",
+        "para_start",
+        "para_end",
+        "language",
+        "is_reportable",
+        "user_id",
+    }
+)
 
 
 def _build_filter_clause(
@@ -45,7 +63,9 @@ def _build_filter_clause(
 
     for key, value in filters.items():
         if key not in _ALLOWED_FILTER_KEYS:
-            raise ValueError(f"Unknown filter key: {key!r}. Allowed: {sorted(_ALLOWED_FILTER_KEYS)}")
+            raise ValueError(
+                f"Unknown filter key: {key!r}. Allowed: {sorted(_ALLOWED_FILTER_KEYS)}"
+            )
         if isinstance(value, dict):
             for op, operand in value.items():
                 pname = f"{prefix}_{idx}"
@@ -73,9 +93,7 @@ def _build_filter_clause(
                             p = f"{pname}_{i}"
                             placeholders.append(f":{p}")
                             params[p] = str(item)
-                        clauses.append(
-                            f"metadata->>'{key}' IN ({', '.join(placeholders)})"
-                        )
+                        clauses.append(f"metadata->>'{key}' IN ({', '.join(placeholders)})")
         else:
             # Bare value = exact match
             pname = f"{prefix}_{idx}"
@@ -228,7 +246,9 @@ class PgvectorStore:
                 deleted = result.rowcount
                 logger.info(
                     "Deleted %d vectors by metadata filter=%s (excluded %d)",
-                    deleted, filter, len(exclude_ids) if exclude_ids else 0,
+                    deleted,
+                    filter,
+                    len(exclude_ids) if exclude_ids else 0,
                 )
         except Exception as exc:
             logger.error("pgvector delete_by_metadata failed (filter=%s): %s", filter, exc)

@@ -29,29 +29,59 @@ _PAN_RE = re.compile(r"\b[A-Z]{3}[ABCFGHJLPT][A-Z]\d{4}[A-Z]\b")
 # Indian mobile: 10 digits starting 6-9, optional +91/91/0 prefix.
 # Split into prefixed (anchored by prefix) and bare (anchored by \b) variants
 # to avoid matching 10-digit substrings inside longer strings.
-_PHONE_RE = re.compile(
-    r"(?:\+91[\s-]?|91[\s-]?|0)[6-9]\d{9}\b"
-    r"|\b[6-9]\d{9}\b"
-)
+_PHONE_RE = re.compile(r"(?:\+91[\s-]?|91[\s-]?|0)[6-9]\d{9}\b" r"|\b[6-9]\d{9}\b")
 
 # ---------------------------------------------------------------------------
 # Sensitive case detection
 # ---------------------------------------------------------------------------
 
 # IPC sections related to sexual offences / child exploitation
-_SENSITIVE_IPC_SECTIONS = frozenset({
-    "354", "354A", "354B", "354C", "354D",
-    "363", "366", "366A", "366B",
-    "370", "372", "373",
-    "375", "376", "376A", "376AB", "376B", "376C", "376D", "376DA", "376DB",
-    "509",
-})
+_SENSITIVE_IPC_SECTIONS = frozenset(
+    {
+        "354",
+        "354A",
+        "354B",
+        "354C",
+        "354D",
+        "363",
+        "366",
+        "366A",
+        "366B",
+        "370",
+        "372",
+        "373",
+        "375",
+        "376",
+        "376A",
+        "376AB",
+        "376B",
+        "376C",
+        "376D",
+        "376DA",
+        "376DB",
+        "509",
+    }
+)
 
 # BNS equivalents (post-July 2024)
-_SENSITIVE_BNS_SECTIONS = frozenset({
-    "63", "64", "65", "66", "67", "68", "69", "70",
-    "74", "75", "76", "77", "78", "79",
-})
+_SENSITIVE_BNS_SECTIONS = frozenset(
+    {
+        "63",
+        "64",
+        "65",
+        "66",
+        "67",
+        "68",
+        "69",
+        "70",
+        "74",
+        "75",
+        "76",
+        "77",
+        "78",
+        "79",
+    }
+)
 
 _SENSITIVE_KEYWORDS_RE = re.compile(
     r"\b("

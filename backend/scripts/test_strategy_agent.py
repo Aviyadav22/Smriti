@@ -3,6 +3,7 @@
 Runs the agent graph with auto_approve=True (skips HITL checkpoints)
 to produce a full argument memo for quality evaluation.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -55,7 +56,6 @@ async def main() -> None:
     from app.core.providers.rerankers.cohere_reranker import CohereReranker
     from app.core.providers.vector.pinecone_store import PineconeStore
 
-
     # Create providers
     llm = GeminiLLM()
     flash_llm = GeminiLLM(model=settings.gemini_flash_model)
@@ -81,7 +81,6 @@ async def main() -> None:
 
     initial_input = {**TEST_CASE}
     config = {"configurable": {"thread_id": "test-strategy-001"}}
-
 
     start = time.time()
     node_times: list[str] = []
@@ -113,6 +112,7 @@ async def main() -> None:
 
     except Exception:
         import traceback
+
         traceback.print_exc()
         # Try to get partial state
         try:
@@ -124,7 +124,6 @@ async def main() -> None:
             return
 
     elapsed_total = time.time() - start
-
 
     # Node execution timeline
     for _nt in node_times:
@@ -186,10 +185,17 @@ async def main() -> None:
 
     # Check for IPC/BNS dual citations in memo
     import re
-    len(re.findall(r'(?:IPC|CrPC|IEA).*?(?:BNS|BNSS|BSA)|(?:BNS|BNSS|BSA).*?(?:IPC|CrPC|IEA)', memo))
+
+    len(
+        re.findall(r"(?:IPC|CrPC|IEA).*?(?:BNS|BNSS|BSA)|(?:BNS|BNSS|BSA).*?(?:IPC|CrPC|IEA)", memo)
+    )
 
     # Check for IRAC structure markers in memo
-    sum(1 for keyword in ["ISSUE:", "RULE:", "APPLICATION:", "CONCLUSION:"] if keyword in memo.upper())
+    sum(
+        1
+        for keyword in ["ISSUE:", "RULE:", "APPLICATION:", "CONCLUSION:"]
+        if keyword in memo.upper()
+    )
 
     # Verification warnings
     if "Verification Warnings" in memo:
@@ -201,22 +207,27 @@ async def main() -> None:
     output_path = Path(__file__).parent.parent / "trial_reports" / "strategy_agent_test.json"
     output_path.parent.mkdir(exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump({
-            "test_input": TEST_CASE,
-            "fact_analysis": fa,
-            "legal_elements": elements,
-            "strength_assessment": sa,
-            "irac_arguments": irac,
-            "adversarial_results": adv,
-            "counter_arguments": ca,
-            "argument_order": ao,
-            "contradictions": contras,
-            "confidence": conf,
-            "memo": memo,
-            "precedent_count": len(pm),
-            "search_result_count": len(sr),
-            "execution_time_seconds": elapsed_total,
-        }, f, indent=2, default=str)
+        json.dump(
+            {
+                "test_input": TEST_CASE,
+                "fact_analysis": fa,
+                "legal_elements": elements,
+                "strength_assessment": sa,
+                "irac_arguments": irac,
+                "adversarial_results": adv,
+                "counter_arguments": ca,
+                "argument_order": ao,
+                "contradictions": contras,
+                "confidence": conf,
+                "memo": memo,
+                "precedent_count": len(pm),
+                "search_result_count": len(sr),
+                "execution_time_seconds": elapsed_total,
+            },
+            f,
+            indent=2,
+            default=str,
+        )
 
 
 if __name__ == "__main__":

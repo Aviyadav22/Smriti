@@ -131,8 +131,7 @@ class TestCitationLookup:
 
         assert len(results) >= 1, "Expected at least 1 result for 'Writ Petition'"
         has_writ = any(
-            "writ" in (r.get("title") or "").lower()
-            or "writ" in (r.get("case_type") or "").lower()
+            "writ" in (r.get("title") or "").lower() or "writ" in (r.get("case_type") or "").lower()
             for r in results
         )
         assert has_writ, (
@@ -201,8 +200,7 @@ class TestTopicSearch:
         land_keywords = {"land", "acquisition", "compensation", "property", "estate", "immovable"}
         has_land = any(
             any(
-                kw in (r.get("title") or "").lower()
-                or kw in (r.get("snippet") or "").lower()
+                kw in (r.get("title") or "").lower() or kw in (r.get("snippet") or "").lower()
                 for kw in land_keywords
             )
             for r in results
@@ -242,13 +240,18 @@ class TestTopicSearch:
 
         assert len(results) >= 1, "Expected at least 1 result for 'constitutional validity'"
         const_keywords = {
-            "constitution", "constitutional", "article", "fundamental",
-            "validity", "writ", "ultra vires", "vires",
+            "constitution",
+            "constitutional",
+            "article",
+            "fundamental",
+            "validity",
+            "writ",
+            "ultra vires",
+            "vires",
         }
         has_constitutional = any(
             any(
-                kw in (r.get("title") or "").lower()
-                or kw in (r.get("snippet") or "").lower()
+                kw in (r.get("title") or "").lower() or kw in (r.get("snippet") or "").lower()
                 for kw in const_keywords
             )
             for r in results
@@ -291,9 +294,9 @@ class TestFilteredSearch:
         assert len(results) >= 1, "Expected at least 1 result with year filter"
         for r in results:
             assert r.get("year") is not None, f"Year missing for case {r.get('title')}"
-            assert r["year"] >= 2024, (
-                f"Expected year >= 2024, got {r['year']} for case {r.get('title')}"
-            )
+            assert (
+                r["year"] >= 2024
+            ), f"Expected year >= 2024, got {r['year']} for case {r.get('title')}"
 
     @pytest.mark.asyncio
     async def test_case_type_filter_criminal_appeal(self, client: httpx.AsyncClient) -> None:
@@ -303,9 +306,7 @@ class TestFilteredSearch:
 
         assert len(results) >= 1, "Expected at least 1 result with case_type filter"
         for r in results:
-            assert r.get("case_type") is not None, (
-                f"Case type missing for case {r.get('title')}"
-            )
+            assert r.get("case_type") is not None, f"Case type missing for case {r.get('title')}"
             assert "criminal" in r["case_type"].lower(), (
                 f"Expected case_type containing 'criminal', got '{r['case_type']}' "
                 f"for case {r.get('title')}"
@@ -321,16 +322,15 @@ class TestFilteredSearch:
 
         # All results should be Criminal Appeal type
         for r in results:
-            assert "criminal" in (r.get("case_type") or "").lower(), (
-                f"Expected criminal case_type, got '{r.get('case_type')}'"
-            )
+            assert (
+                "criminal" in (r.get("case_type") or "").lower()
+            ), f"Expected criminal case_type, got '{r.get('case_type')}'"
 
         # At least one result should relate to murder in title or snippet
         murder_keywords = {"murder", "302", "homicide", "killing", "death"}
         has_murder = any(
             any(
-                kw in (r.get("title") or "").lower()
-                or kw in (r.get("snippet") or "").lower()
+                kw in (r.get("title") or "").lower() or kw in (r.get("snippet") or "").lower()
                 for kw in murder_keywords
             )
             for r in results
@@ -346,10 +346,6 @@ class TestFilteredSearch:
         data = await _search(client, "appeal", page_size=3)
         results = data["results"]
 
-        assert len(results) <= 3, (
-            f"Expected at most 3 results with page_size=3, got {len(results)}"
-        )
+        assert len(results) <= 3, f"Expected at most 3 results with page_size=3, got {len(results)}"
         assert len(results) >= 1, "Expected at least 1 result"
-        assert data["page_size"] == 3, (
-            f"Expected page_size=3 in response, got {data['page_size']}"
-        )
+        assert data["page_size"] == 3, f"Expected page_size=3 in response, got {data['page_size']}"

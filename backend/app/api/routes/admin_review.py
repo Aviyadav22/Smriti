@@ -27,6 +27,7 @@ router = APIRouter()
 def _validate_uuid(value: str, name: str = "ID") -> None:
     """Validate that a string is a valid UUID format."""
     import uuid
+
     try:
         uuid.UUID(value)
     except ValueError:
@@ -141,7 +142,10 @@ async def get_review_detail(
     if not row:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    return {k: (str(v) if k in ("id", "created_at", "decision_date") and v else v) for k, v in row.items()}
+    return {
+        k: (str(v) if k in ("id", "created_at", "decision_date") and v else v)
+        for k, v in row.items()
+    }
 
 
 @router.post("/{case_id}/approve", dependencies=[Depends(rate_limit_dependency("30/minute"))])

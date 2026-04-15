@@ -35,8 +35,12 @@ class TestDocumentPrompts:
 
     def test_research_memo_user_has_all_placeholders(self) -> None:
         for placeholder in (
-            "{document_type}", "{parties}", "{relief_sought}",
-            "{key_facts}", "{issues_analysis}", "{counter_arguments}",
+            "{document_type}",
+            "{parties}",
+            "{relief_sought}",
+            "{key_facts}",
+            "{issues_analysis}",
+            "{counter_arguments}",
         ):
             assert placeholder in DOCUMENT_RESEARCH_MEMO_USER
 

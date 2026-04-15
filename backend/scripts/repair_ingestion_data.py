@@ -36,14 +36,15 @@ logger = logging.getLogger("repair_data")
 # 1. FTS rebuild
 # ---------------------------------------------------------------------------
 
+
 async def rebuild_fts():
     """Rebuild searchable_text tsvector for all cases with NULL searchable_text."""
     logger.info("=== Rebuilding FTS tsvectors ===")
     async with async_session_factory() as session:
         # Count cases needing rebuild
-        count = (await session.execute(text(
-            "SELECT count(*) FROM cases WHERE searchable_text IS NULL"
-        ))).scalar()
+        count = (
+            await session.execute(text("SELECT count(*) FROM cases WHERE searchable_text IS NULL"))
+        ).scalar()
         logger.info("Cases needing FTS rebuild: %d", count)
 
         if count == 0:
@@ -54,7 +55,8 @@ async def rebuild_fts():
         batch_size = 500
         total_updated = 0
         while True:
-            result = await session.execute(text("""
+            result = await session.execute(
+                text("""
                 UPDATE cases SET searchable_text = to_tsvector('english',
                     coalesce(title, '') || ' ' ||
                     coalesce(petitioner, '') || ' ' ||
@@ -70,7 +72,9 @@ async def rebuild_fts():
                 WHERE id IN (
                     SELECT id FROM cases WHERE searchable_text IS NULL LIMIT :batch
                 )
-            """), {"batch": batch_size})
+            """),
+                {"batch": batch_size},
+            )
             updated = result.rowcount
             await session.commit()
             total_updated += updated
@@ -80,9 +84,9 @@ async def rebuild_fts():
 
         # Re-enable FTS trigger
         try:
-            await session.execute(text(
-                "ALTER TABLE cases ENABLE TRIGGER cases_searchable_text_trigger"
-            ))
+            await session.execute(
+                text("ALTER TABLE cases ENABLE TRIGGER cases_searchable_text_trigger")
+            )
             await session.commit()
             logger.info("FTS trigger re-enabled")
         except Exception as exc:
@@ -95,14 +99,17 @@ async def rebuild_fts():
 # 2. Clean acts_cited
 # ---------------------------------------------------------------------------
 
+
 async def clean_acts_cited():
     """Re-normalize acts_cited for all cases to remove garbage entries."""
     logger.info("=== Cleaning acts_cited garbage entries ===")
     async with async_session_factory() as session:
         # Get all cases with acts_cited
-        rows = (await session.execute(text(
-            "SELECT id, acts_cited FROM cases WHERE acts_cited IS NOT NULL"
-        ))).fetchall()
+        rows = (
+            await session.execute(
+                text("SELECT id, acts_cited FROM cases WHERE acts_cited IS NOT NULL")
+            )
+        ).fetchall()
         logger.info("Cases with acts_cited: %d", len(rows))
 
         updated = 0
@@ -115,18 +122,22 @@ async def clean_acts_cited():
             if cleaned != acts:
                 diff = original_count - len(cleaned)
                 cleaned_total += diff
-                await session.execute(text(
-                    "UPDATE cases SET acts_cited = :acts WHERE id = :cid"
-                ), {"acts": cleaned if cleaned else None, "cid": case_id})
+                await session.execute(
+                    text("UPDATE cases SET acts_cited = :acts WHERE id = :cid"),
+                    {"acts": cleaned if cleaned else None, "cid": case_id},
+                )
                 updated += 1
 
         await session.commit()
-        logger.info("Acts cleanup: %d cases updated, %d garbage entries removed", updated, cleaned_total)
+        logger.info(
+            "Acts cleanup: %d cases updated, %d garbage entries removed", updated, cleaned_total
+        )
 
 
 # ---------------------------------------------------------------------------
 # 3. Fix Pinecone empty strings
 # ---------------------------------------------------------------------------
+
 
 async def fix_pinecone_empty_strings():
     """Replace empty string metadata values with None in Pinecone vectors."""
@@ -142,8 +153,12 @@ async def fix_pinecone_empty_strings():
 
     # Fields that should not be empty strings
     metadata_fields = [
-        "case_type", "jurisdiction", "bench_type", "disposal_nature",
-        "judicial_tone", "court",
+        "case_type",
+        "jurisdiction",
+        "bench_type",
+        "disposal_nature",
+        "judicial_tone",
+        "court",
     ]
 
     # We need to fetch vectors in batches and update metadata
@@ -152,16 +167,14 @@ async def fix_pinecone_empty_strings():
 
     # Get all case IDs from PG
     async with async_session_factory() as session:
-        case_ids = (await session.execute(text(
-            "SELECT id FROM cases"
-        ))).fetchall()
+        case_ids = (await session.execute(text("SELECT id FROM cases"))).fetchall()
     case_ids = [r[0] for r in case_ids]
 
     updated_count = 0
     batch_size = 100
 
     for i in range(0, len(case_ids), batch_size):
-        batch_ids = case_ids[i:i + batch_size]
+        batch_ids = case_ids[i : i + batch_size]
         # Fetch vectors for these cases
         for case_id in batch_ids:
             try:
@@ -190,8 +203,12 @@ async def fix_pinecone_empty_strings():
                 logger.warning("Failed to update vectors for case %s: %s", case_id, str(exc)[:80])
 
         if (i + batch_size) % 500 == 0:
-            logger.info("Pinecone cleanup progress: %d/%d cases checked, %d vectors updated",
-                        min(i + batch_size, len(case_ids)), len(case_ids), updated_count)
+            logger.info(
+                "Pinecone cleanup progress: %d/%d cases checked, %d vectors updated",
+                min(i + batch_size, len(case_ids)),
+                len(case_ids),
+                updated_count,
+            )
 
     logger.info("Pinecone cleanup complete: %d vectors updated", updated_count)
 

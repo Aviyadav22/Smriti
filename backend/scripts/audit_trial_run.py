@@ -1,9 +1,12 @@
 """Audit quality of cases ingested in a trial run."""
+
 import asyncio
 
 import asyncpg
 
-DATABASE_URL = "postgresql://smriti:E9tGr2mSXTi1h36LwsmLKbRVooPmlZbYIY5FnYmuzWg=@76.13.185.172:5432/smriti"
+DATABASE_URL = (
+    "postgresql://smriti:E9tGr2mSXTi1h36LwsmLKbRVooPmlZbYIY5FnYmuzWg=@76.13.185.172:5432/smriti"
+)
 
 QUERY = """
 SELECT
@@ -24,13 +27,31 @@ ORDER BY year, title
 """
 
 FIELDS_TO_CHECK = [
-    "title", "citation", "court", "year", "decision_date",
-    "petitioner", "respondent", "author_judge", "judge",
-    "disposal_nature", "case_type", "bench_type", "coram_size",
-    "ratio_snippet", "keywords", "acts_cited", "cases_cited",
-    "headnotes_snippet", "outcome_snippet",
-    "jurisdiction", "is_reportable", "extraction_confidence",
-    "chunk_count", "ingestion_status", "text_length",
+    "title",
+    "citation",
+    "court",
+    "year",
+    "decision_date",
+    "petitioner",
+    "respondent",
+    "author_judge",
+    "judge",
+    "disposal_nature",
+    "case_type",
+    "bench_type",
+    "coram_size",
+    "ratio_snippet",
+    "keywords",
+    "acts_cited",
+    "cases_cited",
+    "headnotes_snippet",
+    "outcome_snippet",
+    "jurisdiction",
+    "is_reportable",
+    "extraction_confidence",
+    "chunk_count",
+    "ingestion_status",
+    "text_length",
 ]
 
 
@@ -49,7 +70,6 @@ async def main():
 
     if not rows:
         return
-
 
     # ── Per-case summary table ──
 
@@ -71,7 +91,6 @@ async def main():
         rec["ingestion_status"] or "?"
         chunks = rec["chunk_count"] or 0
         tlen = rec["text_length"] or 0
-
 
         # Flag issues
         case_label = f"Case #{i} ({title_short[:30]}...)"

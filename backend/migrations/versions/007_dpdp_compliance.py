@@ -17,9 +17,7 @@ def upgrade():
     # dpdp_audit_log — compliance-mandated record of data operations
     op.create_table(
         "dpdp_audit_log",
-        sa.Column(
-            "id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")
-        ),
+        sa.Column("id", UUID, primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("action", sa.String(50), nullable=False),
         sa.Column("user_id", UUID, nullable=True),
         sa.Column("details", sa.JSON, default={}),

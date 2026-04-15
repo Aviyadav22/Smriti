@@ -6,6 +6,7 @@ and embeds summaries into Pinecone for semantic retrieval.
 
 Usage: python -m scripts.build_citation_communities
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -75,9 +76,7 @@ async def summarize_community(
     from app.models.case import Case
 
     # Load case metadata for community members (top 20 by citation count)
-    result = await db.execute(
-        select(Case).where(Case.id.in_(case_ids[:20]))
-    )
+    result = await db.execute(select(Case).where(Case.id.in_(case_ids[:20])))
     case_data = [
         f"- {c.title} ({c.citation}, {c.court}, {c.year})\n  Ratio: {(c.ratio_decidendi or '')[:300]}"
         for c in result.scalars()
@@ -148,7 +147,8 @@ async def store_communities(
 
     logger.info(
         "Stored %d communities, %d BELONGS_TO edges",
-        len(communities), len(case_communities),
+        len(communities),
+        len(case_communities),
     )
 
 
@@ -164,9 +164,7 @@ async def embed_community_summaries(
 
     Uses document_type: "community" metadata filter.
     """
-    texts = [
-        f"{s['title']}\n{s['summary']}" for s in communities.values()
-    ]
+    texts = [f"{s['title']}\n{s['summary']}" for s in communities.values()]
     if not texts:
         return
 
@@ -237,9 +235,7 @@ async def build_communities(
 
     # Step 4: Store in Neo4j
     case_to_community = {
-        case_id: comm_id
-        for comm_id, case_ids in community_cases.items()
-        for case_id in case_ids
+        case_id: comm_id for comm_id, case_ids in community_cases.items() for case_id in case_ids
     }
     await store_communities(summaries, case_to_community, graph_store)
 

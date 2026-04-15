@@ -9,6 +9,7 @@ coram_size, issue_tags, etc.) and creates IssueTopic / StatuteSection nodes.
 
 Usage: python -m scripts.compute_graph_analytics
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -68,55 +69,238 @@ def build_networkx_graph(nodes: list[dict], edges: list[dict]) -> nx.DiGraph:
 # Order matters: first match wins.  Each entry is (set of trigger terms, label).
 _PRACTICE_AREA_TRIGGERS: list[tuple[set[str], str]] = [
     # Criminal
-    ({"ipc", "crpc", "indian penal code", "code of criminal procedure", "murder",
-      "criminal appeal", "bail", "fir", "chargesheet", "dowry", "pocso",
-      "narcotic", "ndps", "life imprisonment", "death sentence", "criminal conspiracy"}, "Criminal Law"),
+    (
+        {
+            "ipc",
+            "crpc",
+            "indian penal code",
+            "code of criminal procedure",
+            "murder",
+            "criminal appeal",
+            "bail",
+            "fir",
+            "chargesheet",
+            "dowry",
+            "pocso",
+            "narcotic",
+            "ndps",
+            "life imprisonment",
+            "death sentence",
+            "criminal conspiracy",
+        },
+        "Criminal Law",
+    ),
     # Constitutional
-    ({"coi", "constitution of india", "article 14", "article 19", "article 21",
-      "article 32", "article 226", "fundamental rights", "writ petition",
-      "constitutional", "pil", "public interest"}, "Constitutional Law"),
+    (
+        {
+            "coi",
+            "constitution of india",
+            "article 14",
+            "article 19",
+            "article 21",
+            "article 32",
+            "article 226",
+            "fundamental rights",
+            "writ petition",
+            "constitutional",
+            "pil",
+            "public interest",
+        },
+        "Constitutional Law",
+    ),
     # Arbitration
-    ({"arbitration", "aca", "arbitration and conciliation act", "arbitral tribunal",
-      "arbitral award", "section 34", "section 11"}, "Arbitration"),
+    (
+        {
+            "arbitration",
+            "aca",
+            "arbitration and conciliation act",
+            "arbitral tribunal",
+            "arbitral award",
+            "section 34",
+            "section 11",
+        },
+        "Arbitration",
+    ),
     # Land & Property
-    ({"land acquisition", "laa", "larr", "right to fair compensation",
-      "land acquisition act", "tpa", "transfer of property", "property",
-      "specific relief", "specific performance", "easement"}, "Land & Property"),
+    (
+        {
+            "land acquisition",
+            "laa",
+            "larr",
+            "right to fair compensation",
+            "land acquisition act",
+            "tpa",
+            "transfer of property",
+            "property",
+            "specific relief",
+            "specific performance",
+            "easement",
+        },
+        "Land & Property",
+    ),
     # Tax
-    ({"income tax", "ita", "gst", "customs", "excise", "central excise",
-      "service tax", "tax", "taxation", "vat", "sales tax", "stamp duty"}, "Tax Law"),
+    (
+        {
+            "income tax",
+            "ita",
+            "gst",
+            "customs",
+            "excise",
+            "central excise",
+            "service tax",
+            "tax",
+            "taxation",
+            "vat",
+            "sales tax",
+            "stamp duty",
+        },
+        "Tax Law",
+    ),
     # Labour & Service
-    ({"service law", "service", "industrial disputes", "ida",
-      "labour", "esic", "epf", "workmen", "dismissal", "termination",
-      "compassionate appointment", "selection process", "promotion"}, "Labour & Service"),
+    (
+        {
+            "service law",
+            "service",
+            "industrial disputes",
+            "ida",
+            "labour",
+            "esic",
+            "epf",
+            "workmen",
+            "dismissal",
+            "termination",
+            "compassionate appointment",
+            "selection process",
+            "promotion",
+        },
+        "Labour & Service",
+    ),
     # Insolvency
-    ({"ibc", "insolvency", "insolvency and bankruptcy code", "nclt", "nclat",
-      "corporate insolvency", "liquidation", "moratorium", "resolution plan"}, "Insolvency"),
+    (
+        {
+            "ibc",
+            "insolvency",
+            "insolvency and bankruptcy code",
+            "nclt",
+            "nclat",
+            "corporate insolvency",
+            "liquidation",
+            "moratorium",
+            "resolution plan",
+        },
+        "Insolvency",
+    ),
     # Family
-    ({"hindu marriage act", "divorce", "maintenance", "custody", "matrimonial",
-      "domestic violence", "guardianship", "adoption", "family"}, "Family Law"),
+    (
+        {
+            "hindu marriage act",
+            "divorce",
+            "maintenance",
+            "custody",
+            "matrimonial",
+            "domestic violence",
+            "guardianship",
+            "adoption",
+            "family",
+        },
+        "Family Law",
+    ),
     # Civil Procedure
-    ({"cpc", "code of civil procedure", "civil appeal", "section 100 cpc",
-      "order 7 rule 11", "res judicata", "limitation", "limitation act",
-      "suit", "decree", "execution"}, "Civil Procedure"),
+    (
+        {
+            "cpc",
+            "code of civil procedure",
+            "civil appeal",
+            "section 100 cpc",
+            "order 7 rule 11",
+            "res judicata",
+            "limitation",
+            "limitation act",
+            "suit",
+            "decree",
+            "execution",
+        },
+        "Civil Procedure",
+    ),
     # Contract & Commercial
-    ({"contract", "indian contract act", "specific relief", "negotiable instruments",
-      "nia", "cheque dishonour", "section 138", "commercial"}, "Contract & Commercial"),
+    (
+        {
+            "contract",
+            "indian contract act",
+            "specific relief",
+            "negotiable instruments",
+            "nia",
+            "cheque dishonour",
+            "section 138",
+            "commercial",
+        },
+        "Contract & Commercial",
+    ),
     # Environmental
-    ({"environment", "ngt", "pollution", "forest", "wildlife",
-      "environmental protection", "mining"}, "Environmental Law"),
+    (
+        {
+            "environment",
+            "ngt",
+            "pollution",
+            "forest",
+            "wildlife",
+            "environmental protection",
+            "mining",
+        },
+        "Environmental Law",
+    ),
     # Electricity & Regulatory
-    ({"electricity", "electricity act", "tariff", "regulatory",
-      "telecom", "trai", "competition act", "cci"}, "Regulatory Law"),
+    (
+        {
+            "electricity",
+            "electricity act",
+            "tariff",
+            "regulatory",
+            "telecom",
+            "trai",
+            "competition act",
+            "cci",
+        },
+        "Regulatory Law",
+    ),
     # Motor Vehicles / Tort
-    ({"motor vehicles", "mva", "compensation", "motor accident",
-      "accident", "negligence", "tort"}, "Motor Accident & Tort"),
+    (
+        {
+            "motor vehicles",
+            "mva",
+            "compensation",
+            "motor accident",
+            "accident",
+            "negligence",
+            "tort",
+        },
+        "Motor Accident & Tort",
+    ),
     # Company Law
-    ({"companies act", "company law", "winding up", "oppression",
-      "mismanagement", "shareholder", "director"}, "Company Law"),
+    (
+        {
+            "companies act",
+            "company law",
+            "winding up",
+            "oppression",
+            "mismanagement",
+            "shareholder",
+            "director",
+        },
+        "Company Law",
+    ),
     # Evidence
-    ({"iea", "indian evidence act", "evidence", "witness",
-      "dying declaration", "expert opinion"}, "Evidence"),
+    (
+        {
+            "iea",
+            "indian evidence act",
+            "evidence",
+            "witness",
+            "dying declaration",
+            "expert opinion",
+        },
+        "Evidence",
+    ),
 ]
 
 
@@ -234,9 +418,7 @@ def compute_pagerank(
                 sub_max = 1.0
 
             for nid, score in sub_pr.items():
-                result.setdefault(nid, {})["pagerank_community"] = round(
-                    (score / sub_max) * 100, 2
-                )
+                result.setdefault(nid, {})["pagerank_community"] = round((score / sub_max) * 100, 2)
     else:
         # No community info — set community rank equal to global
         for nid in result:
@@ -366,9 +548,7 @@ async def write_analytics_to_neo4j(
             row["recent_citation_ratio"] = rising[nid].get("recent_citation_ratio", 0.0)
         if nid in treatments:
             row["treatment_positive_pct"] = treatments[nid].get("treatment_positive_pct", 1.0)
-            row["treatment_summary"] = json.dumps(
-                treatments[nid].get("treatment_summary", {})
-            )
+            row["treatment_summary"] = json.dumps(treatments[nid].get("treatment_summary", {}))
         rows.append(row)
 
     # Batch write in chunks
@@ -411,14 +591,16 @@ async def fetch_pg_metadata(db_session: object) -> list[dict]:
     """
     from sqlalchemy import text
 
-    result = await db_session.execute(text(  # type: ignore[union-attr]
-        """
+    result = await db_session.execute(
+        text(  # type: ignore[union-attr]
+            """
         SELECT id::text, jurisdiction, coram_size, is_reportable, opinion_type,
                issue_classification, primary_legal_issue, fact_pattern_summary,
                headnotes
         FROM cases WHERE id IS NOT NULL
         """
-    ))
+        )
+    )
     rows = result.mappings().all()  # type: ignore[union-attr]
     return [dict(r) for r in rows]
 
@@ -434,8 +616,9 @@ async def fetch_statute_interpretations(db_session: object) -> list[dict]:
     """
     from sqlalchemy import text
 
-    result = await db_session.execute(text(  # type: ignore[union-attr]
-        """
+    result = await db_session.execute(
+        text(  # type: ignore[union-attr]
+            """
         SELECT c.id::text AS case_id,
                si.value->>'section' AS section,
                si.value->>'act' AS act,
@@ -445,7 +628,8 @@ async def fetch_statute_interpretations(db_session: object) -> list[dict]:
         WHERE c.statute_sections_interpreted IS NOT NULL
           AND c.statute_sections_interpreted::text != '[]'
         """
-    ))
+        )
+    )
     rows = result.mappings().all()  # type: ignore[union-attr]
     return [dict(r) for r in rows]
 
@@ -500,17 +684,19 @@ async def enrich_neo4j_from_postgres(
         primary = r.get("primary_legal_issue") or ""
         fact_summary = r.get("fact_pattern_summary") or ""
 
-        rows.append({
-            "id": r["id"],
-            "jurisdiction": r.get("jurisdiction") or "",
-            "coram_size": int(r.get("coram_size") or 0),
-            "is_reportable": bool(r.get("is_reportable")),
-            "opinion_type": r.get("opinion_type") or "",
-            "issue_tags": issue_tags,
-            "primary_legal_issue": str(primary)[:200],
-            "fact_pattern_summary": str(fact_summary)[:500],
-            "headnote_text": _extract_headnote_text(r.get("headnotes")),
-        })
+        rows.append(
+            {
+                "id": r["id"],
+                "jurisdiction": r.get("jurisdiction") or "",
+                "coram_size": int(r.get("coram_size") or 0),
+                "is_reportable": bool(r.get("is_reportable")),
+                "opinion_type": r.get("opinion_type") or "",
+                "issue_tags": issue_tags,
+                "primary_legal_issue": str(primary)[:200],
+                "fact_pattern_summary": str(fact_summary)[:500],
+                "headnote_text": _extract_headnote_text(r.get("headnotes")),
+            }
+        )
 
     total = 0
     for i in range(0, len(rows), WRITE_BATCH_SIZE):
@@ -553,12 +739,14 @@ async def create_issue_topic_nodes(
         for tag in tags:
             category = get_category_for_tag(tag) or "Other"
             subtopic = tag.split(".", 1)[1] if "." in tag else tag
-            rows.append({
-                "case_id": r["id"],
-                "tag": tag,
-                "category": category,
-                "subtopic": subtopic,
-            })
+            rows.append(
+                {
+                    "case_id": r["id"],
+                    "tag": tag,
+                    "category": category,
+                    "subtopic": subtopic,
+                }
+            )
 
     if not rows:
         return 0
@@ -604,13 +792,15 @@ async def create_statute_section_nodes(
         section_id = f"{act}_{section}".lower().replace(" ", "_").replace(",", "")[:100]
         interpretation = r.get("interpretation_summary") or ""
 
-        rows.append({
-            "case_id": r["case_id"],
-            "section_id": section_id,
-            "section": section,
-            "act": act,
-            "interpretation": str(interpretation)[:500],
-        })
+        rows.append(
+            {
+                "case_id": r["case_id"],
+                "section_id": section_id,
+                "section": section,
+                "act": act,
+                "interpretation": str(interpretation)[:500],
+            }
+        )
 
     if not rows:
         return 0

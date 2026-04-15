@@ -11,6 +11,7 @@ Usage:
     python scripts/convert_local_pdfs.py --tier 1         # convert only tier 1 (missing)
     python scripts/convert_local_pdfs.py --tier 0         # convert only tier 0 (re-extract)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,51 +36,51 @@ PDF_DIR = Path(__file__).resolve().parent.parent / "data" / "statute_pdfs"
 
 # TIER 0: Re-extract (have data but sections missing due to extraction bugs)
 TIER_0_REEXTRACT = {
-    "bns": "BNS",           # 51/358 sections missing (14%)
-    "bnss": "BNSS",         # 18/531 sections missing (3%)
-    "bsa": "BSA",           # 18/170 sections missing (11%)
+    "bns": "BNS",  # 51/358 sections missing (14%)
+    "bnss": "BNSS",  # 18/531 sections missing (3%)
+    "bsa": "BSA",  # 18/170 sections missing (11%)
 }
 
 # TIER 1: Completely missing from DB — high citation count
 TIER_1_MISSING = {
-    "la": "LA",             # Limitation Act, 1963 — 976 citations
-    "laa": "LAA",           # Land Acquisition Act, 1894 — 295 citations
-    "larr": "LARR",         # Right to Fair Compensation Act, 2013 — 184 citations
-    "pca": "PCA",           # Prevention of Corruption Act, 1988 — 184 citations
-    "cpa2019": "CPA2019",   # Consumer Protection Act, 2019 — 142 citations
-    "mva": "MVA",           # Motor Vehicles Act, 1988 — 141 citations
+    "la": "LA",  # Limitation Act, 1963 — 976 citations
+    "laa": "LAA",  # Land Acquisition Act, 1894 — 295 citations
+    "larr": "LARR",  # Right to Fair Compensation Act, 2013 — 184 citations
+    "pca": "PCA",  # Prevention of Corruption Act, 1988 — 184 citations
+    "cpa2019": "CPA2019",  # Consumer Protection Act, 2019 — 142 citations
+    "mva": "MVA",  # Motor Vehicles Act, 1988 — 141 citations
     "electricity": "ELECTRICITY",  # Electricity Act, 2003 — 101 citations
-    "sra": "SRA",           # Specific Relief Act, 1963 — 85 citations
-    "cpa1986": "CPA1986",   # Consumer Protection Act, 1986 — 79 citations
-    "gca": "GCA",           # General Clauses Act, 1897 — 72 citations
-    "arms": "ARMS",         # Arms Act, 1959 — 69 citations
-    "pocso": "POCSO",       # POCSO Act, 2012 — 54 citations
-    "dpa": "DPA",           # Dowry Prohibition Act, 1961 — 42 citations
-    "rpa": "RPA",           # Representation of People Act, 1951 — 30 citations
-    "scst": "SCST",         # SC/ST Atrocities Act, 1989 — 28 citations
-    "rti": "RTI",           # Right to Information Act, 2005 — 24 citations
-    "ngt": "NGT",           # National Green Tribunal Act, 2010 — 24 citations
-    "societies": "SOCIETIES",     # Societies Registration Act, 1860 — 22 citations
-    "succession": "SUCCESSION",   # Indian Succession Act, 1925 — 21 citations
+    "sra": "SRA",  # Specific Relief Act, 1963 — 85 citations
+    "cpa1986": "CPA1986",  # Consumer Protection Act, 1986 — 79 citations
+    "gca": "GCA",  # General Clauses Act, 1897 — 72 citations
+    "arms": "ARMS",  # Arms Act, 1959 — 69 citations
+    "pocso": "POCSO",  # POCSO Act, 2012 — 54 citations
+    "dpa": "DPA",  # Dowry Prohibition Act, 1961 — 42 citations
+    "rpa": "RPA",  # Representation of People Act, 1951 — 30 citations
+    "scst": "SCST",  # SC/ST Atrocities Act, 1989 — 28 citations
+    "rti": "RTI",  # Right to Information Act, 2005 — 24 citations
+    "ngt": "NGT",  # National Green Tribunal Act, 2010 — 24 citations
+    "societies": "SOCIETIES",  # Societies Registration Act, 1860 — 22 citations
+    "succession": "SUCCESSION",  # Indian Succession Act, 1925 — 21 citations
     "commercial_courts": "COMMERCIAL_COURTS",  # Commercial Courts Act, 2015 — 19 citations
-    "drugs": "DRUGS",       # Drugs and Cosmetics Act, 1940 — 19 citations
-    "water": "WATER",       # Water (Prevention) Act, 1974 — 19 citations
-    "cst": "CST",           # Central Sales Tax Act, 1956 — 18 citations
-    "disability": "DISABILITY",   # Rights of Persons with Disabilities Act, 2016 — 17 citations
-    "forest": "FOREST",     # Indian Forest Act, 1927 — 16 citations
-    "advocates": "ADVOCATES",     # Advocates Act, 1961 — 16 citations
-    "air": "AIR",           # Air (Prevention) Act, 1981 — 14 citations
-    "army": "ARMY",         # Army Act, 1950 — 15 citations
+    "drugs": "DRUGS",  # Drugs and Cosmetics Act, 1940 — 19 citations
+    "water": "WATER",  # Water (Prevention) Act, 1974 — 19 citations
+    "cst": "CST",  # Central Sales Tax Act, 1956 — 18 citations
+    "disability": "DISABILITY",  # Rights of Persons with Disabilities Act, 2016 — 17 citations
+    "forest": "FOREST",  # Indian Forest Act, 1927 — 16 citations
+    "advocates": "ADVOCATES",  # Advocates Act, 1961 — 16 citations
+    "air": "AIR",  # Air (Prevention) Act, 1981 — 14 citations
+    "army": "ARMY",  # Army Act, 1950 — 15 citations
 }
 
 # TIER 2: In DB but severely incomplete (PDF extraction missed most sections)
 TIER_2_INCOMPLETE = {
-    "hsa": "HSA",           # Hindu Succession Act — 4/30 sections (87% missing)
-    "epa": "EPA",           # Environment Protection Act — 5/26 sections (81% missing)
+    "hsa": "HSA",  # Hindu Succession Act — 4/30 sections (87% missing)
+    "epa": "EPA",  # Environment Protection Act — 5/26 sections (81% missing)
     "factories": "FA1948",  # Factories Act — 22/120 sections (82% missing)
-    "cgst": "CGST",         # CGST Act — 20/164 sections (88% missing)
-    "sma": "SMA",           # Special Marriage Act — 12/50 sections (76% missing)
-    "fca": "FCA",           # Forest Conservation Act — 1/5 sections (80% missing)
+    "cgst": "CGST",  # CGST Act — 20/164 sections (88% missing)
+    "sma": "SMA",  # Special Marriage Act — 12/50 sections (76% missing)
+    "fca": "FCA",  # Forest Conservation Act — 1/5 sections (80% missing)
 }
 
 # Combined mapping

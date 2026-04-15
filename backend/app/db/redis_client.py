@@ -27,9 +27,7 @@ async def get_redis() -> aioredis.Redis | None:
         if _redis_client is not None:
             return _redis_client
         try:
-            client = aioredis.from_url(
-                settings.redis_url, decode_responses=True
-            )
+            client = aioredis.from_url(settings.redis_url, decode_responses=True)
             # Verify connection works (fail fast instead of crashing on first use)
             await client.ping()
             _redis_client = client

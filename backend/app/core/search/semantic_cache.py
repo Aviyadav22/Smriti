@@ -66,17 +66,30 @@ class SemanticCache:
         try:
             # Create HNSW index on the semantic cache hash keys
             await self.redis.execute_command(
-                "FT.CREATE", SEMANTIC_CACHE_INDEX,
-                "ON", "HASH",
-                "PREFIX", "1", SEMANTIC_CACHE_PREFIX,
+                "FT.CREATE",
+                SEMANTIC_CACHE_INDEX,
+                "ON",
+                "HASH",
+                "PREFIX",
+                "1",
+                SEMANTIC_CACHE_PREFIX,
                 "SCHEMA",
-                "query_text", "TEXT",
-                "memo_hash", "TAG",
-                "cached_at", "NUMERIC",
-                "embedding", "VECTOR", "HNSW", "6",
-                "TYPE", "FLOAT32",
-                "DIM", str(EMBEDDING_DIM),
-                "DISTANCE_METRIC", "COSINE",
+                "query_text",
+                "TEXT",
+                "memo_hash",
+                "TAG",
+                "cached_at",
+                "NUMERIC",
+                "embedding",
+                "VECTOR",
+                "HNSW",
+                "6",
+                "TYPE",
+                "FLOAT32",
+                "DIM",
+                str(EMBEDDING_DIM),
+                "DISTANCE_METRIC",
+                "COSINE",
             )
             self._index_ready = True
             logger.info("[S11] Created semantic cache HNSW index")
@@ -100,11 +113,20 @@ class SemanticCache:
 
             # KNN search — find the single nearest neighbor
             results = await self.redis.execute_command(
-                "FT.SEARCH", SEMANTIC_CACHE_INDEX,
+                "FT.SEARCH",
+                SEMANTIC_CACHE_INDEX,
                 "*=>[KNN 1 @embedding $vec AS score]",
-                "PARAMS", "2", "vec", vec_bytes,
-                "RETURN", "3", "query_text", "memo_hash", "score",
-                "DIALECT", "2",
+                "PARAMS",
+                "2",
+                "vec",
+                vec_bytes,
+                "RETURN",
+                "3",
+                "query_text",
+                "memo_hash",
+                "score",
+                "DIALECT",
+                "2",
             )
 
             # results format: [total_count, key1, [field1, val1, field2, val2, ...], ...]
@@ -124,7 +146,11 @@ class SemanticCache:
             cosine_similarity = 1.0 - score
 
             if cosine_similarity < SEMANTIC_CACHE_THRESHOLD:
-                logger.debug("[S11] Nearest neighbor score %.3f < threshold %.2f", cosine_similarity, SEMANTIC_CACHE_THRESHOLD)
+                logger.debug(
+                    "[S11] Nearest neighbor score %.3f < threshold %.2f",
+                    cosine_similarity,
+                    SEMANTIC_CACHE_THRESHOLD,
+                )
                 return None
 
             memo_hash = field_dict.get("memo_hash", "")
@@ -142,7 +168,12 @@ class SemanticCache:
             memo["cache_type"] = "semantic"
             memo["original_query"] = original_query
             memo["semantic_similarity"] = cosine_similarity
-            logger.info("[S11] Semantic cache hit: '%.60s' matched '%.60s' (sim=%.3f)", query, original_query, cosine_similarity)
+            logger.info(
+                "[S11] Semantic cache hit: '%.60s' matched '%.60s' (sim=%.3f)",
+                query,
+                original_query,
+                cosine_similarity,
+            )
             return memo
 
         except Exception as exc:
@@ -159,12 +190,15 @@ class SemanticCache:
             vec_bytes = _float_list_to_bytes(embedding)
             key = f"{SEMANTIC_CACHE_PREFIX}{memo_hash}"
 
-            await self.redis.hset(key, mapping={
-                "query_text": query,
-                "memo_hash": memo_hash,
-                "cached_at": str(time.time()),
-                "embedding": vec_bytes,
-            })
+            await self.redis.hset(
+                key,
+                mapping={
+                    "query_text": query,
+                    "memo_hash": memo_hash,
+                    "cached_at": str(time.time()),
+                    "embedding": vec_bytes,
+                },
+            )
             logger.debug("[S11] Stored semantic cache entry: %s", key)
 
         except Exception as exc:

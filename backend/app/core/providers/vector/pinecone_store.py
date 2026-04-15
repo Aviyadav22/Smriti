@@ -226,19 +226,16 @@ class PineconeStore:
                 filter=filter,
                 include_metadata=False,
             )
-            ids_to_delete = [
-                m.id for m in results.matches
-                if m.id not in exclude_set
-            ]
+            ids_to_delete = [m.id for m in results.matches if m.id not in exclude_set]
             if ids_to_delete:
                 # Delete in batches of 1000 (Pinecone limit)
                 for i in range(0, len(ids_to_delete), 1000):
-                    await asyncio.to_thread(
-                        self._index.delete, ids=ids_to_delete[i : i + 1000]
-                    )
+                    await asyncio.to_thread(self._index.delete, ids=ids_to_delete[i : i + 1000])
                 logger.info(
                     "Deleted %d stale vectors (kept %d new), filter=%s",
-                    len(ids_to_delete), len(exclude_ids), filter,
+                    len(ids_to_delete),
+                    len(exclude_ids),
+                    filter,
                 )
         except PineconeException as exc:
             logger.error("Pinecone delete by metadata failed (filter=%s): %s", filter, exc)

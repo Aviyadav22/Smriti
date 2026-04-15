@@ -8,6 +8,7 @@ Covers Bible Section 13 tests:
   75 (S11 warm-up test)
   42 (latency benchmark — integration only)
 """
+
 from __future__ import annotations
 
 import json
@@ -274,8 +275,10 @@ class TestCachedEmbedText:
         embedder.embed_text = AsyncMock(return_value=[0.1] * 1536)
 
         mock_redis = _make_mock_redis()
+
         async def _get_redis():
             return mock_redis
+
         with patch("app.db.redis_client.get_redis", side_effect=_get_redis):
             result = await cached_embed_text(embedder, "test text")
 
@@ -296,6 +299,7 @@ class TestCachedEmbedText:
 
         async def _get_redis():
             return mock_redis
+
         with patch("app.db.redis_client.get_redis", side_effect=_get_redis):
             result = await cached_embed_text(embedder, "test text")
 
@@ -317,20 +321,36 @@ class TestIKWorkerCaching:
         from app.core.agents.nodes.worker_nodes import ik_search_worker
 
         ik_client = AsyncMock()
-        ik_client.search = AsyncMock(return_value=[
-            {"tid": "123", "title": "Test Case", "citation": "2024 SCC 1", "court": "SC", "year": 2024},
-        ])
+        ik_client.search = AsyncMock(
+            return_value=[
+                {
+                    "tid": "123",
+                    "title": "Test Case",
+                    "citation": "2024 SCC 1",
+                    "court": "SC",
+                    "year": 2024,
+                },
+            ]
+        )
         ik_client.get_fragment = AsyncMock(return_value={"fragment": "Relevant text"})
 
         mock_redis = _make_mock_redis()
-        state = {"task": {
-            "task_id": "t1", "task_type": "ik_search",
-            "nl_query": "anticipatory bail 438", "boolean_query": "",
-            "named_cases": [], "rationale": "test", "filters": {}, "priority": 1,
-        }}
+        state = {
+            "task": {
+                "task_id": "t1",
+                "task_type": "ik_search",
+                "nl_query": "anticipatory bail 438",
+                "boolean_query": "",
+                "named_cases": [],
+                "rationale": "test",
+                "filters": {},
+                "priority": 1,
+            }
+        }
 
         async def _get_redis():
             return mock_redis
+
         with patch("app.core.agents.nodes.worker_nodes.get_redis", side_effect=_get_redis):
             result = await ik_search_worker(state, ik_client)
 
@@ -352,14 +372,22 @@ class TestIKWorkerCaching:
         cached_data = [{"case_id": "ik:123", "title": "Cached Case", "ik_doc_id": "123"}]
         await set_cached_ik_search(mock_redis, "anticipatory bail 438", cached_data)
 
-        state = {"task": {
-            "task_id": "t1", "task_type": "ik_search",
-            "nl_query": "anticipatory bail 438", "boolean_query": "",
-            "named_cases": [], "rationale": "test", "filters": {}, "priority": 1,
-        }}
+        state = {
+            "task": {
+                "task_id": "t1",
+                "task_type": "ik_search",
+                "nl_query": "anticipatory bail 438",
+                "boolean_query": "",
+                "named_cases": [],
+                "rationale": "test",
+                "filters": {},
+                "priority": 1,
+            }
+        }
 
         async def _get_redis():
             return mock_redis
+
         with patch("app.core.agents.nodes.worker_nodes.get_redis", side_effect=_get_redis):
             result = await ik_search_worker(state, ik_client)
 
@@ -472,11 +500,13 @@ class TestS10Config:
 
     def test_context_cache_enabled_default(self):
         from app.core.config import Settings
+
         s = Settings(gemini_api_key="test", _env_file=None)
         assert s.gemini_context_cache_enabled is True
 
     def test_context_cache_ttl_default(self):
         from app.core.config import Settings
+
         s = Settings(gemini_api_key="test", _env_file=None)
         assert s.gemini_context_cache_ttl == 3600
 
@@ -528,6 +558,7 @@ class TestS11SemanticCacheHit:
     async def test_semantic_cache_threshold(self):
         """[S11] Threshold is exactly 0.92."""
         from app.core.search.semantic_cache import SEMANTIC_CACHE_THRESHOLD
+
         assert SEMANTIC_CACHE_THRESHOLD == 0.92
 
     @pytest.mark.asyncio
@@ -537,10 +568,16 @@ class TestS11SemanticCacheHit:
 
         redis = AsyncMock()
         # FT.INFO succeeds
-        redis.execute_command = AsyncMock(side_effect=[
-            ["index_name", "test"],  # FT.INFO
-            [1, b"key1", [b"query_text", b"old query", b"memo_hash", b"hash1", b"score", b"0.15"]],  # FT.SEARCH (score=0.15 → cosine_sim=0.85)
-        ])
+        redis.execute_command = AsyncMock(
+            side_effect=[
+                ["index_name", "test"],  # FT.INFO
+                [
+                    1,
+                    b"key1",
+                    [b"query_text", b"old query", b"memo_hash", b"hash1", b"score", b"0.15"],
+                ],  # FT.SEARCH (score=0.15 → cosine_sim=0.85)
+            ]
+        )
         embedder = AsyncMock()
         embedder.embed_text = AsyncMock(return_value=[0.1] * 1536)
 
@@ -554,12 +591,27 @@ class TestS11SemanticCacheHit:
         from app.core.search.semantic_cache import SemanticCache
 
         redis = AsyncMock()
-        memo_data = json.dumps({"draft_memo": "Cached memo", "confidence": 0.9, "cached_at": 1234.5})
+        memo_data = json.dumps(
+            {"draft_memo": "Cached memo", "confidence": 0.9, "cached_at": 1234.5}
+        )
 
-        redis.execute_command = AsyncMock(side_effect=[
-            ["index_name", "test"],  # FT.INFO
-            [1, b"key1", [b"query_text", b"section 302 IPC punishment", b"memo_hash", b"hash1", b"score", b"0.05"]],  # score=0.05 → cosine_sim=0.95
-        ])
+        redis.execute_command = AsyncMock(
+            side_effect=[
+                ["index_name", "test"],  # FT.INFO
+                [
+                    1,
+                    b"key1",
+                    [
+                        b"query_text",
+                        b"section 302 IPC punishment",
+                        b"memo_hash",
+                        b"hash1",
+                        b"score",
+                        b"0.05",
+                    ],
+                ],  # score=0.05 → cosine_sim=0.95
+            ]
+        )
         redis.get = AsyncMock(return_value=memo_data)
         embedder = AsyncMock()
         embedder.embed_text = AsyncMock(return_value=[0.1] * 1536)
@@ -587,10 +639,16 @@ class TestS11SemanticCacheInvalidation:
         from app.core.search.semantic_cache import SemanticCache
 
         redis = AsyncMock()
-        redis.execute_command = AsyncMock(side_effect=[
-            ["index_name", "test"],  # FT.INFO
-            [1, b"key1", [b"query_text", b"old query", b"memo_hash", b"hash1", b"score", b"0.03"]],  # cosine_sim=0.97
-        ])
+        redis.execute_command = AsyncMock(
+            side_effect=[
+                ["index_name", "test"],  # FT.INFO
+                [
+                    1,
+                    b"key1",
+                    [b"query_text", b"old query", b"memo_hash", b"hash1", b"score", b"0.03"],
+                ],  # cosine_sim=0.97
+            ]
+        )
         redis.get = AsyncMock(return_value=None)  # Memo expired
         embedder = AsyncMock()
         embedder.embed_text = AsyncMock(return_value=[0.1] * 1536)
@@ -628,11 +686,13 @@ class TestS11IndexCreation:
 
         redis = AsyncMock()
         # FT.INFO fails (no index), FT.CREATE succeeds, FT.SEARCH returns 0
-        redis.execute_command = AsyncMock(side_effect=[
-            Exception("Unknown Index"),  # FT.INFO fails
-            "OK",                         # FT.CREATE succeeds
-            [0],                          # FT.SEARCH returns 0 results
-        ])
+        redis.execute_command = AsyncMock(
+            side_effect=[
+                Exception("Unknown Index"),  # FT.INFO fails
+                "OK",  # FT.CREATE succeeds
+                [0],  # FT.SEARCH returns 0 results
+            ]
+        )
         embedder = AsyncMock()
         embedder.embed_text = AsyncMock(return_value=[0.1] * 1536)
 
@@ -641,10 +701,7 @@ class TestS11IndexCreation:
 
         assert result is None
         # Verify FT.CREATE was called
-        create_calls = [
-            c for c in redis.execute_command.call_args_list
-            if c[0][0] == "FT.CREATE"
-        ]
+        create_calls = [c for c in redis.execute_command.call_args_list if c[0][0] == "FT.CREATE"]
         assert len(create_calls) == 1
         assert create_calls[0][0][1] == SEMANTIC_CACHE_INDEX
 
@@ -663,10 +720,12 @@ class TestS6PreWarmEmbeddings:
         from app.core.agents.nodes.research_nodes import pre_warm_embeddings_node
 
         embedder = AsyncMock()
-        embedder.embed_batch = AsyncMock(return_value=[
-            [0.1] * 1536,
-            [0.2] * 1536,
-        ])
+        embedder.embed_batch = AsyncMock(
+            return_value=[
+                [0.1] * 1536,
+                [0.2] * 1536,
+            ]
+        )
 
         state = {
             "research_plan": [
@@ -715,8 +774,10 @@ class TestS6PreWarmEmbeddings:
         from app.core.agents.research import build_research_graph
 
         graph = build_research_graph(
-            llm=AsyncMock(), flash_llm=AsyncMock(),
-            embedder=AsyncMock(), vector_store=AsyncMock(),
+            llm=AsyncMock(),
+            flash_llm=AsyncMock(),
+            embedder=AsyncMock(),
+            vector_store=AsyncMock(),
             reranker=AsyncMock(),
         )
         # Check node exists in compiled graph
@@ -759,8 +820,10 @@ class TestWorkerTimeouts:
         slow_embedder = AsyncMock()
 
         graph = build_research_graph(
-            llm=AsyncMock(), flash_llm=AsyncMock(),
-            embedder=slow_embedder, vector_store=AsyncMock(),
+            llm=AsyncMock(),
+            flash_llm=AsyncMock(),
+            embedder=slow_embedder,
+            vector_store=AsyncMock(),
             reranker=AsyncMock(),
         )
         # Graph builds successfully with timeout wrappers
@@ -771,8 +834,12 @@ class TestWorkerTimeouts:
         from app.core.agents.research import WORKER_TIMEOUTS
 
         expected_workers = {
-            "web_search_worker", "ik_search_worker", "case_law_worker",
-            "named_case_worker", "graph_worker", "graph_community_worker",
+            "web_search_worker",
+            "ik_search_worker",
+            "case_law_worker",
+            "named_case_worker",
+            "graph_worker",
+            "graph_community_worker",
             "statute_worker",
         }
         assert expected_workers == set(WORKER_TIMEOUTS.keys())
@@ -789,33 +856,39 @@ class TestConfidenceFormula5E4:
     def test_source_diversity_single_tier(self):
         """[5E.4] Single data tier → 0.25 diversity score."""
         from app.core.agents.confidence import _compute_source_diversity
+
         score = _compute_source_diversity(["case_law", "named_case"])
         assert score == pytest.approx(0.25)
 
     def test_source_diversity_multi_tier(self):
         """[5E.4] Multiple data tiers → higher diversity score."""
         from app.core.agents.confidence import _compute_source_diversity
+
         score = _compute_source_diversity(["case_law", "ik_search", "web", "graph"])
         assert score == pytest.approx(1.0)
 
     def test_source_diversity_empty(self):
         """[5E.4] No workers → 0 diversity."""
         from app.core.agents.confidence import _compute_source_diversity
+
         assert _compute_source_diversity([]) == 0.0
 
     def test_gap_coverage_all_filled(self):
         """[5E.4] All gaps filled → 1.0 coverage."""
         from app.core.agents.confidence import _compute_gap_coverage
+
         assert _compute_gap_coverage(5, 0) == pytest.approx(1.0)
 
     def test_gap_coverage_none_filled(self):
         """[5E.4] No gaps filled → 0.0 coverage."""
         from app.core.agents.confidence import _compute_gap_coverage
+
         assert _compute_gap_coverage(3, 3) == pytest.approx(0.0)
 
     def test_gap_coverage_no_initial_gaps(self):
         """[5E.4] No initial gaps → perfect coverage."""
         from app.core.agents.confidence import _compute_gap_coverage
+
         assert _compute_gap_coverage(0, 0) == pytest.approx(1.0)
 
     def test_confidence_with_diversity_boost(self):
@@ -823,11 +896,19 @@ class TestConfidenceFormula5E4:
         from app.core.agents.confidence import calculate_confidence
 
         single_tier = calculate_confidence(
-            [0.8, 0.7], 0.5, ["BINDING"], 0, 10,
+            [0.8, 0.7],
+            0.5,
+            ["BINDING"],
+            0,
+            10,
             worker_types=["case_law"],
         )
         multi_tier = calculate_confidence(
-            [0.8, 0.7], 0.5, ["BINDING"], 0, 10,
+            [0.8, 0.7],
+            0.5,
+            ["BINDING"],
+            0,
+            10,
             worker_types=["case_law", "ik_search", "web", "graph"],
         )
         assert multi_tier > single_tier
@@ -850,7 +931,16 @@ class TestConfidenceFormula5E4:
             _W_SOURCE_DIVERSITY,
             _W_SYNTHESIS_QUALITY,
         )
-        total = _W_RELEVANCE + _W_COVERAGE + _W_AUTHORITY + _W_CONTRADICTION + _W_SOURCE_DIVERSITY + _W_GAP_COVERAGE + _W_SYNTHESIS_QUALITY
+
+        total = (
+            _W_RELEVANCE
+            + _W_COVERAGE
+            + _W_AUTHORITY
+            + _W_CONTRADICTION
+            + _W_SOURCE_DIVERSITY
+            + _W_GAP_COVERAGE
+            + _W_SYNTHESIS_QUALITY
+        )
         assert total == pytest.approx(1.0)
 
 
@@ -868,6 +958,7 @@ class TestIKCircuitBreaker:
             _CIRCUIT_BREAKER_COOLDOWN,
             _CIRCUIT_BREAKER_THRESHOLD,
         )
+
         assert _CIRCUIT_BREAKER_THRESHOLD == 3
         assert _CIRCUIT_BREAKER_COOLDOWN == 60
 
@@ -904,6 +995,7 @@ class TestIKCircuitBreaker:
     def test_circuit_breaker_class_exists(self):
         """[5E.5] IKCircuitBreakerOpen exception class is importable."""
         from app.core.providers.external.indiankanoon import IKCircuitBreakerOpen
+
         assert issubclass(IKCircuitBreakerOpen, Exception)
 
 
@@ -923,6 +1015,7 @@ class TestDailyIngestSkeleton:
     def test_script_has_main(self):
         """[5E.6] daily_ingest.py has a main() function."""
         import importlib.util
+
         spec = importlib.util.spec_from_file_location(
             "daily_ingest",
             str(Path(__file__).parent.parent.parent / "scripts" / "daily_ingest.py"),

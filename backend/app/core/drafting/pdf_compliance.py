@@ -3,6 +3,7 @@
 Provides validation and post-processing to ensure PDFs meet
 court-specific e-filing requirements.
 """
+
 from __future__ import annotations
 
 import io
@@ -70,9 +71,7 @@ def validate_filing_pdf(
 
     # OCR check
     if court_profile.requires_ocr:
-        warnings.append(
-            "Court requires OCR-searchable PDF. Ensure text is selectable."
-        )
+        warnings.append("Court requires OCR-searchable PDF. Ensure text is selectable.")
 
     # Filing portal info
     if court_profile.filing_portal_url:
@@ -119,9 +118,7 @@ def add_pdf_bookmarks(
                     title = bm.get("title", "")
                     page_num = bm.get("page", 0)
                     if title and 0 <= page_num < len(pdf.pages):
-                        outline.root.append(
-                            pikepdf.OutlineItem(title, page_num)
-                        )
+                        outline.root.append(pikepdf.OutlineItem(title, page_num))
             buf = io.BytesIO()
             pdf.save(buf)
             buf.seek(0)
@@ -170,68 +167,85 @@ def generate_filing_checklist(
     """
     items: list[dict] = []
 
-    items.append({
-        "item": f"Document formatted for {court_profile.display_name}",
-        "status": "done",
-        "details": (
-            f"Paper: {court_profile.paper_size}, "
-            f"Font: {court_profile.font_name} {court_profile.font_size_body}pt"
-        ),
-    })
+    items.append(
+        {
+            "item": f"Document formatted for {court_profile.display_name}",
+            "status": "done",
+            "details": (
+                f"Paper: {court_profile.paper_size}, "
+                f"Font: {court_profile.font_name} {court_profile.font_size_body}pt"
+            ),
+        }
+    )
 
     if court_profile.requires_bookmarks:
-        items.append({
-            "item": "PDF bookmarks added",
-            "status": "done",
-            "details": "Section headings bookmarked for easy navigation",
-        })
+        items.append(
+            {
+                "item": "PDF bookmarks added",
+                "status": "done",
+                "details": "Section headings bookmarked for easy navigation",
+            }
+        )
 
     if court_profile.pdf_format == "pdf_a":
-        items.append({
-            "item": "PDF/A format required",
-            "status": "warning",
-            "details": (
-                f"Ensure final PDF is PDF/A-2b compliant "
-                f"for {court_profile.display_name}"
-            ),
-        })
+        items.append(
+            {
+                "item": "PDF/A format required",
+                "status": "warning",
+                "details": (
+                    f"Ensure final PDF is PDF/A-2b compliant " f"for {court_profile.display_name}"
+                ),
+            }
+        )
 
-    items.append({
-        "item": f"File size under {court_profile.max_file_size_mb} MB",
-        "status": "check",
-        "details": "Verify after adding annexures",
-    })
+    items.append(
+        {
+            "item": f"File size under {court_profile.max_file_size_mb} MB",
+            "status": "check",
+            "details": "Verify after adding annexures",
+        }
+    )
 
     if has_affidavit:
-        items.append({
-            "item": "Companion affidavit included",
-            "status": "done",
-            "details": "Auto-generated affidavit attached",
-        })
+        items.append(
+            {
+                "item": "Companion affidavit included",
+                "status": "done",
+                "details": "Auto-generated affidavit attached",
+            }
+        )
 
-    items.append({
-        "item": "Vakalatnama signed and notarized",
-        "status": "manual",
-        "details": "Must be executed on stamp paper of requisite value",
-    })
+    items.append(
+        {
+            "item": "Vakalatnama signed and notarized",
+            "status": "manual",
+            "details": "Must be executed on stamp paper of requisite value",
+        }
+    )
 
-    items.append({
-        "item": "Court fee paid",
-        "status": "manual",
-        "details": "Attach court fee receipt or e-stamp",
-    })
+    items.append(
+        {
+            "item": "Court fee paid",
+            "status": "manual",
+            "details": "Attach court fee receipt or e-stamp",
+        }
+    )
 
-    items.append({
-        "item": "Digital Signature Certificate (DSC)",
-        "status": "manual",
-        "details": "Class III DSC required for e-filing",
-    })
+    items.append(
+        {
+            "item": "Digital Signature Certificate (DSC)",
+            "status": "manual",
+            "details": "Class III DSC required for e-filing",
+        }
+    )
 
     if court_profile.filing_portal_url:
-        items.append({
-            "item": "Upload to e-filing portal",
-            "status": "manual",
-            "details": court_profile.filing_portal_url,
-        })
+        items.append(
+            {
+                "item": "Upload to e-filing portal",
+                "status": "manual",
+                "details": court_profile.filing_portal_url,
+            }
+        )
 
     return items

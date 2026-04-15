@@ -1,4 +1,5 @@
 """Tests for the CaseCitationEquivalent model."""
+
 from app.models.case_citation_equivalent import CaseCitationEquivalent
 
 

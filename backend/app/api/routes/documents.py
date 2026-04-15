@@ -80,9 +80,7 @@ async def upload_document(
             tmp.write(content)
             tmp_path = tmp.name
 
-        storage_path = await storage.store(
-            tmp_path, f"documents/{doc_id}/{safe_filename}"
-        )
+        storage_path = await storage.store(tmp_path, f"documents/{doc_id}/{safe_filename}")
     finally:
         if tmp_path:
             with contextlib.suppress(OSError):
@@ -209,10 +207,7 @@ async def delete_document(
         raise HTTPException(status_code=422, detail="Invalid document_id format")
 
     result = await db.execute(
-        text(
-            "SELECT id, storage_path FROM documents "
-            "WHERE id = :id AND user_id = :user_id"
-        ),
+        text("SELECT id, storage_path FROM documents " "WHERE id = :id AND user_id = :user_id"),
         {"id": document_id, "user_id": current_user.sub},
     )
     doc = result.mappings().one_or_none()
@@ -265,9 +260,7 @@ async def get_research_memo(
         raise HTTPException(status_code=404, detail="Document not found")
 
     result = await db.execute(
-        text(
-            "SELECT research_memo FROM document_analyses WHERE document_id = :doc_id"
-        ),
+        text("SELECT research_memo FROM document_analyses WHERE document_id = :doc_id"),
         {"doc_id": document_id},
     )
     row = result.mappings().one_or_none()

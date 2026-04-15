@@ -327,7 +327,13 @@ class TestTreatmentNormalization:
                     "year": 2020,
                     "cited_by_count": 1,
                     "edges": [
-                        {"from": "case_1", "to": "case_2", "type": "CITES", "treatment": "overruled", "context": None},
+                        {
+                            "from": "case_1",
+                            "to": "case_2",
+                            "type": "CITES",
+                            "treatment": "overruled",
+                            "context": None,
+                        },
                     ],
                 },
             ],
@@ -348,7 +354,13 @@ class TestTreatmentNormalization:
                     "year": 2020,
                     "cited_by_count": 1,
                     "edges": [
-                        {"from": "case_1", "to": "case_2", "type": "CITES", "treatment": "affirmed", "context": None},
+                        {
+                            "from": "case_1",
+                            "to": "case_2",
+                            "type": "CITES",
+                            "treatment": "affirmed",
+                            "context": None,
+                        },
                     ],
                 },
             ],
@@ -369,7 +381,13 @@ class TestTreatmentNormalization:
                     "year": 2020,
                     "cited_by_count": 1,
                     "edges": [
-                        {"from": "case_1", "to": "case_2", "type": "CITES", "treatment": "distinguished", "context": None},
+                        {
+                            "from": "case_1",
+                            "to": "case_2",
+                            "type": "CITES",
+                            "treatment": "distinguished",
+                            "context": None,
+                        },
                     ],
                 },
             ],
@@ -390,7 +408,13 @@ class TestTreatmentNormalization:
                     "year": 2020,
                     "cited_by_count": 1,
                     "edges": [
-                        {"from": "case_1", "to": "case_2", "type": "CITES", "treatment": None, "context": None},
+                        {
+                            "from": "case_1",
+                            "to": "case_2",
+                            "type": "CITES",
+                            "treatment": None,
+                            "context": None,
+                        },
                     ],
                 },
             ],
@@ -411,7 +435,13 @@ class TestTreatmentNormalization:
                     "year": 2020,
                     "cited_by_count": 1,
                     "edges": [
-                        {"from": "case_1", "to": "case_2", "type": "CITES", "treatment": "referred_to", "context": None},
+                        {
+                            "from": "case_1",
+                            "to": "case_2",
+                            "type": "CITES",
+                            "treatment": "referred_to",
+                            "context": None,
+                        },
                     ],
                 },
             ],
@@ -435,9 +465,9 @@ class TestTreatmentNormalization:
             None: "cites",
         }
         for treatment, display in expected.items():
-            assert _TREATMENT_TO_DISPLAY[treatment] == display, (
-                f"Treatment {treatment!r} should map to {display!r}"
-            )
+            assert (
+                _TREATMENT_TO_DISPLAY[treatment] == display
+            ), f"Treatment {treatment!r} should map to {display!r}"
 
     @pytest.mark.asyncio
     async def test_citation_chain_also_normalizes_treatment(self) -> None:
@@ -451,7 +481,12 @@ class TestTreatmentNormalization:
                     "year": 2018,
                     "cited_by_count": 3,
                     "edges": [
-                        {"from": "case_1", "to": "cited_1", "type": "CITES", "treatment": "overruled"},
+                        {
+                            "from": "case_1",
+                            "to": "cited_1",
+                            "type": "CITES",
+                            "treatment": "overruled",
+                        },
                     ],
                 },
             ],
@@ -475,13 +510,58 @@ class TestGetDashboard:
         store.query = AsyncMock(
             side_effect=[
                 # most_cited
-                [{"id": "mc1", "title": "Most Cited", "citation": "X", "court": "SC", "year": 2020, "cited_by_count": 100, "pagerank_global": 0.9, "community_id": 1, "community_label": "Constitutional", "recent_citation_ratio": 0.3}],
+                [
+                    {
+                        "id": "mc1",
+                        "title": "Most Cited",
+                        "citation": "X",
+                        "court": "SC",
+                        "year": 2020,
+                        "cited_by_count": 100,
+                        "pagerank_global": 0.9,
+                        "community_id": 1,
+                        "community_label": "Constitutional",
+                        "recent_citation_ratio": 0.3,
+                    }
+                ],
                 # rising
-                [{"id": "r1", "title": "Rising Case", "citation": "Y", "court": "SC", "year": 2023, "cited_by_count": 10, "pagerank_global": 0.5, "community_id": 2, "community_label": "Criminal", "recent_citation_ratio": 0.6}],
+                [
+                    {
+                        "id": "r1",
+                        "title": "Rising Case",
+                        "citation": "Y",
+                        "court": "SC",
+                        "year": 2023,
+                        "cited_by_count": 10,
+                        "pagerank_global": 0.5,
+                        "community_id": 2,
+                        "community_label": "Criminal",
+                        "recent_citation_ratio": 0.6,
+                    }
+                ],
                 # recently_negative
-                [{"id": "neg1", "title": "Neg Case", "citation": "Z", "court": "SC", "year": 2019, "cited_by_count": 50, "pagerank_global": 0.7, "community_id": 1, "community_label": "Constitutional", "recent_citation_ratio": 0.1, "negative_treatment": "overruled", "by_case_title": "New Case", "by_case_year": 2024}],
+                [
+                    {
+                        "id": "neg1",
+                        "title": "Neg Case",
+                        "citation": "Z",
+                        "court": "SC",
+                        "year": 2019,
+                        "cited_by_count": 50,
+                        "pagerank_global": 0.7,
+                        "community_id": 1,
+                        "community_label": "Constitutional",
+                        "recent_citation_ratio": 0.1,
+                        "negative_treatment": "overruled",
+                        "by_case_title": "New Case",
+                        "by_case_year": 2024,
+                    }
+                ],
                 # communities
-                [{"community_id": 1, "community_label": "Constitutional", "count": 200}, {"community_id": 2, "community_label": "Criminal", "count": 150}],
+                [
+                    {"community_id": 1, "community_label": "Constitutional", "count": 200},
+                    {"community_id": 2, "community_label": "Criminal", "count": 150},
+                ],
                 # get_subtopics query
                 [],
                 # get_statute_sections query
@@ -515,7 +595,6 @@ class TestGetDashboard:
 
     @pytest.mark.asyncio
     async def test_caches_result(self) -> None:
-
         redis = AsyncMock()
         redis.get = AsyncMock(return_value=None)
         redis.setex = AsyncMock()
@@ -563,13 +642,32 @@ class TestGetShortestPath:
     @pytest.mark.asyncio
     async def test_finds_path(self) -> None:
         store = AsyncMock()
-        from_node = {"id": "a", "title": "Case A", "citation": "X", "court": "SC", "year": 2020, "cited_by_count": 10}
-        to_node = {"id": "b", "title": "Case B", "citation": "Y", "court": "SC", "year": 2021, "cited_by_count": 5}
+        from_node = {
+            "id": "a",
+            "title": "Case A",
+            "citation": "X",
+            "court": "SC",
+            "year": 2020,
+            "cited_by_count": 10,
+        }
+        to_node = {
+            "id": "b",
+            "title": "Case B",
+            "citation": "Y",
+            "court": "SC",
+            "year": 2021,
+            "cited_by_count": 5,
+        }
         store.get_node = AsyncMock(side_effect=[from_node, to_node])
         store.query = AsyncMock(
             side_effect=[
                 # forward path
-                [{"node_ids": ["a", "b"], "edges": [{"from": "a", "to": "b", "treatment": None, "context": None}]}],
+                [
+                    {
+                        "node_ids": ["a", "b"],
+                        "edges": [{"from": "a", "to": "b", "treatment": None, "context": None}],
+                    }
+                ],
                 # reverse path (empty)
                 [],
             ]
@@ -585,10 +683,12 @@ class TestGetShortestPath:
     @pytest.mark.asyncio
     async def test_no_path_returns_empty(self) -> None:
         store = AsyncMock()
-        store.get_node = AsyncMock(side_effect=[
-            {"id": "a", "title": "A"},
-            {"id": "b", "title": "B"},
-        ])
+        store.get_node = AsyncMock(
+            side_effect=[
+                {"id": "a", "title": "A"},
+                {"id": "b", "title": "B"},
+            ]
+        )
         store.query = AsyncMock(return_value=[])
 
         result = await get_shortest_path("a", "b", graph_store=store)
@@ -618,11 +718,34 @@ class TestGetTreatmentSummary:
     async def test_returns_breakdown(self) -> None:
         store = AsyncMock()
         store.get_node = AsyncMock(return_value={"id": "case_1", "title": "Target"})
-        store.query = AsyncMock(return_value=[
-            {"id": "c1", "title": "Citing 1", "year": 2022, "citation": "X", "context": None, "treatment": "followed"},
-            {"id": "c2", "title": "Citing 2", "year": 2023, "citation": "Y", "context": None, "treatment": "followed"},
-            {"id": "c3", "title": "Citing 3", "year": 2024, "citation": "Z", "context": None, "treatment": "distinguished"},
-        ])
+        store.query = AsyncMock(
+            return_value=[
+                {
+                    "id": "c1",
+                    "title": "Citing 1",
+                    "year": 2022,
+                    "citation": "X",
+                    "context": None,
+                    "treatment": "followed",
+                },
+                {
+                    "id": "c2",
+                    "title": "Citing 2",
+                    "year": 2023,
+                    "citation": "Y",
+                    "context": None,
+                    "treatment": "followed",
+                },
+                {
+                    "id": "c3",
+                    "title": "Citing 3",
+                    "year": 2024,
+                    "citation": "Z",
+                    "context": None,
+                    "treatment": "distinguished",
+                },
+            ]
+        )
 
         result = await get_treatment_summary("case_1", graph_store=store, redis_client=None)
 
@@ -637,10 +760,26 @@ class TestGetTreatmentSummary:
     async def test_verdict_overruled(self) -> None:
         store = AsyncMock()
         store.get_node = AsyncMock(return_value={"id": "case_1"})
-        store.query = AsyncMock(return_value=[
-            {"id": "c1", "title": "A", "year": 2022, "citation": None, "context": None, "treatment": "overruled"},
-            {"id": "c2", "title": "B", "year": 2023, "citation": None, "context": None, "treatment": "followed"},
-        ])
+        store.query = AsyncMock(
+            return_value=[
+                {
+                    "id": "c1",
+                    "title": "A",
+                    "year": 2022,
+                    "citation": None,
+                    "context": None,
+                    "treatment": "overruled",
+                },
+                {
+                    "id": "c2",
+                    "title": "B",
+                    "year": 2023,
+                    "citation": None,
+                    "context": None,
+                    "treatment": "followed",
+                },
+            ]
+        )
 
         result = await get_treatment_summary("case_1", graph_store=store, redis_client=None)
         assert result["verdict"] == "Overruled"
@@ -650,13 +789,50 @@ class TestGetTreatmentSummary:
         store = AsyncMock()
         store.get_node = AsyncMock(return_value={"id": "case_1"})
         # All positive: 4 followed + 1 affirmed = 5/5 = 100% positive -> "Followed"
-        store.query = AsyncMock(return_value=[
-            {"id": "c1", "title": "A", "year": 2022, "citation": None, "context": None, "treatment": "followed"},
-            {"id": "c2", "title": "B", "year": 2023, "citation": None, "context": None, "treatment": "followed"},
-            {"id": "c3", "title": "C", "year": 2023, "citation": None, "context": None, "treatment": "followed"},
-            {"id": "c4", "title": "D", "year": 2024, "citation": None, "context": None, "treatment": "affirmed"},
-            {"id": "c5", "title": "E", "year": 2024, "citation": None, "context": None, "treatment": "followed"},
-        ])
+        store.query = AsyncMock(
+            return_value=[
+                {
+                    "id": "c1",
+                    "title": "A",
+                    "year": 2022,
+                    "citation": None,
+                    "context": None,
+                    "treatment": "followed",
+                },
+                {
+                    "id": "c2",
+                    "title": "B",
+                    "year": 2023,
+                    "citation": None,
+                    "context": None,
+                    "treatment": "followed",
+                },
+                {
+                    "id": "c3",
+                    "title": "C",
+                    "year": 2023,
+                    "citation": None,
+                    "context": None,
+                    "treatment": "followed",
+                },
+                {
+                    "id": "c4",
+                    "title": "D",
+                    "year": 2024,
+                    "citation": None,
+                    "context": None,
+                    "treatment": "affirmed",
+                },
+                {
+                    "id": "c5",
+                    "title": "E",
+                    "year": 2024,
+                    "citation": None,
+                    "context": None,
+                    "treatment": "followed",
+                },
+            ]
+        )
 
         result = await get_treatment_summary("case_1", graph_store=store, redis_client=None)
         assert result["verdict"] == "Followed"
@@ -667,12 +843,42 @@ class TestGetTreatmentSummary:
         store.get_node = AsyncMock(return_value={"id": "case_1"})
         # 1 followed + 2 distinguished + 1 doubted = 1/4 positive (25%) -> "Cautionary"
         # (no severe negatives like overruled/per_incuriam)
-        store.query = AsyncMock(return_value=[
-            {"id": "c1", "title": "A", "year": 2022, "citation": None, "context": None, "treatment": "followed"},
-            {"id": "c2", "title": "B", "year": 2023, "citation": None, "context": None, "treatment": "distinguished"},
-            {"id": "c3", "title": "C", "year": 2023, "citation": None, "context": None, "treatment": "distinguished"},
-            {"id": "c4", "title": "D", "year": 2024, "citation": None, "context": None, "treatment": "doubted"},
-        ])
+        store.query = AsyncMock(
+            return_value=[
+                {
+                    "id": "c1",
+                    "title": "A",
+                    "year": 2022,
+                    "citation": None,
+                    "context": None,
+                    "treatment": "followed",
+                },
+                {
+                    "id": "c2",
+                    "title": "B",
+                    "year": 2023,
+                    "citation": None,
+                    "context": None,
+                    "treatment": "distinguished",
+                },
+                {
+                    "id": "c3",
+                    "title": "C",
+                    "year": 2023,
+                    "citation": None,
+                    "context": None,
+                    "treatment": "distinguished",
+                },
+                {
+                    "id": "c4",
+                    "title": "D",
+                    "year": 2024,
+                    "citation": None,
+                    "context": None,
+                    "treatment": "doubted",
+                },
+            ]
+        )
 
         result = await get_treatment_summary("case_1", graph_store=store, redis_client=None)
         assert result["verdict"] == "Cautionary"

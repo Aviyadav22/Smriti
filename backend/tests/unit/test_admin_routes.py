@@ -62,8 +62,8 @@ def _mock_db_for_mappings(rows: list[dict]):
 # Admin review queue tests
 # ---------------------------------------------------------------------------
 
-class TestAdminReviewRoutes:
 
+class TestAdminReviewRoutes:
     def _make_client(self, db):
         app = _make_app((review_router, "/review"))
         app.dependency_overrides[get_db] = lambda: db
@@ -140,8 +140,8 @@ class TestAdminReviewRoutes:
 # Admin corrections tests
 # ---------------------------------------------------------------------------
 
-class TestAdminCorrectionRoutes:
 
+class TestAdminCorrectionRoutes:
     def _make_client(self, db):
         app = _make_app((corrections_router, "/corrections"))
         app.dependency_overrides[get_db] = lambda: db
@@ -219,13 +219,15 @@ class TestAdminCorrectionRoutes:
         mock_mappings = MagicMock()
         mock_mappings.all.return_value = [
             {
-                "metadata": json.dumps({
-                    "field": "title",
-                    "old_value": "Old",
-                    "new_value": "New",
-                    "reason": "Fix",
-                    "corrected_by": "admin-user-id",
-                }),
+                "metadata": json.dumps(
+                    {
+                        "field": "title",
+                        "old_value": "Old",
+                        "new_value": "New",
+                        "reason": "Fix",
+                        "corrected_by": "admin-user-id",
+                    }
+                ),
                 "created_at": datetime(2024, 1, 1, tzinfo=UTC),
             },
         ]
@@ -253,12 +255,15 @@ class TestAdminCorrectionRoutes:
         assert resp.status_code == 400
         assert "list" in resp.json()["detail"]
 
-    @pytest.mark.parametrize("malicious_field", [
-        "title; DROP TABLE cases--",
-        "title, password FROM users--",
-        "1=1; UPDATE cases SET title='hacked' WHERE 1=1--",
-        "title FROM cases UNION SELECT secret FROM credentials--",
-    ])
+    @pytest.mark.parametrize(
+        "malicious_field",
+        [
+            "title; DROP TABLE cases--",
+            "title, password FROM users--",
+            "1=1; UPDATE cases SET title='hacked' WHERE 1=1--",
+            "title FROM cases UNION SELECT secret FROM credentials--",
+        ],
+    )
     def test_sql_injection_in_field_name_rejected(self, malicious_field):
         """Fields containing SQL metacharacters must be rejected."""
         db = AsyncMock()
@@ -281,8 +286,8 @@ class TestAdminCorrectionRoutes:
 # Data quality dashboard tests
 # ---------------------------------------------------------------------------
 
-class TestDataQualityRoutes:
 
+class TestDataQualityRoutes:
     def _make_client(self, db):
         app = _make_app((quality_router, "/data-quality"))
         app.dependency_overrides[get_db] = lambda: db
@@ -302,17 +307,43 @@ class TestDataQualityRoutes:
 
         # Call 2: field population counts
         mock_pop = MagicMock()
-        pop_row = {f"{f}_count": 80 for f in [
-            "title", "citation", "court", "year", "decision_date",
-            "case_type", "jurisdiction", "bench_type", "petitioner",
-            "respondent", "author_judge", "disposal_nature", "ratio_decidendi",
-            "case_number", "headnotes", "outcome_summary", "coram_size",
-            "lower_court", "opinion_type", "split_ratio",
-            "petitioner_type", "respondent_type", "is_pil",
-            "extraction_confidence", "text_hash",
-            "judge", "acts_cited", "cases_cited", "keywords",
-            "dissenting_judges", "concurring_judges", "companion_cases",
-        ]}
+        pop_row = {
+            f"{f}_count": 80
+            for f in [
+                "title",
+                "citation",
+                "court",
+                "year",
+                "decision_date",
+                "case_type",
+                "jurisdiction",
+                "bench_type",
+                "petitioner",
+                "respondent",
+                "author_judge",
+                "disposal_nature",
+                "ratio_decidendi",
+                "case_number",
+                "headnotes",
+                "outcome_summary",
+                "coram_size",
+                "lower_court",
+                "opinion_type",
+                "split_ratio",
+                "petitioner_type",
+                "respondent_type",
+                "is_pil",
+                "extraction_confidence",
+                "text_hash",
+                "judge",
+                "acts_cited",
+                "cases_cited",
+                "keywords",
+                "dissenting_judges",
+                "concurring_judges",
+                "companion_cases",
+            ]
+        }
         mock_pop_map = MagicMock()
         mock_pop_map.first.return_value = pop_row
         mock_pop.mappings.return_value = mock_pop_map
@@ -364,12 +395,14 @@ class TestDataQualityRoutes:
 # Benchmark extraction tests
 # ---------------------------------------------------------------------------
 
+
 class TestBenchmarkExtraction:
     """Test the benchmark evaluation logic (no LLM calls)."""
 
     def test_compare_scalar_match(self):
         import sys
         from pathlib import Path
+
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
         from benchmark_extraction import _compare_scalar
 

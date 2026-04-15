@@ -31,7 +31,9 @@ async def _run_migrations() -> None:
             # In Docker, the app is at /app; locally it's at the backend dir
             app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             proc = await asyncio.create_subprocess_exec(
-                "alembic", "upgrade", "head",
+                "alembic",
+                "upgrade",
+                "head",
                 cwd=app_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -190,9 +192,7 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 
     MAX_BODY_SIZE = 10 * 1024 * 1024  # 10 MB
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > self.MAX_BODY_SIZE:
             return JSONResponse(
@@ -205,15 +205,11 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to all responses."""
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains"
-        )
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["X-XSS-Protection"] = "0"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
@@ -285,7 +281,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             )
             await _db.commit()
             if result.rowcount:
-                logger.info("Marked %d stale running agent executions as failed on startup", result.rowcount)
+                logger.info(
+                    "Marked %d stale running agent executions as failed on startup", result.rowcount
+                )
     except Exception:
         logger.warning("Failed to clean up stale agent executions on startup", exc_info=True)
 
@@ -356,17 +354,18 @@ app.add_middleware(SecurityHeadersMiddleware)
 # Trusted Host middleware in production (outermost — runs first, rejects bad hosts early)
 if settings.app_env == "production":
     from starlette.middleware.trustedhost import TrustedHostMiddleware
-    allowed_hosts = [h.replace("https://", "").replace("http://", "").split("/")[0]
-                     for h in settings.cors_origin_list]
+
+    allowed_hosts = [
+        h.replace("https://", "").replace("http://", "").split("/")[0]
+        for h in settings.cors_origin_list
+    ]
     # Never add localhost in production — would allow Host-header spoofing
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
 
 # Exception handlers
 @app.exception_handler(AuthenticationError)
-async def authentication_error_handler(
-    request: Request, exc: AuthenticationError
-) -> JSONResponse:
+async def authentication_error_handler(request: Request, exc: AuthenticationError) -> JSONResponse:
     return JSONResponse(
         status_code=401,
         content={"error": exc.detail, "code": "UNAUTHORIZED"},
@@ -374,9 +373,7 @@ async def authentication_error_handler(
 
 
 @app.exception_handler(AuthorizationError)
-async def authorization_error_handler(
-    request: Request, exc: AuthorizationError
-) -> JSONResponse:
+async def authorization_error_handler(request: Request, exc: AuthorizationError) -> JSONResponse:
     return JSONResponse(
         status_code=403,
         content={"error": exc.detail, "code": "FORBIDDEN"},
@@ -384,9 +381,7 @@ async def authorization_error_handler(
 
 
 @app.exception_handler(RateLimitExceededError)
-async def rate_limit_error_handler(
-    request: Request, exc: RateLimitExceededError
-) -> JSONResponse:
+async def rate_limit_error_handler(request: Request, exc: RateLimitExceededError) -> JSONResponse:
     headers = {}
     if exc.retry_after is not None:
         headers["Retry-After"] = str(exc.retry_after)
@@ -408,7 +403,10 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         pass
     return JSONResponse(
         status_code=500,
-        content={"error": "An internal error occurred. Please try again.", "code": "INTERNAL_ERROR"},
+        content={
+            "error": "An internal error occurred. Please try again.",
+            "code": "INTERNAL_ERROR",
+        },
     )
 
 

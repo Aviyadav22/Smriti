@@ -217,9 +217,7 @@ class TestDataSummary:
         params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("parameters", {})
         assert params["uid"] == token.sub
 
-    def test_data_summary_response_structure(
-        self, client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_data_summary_response_structure(self, client: TestClient, mock_db: AsyncMock) -> None:
         """Response has required top-level keys."""
         row = {
             "chat_sessions": 1,
@@ -257,9 +255,7 @@ class TestDataSummary:
 class TestErasure:
     """Tests for POST /api/v1/dpdp/erasure."""
 
-    def test_erasure_returns_success(
-        self, client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_erasure_returns_success(self, client: TestClient, mock_db: AsyncMock) -> None:
         """Erasure endpoint returns a success status."""
         # All db.execute calls within begin_nested succeed (AsyncMock default)
         resp = client.post("/api/v1/dpdp/erasure")
@@ -269,17 +265,13 @@ class TestErasure:
         assert body["status"] == "erasure_completed"
         assert "deleted" in body["detail"].lower() or "deactivated" in body["detail"].lower()
 
-    def test_erasure_uses_nested_transaction(
-        self, client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_erasure_uses_nested_transaction(self, client: TestClient, mock_db: AsyncMock) -> None:
         """Erasure uses begin_nested() for atomic deletion."""
         client.post("/api/v1/dpdp/erasure")
 
         mock_db.begin_nested.assert_called_once()
 
-    def test_erasure_commits_after_nested(
-        self, client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_erasure_commits_after_nested(self, client: TestClient, mock_db: AsyncMock) -> None:
         """Erasure calls commit() after the nested transaction block."""
         client.post("/api/v1/dpdp/erasure")
 
@@ -308,9 +300,7 @@ class TestErasure:
         assert "delete from documents" in all_sql, "Should delete documents"
         assert "delete from consents" in all_sql, "Should delete consents"
 
-    def test_erasure_logs_to_dpdp_audit(
-        self, client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_erasure_logs_to_dpdp_audit(self, client: TestClient, mock_db: AsyncMock) -> None:
         """Erasure inserts an audit log entry into dpdp_audit_log."""
         client.post("/api/v1/dpdp/erasure")
 
@@ -324,9 +314,7 @@ class TestErasure:
         assert "insert into dpdp_audit_log" in all_sql, "Should log erasure to dpdp_audit_log"
         assert "erasure_completed" in all_sql, "Audit action should be 'erasure_completed'"
 
-    def test_erasure_deactivates_user(
-        self, client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_erasure_deactivates_user(self, client: TestClient, mock_db: AsyncMock) -> None:
         """Erasure sets user is_active = false."""
         client.post("/api/v1/dpdp/erasure")
 
@@ -348,9 +336,9 @@ class TestErasure:
         for call in mock_db.execute.call_args_list:
             if len(call[0]) > 1:
                 params = call[0][1]
-                assert params.get("uid") == token.sub, (
-                    f"Expected uid={token.sub}, got {params.get('uid')}"
-                )
+                assert (
+                    params.get("uid") == token.sub
+                ), f"Expected uid={token.sub}, got {params.get('uid')}"
 
     def test_erasure_deletes_chat_messages_via_session_join(
         self, client: TestClient, mock_db: AsyncMock
@@ -367,9 +355,9 @@ class TestErasure:
         # Find the chat_messages DELETE and verify it uses a subquery
         chat_msg_deletes = [s for s in sql_statements if "chat_messages" in s and "delete" in s]
         assert len(chat_msg_deletes) == 1
-        assert "session_id in" in chat_msg_deletes[0], (
-            "chat_messages should be deleted via session_id subquery"
-        )
+        assert (
+            "session_id in" in chat_msg_deletes[0]
+        ), "chat_messages should be deleted via session_id subquery"
 
 
 # ---------------------------------------------------------------------------
@@ -380,9 +368,7 @@ class TestErasure:
 class TestConsentWithdraw:
     """Tests for POST /api/v1/dpdp/consent-withdraw."""
 
-    def test_consent_withdraw_returns_success(
-        self, client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_consent_withdraw_returns_success(self, client: TestClient, mock_db: AsyncMock) -> None:
         """Consent withdrawal returns status confirmation."""
         resp = client.post("/api/v1/dpdp/consent-withdraw")
 
@@ -409,9 +395,7 @@ class TestConsentWithdraw:
         assert "revoked_at is null" in update_sql, "Should only update non-revoked consents"
         assert "revoked_at = now()" in update_sql, "Should set revoked_at to current time"
 
-    def test_consent_withdraw_logs_audit(
-        self, client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_consent_withdraw_logs_audit(self, client: TestClient, mock_db: AsyncMock) -> None:
         """Consent withdrawal inserts an audit log entry."""
         client.post("/api/v1/dpdp/consent-withdraw")
 
@@ -425,9 +409,7 @@ class TestConsentWithdraw:
         assert "insert into dpdp_audit_log" in all_sql
         assert "consent_withdrawn" in all_sql
 
-    def test_consent_withdraw_commits(
-        self, client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_consent_withdraw_commits(self, client: TestClient, mock_db: AsyncMock) -> None:
         """Consent withdrawal calls commit()."""
         client.post("/api/v1/dpdp/consent-withdraw")
 

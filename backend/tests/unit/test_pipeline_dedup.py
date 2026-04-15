@@ -9,6 +9,7 @@ class TestTextHashDedupRaceSafety:
     def test_dedup_check_uses_for_update_skip_locked(self):
         """The advisory SELECT should use FOR UPDATE SKIP LOCKED to prevent races."""
         from app.core.ingestion import pipeline
+
         source = inspect.getsource(pipeline.ingest_judgment)
         assert "FOR UPDATE SKIP LOCKED" in source, (
             "Dedup SELECT must use FOR UPDATE SKIP LOCKED to prevent "

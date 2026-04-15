@@ -1,6 +1,5 @@
 """Unit tests for Reciprocal Rank Fusion (RRF) merge function."""
 
-
 from app.core.search.hybrid import apply_legal_signal_boost, rrf_merge
 
 

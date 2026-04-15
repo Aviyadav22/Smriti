@@ -41,6 +41,7 @@ router = APIRouter()
 def _validate_uuid(value: str, name: str = "ID") -> None:
     """Validate that a string is a valid UUID format."""
     import uuid
+
     try:
         uuid.UUID(value)
     except ValueError:
@@ -182,13 +183,17 @@ async def send_message(
                     ):
                         yield f"data: {json.dumps(event.data | {'type': event.type})}\n\n"
             except asyncio.CancelledError:
-                logger.info("Chat SSE stream cancelled (client disconnected) for session %s", session_id)
+                logger.info(
+                    "Chat SSE stream cancelled (client disconnected) for session %s", session_id
+                )
                 return
             except TimeoutError:
                 logger.warning("Chat SSE stream timed out after 5 minutes")
                 yield f"data: {json.dumps({'type': 'error', 'message': 'Stream timed out after 5 minutes'})}\n\n"
             except Exception:
-                logger.exception("SSE stream error in send_message for session %s, user %s", session_id, user.sub)
+                logger.exception(
+                    "SSE stream error in send_message for session %s, user %s", session_id, user.sub
+                )
                 yield f"data: {json.dumps({'type': 'error', 'message': 'An internal error occurred'})}\n\n"
 
     return StreamingResponse(

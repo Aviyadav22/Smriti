@@ -3,6 +3,7 @@
 Tests _extract_citation_equivalents and _link_citation_equivalents
 from the ingestion pipeline.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -83,9 +84,7 @@ class TestLinkCitationEquivalents:
             {"citation_text": "AIR 2017 SC 4161"},
         ]
 
-        await _link_citation_equivalents(
-            "case-001", "(2017) 10 SCC 1", equivalents, graph_store
-        )
+        await _link_citation_equivalents("case-001", "(2017) 10 SCC 1", equivalents, graph_store)
 
         # Should have been called (only for AIR citation, since primary is filtered out)
         graph_store.query.assert_called_once()
@@ -112,9 +111,7 @@ class TestLinkCitationEquivalents:
         """Should do nothing when all equivalents are the same as primary."""
         graph_store = AsyncMock()
         equivalents = [{"citation_text": "(2020) 1 SCC 1"}]
-        await _link_citation_equivalents(
-            "case-001", "(2020) 1 SCC 1", equivalents, graph_store
-        )
+        await _link_citation_equivalents("case-001", "(2020) 1 SCC 1", equivalents, graph_store)
         graph_store.query.assert_not_called()
 
     @pytest.mark.asyncio
@@ -125,6 +122,4 @@ class TestLinkCitationEquivalents:
 
         equivalents = [{"citation_text": "AIR 2020 SC 100"}]
         # Should not raise
-        await _link_citation_equivalents(
-            "case-001", "(2020) 1 SCC 1", equivalents, graph_store
-        )
+        await _link_citation_equivalents("case-001", "(2020) 1 SCC 1", equivalents, graph_store)

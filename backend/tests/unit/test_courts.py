@@ -1,6 +1,5 @@
 """Unit tests for court name normalization and hierarchy classification."""
 
-
 from app.core.legal.courts import (
     AIR_COURT_CODES,
     COURT_NAME_MAP,
@@ -81,7 +80,10 @@ class TestDataIntegrity:
     def test_all_air_codes_have_valid_courts(self):
         for code, name in AIR_COURT_CODES.items():
             level = get_court_level(name)
-            assert level in ("supreme", "high"), f"AIR code {code} → {name} → unexpected level {level}"
+            assert level in (
+                "supreme",
+                "high",
+            ), f"AIR code {code} → {name} → unexpected level {level}"
 
     def test_court_name_map_no_empty_values(self):
         for key, value in COURT_NAME_MAP.items():

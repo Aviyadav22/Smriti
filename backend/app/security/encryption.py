@@ -46,8 +46,7 @@ def _get_key() -> bytes:
         pass
 
     raise ValueError(
-        "encryption_key must be a 64-character hex string or "
-        "base64-encoded 32-byte key"
+        "encryption_key must be a 64-character hex string or " "base64-encoded 32-byte key"
     )
 
 
@@ -68,9 +67,7 @@ def encrypt_field(plaintext: str) -> str:
     nonce = os.urandom(_NONCE_SIZE)
 
     # AESGCM.encrypt returns ciphertext + tag concatenated
-    ciphertext_with_tag = aesgcm.encrypt(
-        nonce, plaintext.encode("utf-8"), None
-    )
+    ciphertext_with_tag = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), None)
 
     # Concatenate nonce + ciphertext + tag and base64-encode
     encrypted = nonce + ciphertext_with_tag
@@ -98,9 +95,7 @@ def decrypt_field(ciphertext: str) -> str:
         raise ValueError(f"Invalid base64 ciphertext: {exc}")
 
     if len(raw) < _NONCE_SIZE + 16:
-        raise ValueError(
-            "Ciphertext too short: must contain at least nonce + tag"
-        )
+        raise ValueError("Ciphertext too short: must contain at least nonce + tag")
 
     nonce = raw[:_NONCE_SIZE]
     encrypted_data = raw[_NONCE_SIZE:]

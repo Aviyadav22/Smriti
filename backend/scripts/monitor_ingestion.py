@@ -25,29 +25,40 @@ async def check_all() -> dict:
     try:
         async with async_session_factory() as s:
             total = (await s.execute(text("SELECT count(*) FROM cases"))).scalar()
-            complete = (await s.execute(
-                text("SELECT count(*) FROM cases WHERE ingestion_status = 'complete'")
-            )).scalar()
-            needs_review = (await s.execute(
-                text("SELECT count(*) FROM cases WHERE ingestion_status = 'needs_review'")
-            )).scalar()
-            failed = (await s.execute(
-                text("SELECT count(*) FROM cases WHERE ingestion_status = 'failed'")
-            )).scalar()
-            no_fts = (await s.execute(
-                text("SELECT count(*) FROM cases WHERE searchable_text IS NULL")
-            )).scalar()
-            null_type = (await s.execute(
-                text("SELECT count(*) FROM cases WHERE case_type IS NULL")
-            )).scalar()
-            null_court = (await s.execute(
-                text("SELECT count(*) FROM cases WHERE court IS NULL")
-            )).scalar()
+            complete = (
+                await s.execute(
+                    text("SELECT count(*) FROM cases WHERE ingestion_status = 'complete'")
+                )
+            ).scalar()
+            needs_review = (
+                await s.execute(
+                    text("SELECT count(*) FROM cases WHERE ingestion_status = 'needs_review'")
+                )
+            ).scalar()
+            failed = (
+                await s.execute(
+                    text("SELECT count(*) FROM cases WHERE ingestion_status = 'failed'")
+                )
+            ).scalar()
+            no_fts = (
+                await s.execute(text("SELECT count(*) FROM cases WHERE searchable_text IS NULL"))
+            ).scalar()
+            null_type = (
+                await s.execute(text("SELECT count(*) FROM cases WHERE case_type IS NULL"))
+            ).scalar()
+            null_court = (
+                await s.execute(text("SELECT count(*) FROM cases WHERE court IS NULL"))
+            ).scalar()
             statutes = (await s.execute(text("SELECT count(*) FROM statutes"))).scalar()
         status["pg"] = {
-            "total": total, "complete": complete, "needs_review": needs_review,
-            "failed": failed, "no_fts": no_fts, "null_type": null_type,
-            "null_court": null_court, "statutes": statutes,
+            "total": total,
+            "complete": complete,
+            "needs_review": needs_review,
+            "failed": failed,
+            "no_fts": no_fts,
+            "null_type": null_type,
+            "null_court": null_court,
+            "statutes": statutes,
         }
     except Exception as e:
         status["pg"] = {"error": str(e)}
@@ -55,6 +66,7 @@ async def check_all() -> dict:
     # Pinecone
     try:
         from pinecone import Pinecone
+
         pc = Pinecone(api_key=settings.pinecone_api_key)
         idx = pc.Index(host=settings.pinecone_host)
         stats = idx.describe_index_stats()
@@ -68,6 +80,7 @@ async def check_all() -> dict:
     # Neo4j
     try:
         from app.core.providers.graph.neo4j_store import Neo4jGraph
+
         g = Neo4jGraph()
         cases = (await g.query("MATCH (c:Case) RETURN count(c) as cnt"))[0]["cnt"]
         rels = (await g.query("MATCH ()-[r]->() RETURN count(r) as cnt"))[0]["cnt"]
@@ -84,7 +97,6 @@ async def monitor_loop():
     prev_total = 0
     prev_time = time.time()
     iteration = 0
-
 
     while True:
         iteration += 1
@@ -103,7 +115,6 @@ async def monitor_loop():
 
         total = pg.get("total", 0)
         rate = (total - prev_total) / (elapsed / 60) if elapsed > 0 and prev_total > 0 else 0
-
 
         if "error" in pg:
             pass

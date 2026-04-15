@@ -23,10 +23,7 @@ def upgrade() -> None:
     # ---------------------------------------------------------------
     # D2: Add tsvector column to case_sections for pre-computed FTS
     # ---------------------------------------------------------------
-    op.execute(
-        "ALTER TABLE case_sections "
-        "ADD COLUMN IF NOT EXISTS searchable_content tsvector"
-    )
+    op.execute("ALTER TABLE case_sections " "ADD COLUMN IF NOT EXISTS searchable_content tsvector")
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_case_sections_fts "
         "ON case_sections USING gin (searchable_content)"
@@ -63,8 +60,7 @@ def upgrade() -> None:
         sa.Column("cited_by_count", sa.Integer(), server_default="0", nullable=False),
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_cases_cited_by_count "
-        "ON cases (cited_by_count DESC)"
+        "CREATE INDEX IF NOT EXISTS idx_cases_cited_by_count " "ON cases (cited_by_count DESC)"
     )
 
     # ---------------------------------------------------------------

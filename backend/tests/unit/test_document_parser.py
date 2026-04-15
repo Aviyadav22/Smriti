@@ -1,4 +1,5 @@
 """Tests for opposing document parser."""
+
 from __future__ import annotations
 
 import json
@@ -41,18 +42,20 @@ class TestParseOpposingDocument:
     @pytest.mark.asyncio
     async def test_parses_plaint_structure(self) -> None:
         mock_llm = AsyncMock()
-        mock_llm.generate.return_value = json.dumps({
-            "doc_type": "plaint",
-            "parties": {"petitioner": "Suresh Sharma", "respondent": "Rajesh Kumar"},
-            "court": "District Court, Karol Bagh",
-            "case_number": "CS 123/2025",
-            "date": "01.03.2025",
-            "facts": ["Defendant sold goods on forged invoices", "Loss of Rs. 25 lakhs"],
-            "reliefs_claimed": ["Recovery of Rs. 25 lakhs", "Interest at 18%"],
-            "legal_provisions": ["Section 420 IPC", "Section 468 IPC"],
-            "precedents_cited": ["Ram v. Shyam (2020) 5 SCC 100"],
-            "key_arguments": ["Forged invoices constitute cheating"],
-        })
+        mock_llm.generate.return_value = json.dumps(
+            {
+                "doc_type": "plaint",
+                "parties": {"petitioner": "Suresh Sharma", "respondent": "Rajesh Kumar"},
+                "court": "District Court, Karol Bagh",
+                "case_number": "CS 123/2025",
+                "date": "01.03.2025",
+                "facts": ["Defendant sold goods on forged invoices", "Loss of Rs. 25 lakhs"],
+                "reliefs_claimed": ["Recovery of Rs. 25 lakhs", "Interest at 18%"],
+                "legal_provisions": ["Section 420 IPC", "Section 468 IPC"],
+                "precedents_cited": ["Ram v. Shyam (2020) 5 SCC 100"],
+                "key_arguments": ["Forged invoices constitute cheating"],
+            }
+        )
 
         result = await parse_opposing_document("Full plaint text here...", mock_llm)
         assert result.doc_type == "plaint"
@@ -63,18 +66,20 @@ class TestParseOpposingDocument:
     @pytest.mark.asyncio
     async def test_parses_order_structure(self) -> None:
         mock_llm = AsyncMock()
-        mock_llm.generate.return_value = json.dumps({
-            "doc_type": "order",
-            "parties": {"petitioner": "State", "respondent": "Accused"},
-            "court": "Sessions Court, Patiala House",
-            "case_number": "SC 45/2025",
-            "date": "15.02.2025",
-            "facts": ["Bail was rejected"],
-            "reliefs_claimed": [],
-            "legal_provisions": ["Section 439 CrPC"],
-            "precedents_cited": [],
-            "key_arguments": [],
-        })
+        mock_llm.generate.return_value = json.dumps(
+            {
+                "doc_type": "order",
+                "parties": {"petitioner": "State", "respondent": "Accused"},
+                "court": "Sessions Court, Patiala House",
+                "case_number": "SC 45/2025",
+                "date": "15.02.2025",
+                "facts": ["Bail was rejected"],
+                "reliefs_claimed": [],
+                "legal_provisions": ["Section 439 CrPC"],
+                "precedents_cited": [],
+                "key_arguments": [],
+            }
+        )
 
         result = await parse_opposing_document("Order text...", mock_llm)
         assert result.doc_type == "order"

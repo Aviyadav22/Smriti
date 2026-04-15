@@ -135,9 +135,7 @@ class AgentRunner:
             "research_audit": state.get("research_audit", {}),
         }
 
-    async def run_strategy(
-        self, case_facts: str, desired_relief: str
-    ) -> dict[str, Any]:
+    async def run_strategy(self, case_facts: str, desired_relief: str) -> dict[str, Any]:
         from app.core.agents.strategy import build_strategy_graph
 
         graph = build_strategy_graph(
@@ -166,9 +164,7 @@ class AgentRunner:
             "confidence": state.get("confidence", 0.0),
         }
 
-    async def run_drafting(
-        self, doc_type: str, case_facts: str
-    ) -> dict[str, Any]:
+    async def run_drafting(self, doc_type: str, case_facts: str) -> dict[str, Any]:
         from app.core.agents.drafting import build_drafting_graph
 
         graph = build_drafting_graph(

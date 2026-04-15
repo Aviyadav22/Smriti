@@ -28,9 +28,14 @@ logger = logging.getLogger(__name__)
 
 # Only the 8 complex fields that benefit from Pro
 PRO_FIELDS = [
-    "arguments_raised", "citation_treatments", "judicial_tone",
-    "legal_principles_applied", "procedural_history", "issue_classification",
-    "fact_pattern_tags", "operative_order",
+    "arguments_raised",
+    "citation_treatments",
+    "judicial_tone",
+    "legal_principles_applied",
+    "procedural_history",
+    "issue_classification",
+    "fact_pattern_tags",
+    "operative_order",
 ]
 
 PRO_EXTRACTION_SYSTEM = """You are re-analyzing a previously processed Indian court judgment.
@@ -49,7 +54,9 @@ Use the full judgment text provided. Be thorough and precise."""
 # Build a reduced schema with only PRO_FIELDS
 PRO_SCHEMA = {
     "type": "object",
-    "properties": {k: v for k, v in METADATA_OUTPUT_SCHEMA["properties"].items() if k in PRO_FIELDS},
+    "properties": {
+        k: v for k, v in METADATA_OUTPUT_SCHEMA["properties"].items() if k in PRO_FIELDS
+    },
     "required": PRO_FIELDS,
 }
 
@@ -73,9 +80,7 @@ async def run(args):
         params: dict = {}
 
         if args.judge:
-            conditions.append(
-                "EXISTS (SELECT 1 FROM unnest(judge) AS j WHERE j ILIKE :judge)"
-            )
+            conditions.append("EXISTS (SELECT 1 FROM unnest(judge) AS j WHERE j ILIKE :judge)")
             params["judge"] = f"%{args.judge}%"
         if args.section:
             conditions.append(
@@ -125,9 +130,7 @@ async def run(args):
 
                 if updates:
                     await db.execute(
-                        sa_text(
-                            f"UPDATE cases SET {', '.join(updates)} WHERE id = :case_id"
-                        ),
+                        sa_text(f"UPDATE cases SET {', '.join(updates)} WHERE id = :case_id"),
                         update_params,
                     )
                     await db.commit()
@@ -152,11 +155,15 @@ def main():
     parser.add_argument("--case-type", help="Filter by exact case_type")
     parser.add_argument("--case-id", help="Enrich a single case by UUID")
     parser.add_argument("--all", action="store_true", help="Enrich all flash_only cases")
-    parser.add_argument("--limit", type=int, default=100, help="Max cases to process (default: 100)")
+    parser.add_argument(
+        "--limit", type=int, default=100, help="Max cases to process (default: 100)"
+    )
     args = parser.parse_args()
 
     if not (args.judge or args.section or args.case_type or args.case_id or args.all):
-        parser.error("Specify at least one filter: --judge, --section, --case-type, --case-id, or --all")
+        parser.error(
+            "Specify at least one filter: --judge, --section, --case-type, --case-id, or --all"
+        )
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     asyncio.run(run(args))

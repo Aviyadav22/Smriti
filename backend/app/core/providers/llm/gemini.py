@@ -48,10 +48,17 @@ def _apply_thinking_config(config_kwargs: dict) -> None:
         # Thinking may be on by default but costs are acceptable.
         pass
 
+
 # Build retry exception tuple with granular Google exceptions when available
 _GEMINI_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    GoogleAPIError, asyncio.TimeoutError, ConnectionError, OSError, TimeoutError,
-    httpx.ReadTimeout, httpx.ConnectTimeout, httpx.TimeoutException,
+    GoogleAPIError,
+    asyncio.TimeoutError,
+    ConnectionError,
+    OSError,
+    TimeoutError,
+    httpx.ReadTimeout,
+    httpx.ConnectTimeout,
+    httpx.TimeoutException,
 )
 
 try:
@@ -106,9 +113,7 @@ class GeminiLLM:
                 else:
                     result["type"] = value
             elif key == "properties" and isinstance(value, dict):
-                result["properties"] = {
-                    k: GeminiLLM._normalize_schema(v) for k, v in value.items()
-                }
+                result["properties"] = {k: GeminiLLM._normalize_schema(v) for k, v in value.items()}
             elif key == "items" and isinstance(value, dict):
                 result["items"] = GeminiLLM._normalize_schema(value)
             else:
@@ -118,9 +123,15 @@ class GeminiLLM:
     # [S10] Class-level cache for synthesis system prompt
     _synthesis_cache_name: str | None = None
 
-    def __init__(self, *, api_key: str | None = None, model: str | None = None,
-                 use_vertexai: bool = False, project: str | None = None,
-                 location: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        model: str | None = None,
+        use_vertexai: bool = False,
+        project: str | None = None,
+        location: str | None = None,
+    ) -> None:
         if use_vertexai or settings.gemini_use_vertexai:
             _project = project or settings.gemini_vertexai_project
             _location = location or settings.gemini_vertexai_location
@@ -130,10 +141,16 @@ class GeminiLLM:
                     "Set GEMINI_VERTEXAI_PROJECT environment variable."
                 )
             # Ensure GOOGLE_APPLICATION_CREDENTIALS env var is set for the SDK
-            if settings.google_application_credentials and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = settings.google_application_credentials
+            if settings.google_application_credentials and not os.environ.get(
+                "GOOGLE_APPLICATION_CREDENTIALS"
+            ):
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = (
+                    settings.google_application_credentials
+                )
             self._client = genai.Client(
-                vertexai=True, project=_project, location=_location,
+                vertexai=True,
+                project=_project,
+                location=_location,
             )
             logger.info("GeminiLLM using Vertex AI (project=%s, location=%s)", _project, _location)
         else:
@@ -265,9 +282,7 @@ class GeminiLLM:
         import pathlib
 
         pdf_bytes = pathlib.Path(pdf_path).read_bytes()
-        pdf_part = types.Part.from_bytes(
-            data=pdf_bytes, mime_type="application/pdf"
-        )
+        pdf_part = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
 
         normalized_schema = self._normalize_schema(output_schema)
         pdf_config_kwargs: dict = {

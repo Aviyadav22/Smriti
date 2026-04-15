@@ -1,4 +1,5 @@
 """Tests for PDF page mapping."""
+
 from app.core.ingestion.pdf import TextQuality, _build_page_map
 
 
@@ -7,8 +8,12 @@ class TestTextQualityPageMap:
 
     def test_page_map_field_exists(self):
         tq = TextQuality(
-            text="test", char_count=4, tier="high",
-            ocr_used=False, legal_keyword_count=0, page_count=1,
+            text="test",
+            char_count=4,
+            tier="high",
+            ocr_used=False,
+            legal_keyword_count=0,
+            page_count=1,
             page_map=[{"page_number": 1, "char_start": 0, "char_end": 4}],
         )
         assert len(tq.page_map) == 1
@@ -16,8 +21,12 @@ class TestTextQualityPageMap:
 
     def test_page_map_default_empty(self):
         tq = TextQuality(
-            text="test", char_count=4, tier="high",
-            ocr_used=False, legal_keyword_count=0, page_count=1,
+            text="test",
+            char_count=4,
+            tier="high",
+            ocr_used=False,
+            legal_keyword_count=0,
+            page_count=1,
         )
         assert tq.page_map == []
 

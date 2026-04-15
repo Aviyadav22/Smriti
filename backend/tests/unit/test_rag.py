@@ -264,7 +264,11 @@ class TestReformulateQuery:
 
         mock_llm.generate.assert_called_once()
         call_kwargs = mock_llm.generate.call_args
-        assert "498A" in call_kwargs.kwargs["prompt"] or "498A" in call_kwargs[0][0] if call_kwargs[0] else "498A" in call_kwargs.kwargs["prompt"]
+        assert (
+            "498A" in call_kwargs.kwargs["prompt"] or "498A" in call_kwargs[0][0]
+            if call_kwargs[0]
+            else "498A" in call_kwargs.kwargs["prompt"]
+        )
         assert "and the penalty?" in call_kwargs.kwargs["prompt"]
         assert call_kwargs.kwargs["temperature"] == 0.0
         assert call_kwargs.kwargs["max_tokens"] == 200
@@ -367,9 +371,7 @@ class TestContextSizeGuard:
             for i in range(n)
         ]
 
-    def _build_prompt(
-        self, sources: list[ChatSource], history: list[dict], question: str
-    ) -> str:
+    def _build_prompt(self, sources: list[ChatSource], history: list[dict], question: str) -> str:
         """Build a user prompt the same way rag_respond does."""
         context_text = _format_context(sources)
         history_text = _format_history(history)

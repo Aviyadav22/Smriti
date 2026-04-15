@@ -22,6 +22,7 @@ Usage:
     python scripts/ingest_statutes.py --source data/statutes/ --all
     python scripts/ingest_statutes.py --source data/statutes/ --resume  # resume from last checkpoint
 """
+
 from __future__ import annotations
 
 import argparse
@@ -90,7 +91,9 @@ class CircuitBreaker:
 # Resume tracking — persist progress across runs
 # ---------------------------------------------------------------------------
 
-PROGRESS_FILE = Path(__file__).resolve().parent.parent / "data" / "statutes" / ".ingest_progress.json"
+PROGRESS_FILE = (
+    Path(__file__).resolve().parent.parent / "data" / "statutes" / ".ingest_progress.json"
+)
 
 
 def load_progress() -> dict:
@@ -177,8 +180,12 @@ async def upsert_statute(
         row = result.fetchone()
         return str(row[0]) if row else None
     except Exception as exc:
-        logger.error("Failed to upsert statute %s %s: %s",
-                     statute.get("act_short_name"), statute.get("section_number"), exc)
+        logger.error(
+            "Failed to upsert statute %s %s: %s",
+            statute.get("act_short_name"),
+            statute.get("section_number"),
+            exc,
+        )
         with contextlib.suppress(Exception):
             await db.rollback()
         return None
@@ -299,8 +306,12 @@ async def ingest_statute_file(
 
     if dry_run:
         for s in statutes[:3]:
-            logger.info("  [DRY RUN] %s Section %s: %s",
-                        s["act_short_name"], s["section_number"], s["section_title"])
+            logger.info(
+                "  [DRY RUN] %s Section %s: %s",
+                s["act_short_name"],
+                s["section_number"],
+                s["section_title"],
+            )
         return stats
 
     cb = breaker or CircuitBreaker()
@@ -355,30 +366,32 @@ async def ingest_statute_file(
         for i in range(0, len(texts), batch_size):
             if cb.is_open:
                 break
-            batch_texts = texts[i:i + batch_size]
-            batch_statutes = [s for s in statutes if s["section_text"]][i:i + batch_size]
+            batch_texts = texts[i : i + batch_size]
+            batch_statutes = [s for s in statutes if s["section_text"]][i : i + batch_size]
             try:
                 embeddings = await embedder.embed_batch(batch_texts)
                 vectors = []
                 for s, emb in zip(batch_statutes, embeddings, strict=False):
                     vid = f"statute:{s['act_short_name']}:{s['section_number']}"
-                    vectors.append({
-                        "id": vid,
-                        "values": emb,
-                        "metadata": {
-                            "document_type": s["document_type"],
-                            "vector_type": "statute",
-                            "act_name": s["act_name"],
-                            "act_short_name": s["act_short_name"],
-                            "section_number": s["section_number"],
-                            "section_title": s["section_title"] or "",
-                            "text": s["section_text"][:2000],
-                            "replaced_by": s["replaced_by"],
-                            "replaces": s["replaces"],
-                            "title": f"{s['act_short_name']} Section {s['section_number']}",
-                            "is_repealed": s.get("is_repealed", False),
-                        },
-                    })
+                    vectors.append(
+                        {
+                            "id": vid,
+                            "values": emb,
+                            "metadata": {
+                                "document_type": s["document_type"],
+                                "vector_type": "statute",
+                                "act_name": s["act_name"],
+                                "act_short_name": s["act_short_name"],
+                                "section_number": s["section_number"],
+                                "section_title": s["section_title"] or "",
+                                "text": s["section_text"][:2000],
+                                "replaced_by": s["replaced_by"],
+                                "replaces": s["replaces"],
+                                "title": f"{s['act_short_name']} Section {s['section_number']}",
+                                "is_repealed": s.get("is_repealed", False),
+                            },
+                        }
+                    )
                 await vector_store.upsert(vectors)
                 stats["embedded"] += len(vectors)
                 cb.record_success()
@@ -410,8 +423,12 @@ async def ingest_statute_file(
                 stats["graphed"] += 1
                 cb.record_success()
             except Exception as exc:
-                logger.error("Neo4j node creation failed for %s %s: %s",
-                             s["act_short_name"], s["section_number"], exc)
+                logger.error(
+                    "Neo4j node creation failed for %s %s: %s",
+                    s["act_short_name"],
+                    s["section_number"],
+                    exc,
+                )
                 cb.record_failure()
 
         logger.info("Neo4j: %d/%d graphed", stats["graphed"], stats["total"])
@@ -447,8 +464,11 @@ async def main(args: argparse.Namespace) -> None:
     if args.resume and completed_set:
         original_count = len(files)
         files = [f for f in files if f.name not in completed_set]
-        logger.info("Resume mode: skipping %d already-completed files, %d remaining",
-                     original_count - len(files), len(files))
+        logger.info(
+            "Resume mode: skipping %d already-completed files, %d remaining",
+            original_count - len(files),
+            len(files),
+        )
 
     if not files:
         logger.info("All files already ingested. Use without --resume to re-ingest.")
@@ -465,6 +485,7 @@ async def main(args: argparse.Namespace) -> None:
     if not args.db_only:
         try:
             from app.core.dependencies import get_embedder, get_vector_store
+
             embedder = get_embedder()
             vector_store = get_vector_store()
         except Exception as exc:
@@ -472,6 +493,7 @@ async def main(args: argparse.Namespace) -> None:
 
         try:
             from app.core.dependencies import get_graph_store
+
             graph_store = get_graph_store()
         except Exception as exc:
             logger.warning("Could not initialize graph_store: %s", exc)
@@ -479,6 +501,7 @@ async def main(args: argparse.Namespace) -> None:
         if args.contextualize:
             try:
                 from app.core.dependencies import get_flash_llm
+
                 flash_llm = get_flash_llm()
             except Exception as exc:
                 logger.warning("Could not initialize flash_llm: %s", exc)
@@ -502,7 +525,8 @@ async def main(args: argparse.Namespace) -> None:
 
             try:
                 stats = await ingest_statute_file(
-                    filepath, db,
+                    filepath,
+                    db,
                     embedder=embedder,
                     vector_store=vector_store,
                     graph_store=graph_store,
@@ -515,9 +539,15 @@ async def main(args: argparse.Namespace) -> None:
 
                 # Record file completion
                 elapsed = time.monotonic() - file_start
-                logger.info("[%d/%d] %s done in %.1fs — %d inserted, %d errors",
-                            i + 1, len(files), filepath.name, elapsed,
-                            stats["inserted"], stats["errors"])
+                logger.info(
+                    "[%d/%d] %s done in %.1fs — %d inserted, %d errors",
+                    i + 1,
+                    len(files),
+                    filepath.name,
+                    elapsed,
+                    stats["inserted"],
+                    stats["errors"],
+                )
 
                 # Save progress checkpoint
                 if not args.dry_run:
@@ -532,13 +562,20 @@ async def main(args: argparse.Namespace) -> None:
 
     elapsed_total = time.monotonic() - start_time
     logger.info("=== DONE ===")
-    logger.info("Total: %d sections, %d inserted, %d embedded, %d graphed, %d errors (%.1fs)",
-                total_stats["total"], total_stats["inserted"],
-                total_stats["embedded"], total_stats["graphed"], total_stats["errors"],
-                elapsed_total)
+    logger.info(
+        "Total: %d sections, %d inserted, %d embedded, %d graphed, %d errors (%.1fs)",
+        total_stats["total"],
+        total_stats["inserted"],
+        total_stats["embedded"],
+        total_stats["graphed"],
+        total_stats["errors"],
+        elapsed_total,
+    )
 
     if breaker.is_open:
-        logger.error("Ingestion stopped early due to circuit breaker. Run with --resume to continue.")
+        logger.error(
+            "Ingestion stopped early due to circuit breaker. Run with --resume to continue."
+        )
     if _shutdown_requested:
         logger.warning("Ingestion interrupted. Run with --resume to continue from checkpoint.")
 
@@ -548,8 +585,12 @@ if __name__ == "__main__":
     parser.add_argument("--source", required=True, help="Path to JSON file or directory")
     parser.add_argument("--db-only", action="store_true", help="Only insert to PostgreSQL")
     parser.add_argument("--dry-run", action="store_true", help="Parse only, no writes")
-    parser.add_argument("--contextualize", action="store_true",
-                        help="Generate contextual prefixes via Flash LLM")
-    parser.add_argument("--resume", action="store_true",
-                        help="Resume from last checkpoint, skipping completed files")
+    parser.add_argument(
+        "--contextualize", action="store_true", help="Generate contextual prefixes via Flash LLM"
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from last checkpoint, skipping completed files",
+    )
     asyncio.run(main(parser.parse_args()))

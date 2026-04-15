@@ -51,23 +51,17 @@ SCC_SUB_PATTERN: re.Pattern[str] = re.compile(
 
 # (2020) 3 SCC 145 — also accepts [2020] 3 SCC 145
 # \s* (not \s+) to handle no-space OCR artifacts like (2020)3SCC145
-SCC_PATTERN: re.Pattern[str] = re.compile(
-    r"[\(\[](\d{4})[\)\]]\s*(\d+)\s*SCC\s+(\d+)"
-)
+SCC_PATTERN: re.Pattern[str] = re.compile(r"[\(\[](\d{4})[\)\]]\s*(\d+)\s*SCC\s+(\d+)")
 
 # 2020 SCC OnLine SC 1234 — case-insensitive for "OnLine" variations
-SCC_ONLINE_PATTERN: re.Pattern[str] = re.compile(
-    r"(\d{4})\s+SCC\s+[Oo]n\s*[Ll]ine\s+(\w+)\s+(\d+)"
-)
+SCC_ONLINE_PATTERN: re.Pattern[str] = re.compile(r"(\d{4})\s+SCC\s+[Oo]n\s*[Ll]ine\s+(\w+)\s+(\d+)")
 
 # --- AIR ---
 
 # AIR 2020 SC 145 — also matches A.I.R. 2020 SC 145
 # Restrict court code to known AIR_COURT_CODES to avoid false positives
 _AIR_CODES = "|".join(re.escape(k) for k in AIR_COURT_CODES)
-AIR_PATTERN: re.Pattern[str] = re.compile(
-    rf"A\.?I\.?R\.?\s+(\d{{4}})\s+({_AIR_CODES})\s+(\d+)"
-)
+AIR_PATTERN: re.Pattern[str] = re.compile(rf"A\.?I\.?R\.?\s+(\d{{4}})\s+({_AIR_CODES})\s+(\d+)")
 
 # --- Neutral citations (post-2023) ---
 
@@ -82,42 +76,30 @@ _HC_CODES = (
     "PNH|PH|AP|TEL|ORI|JHAR|CG|UTT|HP|JK|JKL|GAU|"
     "TRI|MEG|MAN|SIK|MP|CHH|LAKH"
 )
-NEUTRAL_HC_PATTERN: re.Pattern[str] = re.compile(
-    rf"(\d{{4}}):((?:{_HC_CODES})HC):(\d+)"
-)
+NEUTRAL_HC_PATTERN: re.Pattern[str] = re.compile(rf"(\d{{4}}):((?:{_HC_CODES})HC):(\d+)")
 
 # --- INSC (space-delimited, legacy) ---
 
 # 2020 INSC 145
-INSC_PATTERN: re.Pattern[str] = re.compile(
-    r"(\d{4})\s+INSC\s+(\d+)"
-)
+INSC_PATTERN: re.Pattern[str] = re.compile(r"(\d{4})\s+INSC\s+(\d+)")
 
 # --- SCR ---
 
 # [2020] 3 SCR 145
-SCR_PATTERN: re.Pattern[str] = re.compile(
-    r"[(\[](\d{4})[)\]]\s+(\d+)\s+SCR\s+(\d+)"
-)
+SCR_PATTERN: re.Pattern[str] = re.compile(r"[(\[](\d{4})[)\]]\s+(\d+)\s+SCR\s+(\d+)")
 
 # Bare SCR format (pre-1970): "3 SCR 150" or "3 S.C.R. 150"
-SCR_BARE_PATTERN: re.Pattern[str] = re.compile(
-    r"(\d{1,2})\s+S\.?C\.?R\.?\s+(\d+)"
-)
+SCR_BARE_PATTERN: re.Pattern[str] = re.compile(r"(\d{1,2})\s+S\.?C\.?R\.?\s+(\d+)")
 
 # --- CrLJ ---
 
 # 2020 CrLJ 145  (with optional dots in Cr.L.J.)
-CRLJ_PATTERN: re.Pattern[str] = re.compile(
-    r"(\d{4})\s+Cr\.?L\.?J\.?\s+(\d+)"
-)
+CRLJ_PATTERN: re.Pattern[str] = re.compile(r"(\d{4})\s+Cr\.?L\.?J\.?\s+(\d+)")
 
 # --- SCALE ---
 
 # (2020) 3 SCALE 145
-SCALE_PATTERN: re.Pattern[str] = re.compile(
-    r"\((\d{4})\)\s+(\d+)\s+SCALE\s+(\d+)"
-)
+SCALE_PATTERN: re.Pattern[str] = re.compile(r"\((\d{4})\)\s+(\d+)\s+SCALE\s+(\d+)")
 
 # --- MANU ---
 
@@ -128,8 +110,7 @@ MANU_PATTERN: re.Pattern[str] = re.compile(r"MANU/(\w+)/(\d+)/(\d{4})")
 
 # JT 2020 (3) SC 145  OR  (2020) 3 JT (SC) 145
 JT_PATTERN: re.Pattern[str] = re.compile(
-    r"(?:JT\s+(\d{4})\s+\((\d+)\)\s+(\w+)\s+(\d+)"
-    r"|\((\d{4})\)\s+(\d+)\s+JT\s+\((\w+)\)\s+(\d+))"
+    r"(?:JT\s+(\d{4})\s+\((\d+)\)\s+(\w+)\s+(\d+)" r"|\((\d{4})\)\s+(\d+)\s+JT\s+\((\w+)\)\s+(\d+))"
 )
 
 # --- High Court reporters ---
@@ -155,9 +136,7 @@ LIVELAW_PATTERN: re.Pattern[str] = re.compile(
 # --- ITR (Income Tax Reports) ---
 
 # [2020] 123 ITR 456 or (2020) 123 ITR 456
-ITR_PATTERN: re.Pattern[str] = re.compile(
-    r"[\[\(](\d{4})[\]\)]\s+(\d+)\s+ITR\s+(\d+)"
-)
+ITR_PATTERN: re.Pattern[str] = re.compile(r"[\[\(](\d{4})[\]\)]\s+(\d+)\s+ITR\s+(\d+)")
 
 # --- Taxmann ---
 
@@ -194,9 +173,7 @@ COMP_CAS_PATTERN: re.Pattern[str] = re.compile(
 # --- LLJ (Labour Law Journal) ---
 
 # 2020 LLJ 123
-LLJ_PATTERN: re.Pattern[str] = re.compile(
-    r"(\d{4})\s+LLJ\s+(\d+)"
-)
+LLJ_PATTERN: re.Pattern[str] = re.compile(r"(\d{4})\s+LLJ\s+(\d+)")
 
 # --- Generic catch-all for unknown reporter formats ---
 
@@ -204,20 +181,55 @@ LLJ_PATTERN: re.Pattern[str] = re.compile(
 # Runs LAST in extract_citations() to avoid duplicating known patterns.
 # Capped at 10 matches per document.
 GENERIC_REPORTER_PATTERN: re.Pattern[str] = re.compile(
-    r"(?:(\d{4})\s+|\((\d{4})\)\s+(?:\d+\s+)?)"
-    r"([A-Z][A-Za-z]{1,5})"
-    r"\s+(\d+)"
+    r"(?:(\d{4})\s+|\((\d{4})\)\s+(?:\d+\s+)?)" r"([A-Z][A-Za-z]{1,5})" r"\s+(\d+)"
 )
 
 # Common English words to exclude from catch-all matches
-_CATCH_ALL_STOPWORDS: frozenset[str] = frozenset({
-    "THE", "AND", "FOR", "NOT", "BUT", "WAS", "HAS", "HAD",
-    "ARE", "HIS", "HER", "ITS", "ANY", "ALL", "MAY", "CAN",
-    "ACT", "THAT", "THIS", "WITH", "FROM", "BEEN", "HAVE",
-    "ALSO", "SUCH", "UPON", "INTO", "OVER", "SAID", "CASE",
-    "COURT", "ORDER", "UNDER", "SHALL", "STATE", "INDIA",
-    "WHICH", "WHERE", "WOULD", "COULD", "SHOULD",
-})
+_CATCH_ALL_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "THE",
+        "AND",
+        "FOR",
+        "NOT",
+        "BUT",
+        "WAS",
+        "HAS",
+        "HAD",
+        "ARE",
+        "HIS",
+        "HER",
+        "ITS",
+        "ANY",
+        "ALL",
+        "MAY",
+        "CAN",
+        "ACT",
+        "THAT",
+        "THIS",
+        "WITH",
+        "FROM",
+        "BEEN",
+        "HAVE",
+        "ALSO",
+        "SUCH",
+        "UPON",
+        "INTO",
+        "OVER",
+        "SAID",
+        "CASE",
+        "COURT",
+        "ORDER",
+        "UNDER",
+        "SHALL",
+        "STATE",
+        "INDIA",
+        "WHICH",
+        "WHERE",
+        "WOULD",
+        "COULD",
+        "SHOULD",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Backward-compat aliases for state reporter patterns
@@ -255,11 +267,10 @@ _SHORT_ACT_NAMES: dict[str, str] = {
     "FERA": "Foreign Exchange Regulation Act",
     "RTI ACT": "Right to Information Act",
     "SARFAESI": "Securitisation and Reconstruction of Financial Assets "
-                "and Enforcement of Security Interest Act",
+    "and Enforcement of Security Interest Act",
     "ARBITRATION ACT": "Arbitration and Conciliation Act",
     "COMPANIES ACT": "Companies Act",
-    "SC/ST ACT": "Scheduled Castes and Scheduled Tribes "
-                 "(Prevention of Atrocities) Act",
+    "SC/ST ACT": "Scheduled Castes and Scheduled Tribes " "(Prevention of Atrocities) Act",
     "DV ACT": "Protection of Women from Domestic Violence Act",
     "MV ACT": "Motor Vehicles Act",
     "TP ACT": "Transfer of Property Act",
@@ -314,7 +325,7 @@ _SHORT_ACT_NAMES: dict[str, str] = {
     "CENTRAL EXCISE ACT": "Central Excise Act",
     "NEGOTIABLE INSTRUMENTS ACT": "Negotiable Instruments Act",
     "SARFAESI ACT": "Securitisation and Reconstruction of Financial Assets "
-                    "and Enforcement of Security Interest Act",
+    "and Enforcement of Security Interest Act",
     # --- [A3] Family ---
     "HSA": "Hindu Succession Act",
     "SMA": "Special Marriage Act",
@@ -358,7 +369,7 @@ _SHORT_ACT_NAMES: dict[str, str] = {
     "PC ACT": "Prevention of Corruption Act",
     "GCA": "General Clauses Act",
     "LARR": "Right to Fair Compensation and Transparency in Land Acquisition, "
-            "Rehabilitation and Resettlement Act",
+    "Rehabilitation and Resettlement Act",
     "LAA": "Land Acquisition Act",
     "MVA": "Motor Vehicles Act",
     "CPA": "Consumer Protection Act",
@@ -374,7 +385,7 @@ _SHORT_ACT_NAMES: dict[str, str] = {
     "FA": "Foreigners Act",
     # --- [SA3b] Aliases discovered in blind spot check ---
     "RFCTLARR ACT": "Right to Fair Compensation and Transparency in Land Acquisition, "
-                    "Rehabilitation and Resettlement Act",
+    "Rehabilitation and Resettlement Act",
     "CIVIL PROCEDURE CODE": "Code of Civil Procedure",
     "CRIMINAL PROCEDURE CODE": "Code of Criminal Procedure",
     "WILDLIFE ACT": "Wild Life (Protection) Act",
@@ -411,32 +422,86 @@ _FULL_TO_SHORT["constitution of india"] = "COI"
 
 # Year each act was enacted — used for human-readable display names.
 _ACT_YEARS: dict[str, int] = {
-    "IPC": 1860, "BNS": 2023, "CRPC": 1973, "BNSS": 2023,
-    "CPC": 1908, "IEA": 1872, "BSA": 2023, "COI": 1950,
-    "ICA": 1872, "TPA": 1882, "ACA": 1996, "IBC": 2016,
-    "PMLA": 2002, "NDPS ACT": 1985, "NI ACT": 1881, "UAPA": 1967,
-    "IT ACT": 2000, "ITA": 1961, "SARFAESI": 2002, "FEMA": 1999,
-    "RERA": 2016, "HMA": 1955, "HSA": 1956, "DV ACT": 2005,
-    "LA": 1963, "PCA": 1988, "GCA": 1897, "MVA": 1988,
-    "CPA": 2019, "DPA": 1961, "RPA": 1951,
-    "COMPETITION ACT": 2002, "CONTEMPT ACT": 1971,
-    "REGISTRATION ACT": 1908, "STAMP ACT": 1899,
-    "FACTORIES ACT": 1948, "ID ACT": 1947, "CGST ACT": 2017,
-    "EASEMENTS ACT": 1882, "SOGA": 1930, "BENAMI ACT": 1988,
-    "JJ ACT": 2015, "DPDP ACT": 2023, "LLP ACT": 2008,
-    "LOKPAL ACT": 2013, "AADHAAR ACT": 2016, "CA2013": 2013,
-    "NIA ACT": 2008, "ARMS ACT": 1959,
-    "LIMITATION ACT": 1963, "ARBITRATION ACT": 1996,
-    "COMPANIES ACT": 2013, "POCSO ACT": 2012, "RTI ACT": 2005,
-    "TADA": 1987, "SC/ST ACT": 1989, "TP ACT": 1882,
-    "MV ACT": 1988, "LAA": 1894, "IPA": 1932,
-    "INSURANCE ACT": 1938, "CE ACT": 1944,
-    "MW ACT": 1948, "EPF ACT": 1952, "SMA": 1954,
-    "NHA": 1956, "EC ACT": 1923, "TU ACT": 1926,
-    "PW ACT": 1936, "AT ACT": 1985, "GW ACT": 1890,
-    "WLP ACT": 1972, "MSMED ACT": 2006, "POCSO": 2012,
-    "BR ACT": 1949, "CUSTOMS ACT": 1962, "EP ACT": 1986,
-    "FC ACT": 1980, "LARR": 2013, "ESI ACT": 1948,
+    "IPC": 1860,
+    "BNS": 2023,
+    "CRPC": 1973,
+    "BNSS": 2023,
+    "CPC": 1908,
+    "IEA": 1872,
+    "BSA": 2023,
+    "COI": 1950,
+    "ICA": 1872,
+    "TPA": 1882,
+    "ACA": 1996,
+    "IBC": 2016,
+    "PMLA": 2002,
+    "NDPS ACT": 1985,
+    "NI ACT": 1881,
+    "UAPA": 1967,
+    "IT ACT": 2000,
+    "ITA": 1961,
+    "SARFAESI": 2002,
+    "FEMA": 1999,
+    "RERA": 2016,
+    "HMA": 1955,
+    "HSA": 1956,
+    "DV ACT": 2005,
+    "LA": 1963,
+    "PCA": 1988,
+    "GCA": 1897,
+    "MVA": 1988,
+    "CPA": 2019,
+    "DPA": 1961,
+    "RPA": 1951,
+    "COMPETITION ACT": 2002,
+    "CONTEMPT ACT": 1971,
+    "REGISTRATION ACT": 1908,
+    "STAMP ACT": 1899,
+    "FACTORIES ACT": 1948,
+    "ID ACT": 1947,
+    "CGST ACT": 2017,
+    "EASEMENTS ACT": 1882,
+    "SOGA": 1930,
+    "BENAMI ACT": 1988,
+    "JJ ACT": 2015,
+    "DPDP ACT": 2023,
+    "LLP ACT": 2008,
+    "LOKPAL ACT": 2013,
+    "AADHAAR ACT": 2016,
+    "CA2013": 2013,
+    "NIA ACT": 2008,
+    "ARMS ACT": 1959,
+    "LIMITATION ACT": 1963,
+    "ARBITRATION ACT": 1996,
+    "COMPANIES ACT": 2013,
+    "POCSO ACT": 2012,
+    "RTI ACT": 2005,
+    "TADA": 1987,
+    "SC/ST ACT": 1989,
+    "TP ACT": 1882,
+    "MV ACT": 1988,
+    "LAA": 1894,
+    "IPA": 1932,
+    "INSURANCE ACT": 1938,
+    "CE ACT": 1944,
+    "MW ACT": 1948,
+    "EPF ACT": 1952,
+    "SMA": 1954,
+    "NHA": 1956,
+    "EC ACT": 1923,
+    "TU ACT": 1926,
+    "PW ACT": 1936,
+    "AT ACT": 1985,
+    "GW ACT": 1890,
+    "WLP ACT": 1972,
+    "MSMED ACT": 2006,
+    "POCSO": 2012,
+    "BR ACT": 1949,
+    "CUSTOMS ACT": 1962,
+    "EP ACT": 1986,
+    "FC ACT": 1980,
+    "LARR": 2013,
+    "ESI ACT": 1948,
 }
 
 
@@ -467,10 +532,11 @@ def get_acts_cited_display(short_codes: list[str] | None) -> list[dict[str, str]
 
     Returns: [{"code": "IPC", "name": "Indian Penal Code, 1860"}, ...]
     """
-    return [
-        {"code": code, "name": get_act_display_name(code)}
-        for code in short_codes
-    ] if short_codes else []
+    return (
+        [{"code": code, "name": get_act_display_name(code)} for code in short_codes]
+        if short_codes
+        else []
+    )
 
 
 def normalize_act_name(raw: str) -> str:
@@ -515,24 +581,76 @@ def normalize_act_name(raw: str) -> str:
 # Acts-cited normalization & garbage filter
 # ---------------------------------------------------------------------------
 
-_ACTS_CITED_BLOCKLIST: frozenset[str] = frozenset({
-    "unknown act", "act", "code", "the act", "said act", "that act",
-    "same act", "this act", "the code", "india", "protocols",
-    "society", "principal act", "erstwhile act", "new act", "old act",
-    "subsequently", "accordingly", "therefore", "however", "moreover",
-    "state", "method",
-    # Single letters/fragments
-    "cr", "m", "s", "p", "r", "a",
-    # State names
-    "maharashtra", "rajasthan", "gujarat", "uttar pradesh", "karnataka",
-    "punjab", "haryana", "bihar", "kerala", "tamil nadu", "andhra pradesh",
-    "telangana", "madhya pradesh", "west bengal", "odisha", "assam",
-    "nct of delhi", "delhi", "goa", "jharkhand", "chhattisgarh",
-    "uttarakhand", "himachal pradesh", "jammu and kashmir",
-    "tripura", "meghalaya", "manipur", "mizoram", "nagaland",
-    "arunachal pradesh", "sikkim", "puducherry", "chandigarh",
-    "ladakh", "lakshadweep",
-})
+_ACTS_CITED_BLOCKLIST: frozenset[str] = frozenset(
+    {
+        "unknown act",
+        "act",
+        "code",
+        "the act",
+        "said act",
+        "that act",
+        "same act",
+        "this act",
+        "the code",
+        "india",
+        "protocols",
+        "society",
+        "principal act",
+        "erstwhile act",
+        "new act",
+        "old act",
+        "subsequently",
+        "accordingly",
+        "therefore",
+        "however",
+        "moreover",
+        "state",
+        "method",
+        # Single letters/fragments
+        "cr",
+        "m",
+        "s",
+        "p",
+        "r",
+        "a",
+        # State names
+        "maharashtra",
+        "rajasthan",
+        "gujarat",
+        "uttar pradesh",
+        "karnataka",
+        "punjab",
+        "haryana",
+        "bihar",
+        "kerala",
+        "tamil nadu",
+        "andhra pradesh",
+        "telangana",
+        "madhya pradesh",
+        "west bengal",
+        "odisha",
+        "assam",
+        "nct of delhi",
+        "delhi",
+        "goa",
+        "jharkhand",
+        "chhattisgarh",
+        "uttarakhand",
+        "himachal pradesh",
+        "jammu and kashmir",
+        "tripura",
+        "meghalaya",
+        "manipur",
+        "mizoram",
+        "nagaland",
+        "arunachal pradesh",
+        "sikkim",
+        "puducherry",
+        "chandigarh",
+        "ladakh",
+        "lakshadweep",
+    }
+)
 
 # Patterns to strip "Section X of " or "Article X of " prefix
 _SECTION_OF_PATTERN: re.Pattern[str] = re.compile(
@@ -626,7 +744,9 @@ def _is_valid_act_citation(name: str) -> bool:
     # (OCR noise inserting a stray letter into an otherwise valid name)
     if re.search(r"\b[A-Z]\b", stripped) and re.search(r"\s[A-Z]\s", stripped):
         # Allow known patterns like "Type A Act" or "Schedule A"
-        if not re.search(r"(?:Type|Schedule|Class|Category|Form|Part|Appendix)\s+[A-Z]\b", stripped):
+        if not re.search(
+            r"(?:Type|Schedule|Class|Category|Form|Part|Appendix)\s+[A-Z]\b", stripped
+        ):
             return False
     # Starts with lowercase letter → sentence fragment, never an act name
     if stripped[0].islower():
@@ -666,7 +786,11 @@ def _is_valid_act_citation(name: str) -> bool:
         return False
     # "[Number] [word]..." patterns that are clearly not acts
     # Catches: "16 March", "60 years", "12 levels", "22 species"
-    if re.match(r"^\d{1,4}\s+(?:March|April|May|June|July|August|September|October|November|December|January|February|years?|months?|days?|levels?|species|bodies|houses?|candidates|complainants|appellants|individuals|lanes?|acres|marks|departments|ministries)\b", stripped, re.IGNORECASE):
+    if re.match(
+        r"^\d{1,4}\s+(?:March|April|May|June|July|August|September|October|November|December|January|February|years?|months?|days?|levels?|species|bodies|houses?|candidates|complainants|appellants|individuals|lanes?|acres|marks|departments|ministries)\b",
+        stripped,
+        re.IGNORECASE,
+    ):
         return False
     # Entries starting with "[number] [uppercase word]" that look like footnotes/references
     # Catches: "1 For short", "1 Hereinafter", "3 Central Bureau", "4 lane"
@@ -805,33 +929,32 @@ def _is_valid_act_citation(name: str) -> bool:
 
 # Regex for bare reporter references (no case name attached)
 _BARE_REPORTER_RE: re.Pattern[str] = re.compile(
-    r"^[\[\(]?\d{4}[\]\)]?\s+"                    # year prefix
+    r"^[\[\(]?\d{4}[\]\)]?\s+"  # year prefix
     r"(?:"
-    r"\d+\s+SCC(?:\s+\([^)]+\))?\s+\d+"           # (2020) 3 SCC 145
-    r"|SCC\s+OnLine\s+\w+\s+\d+"                   # 2020 SCC OnLine SC 145
-    r"|AIR\s+\w+\s+\d+"                            # AIR 2020 SC 145
-    r"|INSC\s+\d+"                                 # 2020 INSC 145
-    r"|\d+\s+SCR\s+\d+"                            # [2020] 3 SCR 145
-    r"|CrLJ\s+\d+"                                 # 2020 CrLJ 145
-    r"|\d+\s+SCALE\s+\d+"                          # (2020) 3 SCALE 145
-    r"|LiveLaw\s+\(\w+\)\s+\d+"                    # 2024 LiveLaw (SC) 123
-    r"|\d+\s+ITR\s+\d+"                            # [2020] 123 ITR 456
-    r"|\d+\s+taxmann\.com\s+\d+"                   # [2020] 123 taxmann.com 456
-    r"|\d+\s+CompCas\s+\d+"                        # (2020) 123 CompCas 456
-    r"|LLJ\s+\d+"                                  # 2020 LLJ 123
-    r"|\d+\s+JT\s+(?:\(\w+\)\s+)?\d+"             # JT 2020 (3) SC 145
+    r"\d+\s+SCC(?:\s+\([^)]+\))?\s+\d+"  # (2020) 3 SCC 145
+    r"|SCC\s+OnLine\s+\w+\s+\d+"  # 2020 SCC OnLine SC 145
+    r"|AIR\s+\w+\s+\d+"  # AIR 2020 SC 145
+    r"|INSC\s+\d+"  # 2020 INSC 145
+    r"|\d+\s+SCR\s+\d+"  # [2020] 3 SCR 145
+    r"|CrLJ\s+\d+"  # 2020 CrLJ 145
+    r"|\d+\s+SCALE\s+\d+"  # (2020) 3 SCALE 145
+    r"|LiveLaw\s+\(\w+\)\s+\d+"  # 2024 LiveLaw (SC) 123
+    r"|\d+\s+ITR\s+\d+"  # [2020] 123 ITR 456
+    r"|\d+\s+taxmann\.com\s+\d+"  # [2020] 123 taxmann.com 456
+    r"|\d+\s+CompCas\s+\d+"  # (2020) 123 CompCas 456
+    r"|LLJ\s+\d+"  # 2020 LLJ 123
+    r"|\d+\s+JT\s+(?:\(\w+\)\s+)?\d+"  # JT 2020 (3) SC 145
     r")",
     re.IGNORECASE,
 )
 
 # Neutral citation format: 2023:INSC:1234 or 2023:DELHC:1234
-_BARE_NEUTRAL_RE: re.Pattern[str] = re.compile(
-    r"^\d{4}:[A-Z]{2,10}:\d+$"
-)
+_BARE_NEUTRAL_RE: re.Pattern[str] = re.compile(r"^\d{4}:[A-Z]{2,10}:\d+$")
 
 # MANU format: MANU/SC/1234/2020
 _BARE_MANU_RE: re.Pattern[str] = re.compile(
-    r"^MANU/\w+/\d+/\d{4}$", re.IGNORECASE,
+    r"^MANU/\w+/\d+/\d{4}$",
+    re.IGNORECASE,
 )
 
 # HC reporters (bare): "2020 ILR 145", "(2020) 3 BLR 145"
@@ -916,7 +1039,10 @@ def _is_valid_case_citation(text: str) -> bool:
         return False
 
     # Act names mistakenly in cases_cited
-    return not (re.search("\\b(?:Act|Code|Rules?|Regulations?),?\\s+\\d{4}\\s*$", stripped) and "v." not in stripped.lower())
+    return not (
+        re.search("\\b(?:Act|Code|Rules?|Regulations?),?\\s+\\d{4}\\s*$", stripped)
+        and "v." not in stripped.lower()
+    )
 
 
 def classify_case_citations(
@@ -972,29 +1098,50 @@ def _repair_ocr_act_name(text: str) -> str:
     - Digit corruptions in years: "z959" -> "1959"
     """
     _SPACE_BREAK_FIXES: dict[str, str] = {
-        "Cen tral": "Central", "Con tract": "Contract",
-        "Govern ment": "Government", "Limi tation": "Limitation",
-        "Consti tution": "Constitution", "Regu lation": "Regulation",
-        "Admini stration": "Administration", "Proba tion": "Probation",
-        "Arbi tration": "Arbitration", "Compen sation": "Compensation",
-        "Acqui sition": "Acquisition", "Preven tion": "Prevention",
-        "Protec tion": "Protection", "Infor mation": "Information",
-        "Repre sentation": "Representation", "Proce dure": "Procedure",
-        "Insol vency": "Insolvency", "Crimi nal": "Criminal",
-        "Sched uled": "Scheduled", "Offi cers": "Officers",
-        "Offend ers": "Offenders", "Amend ment": "Amendment",
-        "Munici pal": "Municipal", "Elec tricity": "Electricity",
+        "Cen tral": "Central",
+        "Con tract": "Contract",
+        "Govern ment": "Government",
+        "Limi tation": "Limitation",
+        "Consti tution": "Constitution",
+        "Regu lation": "Regulation",
+        "Admini stration": "Administration",
+        "Proba tion": "Probation",
+        "Arbi tration": "Arbitration",
+        "Compen sation": "Compensation",
+        "Acqui sition": "Acquisition",
+        "Preven tion": "Prevention",
+        "Protec tion": "Protection",
+        "Infor mation": "Information",
+        "Repre sentation": "Representation",
+        "Proce dure": "Procedure",
+        "Insol vency": "Insolvency",
+        "Crimi nal": "Criminal",
+        "Sched uled": "Scheduled",
+        "Offi cers": "Officers",
+        "Offend ers": "Offenders",
+        "Amend ment": "Amendment",
+        "Munici pal": "Municipal",
+        "Elec tricity": "Electricity",
     }
     for broken, fixed in _SPACE_BREAK_FIXES.items():
         text = text.replace(broken, fixed)
 
     _LETTER_FIXES: dict[str, str] = {
-        "Cootract": "Contract", "Cede": "Code", "Ptobation": "Probation",
-        "Linlitation": "Limitation", "Offendets": "Offenders",
-        "Offeuders": "Offenders", "lnciia": "India", "lndia": "India",
-        "Iudia": "India", "Iadian": "Indian", "Peuai": "Penal",
-        "Evideoce": "Evidence", "Crimiual": "Criminal",
-        "Cousumer": "Consumer", "Represeutation": "Representation",
+        "Cootract": "Contract",
+        "Cede": "Code",
+        "Ptobation": "Probation",
+        "Linlitation": "Limitation",
+        "Offendets": "Offenders",
+        "Offeuders": "Offenders",
+        "lnciia": "India",
+        "lndia": "India",
+        "Iudia": "India",
+        "Iadian": "Indian",
+        "Peuai": "Penal",
+        "Evideoce": "Evidence",
+        "Crimiual": "Criminal",
+        "Cousumer": "Consumer",
+        "Represeutation": "Representation",
     }
     for garbled, correct in _LETTER_FIXES.items():
         if garbled in text:
@@ -1045,12 +1192,12 @@ def normalize_acts_cited_list(raw_acts: list[str]) -> list[str]:
             # Try "Section X of [Act Name]"
             sec_match = _SECTION_OF_PATTERN.match(cleaned)
             if sec_match:
-                act_name = cleaned[sec_match.end():].strip()
+                act_name = cleaned[sec_match.end() :].strip()
             else:
                 # Try "Article X of [Act Name]"
                 art_match = _ARTICLE_OF_PATTERN.match(cleaned)
                 if art_match:
-                    act_name = cleaned[art_match.end():].strip()
+                    act_name = cleaned[art_match.end() :].strip()
                 else:
                     # Try "Section 302 IPC" (section + short code)
                     short_match = _SECTION_SHORT_EXTRACT.match(cleaned)
@@ -1123,8 +1270,7 @@ _SECTION_FULL_ACT_PATTERN: re.Pattern[str] = re.compile(
 _SEC_TOKEN = r"[\d\w]+(?:\s*\([^)]+\))*"
 _SEC_RANGE = rf"{_SEC_TOKEN}(?:\s*[-–]\s*\d+|\s+to\s+\d+)?"
 _SECTION_SHORT_ACT_PATTERN: re.Pattern[str] = re.compile(
-    r"(?:Sections?|Sec\.?|Ss\.|S\.)\s*(" + _SEC_RANGE +
-    r"(?:\s*[,/]\s*" + _SEC_RANGE + r")*"
+    r"(?:Sections?|Sec\.?|Ss\.|S\.)\s*(" + _SEC_RANGE + r"(?:\s*[,/]\s*" + _SEC_RANGE + r")*"
     r"(?:\s+(?:and|&)\s+" + _SEC_RANGE + r")?)"
     r"\s+(" + _SHORT_ACT_ALTERNATION + r")",
     re.IGNORECASE,
@@ -1213,10 +1359,10 @@ def _parse_section_list(section_str: str) -> list[str]:
         if not p:
             continue
         # Check for range: "302-304" or "302–304" (en-dash)
-        range_match = re.match(r'^(\d+)\s*[-–]\s*(\d+)$', p)
+        range_match = re.match(r"^(\d+)\s*[-–]\s*(\d+)$", p)
         if not range_match:
             # Check for "302 to 307"
-            range_match = re.match(r'^(\d+)\s+to\s+(\d+)$', p, re.IGNORECASE)
+            range_match = re.match(r"^(\d+)\s+to\s+(\d+)$", p, re.IGNORECASE)
         if range_match:
             start, end = int(range_match.group(1)), int(range_match.group(2))
             if end > start and (end - start) <= 20:  # sanity limit
@@ -1260,68 +1406,83 @@ def extract_citations(text: str) -> list[Citation]:
     # (2020) 3 SCC (Cri) 145
     for match in SCC_SUB_PATTERN.finditer(text):
         sub = match.group(3)
-        _add(Citation(
-            reporter=f"SCC ({sub})",
-            year=int(match.group(1)),
-            volume=match.group(2),
-            page=match.group(4),
-            court=None,
-            raw_text=match.group(0),
-            confidence=0.9,
-        ), match)
+        _add(
+            Citation(
+                reporter=f"SCC ({sub})",
+                year=int(match.group(1)),
+                volume=match.group(2),
+                page=match.group(4),
+                court=None,
+                raw_text=match.group(0),
+                confidence=0.9,
+            ),
+            match,
+        )
 
     # SCC -- (2020) 3 SCC 145 or [2020] 3 SCC 145
     for match in SCC_PATTERN.finditer(text):
-        _add(Citation(
-            reporter="SCC",
-            year=int(match.group(1)),
-            volume=match.group(2),
-            page=match.group(3),
-            court=None,
-            raw_text=match.group(0),
-            confidence=0.9,
-        ), match)
+        _add(
+            Citation(
+                reporter="SCC",
+                year=int(match.group(1)),
+                volume=match.group(2),
+                page=match.group(3),
+                court=None,
+                raw_text=match.group(0),
+                confidence=0.9,
+            ),
+            match,
+        )
 
     # SCC OnLine -- 2020 SCC OnLine SC 1234 (case-insensitive)
     for match in SCC_ONLINE_PATTERN.finditer(text):
         court_code = match.group(2)
-        _add(Citation(
-            reporter="SCC OnLine",
-            year=int(match.group(1)),
-            volume=None,
-            page=match.group(3),
-            court=AIR_COURT_CODES.get(court_code, court_code),
-            raw_text=match.group(0),
-            confidence=0.9,
-        ), match)
+        _add(
+            Citation(
+                reporter="SCC OnLine",
+                year=int(match.group(1)),
+                volume=None,
+                page=match.group(3),
+                court=AIR_COURT_CODES.get(court_code, court_code),
+                raw_text=match.group(0),
+                confidence=0.9,
+            ),
+            match,
+        )
 
     # AIR -- AIR 2020 SC 145 or A.I.R. 2020 SC 145
     for match in AIR_PATTERN.finditer(text):
         court_code = match.group(2)
-        _add(Citation(
-            reporter="AIR",
-            year=int(match.group(1)),
-            volume=None,
-            page=match.group(3),
-            court=AIR_COURT_CODES.get(court_code, court_code),
-            raw_text=match.group(0),
-            confidence=0.9,
-        ), match)
+        _add(
+            Citation(
+                reporter="AIR",
+                year=int(match.group(1)),
+                volume=None,
+                page=match.group(3),
+                court=AIR_COURT_CODES.get(court_code, court_code),
+                raw_text=match.group(0),
+                confidence=0.9,
+            ),
+            match,
+        )
 
     # Neutral SC -- 2023:INSC:1234
     # Process SC first and record spans so HC matching can skip overlaps
     sc_spans: list[tuple[int, int]] = []
     for match in NEUTRAL_SC_PATTERN.finditer(text):
         sc_spans.append((match.start(), match.end()))
-        _add(Citation(
-            reporter="INSC",
-            year=int(match.group(1)),
-            volume=None,
-            page=match.group(2),
-            court="Supreme Court of India",
-            raw_text=match.group(0),
-            confidence=0.95,
-        ), match)
+        _add(
+            Citation(
+                reporter="INSC",
+                year=int(match.group(1)),
+                volume=None,
+                page=match.group(2),
+                court="Supreme Court of India",
+                raw_text=match.group(0),
+                confidence=0.95,
+            ),
+            match,
+        )
 
     # Neutral HC -- 2023:DELHC:1234, 2023:BOMHC:1234
     # Skip any match whose position overlaps a previously matched SC span
@@ -1329,205 +1490,251 @@ def extract_citations(text: str) -> list[Citation]:
         if any(start <= match.start() < end for start, end in sc_spans):
             continue
         court_code = match.group(2)
-        _add(Citation(
-            reporter="Neutral",
-            year=int(match.group(1)),
-            volume=None,
-            page=match.group(3),
-            court=court_code,
-            raw_text=match.group(0),
-            confidence=0.95,
-        ), match)
+        _add(
+            Citation(
+                reporter="Neutral",
+                year=int(match.group(1)),
+                volume=None,
+                page=match.group(3),
+                court=court_code,
+                raw_text=match.group(0),
+                confidence=0.95,
+            ),
+            match,
+        )
 
     # INSC (space-delimited, legacy) -- 2020 INSC 145
     for match in INSC_PATTERN.finditer(text):
-        _add(Citation(
-            reporter="INSC",
-            year=int(match.group(1)),
-            volume=None,
-            page=match.group(2),
-            court="Supreme Court of India",
-            raw_text=match.group(0),
-            confidence=0.95,
-        ), match)
+        _add(
+            Citation(
+                reporter="INSC",
+                year=int(match.group(1)),
+                volume=None,
+                page=match.group(2),
+                court="Supreme Court of India",
+                raw_text=match.group(0),
+                confidence=0.95,
+            ),
+            match,
+        )
 
     # SCR -- [2020] 3 SCR 145
     for match in SCR_PATTERN.finditer(text):
-        _add(Citation(
-            reporter="SCR",
-            year=int(match.group(1)),
-            volume=match.group(2),
-            page=match.group(3),
-            court=None,
-            raw_text=match.group(0),
-            confidence=0.9,
-        ), match)
+        _add(
+            Citation(
+                reporter="SCR",
+                year=int(match.group(1)),
+                volume=match.group(2),
+                page=match.group(3),
+                court=None,
+                raw_text=match.group(0),
+                confidence=0.9,
+            ),
+            match,
+        )
 
     # Bare SCR -- 3 SCR 150 (pre-1970, no year bracket)
     for match in SCR_BARE_PATTERN.finditer(text):
         m_start, m_end = match.start(), match.end()
         if any(not (m_end <= s_start or m_start >= s_end) for s_start, s_end in seen_spans):
             continue
-        _add(Citation(
-            reporter="SCR",
-            year=None,
-            volume=match.group(1),
-            page=match.group(2),
-            court=None,
-            raw_text=match.group(0),
-            confidence=0.7,
-        ), match)
+        _add(
+            Citation(
+                reporter="SCR",
+                year=None,
+                volume=match.group(1),
+                page=match.group(2),
+                court=None,
+                raw_text=match.group(0),
+                confidence=0.7,
+            ),
+            match,
+        )
 
     # CrLJ -- 2020 CrLJ 145
     for match in CRLJ_PATTERN.finditer(text):
-        _add(Citation(
-            reporter="CrLJ",
-            year=int(match.group(1)),
-            volume=None,
-            page=match.group(2),
-            court=None,
-            raw_text=match.group(0),
-            confidence=0.8,
-        ), match)
+        _add(
+            Citation(
+                reporter="CrLJ",
+                year=int(match.group(1)),
+                volume=None,
+                page=match.group(2),
+                court=None,
+                raw_text=match.group(0),
+                confidence=0.8,
+            ),
+            match,
+        )
 
     # SCALE -- (2020) 3 SCALE 145
     for match in SCALE_PATTERN.finditer(text):
-        _add(Citation(
-            reporter="SCALE",
-            year=int(match.group(1)),
-            volume=match.group(2),
-            page=match.group(3),
-            court=None,
-            raw_text=match.group(0),
-            confidence=0.8,
-        ), match)
+        _add(
+            Citation(
+                reporter="SCALE",
+                year=int(match.group(1)),
+                volume=match.group(2),
+                page=match.group(3),
+                court=None,
+                raw_text=match.group(0),
+                confidence=0.8,
+            ),
+            match,
+        )
 
     # MANU -- MANU/SC/1234/2020
     for match in MANU_PATTERN.finditer(text):
-        _add(Citation(
-            reporter="MANU",
-            year=int(match.group(3)),
-            volume=None,
-            page=match.group(2),
-            court=match.group(1),
-            raw_text=match.group(0),
-            confidence=0.8,
-        ), match)
+        _add(
+            Citation(
+                reporter="MANU",
+                year=int(match.group(3)),
+                volume=None,
+                page=match.group(2),
+                court=match.group(1),
+                raw_text=match.group(0),
+                confidence=0.8,
+            ),
+            match,
+        )
 
     # JT -- JT 2020 (3) SC 145  OR  (2020) 3 JT (SC) 145
     for match in JT_PATTERN.finditer(text):
         if match.group(1) is not None:
             # First alternative: JT 2020 (3) SC 145
-            _add(Citation(
-                reporter="JT",
-                year=int(match.group(1)),
-                volume=match.group(2),
-                page=match.group(4),
-                court=match.group(3),
-                raw_text=match.group(0),
-                confidence=0.8,
-            ))
+            _add(
+                Citation(
+                    reporter="JT",
+                    year=int(match.group(1)),
+                    volume=match.group(2),
+                    page=match.group(4),
+                    court=match.group(3),
+                    raw_text=match.group(0),
+                    confidence=0.8,
+                )
+            )
         else:
             # Second alternative: (2020) 3 JT (SC) 145
-            _add(Citation(
-                reporter="JT",
-                year=int(match.group(5)),
-                volume=match.group(6),
-                page=match.group(8),
-                court=match.group(7),
-                raw_text=match.group(0),
-                confidence=0.8,
-            ))
+            _add(
+                Citation(
+                    reporter="JT",
+                    year=int(match.group(5)),
+                    volume=match.group(6),
+                    page=match.group(8),
+                    court=match.group(7),
+                    raw_text=match.group(0),
+                    confidence=0.8,
+                )
+            )
 
     # HC reporters -- ILR, MLJ, KLT, BLR, GLR, ALJ, DLT, ALD, CLT, PLR,
     #                  DRJ, KHC, RLW
     for match in HC_REPORTER_PATTERN.finditer(text):
         year = match.group(1) or match.group(2)
         reporter_name = match.group(3).upper()
-        _add(Citation(
-            reporter=reporter_name,
-            year=int(year),
-            volume=None,
-            page=match.group(4),
-            court=None,
-            raw_text=match.group(0),
-            confidence=0.8,
-        ), match)
+        _add(
+            Citation(
+                reporter=reporter_name,
+                year=int(year),
+                volume=None,
+                page=match.group(4),
+                court=None,
+                raw_text=match.group(0),
+                confidence=0.8,
+            ),
+            match,
+        )
 
     # LiveLaw -- 2024 LiveLaw (SC) 123
     for match in LIVELAW_PATTERN.finditer(text):
-        _add(Citation(
-            reporter="LiveLaw",
-            year=int(match.group(1)),
-            volume=None,
-            page=match.group(3),
-            court=match.group(2),
-            raw_text=match.group(0),
-            confidence=0.8,
-        ), match)
+        _add(
+            Citation(
+                reporter="LiveLaw",
+                year=int(match.group(1)),
+                volume=None,
+                page=match.group(3),
+                court=match.group(2),
+                raw_text=match.group(0),
+                confidence=0.8,
+            ),
+            match,
+        )
 
     # ITR -- [2020] 123 ITR 456
     for match in ITR_PATTERN.finditer(text):
-        _add(Citation(
-            reporter="ITR",
-            year=int(match.group(1)),
-            volume=match.group(2),
-            page=match.group(3),
-            court=None,
-            raw_text=match.group(0),
-            confidence=0.8,
-        ), match)
+        _add(
+            Citation(
+                reporter="ITR",
+                year=int(match.group(1)),
+                volume=match.group(2),
+                page=match.group(3),
+                court=None,
+                raw_text=match.group(0),
+                confidence=0.8,
+            ),
+            match,
+        )
 
     # Taxmann -- [2020] 123 taxmann.com 456
     for match in TAXMANN_PATTERN.finditer(text):
-        _add(Citation(
-            reporter="Taxmann",
-            year=int(match.group(1)),
-            volume=match.group(2),
-            page=match.group(3),
-            court=None,
-            raw_text=match.group(0),
-            confidence=0.8,
-        ), match)
+        _add(
+            Citation(
+                reporter="Taxmann",
+                year=int(match.group(1)),
+                volume=match.group(2),
+                page=match.group(3),
+                court=None,
+                raw_text=match.group(0),
+                confidence=0.8,
+            ),
+            match,
+        )
 
     # Company Cases -- (2020) 123 CompCas 456
     for match in COMP_CAS_PATTERN.finditer(text):
-        _add(Citation(
-            reporter="CompCas",
-            year=int(match.group(1)),
-            volume=match.group(2),
-            page=match.group(3),
-            court=None,
-            raw_text=match.group(0),
-            confidence=0.8,
-        ), match)
+        _add(
+            Citation(
+                reporter="CompCas",
+                year=int(match.group(1)),
+                volume=match.group(2),
+                page=match.group(3),
+                court=None,
+                raw_text=match.group(0),
+                confidence=0.8,
+            ),
+            match,
+        )
 
     # LLJ -- 2020 LLJ 123
     for match in LLJ_PATTERN.finditer(text):
-        _add(Citation(
-            reporter="LLJ",
-            year=int(match.group(1)),
-            volume=None,
-            page=match.group(2),
-            court=None,
-            raw_text=match.group(0),
-            confidence=0.8,
-        ), match)
+        _add(
+            Citation(
+                reporter="LLJ",
+                year=int(match.group(1)),
+                volume=None,
+                page=match.group(2),
+                court=None,
+                raw_text=match.group(0),
+                confidence=0.8,
+            ),
+            match,
+        )
 
     # Name-based citations -- "in Kesavananda Bharati v. State of Kerala"
     for match in NAME_CITATION_PATTERN.finditer(text):
         petitioner_name = match.group(1).strip().rstrip(".")
         respondent_name = match.group(2).strip().rstrip(".")
         case_name = f"{petitioner_name} v. {respondent_name}"
-        _add(Citation(
-            reporter="NameCitation",
-            year=0,  # Unknown from name alone
-            volume=None,
-            page="0",
-            court=None,
-            raw_text=case_name,
-            confidence=0.3,
-        ), match)
+        _add(
+            Citation(
+                reporter="NameCitation",
+                year=0,  # Unknown from name alone
+                volume=None,
+                page="0",
+                court=None,
+                raw_text=case_name,
+                confidence=0.3,
+            ),
+            match,
+        )
 
     # --- Catch-all for unknown reporters --- runs LAST, skips known spans ---
     catch_all_count = 0
@@ -1536,24 +1743,24 @@ def extract_citations(text: str) -> list[Citation]:
             break
         # Skip if this span overlaps any already-matched span
         m_start, m_end = match.start(), match.end()
-        if any(
-            not (m_end <= s_start or m_start >= s_end)
-            for s_start, s_end in seen_spans
-        ):
+        if any(not (m_end <= s_start or m_start >= s_end) for s_start, s_end in seen_spans):
             continue
         year = match.group(1) or match.group(2)
         reporter_name = match.group(3)
         if reporter_name.upper() in _CATCH_ALL_STOPWORDS:
             continue
-        _add(Citation(
-            reporter="Unknown",
-            year=int(year),
-            volume=None,
-            page=match.group(4),
-            court=None,
-            raw_text=match.group(0),
-            confidence=0.2,
-        ), match)
+        _add(
+            Citation(
+                reporter="Unknown",
+                year=int(year),
+                volume=None,
+                page=match.group(4),
+                court=None,
+                raw_text=match.group(0),
+                confidence=0.2,
+            ),
+            match,
+        )
         catch_all_count += 1
 
     return citations
@@ -1591,12 +1798,14 @@ def extract_acts_cited(text: str) -> list[ActReference]:
         act_name = match.group(2).strip()
         year_str = match.group(3)
         year = int(year_str) if year_str else None
-        _add(ActReference(
-            act_name=act_name,
-            section=section,
-            year=year,
-            raw_text=match.group(0).strip(),
-        ))
+        _add(
+            ActReference(
+                act_name=act_name,
+                section=section,
+                year=year,
+                raw_text=match.group(0).strip(),
+            )
+        )
 
     # Read with: "Section 302 read with Section 34 IPC"
     for match in _READ_WITH_PATTERN.finditer(text):
@@ -1620,19 +1829,23 @@ def extract_acts_cited(text: str) -> list[ActReference]:
         sections = _parse_section_list(section_str)
         if len(sections) > 1:
             for sec in sections:
-                _add(ActReference(
+                _add(
+                    ActReference(
+                        act_name=act_name,
+                        section=sec,
+                        year=None,
+                        raw_text=raw,
+                    )
+                )
+        else:
+            _add(
+                ActReference(
                     act_name=act_name,
-                    section=sec,
+                    section=section_str,
                     year=None,
                     raw_text=raw,
-                ))
-        else:
-            _add(ActReference(
-                act_name=act_name,
-                section=section_str,
-                year=None,
-                raw_text=raw,
-            ))
+                )
+            )
 
     # Article "read with" references: "Article 21 read with Article 14"
     for match in _ARTICLE_READ_WITH_PATTERN.finditer(text):
@@ -1642,8 +1855,12 @@ def extract_acts_cited(text: str) -> list[ActReference]:
         act_name = "Constitution of India"
         year = 1950
         raw = match.group(0).strip()
-        _add(ActReference(act_name=act_name, section=f"Article {article1}", year=year, raw_text=raw))
-        _add(ActReference(act_name=act_name, section=f"Article {article2}", year=year, raw_text=raw))
+        _add(
+            ActReference(act_name=act_name, section=f"Article {article1}", year=year, raw_text=raw)
+        )
+        _add(
+            ActReference(act_name=act_name, section=f"Article {article2}", year=year, raw_text=raw)
+        )
 
     # Article references: "Article 21 of the Constitution"
     for match in _ARTICLE_PATTERN.finditer(text):
@@ -1652,7 +1869,7 @@ def extract_acts_cited(text: str) -> list[ActReference]:
         # In Indian legal context, bare "Article N" for N <= 395 means Constitution
         article_num = None
         try:
-            num_match = re.match(r'(\d+)', article)
+            num_match = re.match(r"(\d+)", article)
             article_num = int(num_match.group(1)) if num_match else None
         except (ValueError, AttributeError):
             pass
@@ -1665,23 +1882,27 @@ def extract_acts_cited(text: str) -> list[ActReference]:
             year = None
 
         raw = match.group(0).strip()
-        _add(ActReference(
-            act_name=act_name,
-            section=f"Article {article}",
-            year=year,
-            raw_text=raw,
-        ))
+        _add(
+            ActReference(
+                act_name=act_name,
+                section=f"Article {article}",
+                year=year,
+                raw_text=raw,
+            )
+        )
 
     # Order/Rule references: "Order 39 Rule 1 CPC"
     for match in _ORDER_RULE_PATTERN.finditer(text):
         order = match.group(1)
         rule = match.group(2)
-        _add(ActReference(
-            act_name="Code of Civil Procedure",
-            section=f"Order {order} Rule {rule}",
-            year=1908,
-            raw_text=match.group(0).strip(),
-        ))
+        _add(
+            ActReference(
+                act_name="Code of Civil Procedure",
+                section=f"Order {order} Rule {rule}",
+                year=1908,
+                raw_text=match.group(0).strip(),
+            )
+        )
 
     # Regulation references: "Regulation 3 of SEBI (LODR) Regulations"
     for match in _REGULATION_PATTERN.finditer(text):
@@ -1692,12 +1913,14 @@ def extract_acts_cited(text: str) -> list[ActReference]:
         short_code = re.sub(r",?\s*\d{4}\s*$", "", short_code).strip()
         short_code = re.sub(r"\s+REGULATIONS?\s*$", "", short_code).strip()
         act_name = _SHORT_ACT_NAMES.get(short_code, act_raw)
-        _add(ActReference(
-            act_name=act_name,
-            section=f"Regulation {reg_num}",
-            year=None,
-            raw_text=match.group(0).strip(),
-        ))
+        _add(
+            ActReference(
+                act_name=act_name,
+                section=f"Regulation {reg_num}",
+                year=None,
+                raw_text=match.group(0).strip(),
+            )
+        )
 
     # Clause references: "Clause 49 of the Listing Agreement"
     for match in _CLAUSE_PATTERN.finditer(text):
@@ -1706,12 +1929,14 @@ def extract_acts_cited(text: str) -> list[ActReference]:
         short_code = re.sub(r"\s+", " ", act_raw).upper()
         short_code = re.sub(r",?\s*\d{4}\s*$", "", short_code).strip()
         act_name = _SHORT_ACT_NAMES.get(short_code, act_raw)
-        _add(ActReference(
-            act_name=act_name,
-            section=f"Clause {clause_num}",
-            year=None,
-            raw_text=match.group(0).strip(),
-        ))
+        _add(
+            ActReference(
+                act_name=act_name,
+                section=f"Clause {clause_num}",
+                year=None,
+                raw_text=match.group(0).strip(),
+            )
+        )
 
     return references
 
@@ -1744,9 +1969,7 @@ def normalize_citation(citation: str) -> str:
     normalized = re.sub(r"A\.?I\.?R\.?", "AIR", normalized)
 
     # Standardize SCC OnLine spacing (case-insensitive)
-    normalized = re.sub(
-        r"SCC\s+[Oo]n\s*[Ll]ine", "SCC OnLine", normalized
-    )
+    normalized = re.sub(r"SCC\s+[Oo]n\s*[Ll]ine", "SCC OnLine", normalized)
 
     # Ensure consistent bracket style for year in SCC/SCALE
     # Convert [2020] to (2020) for SCC-style citations

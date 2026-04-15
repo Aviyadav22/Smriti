@@ -57,6 +57,7 @@ class TestExtractHeadnoteText:
 
     def test_json_string_parsed(self) -> None:
         import json
+
         headnotes = json.dumps([{"proposition": "Parsed from JSON"}])
         assert _extract_headnote_text(headnotes) == "Parsed from JSON"
 

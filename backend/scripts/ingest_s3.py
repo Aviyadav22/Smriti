@@ -74,8 +74,9 @@ async def _rebuild_fts_vectors() -> None:
     """
     logger.info("Rebuilding FTS tsvectors for cases with NULL searchable_text...")
     async with async_session_factory() as db:
-        result = await db.execute(text(
-            """
+        result = await db.execute(
+            text(
+                """
             UPDATE cases SET searchable_text =
                 setweight(to_tsvector('english', COALESCE(title, '')), 'A') ||
                 setweight(to_tsvector('english', COALESCE(citation, '')), 'A') ||
@@ -96,7 +97,8 @@ async def _rebuild_fts_vectors() -> None:
                 setweight(to_tsvector('english', COALESCE(left(full_text, 500000), '')), 'D')
             WHERE searchable_text IS NULL
             """
-        ))
+            )
+        )
         await db.commit()
     logger.info("FTS tsvector rebuild complete — %d rows updated", result.rowcount)
 
@@ -117,6 +119,7 @@ def _build_key_pool() -> list[str]:
             return keys
     # Fallback to single key from settings
     return [settings.gemini_api_key]
+
 
 async def _validate_api_keys(llm_pool: list) -> list[int]:
     """Validate each API key with a minimal probe call. Returns indices of bad keys."""
@@ -145,6 +148,7 @@ TRACKER_DB = Path("data/ingest_tracker.db")
 # ---------------------------------------------------------------------------
 # Graceful shutdown
 # ---------------------------------------------------------------------------
+
 
 def _make_shutdown_handler(
     shutdown_event: asyncio.Event,
@@ -376,7 +380,8 @@ class IngestTracker:
         """Get doc_keys that failed at a specific stage."""
         with self._lock:
             return [
-                row[0] for row in self._conn.execute(
+                row[0]
+                for row in self._conn.execute(
                     f"SELECT doc_key FROM ingestion_progress "
                     f"WHERE stage_{stage} = 0 AND last_error IS NOT NULL",
                 ).fetchall()
@@ -386,7 +391,8 @@ class IngestTracker:
         """Get doc_keys with a specific quality tier."""
         with self._lock:
             return [
-                row[0] for row in self._conn.execute(
+                row[0]
+                for row in self._conn.execute(
                     "SELECT doc_key FROM ingestion_progress WHERE quality_tier = ?",
                     (tier,),
                 ).fetchall()
@@ -570,6 +576,7 @@ def load_parquet_metadata(parquet_path: Path) -> dict[str, dict]:
 def _strip_language_suffix(stem: str) -> str:
     """Strip trailing language suffix (_EN, _HI, etc.) from PDF stem."""
     import re
+
     return re.sub(r"_[A-Z]{2}$", "", stem)
 
 
@@ -665,9 +672,7 @@ class CircuitBreaker:
             if self._failures >= self._threshold:
                 self._state = "open"
                 self._opened_at = time.monotonic()
-                logger.critical(
-                    "Circuit breaker OPEN: %d consecutive failures", self._failures
-                )
+                logger.critical("Circuit breaker OPEN: %d consecutive failures", self._failures)
                 return True
             return False
 
@@ -764,8 +769,11 @@ async def ingest_year(
     embedder_pool: list[GeminiEmbedder] = []
 
     if use_vertexai:
-        logger.info("Using Vertex AI (project=%s, location=%s)",
-                     settings.gemini_vertexai_project, settings.gemini_vertexai_location)
+        logger.info(
+            "Using Vertex AI (project=%s, location=%s)",
+            settings.gemini_vertexai_project,
+            settings.gemini_vertexai_location,
+        )
         llm_kwargs: dict[str, Any] = {"use_vertexai": True}
         if model_override:
             llm_kwargs["model"] = model_override
@@ -784,8 +792,12 @@ async def ingest_year(
         logger.info("Using %d Gemini API key(s) for parallel ingestion", len(api_keys))
         if rpm_limit > 0:
             llm_limiter_pool = RateLimiterPool(rpm_per_key=rpm_limit)
-            embed_limiter_pool = RateLimiterPool(rpm_per_key=rpm_limit * 5)  # Embeddings are cheaper, allow 5x
-            logger.info("Rate limiting enabled: LLM %d RPM, Embed %d RPM per key", rpm_limit, rpm_limit * 5)
+            embed_limiter_pool = RateLimiterPool(
+                rpm_per_key=rpm_limit * 5
+            )  # Embeddings are cheaper, allow 5x
+            logger.info(
+                "Rate limiting enabled: LLM %d RPM, Embed %d RPM per key", rpm_limit, rpm_limit * 5
+            )
         else:
             logger.info("Rate limiting disabled (--rpm-limit 0)")
 
@@ -804,8 +816,15 @@ async def ingest_year(
     if bad_indices:
         if len(bad_indices) == len(llm_pool):
             logger.error("ALL %d API keys are invalid — aborting", len(llm_pool))
-            return {"skipped": len(pdfs_to_process) if 'pdfs_to_process' in dir() else 0, "error_keys": len(llm_pool)}
-        logger.warning("Removing %d invalid API key(s), continuing with %d", len(bad_indices), len(llm_pool) - len(bad_indices))
+            return {
+                "skipped": len(pdfs_to_process) if "pdfs_to_process" in dir() else 0,
+                "error_keys": len(llm_pool),
+            }
+        logger.warning(
+            "Removing %d invalid API key(s), continuing with %d",
+            len(bad_indices),
+            len(llm_pool) - len(bad_indices),
+        )
         for idx in sorted(bad_indices, reverse=True):
             llm_pool.pop(idx)
             embedder_pool.pop(idx)
@@ -828,10 +847,16 @@ async def ingest_year(
             logger.error(
                 "DIMENSION MISMATCH: embedder produces %d-dim vectors but "
                 "Pinecone index expects %d-dim — aborting to prevent index corruption",
-                embed_dim, pc_dim,
+                embed_dim,
+                pc_dim,
             )
-            return {"skipped": len(pdfs_to_process) if 'pdfs_to_process' in dir() else 0, "error_dimension": 1}
-        logger.info("Pre-flight OK: embedding dim=%d, Pinecone dim=%s", embed_dim, pc_dim or "empty index")
+            return {
+                "skipped": len(pdfs_to_process) if "pdfs_to_process" in dir() else 0,
+                "error_dimension": 1,
+            }
+        logger.info(
+            "Pre-flight OK: embedding dim=%d, Pinecone dim=%s", embed_dim, pc_dim or "empty index"
+        )
     except Exception as exc:
         logger.warning("Pre-flight dimension check failed (non-fatal): %s", exc)
 
@@ -848,15 +873,19 @@ async def ingest_year(
     start_time = time.monotonic()
 
     async def _process_one(
-        pdf_path: Path, llm: GeminiLLM, embedder: GeminiEmbedder, api_key: str,
+        pdf_path: Path,
+        llm: GeminiLLM,
+        embedder: GeminiEmbedder,
+        api_key: str,
     ) -> None:
         nonlocal processed, total_attempted
         doc_key = f"year={year}/{pdf_path.name}"
         await asyncio.to_thread(tracker.init_doc, doc_key, year)
 
         # Skip if already processed or permanently failed
-        if await asyncio.to_thread(tracker.is_processed, doc_key) or \
-           await asyncio.to_thread(tracker.is_permanently_failed, doc_key):
+        if await asyncio.to_thread(tracker.is_processed, doc_key) or await asyncio.to_thread(
+            tracker.is_permanently_failed, doc_key
+        ):
             stats["skipped"] += 1
             total_attempted += 1
             return
@@ -913,16 +942,27 @@ async def ingest_year(
                 rate = processed / max(elapsed / 60, 0.01)  # cases/minute
                 remaining = len(pdfs_to_process) - total_attempted
                 eta_min = remaining / max(rate, 0.01)
-                eta_str = f"{int(eta_min // 60)}h {int(eta_min % 60)}m" if eta_min >= 60 else f"{int(eta_min)}m"
+                eta_str = (
+                    f"{int(eta_min // 60)}h {int(eta_min % 60)}m"
+                    if eta_min >= 60
+                    else f"{int(eta_min)}m"
+                )
                 logger.info(
                     "[%d] %d/%d (%.1f%%) | %.1f cases/min | ETA: %s | %d skipped | %d failed",
-                    year, processed, len(pdfs_to_process),
+                    year,
+                    processed,
+                    len(pdfs_to_process),
                     total_attempted / max(len(pdfs_to_process), 1) * 100,
-                    rate, eta_str, stats["skipped"], stats["failed"],
+                    rate,
+                    eta_str,
+                    stats["skipped"],
+                    stats["failed"],
                 )
         except TimeoutError:
             logger.error("Timeout after 900s for %s", doc_key)
-            await asyncio.to_thread(tracker.mark_failed, doc_key, "timeout_900s", increment_retry=True)
+            await asyncio.to_thread(
+                tracker.mark_failed, doc_key, "timeout_900s", increment_retry=True
+            )
             stats["failed"] += 1
             total_attempted += 1
             await breaker.record_failure()
@@ -956,7 +996,9 @@ async def ingest_year(
                 pdf_path, _llm, _embedder, _api_key = item
                 skip_key = f"year={year}/{pdf_path.name}"
                 await asyncio.to_thread(
-                    tracker.mark_failed, skip_key, "shutdown_skip",
+                    tracker.mark_failed,
+                    skip_key,
+                    "shutdown_skip",
                     increment_retry=False,
                 )
                 stats["skipped"] += 1
@@ -975,12 +1017,16 @@ async def ingest_year(
                         pdf_path, _llm, _embedder, _api_key = item
                         skip_key = f"year={year}/{pdf_path.name}"
                         await asyncio.to_thread(
-                            tracker.mark_failed, skip_key, "circuit_breaker_timeout",
+                            tracker.mark_failed,
+                            skip_key,
+                            "circuit_breaker_timeout",
                             increment_retry=False,
                         )
                         stats["skipped"] += 1
                         queue.task_done()
-                        logger.warning("Worker %d: breaker open >5min, skipping %s", worker_id, skip_key)
+                        logger.warning(
+                            "Worker %d: breaker open >5min, skipping %s", worker_id, skip_key
+                        )
                         continue
                     # Re-queue the item and wait for cooldown before retrying
                     await queue.put(item)
@@ -1032,14 +1078,30 @@ def parse_args() -> argparse.Namespace:
     run_parser.add_argument("--year-to", type=int, help="End year (inclusive)")
     run_parser.add_argument("--resume", action="store_true", help="Resume interrupted run")
     run_parser.add_argument("--limit", type=int, default=None, help="Max judgments per year")
-    run_parser.add_argument("--concurrency", type=int, default=20, help="Concurrent tasks (default: 20)")
-    run_parser.add_argument("--rpm-limit", type=int, default=30, help="Max Gemini LLM API requests per minute per key (0 = no limit)")
+    run_parser.add_argument(
+        "--concurrency", type=int, default=20, help="Concurrent tasks (default: 20)"
+    )
+    run_parser.add_argument(
+        "--rpm-limit",
+        type=int,
+        default=30,
+        help="Max Gemini LLM API requests per minute per key (0 = no limit)",
+    )
     run_parser.add_argument("--data-dir", type=str, default="data", help="Data directory")
-    run_parser.add_argument("--model", type=str, default=None, help="Override Gemini model (default: from settings)")
-    run_parser.add_argument("--total-limit", type=int, default=None,
-                            help="Max total judgments across ALL years (stops when reached)")
-    run_parser.add_argument("--disable-fts-trigger", action="store_true",
-                            help="Disable FTS trigger during bulk ingestion for 30-40%% faster inserts. Rebuilds tsvectors in batch at the end.")
+    run_parser.add_argument(
+        "--model", type=str, default=None, help="Override Gemini model (default: from settings)"
+    )
+    run_parser.add_argument(
+        "--total-limit",
+        type=int,
+        default=None,
+        help="Max total judgments across ALL years (stops when reached)",
+    )
+    run_parser.add_argument(
+        "--disable-fts-trigger",
+        action="store_true",
+        help="Disable FTS trigger during bulk ingestion for 30-40%% faster inserts. Rebuilds tsvectors in batch at the end.",
+    )
 
     # --- report command ---
     report_parser = subparsers.add_parser("report", help="Show ingestion quality report")
@@ -1047,7 +1109,9 @@ def parse_args() -> argparse.Namespace:
 
     # --- retry command ---
     retry_parser = subparsers.add_parser("retry", help="Retry failed items at a specific stage")
-    retry_parser.add_argument("--stage", required=True, choices=["extracted", "metadata", "embedded", "stored", "graphed"])
+    retry_parser.add_argument(
+        "--stage", required=True, choices=["extracted", "metadata", "embedded", "stored", "graphed"]
+    )
     retry_parser.add_argument("--quality-tier", choices=["high", "medium", "low"])
     retry_parser.add_argument("--concurrency", type=int, default=5)
     retry_parser.add_argument("--data-dir", type=str, default="data")
@@ -1163,11 +1227,17 @@ async def main() -> None:
         try:
             await _rebuild_fts_vectors()
         except Exception as exc:
-            logger.error("FTS rebuild failed: %s. Run manually: UPDATE cases SET searchable_text = ... WHERE searchable_text IS NULL", exc)
+            logger.error(
+                "FTS rebuild failed: %s. Run manually: UPDATE cases SET searchable_text = ... WHERE searchable_text IS NULL",
+                exc,
+            )
         try:
             await _enable_fts_trigger()
         except Exception as exc:
-            logger.error("Could not re-enable FTS trigger: %s. Run: ALTER TABLE cases ENABLE TRIGGER cases_searchable_text_trigger", exc)
+            logger.error(
+                "Could not re-enable FTS trigger: %s. Run: ALTER TABLE cases ENABLE TRIGGER cases_searchable_text_trigger",
+                exc,
+            )
 
     logger.info("=== INGESTION COMPLETE ===")
     logger.info("Total stats: %s", total_stats)
@@ -1187,6 +1257,7 @@ async def main() -> None:
         logger.warning("Neo4j cleanup failed (non-fatal): %s", exc)
     try:
         from app.db.postgres import engine as _pg_engine
+
         await _pg_engine.dispose()
         logger.info("PostgreSQL engine disposed.")
     except Exception as exc:

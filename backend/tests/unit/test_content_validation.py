@@ -1,6 +1,5 @@
 """Tests for post-extraction content validation."""
 
-
 from app.core.ingestion.metadata import (
     CaseMetadata,
     _validate_metadata_against_text,

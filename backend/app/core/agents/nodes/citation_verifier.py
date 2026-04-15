@@ -8,6 +8,7 @@ retrieved.
 This closes the hallucination gap where an LLM writes a plausible-looking citation
 like "(2023) 5 SCC 123" that was never in the search results and may not exist.
 """
+
 from __future__ import annotations
 
 import logging
@@ -46,7 +47,7 @@ logger = logging.getLogger(__name__)
 # All citation patterns we scan for, in order
 _CITATION_PATTERNS = [
     SCC_ONLINE_PATTERN,  # must come before SCC_PATTERN to avoid partial match
-    SCC_SUB_PATTERN,     # [H24] SCC (Cri), SCC (S), etc. — before SCC_PATTERN
+    SCC_SUB_PATTERN,  # [H24] SCC (Cri), SCC (S), etc. — before SCC_PATTERN
     SCC_PATTERN,
     AIR_PATTERN,
     NEUTRAL_SC_PATTERN,  # [H24] 2024:INSC:123 neutral citation
@@ -55,8 +56,8 @@ _CITATION_PATTERNS = [
     SCR_PATTERN,
     CRLJ_PATTERN,
     SCALE_PATTERN,
-    MANU_PATTERN,        # [H24] MANU/SC/1234/2024
-    HC_REPORTER_PATTERN, # [H24] ILR, DLT, BomLR, MLJ, etc.
+    MANU_PATTERN,  # [H24] MANU/SC/1234/2024
+    HC_REPORTER_PATTERN,  # [H24] ILR, DLT, BomLR, MLJ, etc.
     BLR_PATTERN,
     KLT_PATTERN,
     GLR_PATTERN,
@@ -119,9 +120,7 @@ async def verify_citations_against_db(
         try:
             # Check cases.citation
             result = await db.execute(
-                text(
-                    "SELECT 1 FROM cases WHERE citation ILIKE :pattern LIMIT 1"
-                ),
+                text("SELECT 1 FROM cases WHERE citation ILIKE :pattern LIMIT 1"),
                 {"pattern": like_pattern},
             )
             if result.first() is not None:
@@ -171,9 +170,7 @@ def check_grounding(
         List of memo citations that are ungrounded (not in search results).
     """
     # Normalize search result citations for comparison
-    search_normalized: set[str] = {
-        normalize_citation(c) for c in search_result_citations
-    }
+    search_normalized: set[str] = {normalize_citation(c) for c in search_result_citations}
 
     ungrounded: list[str] = []
     for citation in memo_citations:

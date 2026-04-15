@@ -8,6 +8,7 @@ Supports two flavours:
 * **LLMCircuitBreaker** / **LLMCircuitBreakerOpen** — legacy synchronous aliases
   kept for backwards compatibility with the LLM provider layer.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Exceptions
 # ---------------------------------------------------------------------------
+
 
 class CircuitBreakerOpen(Exception):
     """Raised when the circuit breaker is open (too many failures)."""
@@ -39,6 +41,7 @@ LLMCircuitBreakerOpen = CircuitBreakerOpen
 # ---------------------------------------------------------------------------
 # Async circuit breaker (3-state: closed / open / half_open)
 # ---------------------------------------------------------------------------
+
 
 class CircuitBreaker:
     """Async circuit breaker with half-open recovery.
@@ -120,9 +123,7 @@ class CircuitBreaker:
         async with self._lock:
             self._failures += 1
             if self._state == "half_open":
-                logger.warning(
-                    "%s circuit breaker probe failed — reopening", self._service
-                )
+                logger.warning("%s circuit breaker probe failed — reopening", self._service)
                 self._state = "open"
                 self._opened_at = time.monotonic()
                 return True
@@ -141,6 +142,7 @@ class CircuitBreaker:
 # ---------------------------------------------------------------------------
 # Sync circuit breaker (legacy LLM compat)
 # ---------------------------------------------------------------------------
+
 
 class LLMCircuitBreaker:
     """Synchronous circuit breaker for LLM API calls — trips after N consecutive failures.
@@ -174,8 +176,7 @@ class LLMCircuitBreaker:
         if self._consecutive_failures >= self._threshold:
             self._open_until = time.monotonic() + self._cooldown
             logger.warning(
-                "LLM circuit breaker TRIPPED after %d consecutive failures, "
-                "cooldown %.0fs",
+                "LLM circuit breaker TRIPPED after %d consecutive failures, " "cooldown %.0fs",
                 self._consecutive_failures,
                 self._cooldown,
             )
@@ -183,10 +184,7 @@ class LLMCircuitBreaker:
     @property
     def is_open(self) -> bool:
         """Check if circuit breaker is currently open."""
-        return (
-            self._consecutive_failures >= self._threshold
-            and time.monotonic() < self._open_until
-        )
+        return self._consecutive_failures >= self._threshold and time.monotonic() < self._open_until
 
     @property
     def failure_count(self) -> int:

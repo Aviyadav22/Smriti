@@ -1,4 +1,5 @@
 """Tests for Strategy Agent graph builder and router functions."""
+
 from __future__ import annotations
 
 import pytest
@@ -244,8 +245,7 @@ class TestBuildStrategyGraph:
         node_count = len(graph.nodes)
         # 17 user nodes + __start__ = 18
         assert node_count == 18, (
-            f"Expected 18 nodes, got {node_count}. "
-            f"Nodes: {sorted(graph.nodes)}"
+            f"Expected 18 nodes, got {node_count}. " f"Nodes: {sorted(graph.nodes)}"
         )
 
     def test_graph_has_expected_nodes(self) -> None:
@@ -272,8 +272,7 @@ class TestBuildStrategyGraph:
         }
         actual_nodes = {n for n in graph.nodes if not n.startswith("__")}
         assert expected_nodes == actual_nodes, (
-            f"Missing: {expected_nodes - actual_nodes}, "
-            f"Extra: {actual_nodes - expected_nodes}"
+            f"Missing: {expected_nodes - actual_nodes}, " f"Extra: {actual_nodes - expected_nodes}"
         )
 
     def test_graph_starts_at_analyze_facts(self) -> None:

@@ -61,9 +61,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        sa.CheckConstraint(
-            "year >= 1800 AND year <= 2200", name="ck_cases_year_range"
-        ),
+        sa.CheckConstraint("year >= 1800 AND year <= 2200", name="ck_cases_year_range"),
     )
 
     # Single-column indexes
@@ -80,18 +78,10 @@ def upgrade() -> None:
     op.create_index("ix_cases_court_case_type", "cases", ["court", "case_type"])
 
     # GIN indexes on arrays
-    op.create_index(
-        "ix_cases_keywords_gin", "cases", ["keywords"], postgresql_using="gin"
-    )
-    op.create_index(
-        "ix_cases_acts_cited_gin", "cases", ["acts_cited"], postgresql_using="gin"
-    )
-    op.create_index(
-        "ix_cases_cases_cited_gin", "cases", ["cases_cited"], postgresql_using="gin"
-    )
-    op.create_index(
-        "ix_cases_judge_gin", "cases", ["judge"], postgresql_using="gin"
-    )
+    op.create_index("ix_cases_keywords_gin", "cases", ["keywords"], postgresql_using="gin")
+    op.create_index("ix_cases_acts_cited_gin", "cases", ["acts_cited"], postgresql_using="gin")
+    op.create_index("ix_cases_cases_cited_gin", "cases", ["cases_cited"], postgresql_using="gin")
+    op.create_index("ix_cases_judge_gin", "cases", ["judge"], postgresql_using="gin")
 
     # GIN index on tsvector
     op.create_index(
@@ -117,9 +107,7 @@ def upgrade() -> None:
         sa.Column("email", sa.String(), nullable=False, unique=True),
         sa.Column("password_hash", sa.String(), nullable=False),
         sa.Column("name", sa.String(), nullable=True),
-        sa.Column(
-            "role", sa.String(), nullable=False, server_default="researcher"
-        ),
+        sa.Column("role", sa.String(), nullable=False, server_default="researcher"),
         sa.Column(
             "is_active",
             sa.Boolean(),
@@ -146,9 +134,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        sa.CheckConstraint(
-            "role IN ('admin', 'researcher', 'viewer')", name="ck_users_role"
-        ),
+        sa.CheckConstraint("role IN ('admin', 'researcher', 'viewer')", name="ck_users_role"),
     )
 
     # --- chat_sessions ---
@@ -207,9 +193,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        sa.CheckConstraint(
-            "role IN ('user', 'assistant')", name="ck_chat_messages_role"
-        ),
+        sa.CheckConstraint("role IN ('user', 'assistant')", name="ck_chat_messages_role"),
     )
 
     # --- documents ---
@@ -231,9 +215,7 @@ def upgrade() -> None:
             nullable=False,
             server_default="application/pdf",
         ),
-        sa.Column(
-            "status", sa.String(), nullable=False, server_default="pending"
-        ),
+        sa.Column("status", sa.String(), nullable=False, server_default="pending"),
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column(
             "case_id",
@@ -262,9 +244,7 @@ def upgrade() -> None:
     # --- audit_logs ---
     op.create_table(
         "audit_logs",
-        sa.Column(
-            "id", sa.BigInteger(), primary_key=True, autoincrement=True
-        ),
+        sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
         sa.Column(
             "user_id",
             UUID(as_uuid=True),

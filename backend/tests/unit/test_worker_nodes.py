@@ -1,4 +1,5 @@
 """Tests for worker_nodes module constants and configuration."""
+
 from __future__ import annotations
 
 

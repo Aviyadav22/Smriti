@@ -1,4 +1,5 @@
 """Tests for precedent strength classification based on Indian court hierarchy."""
+
 import pytest
 
 from app.core.legal.precedent_strength import (
@@ -120,9 +121,7 @@ class TestComputeEffectiveStrength:
 
     def test_binding_not_overruled_recent(self):
         """Binding + not overruled + current year -> ~1.0."""
-        score = compute_effective_strength(
-            PrecedentStrength.BINDING, overruled=False, year=2026
-        )
+        score = compute_effective_strength(PrecedentStrength.BINDING, overruled=False, year=2026)
         assert score == pytest.approx(1.0)
 
     def test_binding_overruled_heavy_penalty(self):
@@ -142,9 +141,7 @@ class TestComputeEffectiveStrength:
 
     def test_persuasive_not_overruled(self):
         """Persuasive + not overruled + current year -> 0.6."""
-        score = compute_effective_strength(
-            PrecedentStrength.PERSUASIVE, overruled=False, year=2026
-        )
+        score = compute_effective_strength(PrecedentStrength.PERSUASIVE, overruled=False, year=2026)
         assert score == pytest.approx(0.6)
 
     def test_distinguishable_not_overruled_old(self):
@@ -157,16 +154,12 @@ class TestComputeEffectiveStrength:
 
     def test_overruled_enum_value(self):
         """OVERRULED base strength gives 0.0 regardless."""
-        score = compute_effective_strength(
-            PrecedentStrength.OVERRULED, overruled=False, year=2026
-        )
+        score = compute_effective_strength(PrecedentStrength.OVERRULED, overruled=False, year=2026)
         assert score == pytest.approx(0.0)
 
     def test_none_year_no_recency_penalty(self):
         """When year is None, no recency penalty applied."""
-        score = compute_effective_strength(
-            PrecedentStrength.BINDING, overruled=False, year=None
-        )
+        score = compute_effective_strength(PrecedentStrength.BINDING, overruled=False, year=None)
         assert score == pytest.approx(1.0)
 
     def test_result_clamped_to_zero_one(self):

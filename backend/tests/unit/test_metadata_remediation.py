@@ -161,7 +161,10 @@ class TestReextractMissingFields:
             "case_description": "A case about property dispute.",
         }
         result = await reextract_missing_fields(
-            meta, "Some text", llm, ["case_description"],
+            meta,
+            "Some text",
+            llm,
+            ["case_description"],
         )
         assert result.case_description == "A case about property dispute."
 
@@ -171,7 +174,10 @@ class TestReextractMissingFields:
         llm = AsyncMock()
         llm.generate_structured.side_effect = RuntimeError("LLM error")
         result = await reextract_missing_fields(
-            meta, "Some text", llm, ["case_description"],
+            meta,
+            "Some text",
+            llm,
+            ["case_description"],
         )
         assert result.case_description is None
         assert result.title == "Test"
@@ -187,7 +193,10 @@ class TestReextractMissingFields:
             "case_description": "New description from LLM",
         }
         result = await reextract_missing_fields(
-            meta, "Some text", llm, ["case_description"],
+            meta,
+            "Some text",
+            llm,
+            ["case_description"],
         )
         assert result.case_description == "Original description"
 
@@ -197,7 +206,10 @@ class TestReextractMissingFields:
         llm = AsyncMock()
         llm.generate_structured.return_value = {}
         result = await reextract_missing_fields(
-            meta, "Some text", llm, ["outcome_summary"],
+            meta,
+            "Some text",
+            llm,
+            ["outcome_summary"],
         )
         assert result.outcome_summary is None
 
@@ -210,7 +222,10 @@ class TestReextractMissingFields:
         }
         long_text = "x" * 10000
         await reextract_missing_fields(
-            meta, long_text, llm, ["outcome_summary"],
+            meta,
+            long_text,
+            llm,
+            ["outcome_summary"],
         )
         # Verify the prompt sent to LLM contains only the tail
         call_args = llm.generate_structured.call_args
@@ -227,7 +242,10 @@ class TestReextractMissingFields:
         }
         long_text = "x" * 10000
         result = await reextract_missing_fields(
-            meta, long_text, llm, ["case_description", "outcome_summary"],
+            meta,
+            long_text,
+            llm,
+            ["case_description", "outcome_summary"],
         )
         assert result.case_description == "A dispute case."
         assert result.outcome_summary == "Dismissed."
@@ -238,6 +256,9 @@ class TestReextractMissingFields:
         llm = AsyncMock()
         llm.generate_structured.return_value = {"outcome_summary": None}
         result = await reextract_missing_fields(
-            meta, "text", llm, ["outcome_summary"],
+            meta,
+            "text",
+            llm,
+            ["outcome_summary"],
         )
         assert result.outcome_summary is None

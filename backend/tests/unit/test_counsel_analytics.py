@@ -154,7 +154,9 @@ class TestSearchCounsel:
         session = _make_mock_session()
 
         result_rows = [
-            SimpleNamespace(counsel_name="R.K. Sharma", total_cases=15, designation="senior_advocate"),
+            SimpleNamespace(
+                counsel_name="R.K. Sharma", total_cases=15, designation="senior_advocate"
+            ),
             SimpleNamespace(counsel_name="S.K. Sharma", total_cases=8, designation="advocate"),
         ]
 
@@ -213,14 +215,22 @@ class TestGetCounselProfile:
 
         case_rows = [
             SimpleNamespace(
-                id=case_id1, year=2020, case_type="Criminal Appeal",
-                disposal_nature="Allowed", party_side="petitioner",
-                counsel_name="R.K. Sharma", designation="senior_advocate",
+                id=case_id1,
+                year=2020,
+                case_type="Criminal Appeal",
+                disposal_nature="Allowed",
+                party_side="petitioner",
+                counsel_name="R.K. Sharma",
+                designation="senior_advocate",
             ),
             SimpleNamespace(
-                id=case_id2, year=2021, case_type="Civil Appeal",
-                disposal_nature="Dismissed", party_side="respondent",
-                counsel_name="R.K. Sharma", designation="senior_advocate",
+                id=case_id2,
+                year=2021,
+                case_type="Civil Appeal",
+                disposal_nature="Dismissed",
+                party_side="respondent",
+                counsel_name="R.K. Sharma",
+                designation="senior_advocate",
             ),
         ]
 
@@ -267,9 +277,12 @@ class TestGetCounselCases:
         case_id = str(uuid.uuid4())
         case_rows = [
             SimpleNamespace(
-                id=case_id, title="State vs Citizen",
-                citation="(2021) 2 SCC 100", year=2021,
-                case_type="Criminal Appeal", disposal_nature="Allowed",
+                id=case_id,
+                title="State vs Citizen",
+                citation="(2021) 2 SCC 100",
+                year=2021,
+                case_type="Criminal Appeal",
+                disposal_nature="Allowed",
                 party_side="petitioner",
             ),
         ]

@@ -80,16 +80,33 @@ logger.setLevel(logging.INFO)
 logger.propagate = False
 if not logger.handlers:
     _handler = logging.StreamHandler()
-    _handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"))
+    _handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
+    )
     logger.addHandler(_handler)
 
 # Fields to check for metadata completeness
 _AUDIT_FIELDS = [
-    "title", "citation", "court", "year", "decision_date",
-    "petitioner", "respondent", "author_judge", "disposal_nature",
-    "case_type", "bench_type", "coram_size", "ratio_decidendi",
-    "keywords", "acts_cited", "cases_cited", "headnotes",
-    "outcome_summary", "jurisdiction", "is_reportable",
+    "title",
+    "citation",
+    "court",
+    "year",
+    "decision_date",
+    "petitioner",
+    "respondent",
+    "author_judge",
+    "disposal_nature",
+    "case_type",
+    "bench_type",
+    "coram_size",
+    "ratio_decidendi",
+    "keywords",
+    "acts_cited",
+    "cases_cited",
+    "headnotes",
+    "outcome_summary",
+    "jurisdiction",
+    "is_reportable",
 ]
 
 
@@ -257,7 +274,11 @@ async def trial_phase1_with_sampling(
             "page_map": e.page_map,
             "char_count": e.char_count,
             "parquet_meta": {
-                k: (str(v) if v is not None and not isinstance(v, str | int | float | bool | list) else v)
+                k: (
+                    str(v)
+                    if v is not None and not isinstance(v, str | int | float | bool | list)
+                    else v
+                )
                 for k, v in e.parquet_meta.items()
             },
         }
@@ -309,8 +330,13 @@ async def run_trial_years(
 
     # ── Phase 1: Extract + sample ALL years ──────────────────────────
     logger.info("=" * 60)
-    logger.info("MEGA-BATCH PHASE 1: Extracting %d years (%d-%d, step=%d)",
-                len(years), year_from, year_to, year_step)
+    logger.info(
+        "MEGA-BATCH PHASE 1: Extracting %d years (%d-%d, step=%d)",
+        len(years),
+        year_from,
+        year_to,
+        year_step,
+    )
     logger.info("=" * 60)
 
     import gc
@@ -323,7 +349,10 @@ async def run_trial_years(
 
         logger.info("--- Phase 1: Year %d ---", year)
         run_id, manifest = await trial_phase1_with_sampling(
-            year, sample_size, seed=seed, dry_run=dry_run,
+            year,
+            sample_size,
+            seed=seed,
+            dry_run=dry_run,
         )
 
         # Free extracted PDFs from disk after each year to prevent OOM
@@ -355,7 +384,8 @@ async def run_trial_years(
     logger.info("=" * 60)
     logger.info(
         "MEGA-BATCH PHASE 2: Submitting %d cases from %d years in ONE batch job",
-        len(all_entries), len(year_manifests),
+        len(all_entries),
+        len(year_manifests),
     )
     logger.info("=" * 60)
 
@@ -376,14 +406,19 @@ async def run_trial_years(
             "page_map": e.page_map,
             "char_count": e.char_count,
             "parquet_meta": {
-                k: (str(v) if v is not None and not isinstance(v, str | int | float | bool | list) else v)
+                k: (
+                    str(v)
+                    if v is not None and not isinstance(v, str | int | float | bool | list)
+                    else v
+                )
                 for k, v in e.parquet_meta.items()
             },
         }
         for e in all_entries
     ]
     (mega_run_dir / "manifest.json").write_text(
-        json.dumps(mega_manifest_data, indent=2, default=str), encoding="utf-8",
+        json.dumps(mega_manifest_data, indent=2, default=str),
+        encoding="utf-8",
     )
 
     # Save texts for Phase 3 resume
@@ -421,13 +456,18 @@ async def run_trial_years(
     logger.info("=" * 60)
     logger.info(
         "MEGA-BATCH PHASE 3: Processing %d cases (concurrency=%d, rpm=%d)",
-        len(all_entries), concurrency, rpm_limit,
+        len(all_entries),
+        concurrency,
+        rpm_limit,
     )
     logger.info("=" * 60)
 
     statuses = await phase3_process_cases(
-        mega_run_id, all_entries, metadata_results,
-        rpm_limit=rpm_limit, concurrency=concurrency,
+        mega_run_id,
+        all_entries,
+        metadata_results,
+        rpm_limit=rpm_limit,
+        concurrency=concurrency,
     )
 
     # Map results back to years
@@ -438,14 +478,13 @@ async def run_trial_years(
 
     for year in sorted(year_manifests):
         _, manifest = year_manifests[year]
-        success_ids = [
-            e.case_id for e in manifest
-            if statuses.get(e.case_id) == "success"
-        ]
+        success_ids = [e.case_id for e in manifest if statuses.get(e.case_id) == "success"]
         failed = len(manifest) - len(success_ids)
         logger.info(
             "Year %d: %d success, %d failed",
-            year, len(success_ids), failed,
+            year,
+            len(success_ids),
+            failed,
         )
         trial_case_ids[year] = success_ids
 
@@ -669,7 +708,8 @@ async def audit_all_years(
             case_ids = trial_case_ids[year]
             if not case_ids:
                 reports[year] = YearReport(
-                    year=year, sample_size=0,
+                    year=year,
+                    sample_size=0,
                     anomalies=["no cases ingested"],
                 )
                 continue
@@ -694,7 +734,6 @@ def print_report_table(
     sum(r.sample_size for r in reports.values())
     [y for y, r in reports.items() if r.case_ids]
 
-
     flagged: list[tuple[int, list[str]]] = []
 
     for year in sorted(reports.keys()):
@@ -708,7 +747,6 @@ def print_report_table(
         str(r.acts_quality.get("garbage", 0))
         f"{r.text_length.get('avg', 0) / 1000:.1f}K"
         ", ".join(r.anomalies[:3]) if r.anomalies else ""
-
 
         if r.health_score < 0.75 and r.case_ids:
             flagged.append((year, r.anomalies))
@@ -732,22 +770,15 @@ def save_report(
     avg_health = 0.0
     years_with_data = [r for r in reports.values() if r.case_ids]
     if years_with_data:
-        avg_health = round(
-            sum(r.health_score for r in years_with_data) / len(years_with_data), 2
-        )
+        avg_health = round(sum(r.health_score for r in years_with_data) / len(years_with_data), 2)
 
-    flagged_years = [
-        y for y, r in reports.items()
-        if r.case_ids and r.health_score < 0.75
-    ]
+    flagged_years = [y for y, r in reports.items() if r.case_ids and r.health_score < 0.75]
 
     report_data = {
         "tag": tag,
         "timestamp": datetime.now().isoformat(),
         "config": config,
-        "years": {
-            str(y): asdict(r) for y, r in sorted(reports.items())
-        },
+        "years": {str(y): asdict(r) for y, r in sorted(reports.items())},
         "summary": {
             "total_cases": sum(r.sample_size for r in reports.values()),
             "avg_health": avg_health,
@@ -854,12 +885,23 @@ def main() -> None:
     parser.add_argument("--year-from", type=int, help="Start year (inclusive)")
     parser.add_argument("--year-to", type=int, help="End year (inclusive)")
     parser.add_argument("--sample-size", type=int, default=10, help="Cases per year (default: 10)")
-    parser.add_argument("--year-step", type=int, default=1, help="Step between years, e.g. 5 = every 5th year (default: 1)")
+    parser.add_argument(
+        "--year-step",
+        type=int,
+        default=1,
+        help="Step between years, e.g. 5 = every 5th year (default: 1)",
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
-    parser.add_argument("--audit-only", action="store_true", help="Skip ingestion, audit existing trial cases")
+    parser.add_argument(
+        "--audit-only", action="store_true", help="Skip ingestion, audit existing trial cases"
+    )
     parser.add_argument("--dry-run", action="store_true", help="Phase 1 only, no API calls")
-    parser.add_argument("--rpm-limit", type=int, default=30, help="Gemini RPM for Phase 3 (default: 30)")
-    parser.add_argument("--concurrency", type=int, default=1, help="Concurrent Phase 3 tasks (default: 1)")
+    parser.add_argument(
+        "--rpm-limit", type=int, default=30, help="Gemini RPM for Phase 3 (default: 30)"
+    )
+    parser.add_argument(
+        "--concurrency", type=int, default=1, help="Concurrent Phase 3 tasks (default: 1)"
+    )
     parser.add_argument("--output-dir", type=str, default="trial_reports", help="Report output dir")
 
     args = parser.parse_args()

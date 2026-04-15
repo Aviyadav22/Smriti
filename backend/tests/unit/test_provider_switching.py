@@ -24,6 +24,7 @@ class TestVectorProviderSwitching:
 
         # Clear lru_cache
         from app.core.dependencies import get_vector_store
+
         get_vector_store.cache_clear()
 
         store = get_vector_store()
@@ -37,10 +38,12 @@ class TestVectorProviderSwitching:
         mock_settings.pinecone_host = "https://test-host"
 
         from app.core.dependencies import get_vector_store
+
         get_vector_store.cache_clear()
 
         store = get_vector_store()
         from app.core.providers.vector.pinecone_store import PineconeStore
+
         assert isinstance(store, PineconeStore)
         get_vector_store.cache_clear()
 
@@ -49,6 +52,7 @@ class TestVectorProviderSwitching:
         mock_settings.vector_provider = "unknown"
 
         from app.core.dependencies import get_vector_store
+
         get_vector_store.cache_clear()
 
         with pytest.raises(ValueError, match="Unknown vector provider"):
@@ -64,6 +68,7 @@ class TestGraphProviderSwitching:
         mock_settings.graph_provider = "postgresql"
 
         from app.core.dependencies import get_graph_store
+
         get_graph_store.cache_clear()
 
         store = get_graph_store()
@@ -79,6 +84,7 @@ class TestGraphProviderSwitching:
         mock_settings.neo4j_database = "neo4j"
 
         from app.core.dependencies import get_graph_store
+
         get_graph_store.cache_clear()
 
         # Neo4j will try to connect — we just verify it tries to instantiate
@@ -86,6 +92,7 @@ class TestGraphProviderSwitching:
         try:
             store = get_graph_store()
             from app.core.providers.graph.neo4j_store import Neo4jGraph
+
             assert isinstance(store, Neo4jGraph)
         except RuntimeError:
             # Expected: Neo4j not running in unit test environment
@@ -97,6 +104,7 @@ class TestGraphProviderSwitching:
         mock_settings.graph_provider = "unknown"
 
         from app.core.dependencies import get_graph_store
+
         get_graph_store.cache_clear()
 
         with pytest.raises(ValueError, match="Unknown graph provider"):

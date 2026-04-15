@@ -29,9 +29,7 @@ def upgrade() -> None:
 
     # C2: Lower court / appellate chain
     op.add_column("cases", sa.Column("lower_court", sa.String(200), nullable=True))
-    op.add_column(
-        "cases", sa.Column("lower_court_case_number", sa.String(200), nullable=True)
-    )
+    op.add_column("cases", sa.Column("lower_court_case_number", sa.String(200), nullable=True))
     op.add_column("cases", sa.Column("appeal_from", sa.String(200), nullable=True))
 
     # C3: Opinion type and split tracking
@@ -47,12 +45,8 @@ def upgrade() -> None:
     op.add_column("cases", sa.Column("split_ratio", sa.String(20), nullable=True))
 
     # C10: Party type classification
-    op.add_column(
-        "cases", sa.Column("petitioner_type", sa.String(50), nullable=True)
-    )
-    op.add_column(
-        "cases", sa.Column("respondent_type", sa.String(50), nullable=True)
-    )
+    op.add_column("cases", sa.Column("petitioner_type", sa.String(50), nullable=True))
+    op.add_column("cases", sa.Column("respondent_type", sa.String(50), nullable=True))
     op.add_column("cases", sa.Column("is_pil", sa.Boolean(), nullable=True))
 
     # C11: Companion cases

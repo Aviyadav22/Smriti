@@ -41,14 +41,14 @@ class TestCleanExtractedTextZeroWidth:
     def test_clean_extracted_text_removes_zero_width_chars(self):
         """Zero-width space, BOM, and soft hyphen must be removed.
         ZWNJ (U+200C) and ZWJ (U+200D) are preserved for Devanagari support."""
-        text = "Hello\u200B \u200CWorld\u200D foo\uFEFF bar\u00AD baz"
+        text = "Hello\u200b \u200cWorld\u200d foo\ufeff bar\u00ad baz"
         result = clean_extracted_text(text)
-        assert "\u200B" not in result, "Zero-width space not removed"
-        assert "\uFEFF" not in result, "BOM not removed"
-        assert "\u00AD" not in result, "Soft hyphen not removed"
+        assert "\u200b" not in result, "Zero-width space not removed"
+        assert "\ufeff" not in result, "BOM not removed"
+        assert "\u00ad" not in result, "Soft hyphen not removed"
         # ZWNJ and ZWJ must be preserved (Devanagari conjunct control)
-        assert "\u200C" in result, "ZWNJ should be preserved for Devanagari"
-        assert "\u200D" in result, "ZWJ should be preserved for Devanagari"
+        assert "\u200c" in result, "ZWNJ should be preserved for Devanagari"
+        assert "\u200d" in result, "ZWJ should be preserved for Devanagari"
         # Actual words must be preserved
         assert "Hello" in result
         assert "World" in result
@@ -219,16 +219,14 @@ class TestExtractPdfTextAsync:
 
     def test_extract_pdf_text_is_async(self):
         """extract_pdf_text must be a coroutine function (async def)."""
-        assert asyncio.iscoroutinefunction(extract_pdf_text), (
-            "extract_pdf_text should be an async function"
-        )
+        assert asyncio.iscoroutinefunction(
+            extract_pdf_text
+        ), "extract_pdf_text should be an async function"
 
     def test_extract_pdf_text_returns_coroutine(self):
         """Calling extract_pdf_text should return a coroutine object."""
         result = extract_pdf_text("/nonexistent/path.pdf")
-        assert inspect.iscoroutine(result), (
-            "extract_pdf_text() should return a coroutine"
-        )
+        assert inspect.iscoroutine(result), "extract_pdf_text() should return a coroutine"
         # Clean up the coroutine to avoid RuntimeWarning
         result.close()
 

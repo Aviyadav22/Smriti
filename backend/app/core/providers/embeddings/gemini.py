@@ -28,8 +28,13 @@ logger = logging.getLogger(__name__)
 
 # Build retry exception tuple with granular Google exceptions when available
 _EMBEDDING_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    GoogleAPIError, ConnectionError, OSError, TimeoutError,
-    httpx.ReadTimeout, httpx.ConnectTimeout, httpx.TimeoutException,
+    GoogleAPIError,
+    ConnectionError,
+    OSError,
+    TimeoutError,
+    httpx.ReadTimeout,
+    httpx.ConnectTimeout,
+    httpx.TimeoutException,
 )
 
 try:
@@ -60,8 +65,14 @@ _embedding_retry = retry(
 class GeminiEmbedder:
     """Google Gemini embedding provider implementing EmbeddingProvider protocol."""
 
-    def __init__(self, *, api_key: str | None = None, use_vertexai: bool = False,
-                 project: str | None = None, location: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        use_vertexai: bool = False,
+        project: str | None = None,
+        location: str | None = None,
+    ) -> None:
         self._use_vertexai = use_vertexai or settings.gemini_use_vertexai
         self._model = settings.gemini_embedding_model
         self._dimension = settings.gemini_embedding_dimension
@@ -70,9 +81,8 @@ class GeminiEmbedder:
         # on Vertex AI (returns 400 FAILED_PRECONDITION). The SDK routes all
         # Vertex AI embed calls to :predict, so we use the :embedContent REST
         # endpoint directly for affected models.
-        self._use_vertex_rest = (
-            self._use_vertexai
-            and self._model in ("gemini-embedding-2-preview",)
+        self._use_vertex_rest = self._use_vertexai and self._model in (
+            "gemini-embedding-2-preview",
         )
 
         if self._use_vertexai:
@@ -84,8 +94,12 @@ class GeminiEmbedder:
                     "Set GEMINI_VERTEXAI_PROJECT environment variable."
                 )
             # Ensure GOOGLE_APPLICATION_CREDENTIALS env var is set for the SDK
-            if settings.google_application_credentials and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = settings.google_application_credentials
+            if settings.google_application_credentials and not os.environ.get(
+                "GOOGLE_APPLICATION_CREDENTIALS"
+            ):
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = (
+                    settings.google_application_credentials
+                )
 
             if self._use_vertex_rest:
                 # Direct REST path — bypass SDK's broken :predict routing
@@ -100,13 +114,20 @@ class GeminiEmbedder:
                 self._http_client = httpx.AsyncClient(timeout=60.0)
                 logger.info(
                     "GeminiEmbedder using Vertex AI REST :embedContent (model=%s, project=%s)",
-                    self._model, _project,
+                    self._model,
+                    _project,
                 )
             else:
                 self._client = genai.Client(
-                    vertexai=True, project=_project, location=_location,
+                    vertexai=True,
+                    project=_project,
+                    location=_location,
                 )
-                logger.info("GeminiEmbedder using Vertex AI SDK (project=%s, location=%s)", _project, _location)
+                logger.info(
+                    "GeminiEmbedder using Vertex AI SDK (project=%s, location=%s)",
+                    _project,
+                    _location,
+                )
         else:
             resolved_key = api_key or settings.gemini_api_key
             if not resolved_key or not resolved_key.strip():
@@ -177,7 +198,9 @@ class GeminiEmbedder:
         return response.embeddings[0].values
 
     @_embedding_retry
-    async def embed_batch(self, texts: list[str], *, task_type: str = "RETRIEVAL_DOCUMENT") -> list[list[float]]:
+    async def embed_batch(
+        self, texts: list[str], *, task_type: str = "RETRIEVAL_DOCUMENT"
+    ) -> list[list[float]]:
         """Embed a batch of texts into 1536-dim vectors. Used during ingestion (batch 100).
 
         On Vertex AI, embedContent only supports one content at a time,

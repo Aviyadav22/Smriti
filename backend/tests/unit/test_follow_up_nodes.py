@@ -1,4 +1,5 @@
 """Tests for follow-up conversation graph nodes."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -198,7 +199,8 @@ class TestReformulateWithContextNode:
 
 class TestTargetedSearchNode:
     def _make_deps(
-        self, search_results: list[FakeSearchResultItem] | None = None,
+        self,
+        search_results: list[FakeSearchResultItem] | None = None,
     ) -> dict:
         """Build mocked dependency dict for targeted_search_node."""
         if search_results is None:
@@ -339,13 +341,14 @@ class TestTargetedSearchNode:
         deps = self._make_deps()
         state = _make_state(reformulated_query="query")
 
-        with patch(
-            "app.core.agents.nodes.follow_up_nodes.hybrid_search",
-            new_callable=AsyncMock,
-            return_value=deps["fake_response"],
-        ) as mock_search, patch(
-            "app.core.agents.nodes.follow_up_nodes.settings"
-        ) as mock_settings:
+        with (
+            patch(
+                "app.core.agents.nodes.follow_up_nodes.hybrid_search",
+                new_callable=AsyncMock,
+                return_value=deps["fake_response"],
+            ) as mock_search,
+            patch("app.core.agents.nodes.follow_up_nodes.settings") as mock_settings,
+        ):
             mock_settings.agent_followup_max_results = 7
             await targeted_search_node(
                 state,
@@ -387,11 +390,14 @@ class TestTargetedSearchNode:
         deps = self._make_deps()
         state = _make_state(reformulated_query="query")
 
-        with patch(
-            "app.core.agents.nodes.follow_up_nodes.hybrid_search",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("Search failed"),
-        ), pytest.raises(RuntimeError, match="Search failed"):
+        with (
+            patch(
+                "app.core.agents.nodes.follow_up_nodes.hybrid_search",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("Search failed"),
+            ),
+            pytest.raises(RuntimeError, match="Search failed"),
+        ):
             await targeted_search_node(
                 state,
                 embedder=deps["embedder"],
@@ -569,9 +575,7 @@ class TestSynthesizeFollowUpNode:
         long_memo = "M" * 20000
         state = _make_state(prior_memo=long_memo, search_results=[])
 
-        with patch(
-            "app.core.agents.nodes.follow_up_nodes.settings"
-        ) as mock_settings:
+        with patch("app.core.agents.nodes.follow_up_nodes.settings") as mock_settings:
             mock_settings.agent_followup_memo_chars = 15000
             await synthesize_follow_up_node(state, llm)
 

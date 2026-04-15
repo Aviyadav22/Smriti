@@ -27,6 +27,7 @@ class TestPineconeUserScope:
         mock_pc_cls.return_value.Index.return_value = mock_index
 
         from app.core.providers.vector.pinecone_store import PineconeStore
+
         store = PineconeStore()
         await store.search([0.1] * 1536, top_k=5, filters={"court": "SC"})
 
@@ -43,6 +44,7 @@ class TestPineconeUserScope:
         mock_pc_cls.return_value.Index.return_value = mock_index
 
         from app.core.providers.vector.pinecone_store import PineconeStore
+
         store = PineconeStore()
         await store.search([0.1] * 1536, top_k=5, user_scope="user-42")
 
@@ -53,12 +55,15 @@ class TestPineconeUserScope:
     @patch("app.core.providers.vector.pinecone_store.settings")
     @patch("app.core.providers.vector.pinecone_store.Pinecone")
     @pytest.mark.asyncio
-    async def test_search_with_user_scope_merges_filters(self, mock_pc_cls, mock_settings, mock_index):
+    async def test_search_with_user_scope_merges_filters(
+        self, mock_pc_cls, mock_settings, mock_index
+    ):
         mock_settings.pinecone_api_key = "test-key"
         mock_settings.pinecone_host = "https://test"
         mock_pc_cls.return_value.Index.return_value = mock_index
 
         from app.core.providers.vector.pinecone_store import PineconeStore
+
         store = PineconeStore()
         await store.search([0.1] * 1536, filters={"court": "SC"}, user_scope="user-42")
 

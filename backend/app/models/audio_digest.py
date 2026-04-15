@@ -22,9 +22,7 @@ class AudioDigest(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     summary_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     audio_storage_path: Mapped[str | None] = mapped_column(String, nullable=True)
     duration_seconds: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
-    status: Mapped[str] = mapped_column(
-        String, nullable=False, server_default="generating"
-    )
+    status: Mapped[str] = mapped_column(String, nullable=False, server_default="generating")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (

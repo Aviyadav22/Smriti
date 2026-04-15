@@ -95,7 +95,10 @@ def _strip_leading_judgment_bleed(
             logger.info(
                 "Stripped %d chars of leading judgment bleed (marker at pos %d, "
                 "mid_sentence=%s, has_title=%s)",
-                earliest_pos, earliest_pos, starts_mid_sentence, has_case_title,
+                earliest_pos,
+                earliest_pos,
+                starts_mid_sentence,
+                has_case_title,
             )
             return text[earliest_pos:]
         else:
@@ -125,8 +128,7 @@ _SCR_HELD_RE = re.compile(r"\bHELD\s*:", re.IGNORECASE)
 
 # Author judge announcement: "KRISHNA IYER, J.—" or "Per KRISHNA IYER, J."
 _AUTHOR_ANNOUNCE_RE = re.compile(
-    r"(?:[A-Z][A-Z\s\.]{3,},\s*J\.?\s*[–—-]|"
-    r"Per\s+[A-Z][A-Za-z\s\.]+,?\s*J\.?\s*[):\-–—])",
+    r"(?:[A-Z][A-Z\s\.]{3,},\s*J\.?\s*[–—-]|" r"Per\s+[A-Z][A-Za-z\s\.]+,?\s*J\.?\s*[):\-–—])",
 )
 
 # Case intro pattern: "This appeal..." / "The appellant..."
@@ -267,7 +269,10 @@ def strip_reporter_editorial(
     logger.info(
         "Stripped %d chars of SCR editorial content (%d early margins, "
         "preamble ends at %d, judgment starts at %d)",
-        len(editorial), len(early_margins), preamble_end, judgment_start,
+        len(editorial),
+        len(early_margins),
+        preamble_end,
+        judgment_start,
     )
 
     return cleaned, editorial
@@ -401,6 +406,7 @@ _FOOTNOTE_DEF_RE = re.compile(
 @dataclass
 class TextQuality:
     """Quality assessment of extracted text."""
+
     text: str
     char_count: int
     tier: str  # "high", "medium", "low"
@@ -414,11 +420,35 @@ class TextQuality:
 
 
 LEGAL_KEYWORDS = {
-    "court", "petitioner", "respondent", "section", "act", "judgment",
-    "order", "appeal", "bench", "hon'ble", "advocate", "counsel",
-    "article", "constitution", "decree", "plaintiff", "defendant",
-    "prosecution", "accused", "bail", "writ", "petition", "tribunal",
-    "appellant", "versus", "v.", "vs.", "learned", "disposed",
+    "court",
+    "petitioner",
+    "respondent",
+    "section",
+    "act",
+    "judgment",
+    "order",
+    "appeal",
+    "bench",
+    "hon'ble",
+    "advocate",
+    "counsel",
+    "article",
+    "constitution",
+    "decree",
+    "plaintiff",
+    "defendant",
+    "prosecution",
+    "accused",
+    "bail",
+    "writ",
+    "petition",
+    "tribunal",
+    "appellant",
+    "versus",
+    "v.",
+    "vs.",
+    "learned",
+    "disposed",
 }
 
 
@@ -450,7 +480,7 @@ def clean_extracted_text(text: str) -> str:
     text = _ZERO_WIDTH_RE.sub("", text)
 
     # 2a. Strip control characters (except \n, \t, \r)
-    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
 
     # 3. Detect and remove repeated headers/footers
     text = _remove_repeated_headers_footers(text)
@@ -533,7 +563,8 @@ def _remove_repeated_headers_footers(text: str) -> str:
 
     # Lines appearing on 3+ pages are likely headers/footers
     repeated_lines = {
-        line for line, count in line_page_count.items()
+        line
+        for line, count in line_page_count.items()
         if count >= 3 and len(line) < 200  # short lines only -- not real content
     }
 
@@ -582,8 +613,7 @@ def _remove_repeated_headers_footers_pages(pages: list[str]) -> list[str]:
 
     # Lines appearing on 3+ pages are likely headers/footers
     repeated_lines = {
-        line for line, count in line_page_count.items()
-        if count >= 3 and len(line) < 200
+        line for line, count in line_page_count.items() if count >= 3 and len(line) < 200
     }
 
     # Also add common boilerplate patterns
@@ -685,16 +715,12 @@ def _ocr_single_page(file_path: str, page_num: int) -> str:
         return ""
 
     try:
-        images = convert_from_path(
-            file_path, dpi=300, first_page=page_num, last_page=page_num
-        )
+        images = convert_from_path(file_path, dpi=300, first_page=page_num, last_page=page_num)
         if not images:
             return ""
         img = images[0]
         try:
-            page_text = pytesseract.image_to_string(
-                img, config="--oem 3 --psm 6 -l eng+hin"
-            )
+            page_text = pytesseract.image_to_string(img, config="--oem 3 --psm 6 -l eng+hin")
             return page_text.strip() if page_text else ""
         finally:
             img.close()
@@ -739,11 +765,13 @@ def _build_page_map(page_texts: list[str], joined_text: str) -> list[dict]:
             # Estimate: pos + original page length (rough)
             end_pos = min(pos + len(page_text), len(joined_text))
 
-        page_map.append({
-            "page_number": page_num,
-            "char_start": pos,
-            "char_end": end_pos,
-        })
+        page_map.append(
+            {
+                "page_number": page_num,
+                "char_start": pos,
+                "char_end": end_pos,
+            }
+        )
         search_start = pos + 1
 
     return page_map
@@ -768,7 +796,9 @@ def _extract_pdf_text_sync(file_path: str) -> tuple[str, int, list[dict]]:
             if len(pdf.pages) > MAX_PAGES:
                 logger.error(
                     "PDF %s has %d pages, exceeds MAX_PAGES=%d",
-                    file_path, len(pdf.pages), MAX_PAGES,
+                    file_path,
+                    len(pdf.pages),
+                    MAX_PAGES,
                 )
                 return "", 0, []
             total_pages = len(pdf.pages)
@@ -779,14 +809,19 @@ def _extract_pdf_text_sync(file_path: str) -> tuple[str, int, list[dict]]:
                 except (ValueError, TypeError, KeyError) as exc:
                     logger.warning(
                         "pdfplumber failed on page %d/%d of %s: %s",
-                        page_num, total_pages, file_path, exc,
+                        page_num,
+                        total_pages,
+                        file_path,
+                        exc,
                     )
 
                 # If pdfplumber got very little text, try OCR on this page
                 if len(page_text.strip()) < 30:
                     logger.debug(
                         "Page %d/%d has < 30 chars, attempting OCR: %s",
-                        page_num, total_pages, file_path,
+                        page_num,
+                        total_pages,
+                        file_path,
                     )
                     ocr_text = _ocr_single_page(file_path, page_num)
                     if len(ocr_text) > len(page_text.strip()):
@@ -798,7 +833,10 @@ def _extract_pdf_text_sync(file_path: str) -> tuple[str, int, list[dict]]:
                     if alpha_ratio < 0.5:
                         logger.debug(
                             "Page %d/%d has low alpha ratio (%.2f), attempting OCR: %s",
-                            page_num, total_pages, alpha_ratio, file_path,
+                            page_num,
+                            total_pages,
+                            alpha_ratio,
+                            file_path,
                         )
                         ocr_text = _ocr_single_page(file_path, page_num)
                         if ocr_text and len(ocr_text) > len(page_text):
@@ -901,7 +939,9 @@ async def extract_with_ocr(file_path: str) -> tuple[str, bool, int]:
         if truncated:
             logger.warning(
                 "PDF %s has %d pages for OCR, truncating to MAX_OCR_PAGES=%d",
-                file_path, total_pages, MAX_OCR_PAGES,
+                file_path,
+                total_pages,
+                MAX_OCR_PAGES,
             )
 
         page_texts: list[str] = []
@@ -1038,7 +1078,10 @@ async def extract_and_score(file_path: str) -> TextQuality:
     if quality.tier == "low":
         logger.warning(
             "Low quality extraction for %s: %d chars, %d legal keywords, ocr=%s",
-            file_path, quality.char_count, quality.legal_keyword_count, ocr_used,
+            file_path,
+            quality.char_count,
+            quality.legal_keyword_count,
+            ocr_used,
         )
 
     return quality
@@ -1082,13 +1125,15 @@ def extract_tables(file_path: str, *, max_pages: int = MAX_PAGES) -> list[dict]:
                     for row in rows:
                         # Pad row to match header length
                         padded = row + [""] * (len(headers) - len(row))
-                        md_lines.append("| " + " | ".join(padded[:len(headers)]) + " |")
-                    tables.append({
-                        "page": page_num,
-                        "headers": headers,
-                        "rows": rows,
-                        "markdown": "\n".join(md_lines),
-                    })
+                        md_lines.append("| " + " | ".join(padded[: len(headers)]) + " |")
+                    tables.append(
+                        {
+                            "page": page_num,
+                            "headers": headers,
+                            "rows": rows,
+                            "markdown": "\n".join(md_lines),
+                        }
+                    )
     except Exception as exc:
         logger.warning("Table extraction failed for %s: %s", file_path, exc)
 

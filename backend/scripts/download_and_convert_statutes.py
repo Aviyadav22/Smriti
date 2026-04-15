@@ -31,6 +31,7 @@ Usage:
     python scripts/download_and_convert_statutes.py --batch 4     # Commercial-1 only
     python scripts/download_and_convert_statutes.py --batch 4 5 6 # multiple batches
 """
+
 from __future__ import annotations
 
 import argparse
@@ -169,23 +170,25 @@ def convert_ipc(data: list[dict]) -> list[dict]:
         bns_num = _IPC_TO_BNS.get(sec_num, "")
         replaced_by = f"BNS, Section {bns_num}" if bns_num else ""
 
-        sections.append({
-            "act_name": "Indian Penal Code, 1860",
-            "act_short_name": "IPC",
-            "act_number": "45",
-            "act_year": 1860,
-            "part": "",
-            "chapter": str(item.get("chapter", "")),
-            "section_number": sec_num,
-            "section_title": item.get("section_title", ""),
-            "section_text": item.get("section_desc", ""),
-            "explanation": "",
-            "effective_date": None,
-            "is_repealed": bool(bns_num),
-            "replaced_by": replaced_by,
-            "replaces": "",
-            "document_type": "statute",
-        })
+        sections.append(
+            {
+                "act_name": "Indian Penal Code, 1860",
+                "act_short_name": "IPC",
+                "act_number": "45",
+                "act_year": 1860,
+                "part": "",
+                "chapter": str(item.get("chapter", "")),
+                "section_number": sec_num,
+                "section_title": item.get("section_title", ""),
+                "section_text": item.get("section_desc", ""),
+                "explanation": "",
+                "effective_date": None,
+                "is_repealed": bool(bns_num),
+                "replaced_by": replaced_by,
+                "replaces": "",
+                "document_type": "statute",
+            }
+        )
     return sections
 
 
@@ -197,23 +200,25 @@ def convert_crpc(data: list[dict]) -> list[dict]:
         bnss_num = _CRPC_TO_BNSS.get(sec_num, "")
         replaced_by = f"BNSS, Section {bnss_num}" if bnss_num else ""
 
-        sections.append({
-            "act_name": "Code of Criminal Procedure, 1973",
-            "act_short_name": "CrPC",
-            "act_number": "2",
-            "act_year": 1974,
-            "part": "",
-            "chapter": str(item.get("chapter", "")),
-            "section_number": sec_num,
-            "section_title": item.get("section_title", ""),
-            "section_text": item.get("section_desc", ""),
-            "explanation": "",
-            "effective_date": None,
-            "is_repealed": bool(bnss_num),
-            "replaced_by": replaced_by,
-            "replaces": "",
-            "document_type": "statute",
-        })
+        sections.append(
+            {
+                "act_name": "Code of Criminal Procedure, 1973",
+                "act_short_name": "CrPC",
+                "act_number": "2",
+                "act_year": 1974,
+                "part": "",
+                "chapter": str(item.get("chapter", "")),
+                "section_number": sec_num,
+                "section_title": item.get("section_title", ""),
+                "section_text": item.get("section_desc", ""),
+                "explanation": "",
+                "effective_date": None,
+                "is_repealed": bool(bnss_num),
+                "replaced_by": replaced_by,
+                "replaces": "",
+                "document_type": "statute",
+            }
+        )
     return sections
 
 
@@ -226,23 +231,25 @@ def convert_cpc(data: list[dict]) -> list[dict]:
     sections = []
     for item in data:
         sec_num = str(item.get("section", item.get("Section", "")))
-        sections.append({
-            "act_name": "Code of Civil Procedure, 1908",
-            "act_short_name": "CPC",
-            "act_number": "5",
-            "act_year": 1908,
-            "part": "",
-            "chapter": str(item.get("chapter", "")),
-            "section_number": sec_num,
-            "section_title": item.get("title", item.get("section_title", "")),
-            "section_text": item.get("description", item.get("section_desc", "")),
-            "explanation": "",
-            "effective_date": None,
-            "is_repealed": False,
-            "replaced_by": "",
-            "replaces": "",
-            "document_type": "statute",
-        })
+        sections.append(
+            {
+                "act_name": "Code of Civil Procedure, 1908",
+                "act_short_name": "CPC",
+                "act_number": "5",
+                "act_year": 1908,
+                "part": "",
+                "chapter": str(item.get("chapter", "")),
+                "section_number": sec_num,
+                "section_title": item.get("title", item.get("section_title", "")),
+                "section_text": item.get("description", item.get("section_desc", "")),
+                "explanation": "",
+                "effective_date": None,
+                "is_repealed": False,
+                "replaced_by": "",
+                "replaces": "",
+                "document_type": "statute",
+            }
+        )
     return sections
 
 
@@ -254,23 +261,25 @@ def convert_iea(data: list[dict]) -> list[dict]:
         bsa_num = _IEA_TO_BSA.get(sec_num, "")
         replaced_by = f"BSA, Section {bsa_num}" if bsa_num else ""
 
-        sections.append({
-            "act_name": "Indian Evidence Act, 1872",
-            "act_short_name": "IEA",
-            "act_number": "1",
-            "act_year": 1872,
-            "part": "",
-            "chapter": str(item.get("chapter", "")),
-            "section_number": sec_num,
-            "section_title": item.get("section_title", ""),
-            "section_text": item.get("section_desc", ""),
-            "explanation": "",
-            "effective_date": None,
-            "is_repealed": bool(bsa_num),
-            "replaced_by": replaced_by,
-            "replaces": "",
-            "document_type": "statute",
-        })
+        sections.append(
+            {
+                "act_name": "Indian Evidence Act, 1872",
+                "act_short_name": "IEA",
+                "act_number": "1",
+                "act_year": 1872,
+                "part": "",
+                "chapter": str(item.get("chapter", "")),
+                "section_number": sec_num,
+                "section_title": item.get("section_title", ""),
+                "section_text": item.get("section_desc", ""),
+                "explanation": "",
+                "effective_date": None,
+                "is_repealed": bool(bsa_num),
+                "replaced_by": replaced_by,
+                "replaces": "",
+                "document_type": "statute",
+            }
+        )
     return sections
 
 
@@ -296,23 +305,25 @@ def convert_constitution(data: list[dict] | dict) -> list[dict]:
         if not description:
             continue
 
-        sections.append({
-            "act_name": "Constitution of India",
-            "act_short_name": "COI",
-            "act_number": "",
-            "act_year": 1950,
-            "part": "",
-            "chapter": "",
-            "section_number": art_no,
-            "section_title": title,
-            "section_text": description,
-            "explanation": "",
-            "effective_date": None,
-            "is_repealed": False,
-            "replaced_by": "",
-            "replaces": "",
-            "document_type": "constitution",
-        })
+        sections.append(
+            {
+                "act_name": "Constitution of India",
+                "act_short_name": "COI",
+                "act_number": "",
+                "act_year": 1950,
+                "part": "",
+                "chapter": "",
+                "section_number": art_no,
+                "section_title": title,
+                "section_text": description,
+                "explanation": "",
+                "effective_date": None,
+                "is_repealed": False,
+                "replaced_by": "",
+                "replaces": "",
+                "document_type": "constitution",
+            }
+        )
     return sections
 
 
@@ -393,7 +404,9 @@ def extract_sections_from_pdf(pdf_bytes: bytes, act_config: dict) -> list[dict]:
     # Skip Table of Contents to avoid extracting one-liner ToC entries
     body_start = _find_body_start(full_text)
     body_text = full_text[body_start:]
-    logger.info("Body starts at char %d (skipped ToC) for %s", body_start, act_config["act_short_name"])
+    logger.info(
+        "Body starts at char %d (skipped ToC) for %s", body_start, act_config["act_short_name"]
+    )
 
     # Primary pattern: "123. Title.—" or "123A. Title.—"
     # The em-dash distinguishes real section headers from ToC entries and footnotes.
@@ -434,7 +447,11 @@ def extract_sections_from_pdf(pdf_bytes: bytes, act_config: dict) -> list[dict]:
         filtered.append(m)
 
     matches = filtered
-    logger.info("Found %d section headers in %s PDF (after filtering)", len(matches), act_config["act_short_name"])
+    logger.info(
+        "Found %d section headers in %s PDF (after filtering)",
+        len(matches),
+        act_config["act_short_name"],
+    )
 
     cross_ref_map = act_config.get("cross_ref_map", {})
     cross_ref_code = act_config.get("cross_ref_code", "")
@@ -1023,9 +1040,53 @@ BATCH_ACTS: dict[int, list[str]] = {
     7: ["IDA", "FA1948", "ESIA", "EPFA", "PWA", "MWA", "TUA", "WCA"],
     8: ["ITA", "CGST", "CUSTOMS", "CEA", "STAMP", "BENAMI"],
     9: ["TPA", "RA1908", "EASEMENTS", "RERA", "EPA", "WPA", "FCA"],
-    10: ["ITA2000", "DPDP", "AADHAAR", "LOKPAL", "CONTEMPT", "ATT", "UAPA", "NIA", "PMLA", "NDPS", "JJA", "INSURANCE", "MSMED"],
-    11: ["LA", "LAA", "LARR", "PCA", "CPA2019", "CPA1986", "MVA", "SRA", "GCA", "ARMS", "POCSO", "ELECTRICITY", "DPA"],
-    12: ["RPA", "SCST", "RTI", "NGT", "SOCIETIES", "SUCCESSION", "COMMERCIAL_COURTS", "DRUGS", "WATER", "CST", "DISABILITY", "FOREST", "ADVOCATES", "AIR", "ARMY"],
+    10: [
+        "ITA2000",
+        "DPDP",
+        "AADHAAR",
+        "LOKPAL",
+        "CONTEMPT",
+        "ATT",
+        "UAPA",
+        "NIA",
+        "PMLA",
+        "NDPS",
+        "JJA",
+        "INSURANCE",
+        "MSMED",
+    ],
+    11: [
+        "LA",
+        "LAA",
+        "LARR",
+        "PCA",
+        "CPA2019",
+        "CPA1986",
+        "MVA",
+        "SRA",
+        "GCA",
+        "ARMS",
+        "POCSO",
+        "ELECTRICITY",
+        "DPA",
+    ],
+    12: [
+        "RPA",
+        "SCST",
+        "RTI",
+        "NGT",
+        "SOCIETIES",
+        "SUCCESSION",
+        "COMMERCIAL_COURTS",
+        "DRUGS",
+        "WATER",
+        "CST",
+        "DISABILITY",
+        "FOREST",
+        "ADVOCATES",
+        "AIR",
+        "ARMY",
+    ],
 }
 
 
@@ -1099,7 +1160,8 @@ def download_pdf_acts(
             if len(sections) < 3:
                 logger.warning(
                     "Only %d sections extracted from %s PDF — quality may be poor",
-                    len(sections), code,
+                    len(sections),
+                    code,
                 )
 
             save_json(sections, f"{act_key}.json")
@@ -1115,9 +1177,13 @@ def download_pdf_acts(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download real legal text and convert to JSON")
     parser.add_argument("--skip-pdf", action="store_true", help="Skip PDF extraction entirely")
-    parser.add_argument("--only", nargs="+", help="Only download specific acts (e.g., ipc crpc constitution)")
     parser.add_argument(
-        "--batch", nargs="+", type=int,
+        "--only", nargs="+", help="Only download specific acts (e.g., ipc crpc constitution)"
+    )
+    parser.add_argument(
+        "--batch",
+        nargs="+",
+        type=int,
         help="Download specific batches (4-10). Batches 1-3 are GitHub+original PDFs.",
     )
     args = parser.parse_args()
@@ -1135,7 +1201,6 @@ def main() -> None:
                 batch_codes.update(BATCH_ACTS[b])
             else:
                 logger.warning("Unknown batch %d — valid: 4-10", b)
-
 
     # GitHub sources (IPC, CrPC, CPC, IEA, Constitution) — Batches 1+3
     github_stats: dict[str, int] = {}

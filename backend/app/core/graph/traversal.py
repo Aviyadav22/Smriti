@@ -130,12 +130,14 @@ async def get_neighborhood(
             if edge_key not in edges_set:
                 edges_set.add(edge_key)
                 treatment = edge.get("treatment")
-                edges_list.append({
-                    "from": edge["from"],
-                    "to": edge["to"],
-                    "type": _TREATMENT_TO_DISPLAY.get(treatment, "cites"),
-                    "context": edge.get("context"),
-                })
+                edges_list.append(
+                    {
+                        "from": edge["from"],
+                        "to": edge["to"],
+                        "type": _TREATMENT_TO_DISPLAY.get(treatment, "cites"),
+                        "context": edge.get("context"),
+                    }
+                )
 
     # Filter edges to only include those whose endpoints are in nodes_map.
     # This prevents orphan edges when intermediate path nodes are missing
@@ -187,9 +189,7 @@ async def get_citation_chain(
         logger.warning("Graph query failed for citation chain: %s", exc)
         return {"nodes": [], "edges": []}
 
-    nodes_map: dict[str, dict] = {
-        case_id: {"id": case_id}
-    }
+    nodes_map: dict[str, dict] = {case_id: {"id": case_id}}
     edges_set: set[tuple[str, str]] = set()
     edges_list: list[dict] = []
 
@@ -218,11 +218,13 @@ async def get_citation_chain(
             if edge_key not in edges_set:
                 edges_set.add(edge_key)
                 treatment = edge.get("treatment")
-                edges_list.append({
-                    "from": edge["from"],
-                    "to": edge["to"],
-                    "type": _TREATMENT_TO_DISPLAY.get(treatment, "cites"),
-                })
+                edges_list.append(
+                    {
+                        "from": edge["from"],
+                        "to": edge["to"],
+                        "type": _TREATMENT_TO_DISPLAY.get(treatment, "cites"),
+                    }
+                )
 
     valid_edges = [e for e in edges_list if e["from"] in nodes_map and e["to"] in nodes_map]
 
@@ -503,7 +505,9 @@ async def get_dashboard(
         except Exception:
             pass
 
-    community_filter = "AND n.community_label = $community_label " if community_label is not None else ""
+    community_filter = (
+        "AND n.community_label = $community_label " if community_label is not None else ""
+    )
 
     # Build extra filter clauses
     extra_filters = ""
@@ -512,7 +516,9 @@ async def get_dashboard(
         extra_filters += "AND n.issue_tags CONTAINS $subtopic "
         extra_params["subtopic"] = subtopic
     if statute_section:
-        extra_filters += "AND EXISTS { MATCH (n)-[:INTERPRETS]->(s:StatuteSection {id: $statute_section}) } "
+        extra_filters += (
+            "AND EXISTS { MATCH (n)-[:INTERPRETS]->(s:StatuteSection {id: $statute_section}) } "
+        )
         extra_params["statute_section"] = statute_section
     if bench_type:
         extra_filters += "AND n.bench_type = $bench_type "
@@ -627,8 +633,12 @@ async def get_dashboard(
     except Exception as exc:
         logger.warning("Graph dashboard query failed: %s", exc, exc_info=True)
         return {
-            "most_cited": [], "rising": [], "recently_negative": [],
-            "communities": [], "subtopics": [], "statute_sections": [],
+            "most_cited": [],
+            "rising": [],
+            "recently_negative": [],
+            "communities": [],
+            "subtopics": [],
+            "statute_sections": [],
         }
 
     def _node_dict(r: dict) -> dict:
@@ -647,10 +657,13 @@ async def get_dashboard(
 
     # Fetch subtopics and statute sections
     subtopics_data = await get_subtopics(
-        graph_store=graph_store, category=community_label, redis_client=redis_client,
+        graph_store=graph_store,
+        category=community_label,
+        redis_client=redis_client,
     )
     statute_sections_data = await get_statute_sections(
-        graph_store=graph_store, redis_client=redis_client,
+        graph_store=graph_store,
+        redis_client=redis_client,
     )
 
     result = {
@@ -838,20 +851,20 @@ async def get_treatment_summary(
         treatment = r.get("treatment") or "referred_to"
         if treatment not in breakdown:
             breakdown[treatment] = []
-        breakdown[treatment].append({
-            "id": r["id"],
-            "title": r.get("title"),
-            "year": r.get("year"),
-            "citation": r.get("citation"),
-            "context": r.get("context"),
-        })
+        breakdown[treatment].append(
+            {
+                "id": r["id"],
+                "title": r.get("title"),
+                "year": r.get("year"),
+                "citation": r.get("citation"),
+                "context": r.get("context"),
+            }
+        )
 
     total = len(records)
     positive_treatments = {"affirmed", "followed", "referred_to", "explained"}
 
-    positive_count = sum(
-        len(breakdown.get(t, [])) for t in positive_treatments
-    )
+    positive_count = sum(len(breakdown.get(t, [])) for t in positive_treatments)
     positive_pct = positive_count / total if total > 0 else 0.0
 
     # Compute verdict

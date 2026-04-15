@@ -186,7 +186,9 @@ async def test_hybrid_search_exact_match_strategy(
     """exact_match strategy does citation lookup and returns early."""
     mock_uq.return_value = _make_qu(strategy="exact_match")
     mock_exact.return_value = [
-        SearchResultItem(case_id="case_x", score=1.0, title="Exact Case", citation="(2024) 1 SCC 100"),
+        SearchResultItem(
+            case_id="case_x", score=1.0, title="Exact Case", citation="(2024) 1 SCC 100"
+        ),
     ]
 
     response = await hybrid_search(
@@ -483,7 +485,9 @@ async def test_filters_applied_to_vector(
 
     # Verify Pinecone was called with correct filter
     call_args = mock_vector_store.search.call_args
-    pinecone_filter = call_args.kwargs.get("filters") or (call_args[1].get("filters") if len(call_args) > 1 else None)
+    pinecone_filter = call_args.kwargs.get("filters") or (
+        call_args[1].get("filters") if len(call_args) > 1 else None
+    )
 
     assert pinecone_filter is not None
     assert pinecone_filter["court"] == {"$eq": "Supreme Court of India"}
@@ -657,7 +661,9 @@ class TestTreatmentWarningInSearchResults:
         mock_uq.return_value = _make_qu(strategy="balanced")
 
         mock_vector_store.search.return_value = [
-            _vector_result("case_a", 0.95, "This judgment was expressly overruled by the Supreme Court."),
+            _vector_result(
+                "case_a", 0.95, "This judgment was expressly overruled by the Supreme Court."
+            ),
         ]
         mock_fts.return_value = [
             _fts_result("case_a", 5.0, "expressly overruled by the Supreme Court"),

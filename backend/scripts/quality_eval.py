@@ -4,6 +4,7 @@ Usage:
     cd backend
     python -m scripts.quality_eval
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -40,10 +41,15 @@ async def run() -> None:
     web_search = get_web_search()
 
     graph = build_research_graph(
-        llm=llm, flash_llm=flash_llm, embedder=embedder,
-        vector_store=vector_store, reranker=reranker,
-        graph_store=graph_store, web_search=web_search,
-        ik_client=ik_client, checkpointer=MemorySaver(),
+        llm=llm,
+        flash_llm=flash_llm,
+        embedder=embedder,
+        vector_store=vector_store,
+        reranker=reranker,
+        graph_store=graph_store,
+        web_search=web_search,
+        ik_client=ik_client,
+        checkpointer=MemorySaver(),
     )
 
     config = {"configurable": {"thread_id": "quality-eval-1"}}
@@ -56,7 +62,6 @@ async def run() -> None:
         "What are the legal defences available, and which code applies - IPC or BNS? "
         "Cite relevant Supreme Court judgments."
     )
-
 
     # ===== STAGE 1: Run until first interrupt (checkpoint_plan) =====
     start = time.monotonic()
@@ -71,7 +76,6 @@ async def run() -> None:
     # Get full state after interrupt
     full_state = await graph.aget_state(config)
     state = full_state.values
-
 
     # Classification
     state.get("complexity", "?")
@@ -130,7 +134,6 @@ async def run() -> None:
     full_state2 = await graph.aget_state(config)
     state2 = full_state2.values
 
-
     # Worker results
     worker_results = state2.get("worker_results", [])
     total_results = 0
@@ -164,7 +167,6 @@ async def run() -> None:
         draft = state2.get("draft_memo", "")
         if draft:
             pass
-
 
 
 if __name__ == "__main__":

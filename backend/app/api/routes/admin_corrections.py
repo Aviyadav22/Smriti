@@ -73,8 +73,13 @@ _FIELD_COLUMNS: dict[str, InstrumentedAttribute] = {
 
 # Fields stored as PostgreSQL arrays (for type validation only)
 _ARRAY_FIELDS = {
-    "judge", "acts_cited", "cases_cited", "keywords",
-    "dissenting_judges", "concurring_judges", "companion_cases",
+    "judge",
+    "acts_cited",
+    "cases_cited",
+    "keywords",
+    "dissenting_judges",
+    "concurring_judges",
+    "companion_cases",
 }
 
 
@@ -82,9 +87,7 @@ class CorrectionRequest(BaseModel):
     """Request body for a metadata correction."""
 
     field: str = Field(..., description="The metadata field to correct")
-    new_value: str | int | bool | list[str] | None = Field(
-        ..., description="The corrected value"
-    )
+    new_value: str | int | bool | list[str] | None = Field(..., description="The corrected value")
     reason: str = Field(
         ...,
         min_length=5,
@@ -127,9 +130,7 @@ async def correct_metadata(
             )
 
     # Fetch existing value for audit (ORM select — no f-string interpolation)
-    existing = await db.execute(
-        select(col, Case.metadata_provenance).where(Case.id == case_id)
-    )
+    existing = await db.execute(select(col, Case.metadata_provenance).where(Case.id == case_id))
     row = existing.mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -137,9 +138,7 @@ async def correct_metadata(
     old_value = row[body.field]
 
     # Update the field (ORM update — no f-string interpolation)
-    await db.execute(
-        update(Case).where(Case.id == case_id).values({col.key: body.new_value})
-    )
+    await db.execute(update(Case).where(Case.id == case_id).values({col.key: body.new_value}))
 
     # Update provenance to mark field as admin-corrected
     provenance = row.get("metadata_provenance") or {}
@@ -165,13 +164,15 @@ async def correct_metadata(
             "action": "metadata.correction",
             "resource_type": "case",
             "resource_id": case_id,
-            "metadata": json.dumps({
-                "field": body.field,
-                "old_value": _serialize(old_value),
-                "new_value": _serialize(body.new_value),
-                "reason": body.reason,
-                "corrected_by": user.sub,
-            }),
+            "metadata": json.dumps(
+                {
+                    "field": body.field,
+                    "old_value": _serialize(old_value),
+                    "new_value": _serialize(body.new_value),
+                    "reason": body.reason,
+                    "corrected_by": user.sub,
+                }
+            ),
             "now": datetime.now(UTC),
         },
     )
@@ -179,7 +180,12 @@ async def correct_metadata(
 
     logger.info(
         "Admin %s corrected case %s field '%s': %s -> %s (reason: %s)",
-        user.sub, case_id, body.field, old_value, body.new_value, body.reason,
+        user.sub,
+        case_id,
+        body.field,
+        old_value,
+        body.new_value,
+        body.reason,
     )
 
     return {
@@ -221,10 +227,12 @@ async def correction_history(
                 meta = json.loads(meta)
             except (json.JSONDecodeError, TypeError):
                 meta = {}
-        corrections.append({
-            **meta,
-            "corrected_at": str(row["created_at"]) if row.get("created_at") else None,
-        })
+        corrections.append(
+            {
+                **meta,
+                "corrected_at": str(row["created_at"]) if row.get("created_at") else None,
+            }
+        )
 
     return {"case_id": case_id, "corrections": corrections}
 

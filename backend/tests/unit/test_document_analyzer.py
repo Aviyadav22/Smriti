@@ -21,7 +21,10 @@ class TestExtractIssues:
         llm.generate_structured.return_value = {
             "document_type": "petition",
             "issues": [
-                {"title": "Right to Privacy", "description": "Whether surveillance violates Article 21"},
+                {
+                    "title": "Right to Privacy",
+                    "description": "Whether surveillance violates Article 21",
+                },
                 {"title": "State Power", "description": "Scope of state surveillance authority"},
             ],
             "parties": {"petitioner": "John Doe", "respondent": "State of Maharashtra"},

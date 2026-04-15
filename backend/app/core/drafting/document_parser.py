@@ -3,6 +3,7 @@
 Parses uploaded PDFs into structured sections (facts, reliefs, legal grounds)
 for auto-generating response documents.
 """
+
 from __future__ import annotations
 
 import json
@@ -51,6 +52,7 @@ Do not infer or fabricate information.
 @dataclass
 class OpposingDocAnalysis:
     """Structured analysis of an opposing legal document."""
+
     doc_type: str = "unknown"
     parties: dict = field(default_factory=dict)
     court: str = ""
@@ -168,8 +170,7 @@ def build_response_context(analysis: OpposingDocAnalysis) -> dict:
     # For appeals: impugned order details
     if analysis.doc_type == "order":
         context["impugned_order_details"] = (
-            f"Order dated {analysis.date} in {analysis.case_number} "
-            f"by {analysis.court}"
+            f"Order dated {analysis.date} in {analysis.case_number} " f"by {analysis.court}"
         )
         context["lower_court_name"] = analysis.court
 

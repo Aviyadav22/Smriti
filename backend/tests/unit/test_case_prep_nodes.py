@@ -1,4 +1,5 @@
 """Tests for Case Prep Agent node functions."""
+
 from __future__ import annotations
 
 import json
@@ -194,14 +195,16 @@ class TestPrioritizeIssuesNode:
             ]
         }
 
-        state = _make_state(analysis={
-            "issues": [
-                {"title": "Issue A", "description": "High priority"},
-                {"title": "Issue B", "description": "Low priority"},
-            ],
-            "parties": {"petitioner": "X"},
-            "relief_sought": "Damages",
-        })
+        state = _make_state(
+            analysis={
+                "issues": [
+                    {"title": "Issue A", "description": "High priority"},
+                    {"title": "Issue B", "description": "Low priority"},
+                ],
+                "parties": {"petitioner": "X"},
+                "relief_sought": "Damages",
+            }
+        )
 
         result = await prioritize_issues_node(state, llm)
 
@@ -227,11 +230,13 @@ class TestPrioritizeIssuesNode:
         llm = _make_llm()
         llm.generate_structured.return_value = {"prioritized_issues": []}
 
-        state = _make_state(analysis={
-            "issues": [{"title": "Test Issue", "description": "A test"}],
-            "parties": {},
-            "relief_sought": None,
-        })
+        state = _make_state(
+            analysis={
+                "issues": [{"title": "Test Issue", "description": "A test"}],
+                "parties": {},
+                "relief_sought": None,
+            }
+        )
 
         await prioritize_issues_node(state, llm)
 
@@ -272,22 +277,27 @@ class TestDeepPrecedentSearchNode:
         graph_store = AsyncMock()
         graph_store.get_neighbors.return_value = {"center": "c1", "neighbors": []}
 
-        with patch(
-            "app.core.agents.nodes.case_prep_nodes.hybrid_search",
-            new_callable=AsyncMock,
-        ) as mock_search, patch(
-            "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
-            new_callable=AsyncMock,
-            side_effect=lambda results, db, **kw: results,
+        with (
+            patch(
+                "app.core.agents.nodes.case_prep_nodes.hybrid_search",
+                new_callable=AsyncMock,
+            ) as mock_search,
+            patch(
+                "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
+                new_callable=AsyncMock,
+                side_effect=lambda results, db, **kw: results,
+            ),
         ):
             mock_search.return_value = mock_response
 
-            state = _make_state(prioritized_issues=[
-                {"title": "Issue 1", "description": "Desc 1", "composite_score": 9},
-                {"title": "Issue 2", "description": "Desc 2", "composite_score": 7},
-                {"title": "Issue 3", "description": "Desc 3", "composite_score": 5},
-                {"title": "Issue 4", "description": "Desc 4", "composite_score": 3},
-            ])
+            state = _make_state(
+                prioritized_issues=[
+                    {"title": "Issue 1", "description": "Desc 1", "composite_score": 9},
+                    {"title": "Issue 2", "description": "Desc 2", "composite_score": 7},
+                    {"title": "Issue 3", "description": "Desc 3", "composite_score": 5},
+                    {"title": "Issue 4", "description": "Desc 4", "composite_score": 3},
+                ]
+            )
             llm = _make_llm()
 
             result = await deep_precedent_search_node(
@@ -338,28 +348,44 @@ class TestDeepPrecedentSearchNode:
         graph_store.get_neighbors.return_value = {
             "center": "c1",
             "neighbors": [
-                {"node": {"id": "c2", "title": "Neighbor Case", "citation": "SCC 2"}, "relationship": "CITES"},
-                {"node": {"id": "c1", "title": "Case One"}, "relationship": "CITES"},  # duplicate - should be filtered
-            ]
+                {
+                    "node": {"id": "c2", "title": "Neighbor Case", "citation": "SCC 2"},
+                    "relationship": "CITES",
+                },
+                {
+                    "node": {"id": "c1", "title": "Case One"},
+                    "relationship": "CITES",
+                },  # duplicate - should be filtered
+            ],
         }
 
-        with patch(
-            "app.core.agents.nodes.case_prep_nodes.hybrid_search",
-            new_callable=AsyncMock,
-        ) as mock_search, patch(
-            "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
-            new_callable=AsyncMock,
-            side_effect=lambda results, db, **kw: results,
+        with (
+            patch(
+                "app.core.agents.nodes.case_prep_nodes.hybrid_search",
+                new_callable=AsyncMock,
+            ) as mock_search,
+            patch(
+                "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
+                new_callable=AsyncMock,
+                side_effect=lambda results, db, **kw: results,
+            ),
         ):
             mock_search.return_value = mock_response
 
-            state = _make_state(prioritized_issues=[
-                {"title": "Issue 1", "description": "Desc 1"},
-            ])
+            state = _make_state(
+                prioritized_issues=[
+                    {"title": "Issue 1", "description": "Desc 1"},
+                ]
+            )
 
             result = await deep_precedent_search_node(
-                state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(),
-                graph_store, AsyncMock(),
+                state,
+                _make_llm(),
+                AsyncMock(),
+                AsyncMock(),
+                AsyncMock(),
+                graph_store,
+                AsyncMock(),
             )
 
         findings = result["messages"][0]["data"]
@@ -412,23 +438,33 @@ class TestDeepPrecedentSearchNode:
             ],
         }
 
-        with patch(
-            "app.core.agents.nodes.case_prep_nodes.hybrid_search",
-            new_callable=AsyncMock,
-        ) as mock_search, patch(
-            "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
-            new_callable=AsyncMock,
-            side_effect=lambda results, db, **kw: results,
+        with (
+            patch(
+                "app.core.agents.nodes.case_prep_nodes.hybrid_search",
+                new_callable=AsyncMock,
+            ) as mock_search,
+            patch(
+                "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
+                new_callable=AsyncMock,
+                side_effect=lambda results, db, **kw: results,
+            ),
         ):
             mock_search.return_value = mock_response
 
-            state = _make_state(prioritized_issues=[
-                {"title": "Issue 1", "description": "Desc 1"},
-            ])
+            state = _make_state(
+                prioritized_issues=[
+                    {"title": "Issue 1", "description": "Desc 1"},
+                ]
+            )
 
             result = await deep_precedent_search_node(
-                state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(),
-                graph_store, AsyncMock(),
+                state,
+                _make_llm(),
+                AsyncMock(),
+                AsyncMock(),
+                AsyncMock(),
+                graph_store,
+                AsyncMock(),
             )
 
         findings = result["messages"][0]["data"]
@@ -536,7 +572,9 @@ class TestGenerateStrategyMemoNode:
             },
             prioritized_issues=[{"title": "Issue 1", "composite_score": 8}],
             argument_order=[{"position": 1, "issue_title": "Issue 1"}],
-            messages=[{"type": "deep_precedents", "data": [{"issue_title": "Issue 1", "results": []}]}],
+            messages=[
+                {"type": "deep_precedents", "data": [{"issue_title": "Issue 1", "results": []}]}
+            ],
         )
 
         result = await generate_strategy_memo_node(state, llm)
@@ -562,7 +600,10 @@ class TestGenerateStrategyMemoNode:
         state = _make_state(
             analysis={"parties": {}, "relief_sought": None, "counter_arguments": []},
             messages=[
-                {"type": "deep_precedents", "data": [{"issue_title": "X", "results": [{"case_id": "c1"}]}]}
+                {
+                    "type": "deep_precedents",
+                    "data": [{"issue_title": "X", "results": [{"case_id": "c1"}]}],
+                }
             ],
         )
 
@@ -623,9 +664,7 @@ class TestVerifyCitationsNode:
     @pytest.mark.asyncio
     async def test_human_citation_unverified_appends_warning(self) -> None:
         """A human-readable citation not in the DB should trigger a warning."""
-        state = _make_state(
-            enhanced_memo="The court relied on (2099) 1 SCC 999 in this matter."
-        )
+        state = _make_state(enhanced_memo="The court relied on (2099) 1 SCC 999 in this matter.")
 
         no_match = MagicMock()
         no_match.first.return_value = None
@@ -642,9 +681,15 @@ class TestVerifyCitationsNode:
         state = _make_state(
             enhanced_memo="The court relied on (2017) 10 SCC 1 in this matter.",
             messages=[
-                {"type": "deep_precedents", "data": [
-                    {"issue_title": "X", "results": [{"citation": "(2017) 10 SCC 1", "snippet": ""}]}
-                ]}
+                {
+                    "type": "deep_precedents",
+                    "data": [
+                        {
+                            "issue_title": "X",
+                            "results": [{"citation": "(2017) 10 SCC 1", "snippet": ""}],
+                        }
+                    ],
+                }
             ],
         )
 
@@ -662,9 +707,15 @@ class TestVerifyCitationsNode:
         state = _make_state(
             enhanced_memo="The court relied on (2017) 10 SCC 1 in this matter.",
             messages=[
-                {"type": "deep_precedents", "data": [
-                    {"issue_title": "X", "results": [{"citation": "(2020) 5 SCC 200", "snippet": ""}]}
-                ]}
+                {
+                    "type": "deep_precedents",
+                    "data": [
+                        {
+                            "issue_title": "X",
+                            "results": [{"citation": "(2020) 5 SCC 200", "snippet": ""}],
+                        }
+                    ],
+                }
             ],
         )
 
@@ -683,9 +734,15 @@ class TestVerifyCitationsNode:
         state = _make_state(
             enhanced_memo="The court relied on (2017) 10 SCC 1 in this matter.",
             messages=[
-                {"type": "deep_precedents", "data": [
-                    {"issue_title": "X", "results": [{"citation": "(2017) 10 SCC 1", "snippet": ""}]}
-                ]}
+                {
+                    "type": "deep_precedents",
+                    "data": [
+                        {
+                            "issue_title": "X",
+                            "results": [{"citation": "(2017) 10 SCC 1", "snippet": ""}],
+                        }
+                    ],
+                }
             ],
         )
 
@@ -759,14 +816,16 @@ class TestIssueScoreLabeling:
             ]
         }
 
-        state = _make_state(analysis={
-            "issues": [
-                {"title": "Issue 1", "description": "test"},
-                {"title": "Issue 2", "description": "test 2"},
-            ],
-            "parties": {},
-            "relief_sought": "Damages",
-        })
+        state = _make_state(
+            analysis={
+                "issues": [
+                    {"title": "Issue 1", "description": "test"},
+                    {"title": "Issue 2", "description": "test 2"},
+                ],
+                "parties": {},
+                "relief_sought": "Damages",
+            }
+        )
 
         result = await prioritize_issues_node(state, llm)
         issues = result["prioritized_issues"]
@@ -780,8 +839,12 @@ class TestIssueScoreLabeling:
         """Issues with no matching precedents get a warning score_note."""
         state = _make_state(
             prioritized_issues=[
-                {"title": "Unmatched Issue", "composite_score": 8, "legal_strength": 6,
-                 "score_note": "AI-estimated"},
+                {
+                    "title": "Unmatched Issue",
+                    "composite_score": 8,
+                    "legal_strength": 6,
+                    "score_note": "AI-estimated",
+                },
             ],
         )
 
@@ -815,33 +878,46 @@ class TestIssueScoreLabeling:
 
         mock_response = MagicMock()
         mock_response.results = [
-            FakeItem(case_id=f"c{i}", score=0.9, title=f"Case {i}",
-                     court="Supreme Court of India")
+            FakeItem(case_id=f"c{i}", score=0.9, title=f"Case {i}", court="Supreme Court of India")
             for i in range(4)
         ]
 
         graph_store = AsyncMock()
         graph_store.get_neighbors.return_value = {"center": "c0", "neighbors": []}
 
-        with patch(
-            "app.core.agents.nodes.case_prep_nodes.hybrid_search",
-            new_callable=AsyncMock,
-        ) as mock_search, patch(
-            "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
-            new_callable=AsyncMock,
-            side_effect=lambda results, db, **kw: results,
+        with (
+            patch(
+                "app.core.agents.nodes.case_prep_nodes.hybrid_search",
+                new_callable=AsyncMock,
+            ) as mock_search,
+            patch(
+                "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
+                new_callable=AsyncMock,
+                side_effect=lambda results, db, **kw: results,
+            ),
         ):
             mock_search.return_value = mock_response
 
-            state = _make_state(prioritized_issues=[
-                {"title": "Constitutional validity", "description": "Art 14 challenge",
-                 "composite_score": 8, "legal_strength": 6,
-                 "score_note": "AI-estimated"},
-            ])
+            state = _make_state(
+                prioritized_issues=[
+                    {
+                        "title": "Constitutional validity",
+                        "description": "Art 14 challenge",
+                        "composite_score": 8,
+                        "legal_strength": 6,
+                        "score_note": "AI-estimated",
+                    },
+                ]
+            )
 
             result = await deep_precedent_search_node(
-                state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(),
-                graph_store, AsyncMock(),
+                state,
+                _make_llm(),
+                AsyncMock(),
+                AsyncMock(),
+                AsyncMock(),
+                graph_store,
+                AsyncMock(),
             )
 
         issues = result["prioritized_issues"]
@@ -878,25 +954,39 @@ class TestIssueScoreLabeling:
         graph_store = AsyncMock()
         graph_store.get_neighbors.return_value = {"center": "c1", "neighbors": []}
 
-        with patch(
-            "app.core.agents.nodes.case_prep_nodes.hybrid_search",
-            new_callable=AsyncMock,
-        ) as mock_search, patch(
-            "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
-            new_callable=AsyncMock,
-            side_effect=lambda results, db, **kw: results,
+        with (
+            patch(
+                "app.core.agents.nodes.case_prep_nodes.hybrid_search",
+                new_callable=AsyncMock,
+            ) as mock_search,
+            patch(
+                "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
+                new_callable=AsyncMock,
+                side_effect=lambda results, db, **kw: results,
+            ),
         ):
             mock_search.return_value = mock_response
 
-            state = _make_state(prioritized_issues=[
-                {"title": "Contract breach", "description": "Breach of contract",
-                 "composite_score": 7, "legal_strength": 5,
-                 "score_note": "AI-estimated"},
-            ])
+            state = _make_state(
+                prioritized_issues=[
+                    {
+                        "title": "Contract breach",
+                        "description": "Breach of contract",
+                        "composite_score": 7,
+                        "legal_strength": 5,
+                        "score_note": "AI-estimated",
+                    },
+                ]
+            )
 
             result = await deep_precedent_search_node(
-                state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(),
-                graph_store, AsyncMock(),
+                state,
+                _make_llm(),
+                AsyncMock(),
+                AsyncMock(),
+                AsyncMock(),
+                graph_store,
+                AsyncMock(),
             )
 
         issues = result["prioritized_issues"]
@@ -930,25 +1020,39 @@ class TestIssueScoreLabeling:
         graph_store = AsyncMock()
         graph_store.get_neighbors.return_value = {"center": "c1", "neighbors": []}
 
-        with patch(
-            "app.core.agents.nodes.case_prep_nodes.hybrid_search",
-            new_callable=AsyncMock,
-        ) as mock_search, patch(
-            "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
-            new_callable=AsyncMock,
-            side_effect=lambda results, db, **kw: results,
+        with (
+            patch(
+                "app.core.agents.nodes.case_prep_nodes.hybrid_search",
+                new_callable=AsyncMock,
+            ) as mock_search,
+            patch(
+                "app.core.agents.nodes.case_prep_nodes.enrich_results_with_ratio",
+                new_callable=AsyncMock,
+                side_effect=lambda results, db, **kw: results,
+            ),
         ):
             mock_search.return_value = mock_response
 
-            state = _make_state(prioritized_issues=[
-                {"title": "Tort claim", "description": "Negligence",
-                 "composite_score": 6, "legal_strength": 4,
-                 "score_note": "AI-estimated"},
-            ])
+            state = _make_state(
+                prioritized_issues=[
+                    {
+                        "title": "Tort claim",
+                        "description": "Negligence",
+                        "composite_score": 6,
+                        "legal_strength": 4,
+                        "score_note": "AI-estimated",
+                    },
+                ]
+            )
 
             result = await deep_precedent_search_node(
-                state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(),
-                graph_store, AsyncMock(),
+                state,
+                _make_llm(),
+                AsyncMock(),
+                AsyncMock(),
+                AsyncMock(),
+                graph_store,
+                AsyncMock(),
             )
 
         issues = result["prioritized_issues"]
@@ -957,10 +1061,16 @@ class TestIssueScoreLabeling:
     @pytest.mark.asyncio
     async def test_deep_search_returns_prioritized_issues_in_result(self) -> None:
         """deep_precedent_search_node should include prioritized_issues in its return dict."""
-        state = _make_state(prioritized_issues=[
-            {"title": "Issue X", "composite_score": 5, "legal_strength": 5,
-             "score_note": "AI-estimated"},
-        ])
+        state = _make_state(
+            prioritized_issues=[
+                {
+                    "title": "Issue X",
+                    "composite_score": 5,
+                    "legal_strength": 5,
+                    "score_note": "AI-estimated",
+                },
+            ]
+        )
 
         result = await deep_precedent_search_node(
             state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock()

@@ -16,6 +16,7 @@ Graph flow:
   quality_check -> [route: pass->checkpoint_memo, fail->synthesize_strategy] ->
   checkpoint_memo -> END
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -64,9 +65,15 @@ logger = logging.getLogger(__name__)
 # Router functions (module-level for testability)
 # ---------------------------------------------------------------------------
 
-route_after_analysis = make_feedback_router("analysis", "analyze_facts", "search_precedents", check_error=True)
-route_after_arguments = make_feedback_router("arguments", "generate_arguments_irac", "adversarial_search", check_error=True)
-route_after_memo = make_feedback_router("memo", "synthesize_strategy", proceed=None, check_error=True)
+route_after_analysis = make_feedback_router(
+    "analysis", "analyze_facts", "search_precedents", check_error=True
+)
+route_after_arguments = make_feedback_router(
+    "arguments", "generate_arguments_irac", "adversarial_search", check_error=True
+)
+route_after_memo = make_feedback_router(
+    "memo", "synthesize_strategy", proceed=None, check_error=True
+)
 
 
 def route_after_quality(state: dict) -> str:
@@ -128,8 +135,11 @@ def build_strategy_graph(
         result = await analyze_facts_node(state, flash_llm)
         # Count feedback messages for THIS step only (not shared across checkpoints)
         step_feedback_count = sum(
-            1 for m in state.get("messages", [])
-            if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "analysis"
+            1
+            for m in state.get("messages", [])
+            if isinstance(m, dict)
+            and m.get("type") == "user_feedback"
+            and m.get("step") == "analysis"
         )
         result["iteration"] = step_feedback_count
         return result
@@ -159,13 +169,15 @@ def build_strategy_graph(
         if isinstance(fact_analysis, dict):
             for cause in fact_analysis.get("causes_of_action", []):
                 if isinstance(cause, dict) and cause.get("statutory_basis"):
-                    statute_refs.append({
-                        "act_short_name": cause["statutory_basis"],
-                        "section_number": "",
-                        "section_title": "",
-                        "section_text": "",
-                        "is_repealed": False,
-                    })
+                    statute_refs.append(
+                        {
+                            "act_short_name": cause["statutory_basis"],
+                            "section_number": "",
+                            "section_title": "",
+                            "section_text": "",
+                            "is_repealed": False,
+                        }
+                    )
         adapted = {
             "query": state.get("case_facts", ""),
             "rewritten_query": "",
@@ -177,16 +189,17 @@ def build_strategy_graph(
     async def generate_arguments_irac(state: StrategyState) -> dict:
         result = await generate_arguments_irac_node(state, llm)
         step_feedback_count = sum(
-            1 for m in state.get("messages", [])
-            if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "arguments"
+            1
+            for m in state.get("messages", [])
+            if isinstance(m, dict)
+            and m.get("type") == "user_feedback"
+            and m.get("step") == "arguments"
         )
         result["iteration"] = step_feedback_count
         return result
 
     async def adversarial_search(state: StrategyState) -> dict:
-        return await adversarial_search_strategy_node(
-            state, llm, embedder, vector_store, reranker
-        )
+        return await adversarial_search_strategy_node(state, llm, embedder, vector_store, reranker)
 
     async def argument_ordering(state: StrategyState) -> dict:
         return await argument_ordering_node(state, llm)
@@ -202,7 +215,8 @@ def build_strategy_graph(
         result = await synthesize_strategy_node(state, llm, stream_callback=memo_stream_callback)
         # Count feedback messages for THIS step only (not shared across checkpoints)
         step_feedback_count = sum(
-            1 for m in state.get("messages", [])
+            1
+            for m in state.get("messages", [])
             if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "memo"
         )
         result["iteration"] = step_feedback_count
@@ -229,7 +243,10 @@ def build_strategy_graph(
     checkpoint_arguments = make_checkpoint_node(
         "arguments",
         "Here are the IRAC-structured arguments and strength assessment. Would you like to adjust?",
-        {"irac_arguments": ("irac_arguments", []), "strength_assessment": ("strength_assessment", {})},
+        {
+            "irac_arguments": ("irac_arguments", []),
+            "strength_assessment": ("strength_assessment", {}),
+        },
     )
 
     checkpoint_memo = make_checkpoint_node(

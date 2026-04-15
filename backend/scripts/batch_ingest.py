@@ -86,10 +86,12 @@ def _normalize_doc_key(year: int, pdf_path: Path) -> str:
 # Phase 1: Submit
 # ---------------------------------------------------------------------------
 
+
 async def _upload_pdf(client: genai.Client, pdf_path: Path) -> str:
     """Upload a PDF to Gemini Files API. Returns the file URI."""
     uploaded = await asyncio.to_thread(
-        client.files.upload, file=str(pdf_path),
+        client.files.upload,
+        file=str(pdf_path),
     )
     return uploaded.name  # e.g. "files/abc123"
 
@@ -102,9 +104,7 @@ def _build_batch_request_entry(doc_key: str, file_uri: str) -> dict:
     responseMimeType to enforce JSON output format.
     """
     schema_text = json.dumps(METADATA_OUTPUT_SCHEMA, indent=2)
-    prompt = METADATA_EXTRACTION_USER.format(
-        judgment_text="[See attached PDF document]"
-    )
+    prompt = METADATA_EXTRACTION_USER.format(judgment_text="[See attached PDF document]")
     prompt += (
         "\n\nYou MUST return your response as valid JSON matching this schema exactly:\n"
         f"```json\n{schema_text}\n```"
@@ -137,9 +137,7 @@ async def _load_existing_text_hashes() -> set[str]:
     from app.db.postgres import async_session_factory
 
     async with async_session_factory() as db:
-        result = await db.execute(
-            text("SELECT text_hash FROM cases WHERE text_hash IS NOT NULL")
-        )
+        result = await db.execute(text("SELECT text_hash FROM cases WHERE text_hash IS NOT NULL"))
         hashes = {row[0] for row in result.fetchall()}
     logger.info("Loaded %d existing text hashes for dedup", len(hashes))
     return hashes
@@ -185,7 +183,12 @@ async def submit_year(
         if existing and existing["status"] not in ("error", "batch_failed"):
             continue  # Already uploaded or further along
         new_pdfs.append(pdf_path)
-    logger.info("Year %d: %d new PDFs to process (skipping %d already tracked)", year, len(new_pdfs), len(pdf_paths) - len(new_pdfs))
+    logger.info(
+        "Year %d: %d new PDFs to process (skipping %d already tracked)",
+        year,
+        len(new_pdfs),
+        len(pdf_paths) - len(new_pdfs),
+    )
 
     # Batch-fetch existing text hashes for O(1) dedup (instead of per-PDF DB query)
     existing_hashes = await _load_existing_text_hashes()
@@ -202,7 +205,10 @@ async def submit_year(
 
         logger.info(
             "Year %d wave %d: %d PDFs (API key %d)",
-            year, wave_start // wave_size + 1, len(wave), current_key_idx,
+            year,
+            wave_start // wave_size + 1,
+            len(wave),
+            current_key_idx,
         )
 
         # Upload PDFs and extract text concurrently
@@ -216,7 +222,9 @@ async def submit_year(
                     # Extract text for dedup check
                     text_quality = await extract_and_score(str(pdf_path))
                     if not text_quality.text or text_quality.char_count < 100:
-                        logger.warning("Skipping %s: too short (%d chars)", doc_key, text_quality.char_count)
+                        logger.warning(
+                            "Skipping %s: too short (%d chars)", doc_key, text_quality.char_count
+                        )
                         return None
 
                     text_hash = _compute_text_hash(text_quality.text)
@@ -231,6 +239,7 @@ async def submit_year(
 
                     # Match parquet metadata
                     from scripts.ingest_s3 import _match_pdf_to_metadata
+
                     parquet_meta = _match_pdf_to_metadata(pdf_path, metadata_map, stem_index)
 
                     # Store in state DB
@@ -274,7 +283,9 @@ async def submit_year(
 
             # Upload JSONL file to Gemini Files API
             jsonl_file = await asyncio.to_thread(
-                client.files.upload, file=jsonl_path, config={"mime_type": "jsonl"},
+                client.files.upload,
+                file=jsonl_path,
+                config={"mime_type": "jsonl"},
             )
 
             # Submit batch job
@@ -293,12 +304,16 @@ async def submit_year(
             # Update doc statuses
             for entry in sub_batch:
                 state_db.update_doc_status(
-                    entry["key"], "submitted", batch_job_name=job_name,
+                    entry["key"],
+                    "submitted",
+                    batch_job_name=job_name,
                 )
 
             logger.info(
                 "Submitted batch job %s: %d requests (key %d)",
-                job_name, len(sub_batch), current_key_idx,
+                job_name,
+                len(sub_batch),
+                current_key_idx,
             )
 
             # Clean up temp file
@@ -308,6 +323,7 @@ async def submit_year(
 # ---------------------------------------------------------------------------
 # Phase 2: Poll
 # ---------------------------------------------------------------------------
+
 
 async def poll_jobs(
     api_keys: list[str],
@@ -381,7 +397,8 @@ async def _collect_results(
         # Download the result file content
         try:
             result_content = await asyncio.to_thread(
-                client.files.download, file=result_file_name,
+                client.files.download,
+                file=result_file_name,
             )
             # Parse JSONL results
             for line in result_content.decode("utf-8").strip().split("\n"):
@@ -395,7 +412,7 @@ async def _collect_results(
     else:
         # Try inline responses
         if hasattr(job, "dest") and job.dest and hasattr(job.dest, "inlined_responses"):
-            for entry in (job.dest.inlined_responses or []):
+            for entry in job.dest.inlined_responses or []:
                 _process_result_entry(entry, state_db)
         else:
             logger.warning("No results found for job %s (dest=%s)", job.name, job.dest)
@@ -444,6 +461,7 @@ def _process_result_entry(entry: dict, state_db: BatchStateDB) -> None:
 # ---------------------------------------------------------------------------
 # Phase 3: Process
 # ---------------------------------------------------------------------------
+
 
 async def process_completed(
     api_keys: list[str],
@@ -517,8 +535,7 @@ async def process_completed(
                 # Get embedder (round-robin)
                 embed_idx, embedder = next(embedder_cycle)
                 embed_limiter = (
-                    embed_limiter_pool.get(api_keys[embed_idx])
-                    if embed_limiter_pool else None
+                    embed_limiter_pool.get(api_keys[embed_idx]) if embed_limiter_pool else None
                 )
 
                 # Feed into existing pipeline — zero modifications
@@ -556,12 +573,19 @@ async def process_completed(
                     rate = stats["success"] / max(elapsed / 60, 0.01)
                     remaining = len(all_docs) - total
                     eta_min = remaining / max(rate, 0.01)
-                    eta_str = f"{int(eta_min // 60)}h {int(eta_min % 60)}m" if eta_min >= 60 else f"{int(eta_min)}m"
+                    eta_str = (
+                        f"{int(eta_min // 60)}h {int(eta_min % 60)}m"
+                        if eta_min >= 60
+                        else f"{int(eta_min)}m"
+                    )
                     logger.info(
                         "Phase 3: %d/%d (%.1f%%) | %.1f/min | ETA: %s | %d failed",
-                        stats["success"], len(all_docs),
+                        stats["success"],
+                        len(all_docs),
                         total / len(all_docs) * 100,
-                        rate, eta_str, stats["failed"],
+                        rate,
+                        eta_str,
+                        stats["failed"],
                     )
 
             except Exception as exc:
@@ -575,13 +599,16 @@ async def process_completed(
 
     logger.info(
         "Phase 3 complete: %d success, %d failed out of %d",
-        stats["success"], stats["failed"], len(all_docs),
+        stats["success"],
+        stats["failed"],
+        len(all_docs),
     )
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Batch ingestion orchestrator")
@@ -614,24 +641,31 @@ def main() -> None:
 
     if args.command == "submit":
         for year in range(args.year_from, args.year_to + 1):
-            asyncio.run(submit_year(
-                year, api_keys, state_db,
-                Path(args.data_dir),
-                wave_size=args.wave_size,
-                concurrency=args.concurrency,
-            ))
+            asyncio.run(
+                submit_year(
+                    year,
+                    api_keys,
+                    state_db,
+                    Path(args.data_dir),
+                    wave_size=args.wave_size,
+                    concurrency=args.concurrency,
+                )
+            )
 
     elif args.command == "poll":
         asyncio.run(poll_jobs(api_keys, state_db, interval=args.interval))
 
     elif args.command == "process":
-        asyncio.run(process_completed(
-            api_keys, state_db,
-            year_from=args.year_from,
-            year_to=args.year_to,
-            concurrency=args.concurrency,
-            rpm_limit=args.rpm_limit,
-        ))
+        asyncio.run(
+            process_completed(
+                api_keys,
+                state_db,
+                year_from=args.year_from,
+                year_to=args.year_to,
+                concurrency=args.concurrency,
+                rpm_limit=args.rpm_limit,
+            )
+        )
 
 
 if __name__ == "__main__":

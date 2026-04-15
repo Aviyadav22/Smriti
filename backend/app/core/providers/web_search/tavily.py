@@ -23,14 +23,16 @@ _TAVILY_TIMEOUT = 10  # seconds
 _tavily_retry = retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
-    retry=retry_if_exception_type((
-        httpx.HTTPStatusError,
-        httpx.ConnectError,
-        httpx.TimeoutException,
-        asyncio.TimeoutError,
-        ConnectionError,
-        OSError,
-    )),
+    retry=retry_if_exception_type(
+        (
+            httpx.HTTPStatusError,
+            httpx.ConnectError,
+            httpx.TimeoutException,
+            asyncio.TimeoutError,
+            ConnectionError,
+            OSError,
+        )
+    ),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )
@@ -67,9 +69,7 @@ class TavilySearchClient:
     def __init__(self, api_key: str | None = None) -> None:
         self.api_key = api_key or settings.tavily_api_key
         if not self.api_key:
-            raise ValueError(
-                "Tavily API key is required. Set TAVILY_API_KEY environment variable."
-            )
+            raise ValueError("Tavily API key is required. Set TAVILY_API_KEY environment variable.")
         self._client = httpx.AsyncClient(
             timeout=settings.web_search_timeout or _TAVILY_TIMEOUT,
         )

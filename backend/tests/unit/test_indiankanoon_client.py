@@ -1,4 +1,5 @@
 """Tests for Indian Kanoon API client."""
+
 from __future__ import annotations
 
 import asyncio
@@ -44,9 +45,9 @@ class TestRateLimiter:
     def test_no_deprecated_get_event_loop(self, ik_client) -> None:
         """Rate limiter must not use deprecated asyncio.get_event_loop().time()."""
         source = inspect.getsource(ik_client._rate_limited_post)
-        assert "get_event_loop" not in source, (
-            "Must use asyncio.get_running_loop(), not deprecated get_event_loop()"
-        )
+        assert (
+            "get_event_loop" not in source
+        ), "Must use asyncio.get_running_loop(), not deprecated get_event_loop()"
 
     def test_uses_settings_timeout(self, mock_settings) -> None:
         """Client should use settings.web_search_timeout, not hardcoded."""
@@ -65,7 +66,9 @@ class TestSearchEnhancements:
         """When boolean_query is provided, it should be used instead of NL query."""
         resp = _mock_response({"docs": [{"tid": 1, "title": "Test"}]})
 
-        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            ik_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             await ik_client.search(
                 "Section 498A",
                 boolean_query="498A ANDD cruelty ANDD dowry",
@@ -79,7 +82,9 @@ class TestSearchEnhancements:
         """Court filter names should be mapped to IK doctype codes."""
         resp = _mock_response({"docs": []})
 
-        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            ik_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             await ik_client.search("test", court_filter="supreme_court")
             call_data = mock_post.call_args[1].get("data", {})
             assert "supremecourt" in call_data["formInput"]
@@ -89,7 +94,9 @@ class TestSearchEnhancements:
         """IK date filters must be passed as fromdate/todate."""
         resp = _mock_response({"docs": []})
 
-        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            ik_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             await ik_client.search("test", from_date="01-01-2020", to_date="31-12-2024")
             call_data = mock_post.call_args[1].get("data", {})
             assert call_data["fromdate"] == "01-01-2020"
@@ -100,7 +107,9 @@ class TestSearchEnhancements:
         """sort_by='mostrecent' should be passed to IK API."""
         resp = _mock_response({"docs": []})
 
-        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            ik_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             await ik_client.search("test", sort_by="mostrecent")
             call_data = mock_post.call_args[1].get("data", {})
             assert call_data["sortby"] == "mostrecent"
@@ -109,7 +118,9 @@ class TestSearchEnhancements:
     async def test_search_uses_maxpages_param(self, ik_client) -> None:
         """When max_pages > 1, should use maxpages param in single call."""
         resp = _mock_response({"docs": [{"tid": i} for i in range(15)]})
-        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            ik_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             await ik_client.search("test", max_results=15, max_pages=2)
             # Should make exactly ONE API call with maxpages=2
             assert mock_post.call_count == 1
@@ -120,7 +131,9 @@ class TestSearchEnhancements:
     async def test_search_single_page_no_maxpages(self, ik_client) -> None:
         """When max_pages=1 (default), should NOT include maxpages param."""
         resp = _mock_response({"docs": [{"tid": 1}]})
-        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            ik_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             await ik_client.search("test")
             data = mock_post.call_args[1]["data"]
             assert "maxpages" not in data
@@ -128,7 +141,9 @@ class TestSearchEnhancements:
     @pytest.mark.asyncio
     async def test_search_appends_title_filter(self, ik_client) -> None:
         resp = _mock_response({"docs": []})
-        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            ik_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             await ik_client.search("privacy", title_filter="Puttaswamy")
             data = mock_post.call_args[1]["data"]
             assert "title: Puttaswamy" in data["formInput"]
@@ -136,7 +151,9 @@ class TestSearchEnhancements:
     @pytest.mark.asyncio
     async def test_search_appends_cite_filter(self, ik_client) -> None:
         resp = _mock_response({"docs": []})
-        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            ik_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             await ik_client.search("privacy", cite_filter="1993 AIR")
             data = mock_post.call_args[1]["data"]
             assert "cite: 1993 AIR" in data["formInput"]
@@ -144,7 +161,9 @@ class TestSearchEnhancements:
     @pytest.mark.asyncio
     async def test_search_appends_author_filter(self, ik_client) -> None:
         resp = _mock_response({"docs": []})
-        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            ik_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             await ik_client.search("privacy", author_filter="chandrachud")
             data = mock_post.call_args[1]["data"]
             assert "author: chandrachud" in data["formInput"]
@@ -152,7 +171,9 @@ class TestSearchEnhancements:
     @pytest.mark.asyncio
     async def test_search_appends_bench_filter(self, ik_client) -> None:
         resp = _mock_response({"docs": []})
-        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            ik_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             await ik_client.search("privacy", bench_filter="chandrachud")
             data = mock_post.call_args[1]["data"]
             assert "bench: chandrachud" in data["formInput"]
@@ -160,17 +181,22 @@ class TestSearchEnhancements:
     @pytest.mark.asyncio
     async def test_search_passes_maxcites(self, ik_client) -> None:
         resp = _mock_response({"docs": []})
-        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            ik_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             await ik_client.search("privacy", max_cites=10)
             data = mock_post.call_args[1]["data"]
             assert data["maxcites"] == "10"
+
 
 class TestCourtCopy:
     @pytest.mark.asyncio
     async def test_get_court_copy_calls_origdoc(self, ik_client) -> None:
         """get_court_copy should POST to /origdoc/<docid>/."""
         resp = _mock_response({"doc": "base64content", "Content-Type": "text/html"})
-        with patch.object(ik_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            ik_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             result = await ik_client.get_court_copy("12345")
             mock_post.assert_called_once()
             assert "/origdoc/12345/" in str(mock_post.call_args)
@@ -194,9 +220,18 @@ class TestCourtCodes:
 
         # Key courts that must exist
         required = [
-            "supreme_court", "delhi", "bombay", "calcutta", "madras",
-            "andhra", "orissa", "himachal_pradesh", "madhya_pradesh", "sikkim",
-            "meghalaya", "jammu",
+            "supreme_court",
+            "delhi",
+            "bombay",
+            "calcutta",
+            "madras",
+            "andhra",
+            "orissa",
+            "himachal_pradesh",
+            "madhya_pradesh",
+            "sikkim",
+            "meghalaya",
+            "jammu",
         ]
         for court in required:
             assert court in IK_COURT_CODES, f"Missing court: {court}"

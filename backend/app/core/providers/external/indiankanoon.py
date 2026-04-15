@@ -25,20 +25,22 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _IK_TIMEOUT = 15  # seconds per request
-_CIRCUIT_BREAKER_THRESHOLD = 3   # [5E.5] consecutive 429s to trip open
-_CIRCUIT_BREAKER_COOLDOWN = 60   # [5E.5] seconds before half-open retry
+_CIRCUIT_BREAKER_THRESHOLD = 3  # [5E.5] consecutive 429s to trip open
+_CIRCUIT_BREAKER_COOLDOWN = 60  # [5E.5] seconds before half-open retry
 
 _ik_retry = retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
-    retry=retry_if_exception_type((
-        httpx.HTTPStatusError,
-        httpx.ConnectError,
-        httpx.TimeoutException,
-        asyncio.TimeoutError,
-        ConnectionError,
-        OSError,
-    )),
+    retry=retry_if_exception_type(
+        (
+            httpx.HTTPStatusError,
+            httpx.ConnectError,
+            httpx.TimeoutException,
+            asyncio.TimeoutError,
+            ConnectionError,
+            OSError,
+        )
+    ),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )
@@ -164,7 +166,8 @@ class IndianKanoonClient:
                 self._circuit_open_until = time.monotonic() + _CIRCUIT_BREAKER_COOLDOWN
                 logger.warning(
                     "IK API 429 rate limited (consecutive=%d/%d)",
-                    self._consecutive_429s, _CIRCUIT_BREAKER_THRESHOLD,
+                    self._consecutive_429s,
+                    _CIRCUIT_BREAKER_THRESHOLD,
                 )
                 response.raise_for_status()
 
@@ -210,7 +213,8 @@ class IndianKanoonClient:
         # Append inline doctype filter if court specified
         if court_filter:
             normalized = IK_COURT_CODES.get(
-                court_filter.lower().replace(" ", "_"), court_filter,
+                court_filter.lower().replace(" ", "_"),
+                court_filter,
             )
             search_query += f" doctypes: {normalized}"
 

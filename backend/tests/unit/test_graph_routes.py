@@ -195,9 +195,7 @@ class TestChain:
         assert edge["type"] == "cites"
 
     @patch("app.api.routes.graph.get_graph_store")
-    def test_chain_with_max_depth(
-        self, mock_get_graph: MagicMock, client: TestClient
-    ) -> None:
+    def test_chain_with_max_depth(self, mock_get_graph: MagicMock, client: TestClient) -> None:
         """max_depth query parameter is passed through."""
         mock_graph = _mock_graph_store()
         mock_get_graph.return_value = mock_graph
@@ -509,15 +507,15 @@ class TestDashboardRoute:
 
 class TestPathRoute:
     @patch("app.api.routes.graph.get_graph_store")
-    def test_returns_200(
-        self, mock_get_graph: MagicMock, client: TestClient
-    ) -> None:
+    def test_returns_200(self, mock_get_graph: MagicMock, client: TestClient) -> None:
         """GET /path?from_id=a&to_id=b returns 200."""
         mock_graph = _mock_graph_store()
-        mock_graph.get_node = AsyncMock(side_effect=[
-            {"id": "a", "title": "A"},
-            {"id": "b", "title": "B"},
-        ])
+        mock_graph.get_node = AsyncMock(
+            side_effect=[
+                {"id": "a", "title": "A"},
+                {"id": "b", "title": "B"},
+            ]
+        )
         mock_graph.query = AsyncMock(return_value=[])
         mock_get_graph.return_value = mock_graph
 
@@ -533,9 +531,7 @@ class TestPathRoute:
         assert resp.status_code == 422
 
     @patch("app.api.routes.graph.get_graph_store")
-    def test_502_on_connection_error(
-        self, mock_get_graph: MagicMock, client: TestClient
-    ) -> None:
+    def test_502_on_connection_error(self, mock_get_graph: MagicMock, client: TestClient) -> None:
         """Graph connection error returns 502."""
         mock_graph = _mock_graph_store()
         mock_graph.get_node.side_effect = ConnectionError("Neo4j down")

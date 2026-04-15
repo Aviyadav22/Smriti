@@ -25,10 +25,14 @@ _RERANK_TIMEOUT = 30
 _cohere_retry = retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=30),
-    retry=retry_if_exception_type((
-        asyncio.TimeoutError, ConnectionError, OSError,
-        cohere.TooManyRequestsError,
-    )),
+    retry=retry_if_exception_type(
+        (
+            asyncio.TimeoutError,
+            ConnectionError,
+            OSError,
+            cohere.TooManyRequestsError,
+        )
+    ),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )
@@ -39,9 +43,7 @@ class CohereReranker:
 
     def __init__(self) -> None:
         if not settings.cohere_api_key or not settings.cohere_api_key.strip():
-            raise ValueError(
-                "Cohere API key is required. Set COHERE_API_KEY environment variable."
-            )
+            raise ValueError("Cohere API key is required. Set COHERE_API_KEY environment variable.")
         self._client = cohere.AsyncClientV2(api_key=settings.cohere_api_key)
         self._model = settings.cohere_rerank_model
 
@@ -105,7 +107,9 @@ class CohereReranker:
                 for r in response.results
             ]
         except TimeoutError:
-            logger.warning("Cohere rerank timed out after %ds, returning original order", _RERANK_TIMEOUT)
+            logger.warning(
+                "Cohere rerank timed out after %ds, returning original order", _RERANK_TIMEOUT
+            )
             # Return original order as fallback
             return [
                 RerankResult(index=i, score=1.0 - i * 0.01, text=doc)
@@ -114,5 +118,5 @@ class CohereReranker:
 
     async def close(self) -> None:
         """Close the underlying HTTP client."""
-        if hasattr(self._client, '_client') and hasattr(self._client._client, 'aclose'):
+        if hasattr(self._client, "_client") and hasattr(self._client._client, "aclose"):
             await self._client._client.aclose()

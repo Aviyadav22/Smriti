@@ -3,6 +3,7 @@
 Stores decomposed judgment sections (Facts, Issues, Arguments, Holdings,
 Reasoning, Order) for section-aware search and targeted retrieval.
 """
+
 from __future__ import annotations
 
 import uuid

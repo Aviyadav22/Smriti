@@ -1,4 +1,5 @@
 """Tests for the document template system."""
+
 from __future__ import annotations
 
 import pytest
@@ -46,11 +47,23 @@ _VALID_PROMPT_MAP: dict[str, str] = {
 
 # All 17 document types that must exist in TEMPLATES.
 _EXPECTED_DOC_TYPES = {
-    "bail_application", "writ_petition_226", "writ_petition_32",
-    "written_statement", "legal_notice", "appeal", "interim_application",
-    "anticipatory_bail", "quashing_petition_482", "demand_notice_138",
-    "plaint", "reply_to_notice", "slp", "divorce_petition",
-    "maintenance_application", "consumer_complaint", "affidavit",
+    "bail_application",
+    "writ_petition_226",
+    "writ_petition_32",
+    "written_statement",
+    "legal_notice",
+    "appeal",
+    "interim_application",
+    "anticipatory_bail",
+    "quashing_petition_482",
+    "demand_notice_138",
+    "plaint",
+    "reply_to_notice",
+    "slp",
+    "divorce_petition",
+    "maintenance_application",
+    "consumer_complaint",
+    "affidavit",
 }
 
 
@@ -65,36 +78,34 @@ class TestTemplates:
 
     def test_each_template_is_document_template_instance(self) -> None:
         for doc_type, template in TEMPLATES.items():
-            assert isinstance(template, DocumentTemplate), (
-                f"TEMPLATES['{doc_type}'] is not a DocumentTemplate instance"
-            )
+            assert isinstance(
+                template, DocumentTemplate
+            ), f"TEMPLATES['{doc_type}'] is not a DocumentTemplate instance"
 
     def test_each_template_has_non_empty_sections(self) -> None:
         for doc_type, template in TEMPLATES.items():
-            assert isinstance(template.sections, tuple), (
-                f"TEMPLATES['{doc_type}'].sections must be a tuple"
-            )
-            assert len(template.sections) > 0, (
-                f"TEMPLATES['{doc_type}'].sections must be non-empty"
-            )
+            assert isinstance(
+                template.sections, tuple
+            ), f"TEMPLATES['{doc_type}'].sections must be a tuple"
+            assert len(template.sections) > 0, f"TEMPLATES['{doc_type}'].sections must be non-empty"
 
     def test_each_template_has_non_empty_required_fields(self) -> None:
         for doc_type, template in TEMPLATES.items():
-            assert isinstance(template.required_fields, tuple), (
-                f"TEMPLATES['{doc_type}'].required_fields must be a tuple"
-            )
-            assert len(template.required_fields) > 0, (
-                f"TEMPLATES['{doc_type}'].required_fields must be non-empty"
-            )
+            assert isinstance(
+                template.required_fields, tuple
+            ), f"TEMPLATES['{doc_type}'].required_fields must be a tuple"
+            assert (
+                len(template.required_fields) > 0
+            ), f"TEMPLATES['{doc_type}'].required_fields must be non-empty"
 
     def test_each_template_has_non_empty_display_name(self) -> None:
         for doc_type, template in TEMPLATES.items():
-            assert isinstance(template.display_name, str), (
-                f"TEMPLATES['{doc_type}'].display_name must be a string"
-            )
-            assert template.display_name.strip(), (
-                f"TEMPLATES['{doc_type}'].display_name must be non-empty"
-            )
+            assert isinstance(
+                template.display_name, str
+            ), f"TEMPLATES['{doc_type}'].display_name must be a string"
+            assert (
+                template.display_name.strip()
+            ), f"TEMPLATES['{doc_type}'].display_name must be non-empty"
 
     def test_each_template_prompt_key_maps_to_valid_prompt(self) -> None:
         for doc_type, template in TEMPLATES.items():
@@ -108,9 +119,9 @@ class TestTemplates:
                 )
                 continue
             prompt_text = _VALID_PROMPT_MAP[prompt_key]
-            assert isinstance(prompt_text, str) and prompt_text.strip(), (
-                f"Prompt for key '{prompt_key}' must be a non-empty string"
-            )
+            assert (
+                isinstance(prompt_text, str) and prompt_text.strip()
+            ), f"Prompt for key '{prompt_key}' must be a non-empty string"
 
     def test_section_names_are_non_empty_strings(self) -> None:
         for doc_type, template in TEMPLATES.items():
@@ -228,9 +239,9 @@ class TestGetTemplate:
         error_message = str(exc_info.value)
         # The error message must list valid doc_type strings
         for valid_type in _EXPECTED_DOC_TYPES:
-            assert valid_type in error_message, (
-                f"Error message does not list valid type '{valid_type}': {error_message}"
-            )
+            assert (
+                valid_type in error_message
+            ), f"Error message does not list valid type '{valid_type}': {error_message}"
 
     def test_error_message_mentions_invalid_type(self) -> None:
         with pytest.raises(ValueError) as exc_info:
@@ -282,9 +293,9 @@ _VALID_CATEGORIES = {
 class TestTemplateV2Fields:
     def test_every_template_has_category(self) -> None:
         for doc_type, template in TEMPLATES.items():
-            assert isinstance(template.category, str), (
-                f"TEMPLATES['{doc_type}'].category must be a string"
-            )
+            assert isinstance(
+                template.category, str
+            ), f"TEMPLATES['{doc_type}'].category must be a string"
             assert template.category in _VALID_CATEGORIES, (
                 f"TEMPLATES['{doc_type}'].category='{template.category}' "
                 f"is not a valid category. Valid: {sorted(_VALID_CATEGORIES)}"

@@ -12,8 +12,10 @@ from app.core.interfaces.storage import FileStorage
 @pytest.fixture
 def mock_gcs_client():
     """Patch google.cloud.storage.Client and return mock bucket/blob."""
-    with patch("app.core.providers.storage.gcs_storage.storage") as mock_storage, \
-         patch("app.core.providers.storage.gcs_storage.settings") as mock_settings:
+    with (
+        patch("app.core.providers.storage.gcs_storage.storage") as mock_storage,
+        patch("app.core.providers.storage.gcs_storage.settings") as mock_settings,
+    ):
         mock_settings.gcs_bucket_name = "test-bucket"
 
         mock_client = MagicMock()

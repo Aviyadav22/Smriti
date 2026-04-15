@@ -1,4 +1,5 @@
 """Tests for section extraction and citation equivalent population during ingestion."""
+
 from app.core.ingestion.pipeline import _extract_citation_equivalents
 
 

@@ -23,13 +23,18 @@ router = APIRouter()
 def _validate_uuid(value: str, name: str = "ID") -> None:
     """Validate that a string is a valid UUID format."""
     import uuid
+
     try:
         uuid.UUID(value)
     except ValueError:
         raise HTTPException(status_code=422, detail=f"Invalid {name} format")
 
 
-@router.post("/{case_id}/audio/generate", status_code=202, dependencies=[Depends(rate_limit_dependency("5/minute"))])
+@router.post(
+    "/{case_id}/audio/generate",
+    status_code=202,
+    dependencies=[Depends(rate_limit_dependency("5/minute"))],
+)
 async def generate_audio_digest(
     case_id: str,
     language: str = Query("en", pattern="^(en|hi)$", description="Language code"),
@@ -47,10 +52,7 @@ async def generate_audio_digest(
         raise HTTPException(status_code=404, detail="Case not found")
 
     existing = await db.execute(
-        text(
-            "SELECT status FROM audio_digests "
-            "WHERE case_id = :case_id AND language = :lang"
-        ),
+        text("SELECT status FROM audio_digests " "WHERE case_id = :case_id AND language = :lang"),
         {"case_id": case_id, "lang": language},
     )
     row = existing.mappings().one_or_none()

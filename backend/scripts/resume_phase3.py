@@ -8,6 +8,7 @@ Usage:
     python scripts/resume_phase3.py trial_mega_20260331_182905
     python scripts/resume_phase3.py trial_mega_20260331_182905 --concurrency 2
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,7 +53,9 @@ async def main(run_id: str, rpm_limit: int, concurrency: int) -> None:
 
     manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
     metadata_results = json.loads(results_path.read_text(encoding="utf-8"))
-    logger.info("Loaded %d manifest entries, %d metadata results", len(manifest_data), len(metadata_results))
+    logger.info(
+        "Loaded %d manifest entries, %d metadata results", len(manifest_data), len(metadata_results)
+    )
 
     # Build ManifestEntry objects
     entries: list[ManifestEntry] = []
@@ -77,11 +80,16 @@ async def main(run_id: str, rpm_limit: int, concurrency: int) -> None:
         )
         entries.append(me)
 
-    logger.info("Processing %d cases (concurrency=%d, rpm=%d)", len(entries), concurrency, rpm_limit)
+    logger.info(
+        "Processing %d cases (concurrency=%d, rpm=%d)", len(entries), concurrency, rpm_limit
+    )
 
     statuses = await phase3_process_cases(
-        run_id, entries, metadata_results,
-        rpm_limit=rpm_limit, concurrency=concurrency,
+        run_id,
+        entries,
+        metadata_results,
+        rpm_limit=rpm_limit,
+        concurrency=concurrency,
     )
 
     success = sum(1 for s in statuses.values() if s == "success")

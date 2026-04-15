@@ -83,12 +83,11 @@ async def request_erasure(
         """),
             {"uid": user.sub},
         )
-        await db.execute(
-            text("DELETE FROM chat_sessions WHERE user_id = :uid"), {"uid": user.sub}
-        )
+        await db.execute(text("DELETE FROM chat_sessions WHERE user_id = :uid"), {"uid": user.sub})
 
         # Delete user's documents — clean up storage files first (DPDP compliance)
         import logging as _logging
+
         _logger = _logging.getLogger(__name__)
         try:
             doc_rows = await db.execute(
@@ -96,24 +95,23 @@ async def request_erasure(
                 {"uid": user.sub},
             )
             from app.core.dependencies import get_storage
+
             storage = get_storage()
             for row in doc_rows.mappings().all():
                 if row.get("storage_path"):
                     try:
                         await storage.delete(row["storage_path"])
                     except OSError as e:
-                        _logger.error("Failed to delete storage file %s: %s", row["storage_path"], e)
+                        _logger.error(
+                            "Failed to delete storage file %s: %s", row["storage_path"], e
+                        )
         except Exception as e:
             _logger.warning("Storage file cleanup during erasure failed: %s", e)
 
-        await db.execute(
-            text("DELETE FROM documents WHERE user_id = :uid"), {"uid": user.sub}
-        )
+        await db.execute(text("DELETE FROM documents WHERE user_id = :uid"), {"uid": user.sub})
 
         # Delete consents
-        await db.execute(
-            text("DELETE FROM consents WHERE user_id = :uid"), {"uid": user.sub}
-        )
+        await db.execute(text("DELETE FROM consents WHERE user_id = :uid"), {"uid": user.sub})
 
         # Log the erasure (retained for compliance)
         await db.execute(

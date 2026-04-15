@@ -25,9 +25,7 @@ class TestBuildFilterClause:
 
     def test_gte_lte_filter(self):
         params: dict = {}
-        clause = _build_filter_clause(
-            {"year": {"$gte": 2020, "$lte": 2025}}, params
-        )
+        clause = _build_filter_clause({"year": {"$gte": 2020, "$lte": 2025}}, params)
         assert "(metadata->>'year')::int >= :f_0" in clause
         assert "(metadata->>'year')::int <= :f_1" in clause
         assert params["f_0"] == 2020
@@ -35,17 +33,13 @@ class TestBuildFilterClause:
 
     def test_in_filter_single_element(self):
         params: dict = {}
-        clause = _build_filter_clause(
-            {"acts_cited": {"$in": ["IPC"]}}, params
-        )
+        clause = _build_filter_clause({"acts_cited": {"$in": ["IPC"]}}, params)
         assert "metadata->'acts_cited' ? :f_0" in clause
         assert params["f_0"] == "IPC"
 
     def test_in_filter_multiple_elements(self):
         params: dict = {}
-        clause = _build_filter_clause(
-            {"court": {"$in": ["SC", "HC"]}}, params
-        )
+        clause = _build_filter_clause({"court": {"$in": ["SC", "HC"]}}, params)
         assert "metadata->>'court' IN (:f_0_0, :f_0_1)" in clause
         assert params["f_0_0"] == "SC"
         assert params["f_0_1"] == "HC"
@@ -69,9 +63,7 @@ class TestBuildFilterClause:
 
     def test_combined_filters(self):
         params: dict = {}
-        clause = _build_filter_clause(
-            {"court": {"$eq": "SC"}, "year": {"$gte": 2020}}, params
-        )
+        clause = _build_filter_clause({"court": {"$eq": "SC"}, "year": {"$gte": 2020}}, params)
         assert " AND " in clause
         assert len(params) == 2
 
@@ -186,11 +178,15 @@ class TestPgvectorStoreUpsert:
         mock_factory.return_value = mock_session
 
         store = PgvectorStore()
-        await store.upsert([{
-            "id": "case1_0",
-            "values": [0.1] * 1536,
-            "metadata": {"case_id": "case1", "chunk_index": 0, "text": "hello"},
-        }])
+        await store.upsert(
+            [
+                {
+                    "id": "case1_0",
+                    "values": [0.1] * 1536,
+                    "metadata": {"case_id": "case1", "chunk_index": 0, "text": "hello"},
+                }
+            ]
+        )
 
         mock_session.execute.assert_called_once()
         mock_session.commit.assert_called_once()

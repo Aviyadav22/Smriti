@@ -1,4 +1,5 @@
 """Tests for the canonical legal taxonomy module."""
+
 from __future__ import annotations
 
 from app.core.legal.taxonomy import (
@@ -70,8 +71,7 @@ class TestLegalTaxonomy:
         all_tags = {tag for subtopics in LEGAL_TAXONOMY.values() for tag in subtopics}
         for variant, canonical in NORMALIZATION_MAP.items():
             assert canonical in all_tags, (
-                f"Normalization target '{canonical}' (from '{variant}') "
-                f"not found in taxonomy"
+                f"Normalization target '{canonical}' (from '{variant}') " f"not found in taxonomy"
             )
 
 
@@ -87,10 +87,12 @@ class TestNormalizeIssueTags:
         assert result == ["criminal_law.murder"]
 
     def test_multiple_tags(self) -> None:
-        result = normalize_issue_tags([
-            "criminal.murder",
-            "fundamental_rights.article_21",
-        ])
+        result = normalize_issue_tags(
+            [
+                "criminal.murder",
+                "fundamental_rights.article_21",
+            ]
+        )
         assert result == ["criminal_law.murder", "constitutional_law.article_21"]
 
     def test_unknown_preserved(self) -> None:
@@ -105,25 +107,31 @@ class TestNormalizeIssueTags:
 
     def test_deduplication_after_normalization(self) -> None:
         """Two different variants mapping to the same canonical tag."""
-        result = normalize_issue_tags([
-            "criminal_procedure.bail",
-            "criminal.bail",
-        ])
+        result = normalize_issue_tags(
+            [
+                "criminal_procedure.bail",
+                "criminal.bail",
+            ]
+        )
         assert result == ["criminal_law.bail"]
 
     def test_deduplication_variant_and_canonical(self) -> None:
         """A variant and its canonical target in the same list."""
-        result = normalize_issue_tags([
-            "criminal.murder",
-            "criminal_law.murder",
-        ])
+        result = normalize_issue_tags(
+            [
+                "criminal.murder",
+                "criminal_law.murder",
+            ]
+        )
         assert result == ["criminal_law.murder"]
 
     def test_preserves_order(self) -> None:
-        result = normalize_issue_tags([
-            "constitutional.article_21",
-            "criminal.murder",
-        ])
+        result = normalize_issue_tags(
+            [
+                "constitutional.article_21",
+                "criminal.murder",
+            ]
+        )
         assert result == ["constitutional_law.article_21", "criminal_law.murder"]
 
     def test_bail_pre_arrest_normalized(self) -> None:
@@ -131,10 +139,12 @@ class TestNormalizeIssueTags:
         assert result == ["criminal_law.anticipatory_bail"]
 
     def test_service_variants(self) -> None:
-        result = normalize_issue_tags([
-            "service.appointment",
-            "service_law.promotion",
-        ])
+        result = normalize_issue_tags(
+            [
+                "service.appointment",
+                "service_law.promotion",
+            ]
+        )
         assert result == ["labour_service.recruitment", "labour_service.promotion"]
 
 

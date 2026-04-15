@@ -62,6 +62,7 @@ class TestEncryptDecrypt:
 
     def test_too_short_ciphertext_fails(self):
         import base64
+
         short = base64.b64encode(b"short").decode()
         with pytest.raises(ValueError, match="too short"):
             decrypt_field(short)
@@ -78,6 +79,7 @@ class TestKeyValidation:
 
     def test_base64_key_works(self):
         import base64
+
         key_bytes = b"\x42" * 32
         b64_key = base64.b64encode(key_bytes).decode()
         with patch("app.security.encryption.settings") as mock:

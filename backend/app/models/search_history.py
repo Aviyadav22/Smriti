@@ -21,9 +21,7 @@ class SearchHistory(UUIDPrimaryKeyMixin, Base):
     query: Mapped[str] = mapped_column(String(2000), nullable=False)
     filters: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     result_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    is_bookmarked: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="false"
-    )
+    is_bookmarked: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

@@ -26,16 +26,12 @@ class TestNormalizeActsCitedList:
 
     def test_normalize_section_ref_to_act(self):
         """'Section X of Act' strips section prefix and normalizes."""
-        result = normalize_acts_cited_list(
-            ["Section 302 of Indian Penal Code, 1860"]
-        )
+        result = normalize_acts_cited_list(["Section 302 of Indian Penal Code, 1860"])
         assert result == ["IPC"]
 
     def test_normalize_article_ref(self):
         """'Article X of Constitution of India' normalizes to COI."""
-        result = normalize_acts_cited_list(
-            ["Article 21 of Constitution of India"]
-        )
+        result = normalize_acts_cited_list(["Article 21 of Constitution of India"])
         assert result == ["COI"]
 
     def test_normalize_already_short(self):
@@ -50,9 +46,7 @@ class TestNormalizeActsCitedList:
 
     def test_garbage_filtered(self):
         """Garbage strings like 'Unknown Act', 'M', state names are filtered."""
-        result = normalize_acts_cited_list(
-            ["Unknown Act", "M", "Rajasthan"]
-        )
+        result = normalize_acts_cited_list(["Unknown Act", "M", "Rajasthan"])
         assert result == []
 
     def test_year_only_filtered(self):
@@ -62,16 +56,12 @@ class TestNormalizeActsCitedList:
 
     def test_vague_refs_filtered(self):
         """Vague references like 'said Act', 'the Act' are filtered."""
-        result = normalize_acts_cited_list(
-            ["said Act", "the Act", "same Act"]
-        )
+        result = normalize_acts_cited_list(["said Act", "the Act", "same Act"])
         assert result == []
 
     def test_dedup_variants(self):
         """Different forms of the same act deduplicate to one entry."""
-        result = normalize_acts_cited_list(
-            ["IPC", "Indian Penal Code", "Indian Penal Code, 1860"]
-        )
+        result = normalize_acts_cited_list(["IPC", "Indian Penal Code", "Indian Penal Code, 1860"])
         assert result == ["IPC"]
 
     def test_unknown_act_passes_through(self):
@@ -81,10 +71,12 @@ class TestNormalizeActsCitedList:
 
     def test_new_acts_normalize(self):
         """Newly added high-frequency acts normalize correctly."""
-        result = normalize_acts_cited_list([
-            "Limitation Act, 1963",
-            "Prevention of Corruption Act",
-        ])
+        result = normalize_acts_cited_list(
+            [
+                "Limitation Act, 1963",
+                "Prevention of Corruption Act",
+            ]
+        )
         assert "LA" in result
         assert "PCA" in result
 
@@ -95,9 +87,7 @@ class TestNormalizeActsCitedList:
 
     def test_read_with_format(self):
         """'Section X r/w Section Y IPC' extracts act code."""
-        result = normalize_acts_cited_list(
-            ["Section 302 r/w Section 34 IPC"]
-        )
+        result = normalize_acts_cited_list(["Section 302 r/w Section 34 IPC"])
         assert result == ["IPC"]
 
     def test_section_short_code_format(self):
@@ -107,18 +97,18 @@ class TestNormalizeActsCitedList:
 
     def test_multiple_acts_sorted(self):
         """Result is sorted alphabetically."""
-        result = normalize_acts_cited_list([
-            "Code of Criminal Procedure",
-            "Indian Penal Code",
-            "Constitution of India",
-        ])
+        result = normalize_acts_cited_list(
+            [
+                "Code of Criminal Procedure",
+                "Indian Penal Code",
+                "Constitution of India",
+            ]
+        )
         assert result == ["COI", "CRPC", "IPC"]
 
     def test_article_without_of(self):
         """'Article 21 Constitution of India' (without 'of') still normalizes."""
-        result = normalize_acts_cited_list(
-            ["Article 21 of the Constitution of India"]
-        )
+        result = normalize_acts_cited_list(["Article 21 of the Constitution of India"])
         assert result == ["COI"]
 
 
@@ -160,21 +150,24 @@ class TestIsValidActCitation:
 class TestNewActAliases:
     """Tests for newly added _SHORT_ACT_NAMES entries."""
 
-    @pytest.mark.parametrize("raw,expected", [
-        ("Limitation Act", "LA"),
-        ("Prevention of Corruption Act", "PCA"),
-        ("General Clauses Act", "GCA"),
-        ("Land Acquisition Act", "LAA"),
-        ("Motor Vehicles Act", "MVA"),
-        ("Consumer Protection Act", "CPA"),
-        ("Dowry Prohibition Act", "DPA"),
-        ("National Highways Act", "NHA"),
-        ("Protection of Children from Sexual Offences Act", "POCSO"),
-        ("Legal Services Authorities Act", "LSA"),
-        ("Prevention of Terrorism Act", "POTA"),
-        ("Representation of the People Act", "RPA"),
-        ("Mines and Minerals (Development and Regulation) Act", "MMDRA"),
-    ])
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("Limitation Act", "LA"),
+            ("Prevention of Corruption Act", "PCA"),
+            ("General Clauses Act", "GCA"),
+            ("Land Acquisition Act", "LAA"),
+            ("Motor Vehicles Act", "MVA"),
+            ("Consumer Protection Act", "CPA"),
+            ("Dowry Prohibition Act", "DPA"),
+            ("National Highways Act", "NHA"),
+            ("Protection of Children from Sexual Offences Act", "POCSO"),
+            ("Legal Services Authorities Act", "LSA"),
+            ("Prevention of Terrorism Act", "POTA"),
+            ("Representation of the People Act", "RPA"),
+            ("Mines and Minerals (Development and Regulation) Act", "MMDRA"),
+        ],
+    )
     def test_new_act_full_to_short(self, raw, expected):
         """New acts map from full name to shortest short code."""
         result = normalize_acts_cited_list([raw])
@@ -340,9 +333,7 @@ class TestFullPipelineNormalization:
         for code in result:
             display = get_act_display_name(code)
             # Known acts should return a name different from the short code
-            assert display != code, (
-                f"get_act_display_name('{code}') returned the code itself"
-            )
+            assert display != code, f"get_act_display_name('{code}') returned the code itself"
 
     def test_section_refs_never_stored(self):
         """Strings starting with 'Section' or 'Article' never appear in output."""
@@ -356,12 +347,8 @@ class TestFullPipelineNormalization:
         result = normalize_acts_cited_list(raw)
 
         for item in result:
-            assert not item.startswith("Section"), (
-                f"Section reference leaked into output: {item}"
-            )
-            assert not item.startswith("Article"), (
-                f"Article reference leaked into output: {item}"
-            )
+            assert not item.startswith("Section"), f"Section reference leaked into output: {item}"
+            assert not item.startswith("Article"), f"Article reference leaked into output: {item}"
 
     def test_order_rule_filtered(self):
         """Order/Rule procedural references are filtered out, not stored as act names."""
@@ -369,9 +356,7 @@ class TestFullPipelineNormalization:
         result = normalize_acts_cited_list(raw)
         # Order/Rule refs are filtered by _is_valid_act_citation
         for item in result:
-            assert "Order" not in item, (
-                f"Order/Rule reference leaked into output: {item}"
-            )
+            assert "Order" not in item, f"Order/Rule reference leaked into output: {item}"
 
 
 class TestHealthCheckQuery:

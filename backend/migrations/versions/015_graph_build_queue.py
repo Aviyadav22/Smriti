@@ -21,7 +21,9 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "graph_build_queue",
-        sa.Column("case_id", sa.String(), sa.ForeignKey("cases.id", ondelete="CASCADE"), primary_key=True),
+        sa.Column(
+            "case_id", sa.String(), sa.ForeignKey("cases.id", ondelete="CASCADE"), primary_key=True
+        ),
         sa.Column("error", sa.String(500), nullable=False),
         sa.Column("retry_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("NOW()")),

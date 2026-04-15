@@ -17,14 +17,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "ALTER TABLE dpdp_audit_log "
-        "ALTER COLUMN details TYPE jsonb USING details::jsonb"
-    )
+    op.execute("ALTER TABLE dpdp_audit_log " "ALTER COLUMN details TYPE jsonb USING details::jsonb")
 
 
 def downgrade() -> None:
-    op.execute(
-        "ALTER TABLE dpdp_audit_log "
-        "ALTER COLUMN details TYPE json USING details::json"
-    )
+    op.execute("ALTER TABLE dpdp_audit_log " "ALTER COLUMN details TYPE json USING details::json")

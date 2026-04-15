@@ -116,8 +116,7 @@ class TestCitationSearch:
         results = await search_client.search(query, page_size=5)
         titles = " ".join(r.get("title", "") for r in results)
         assert fragment.lower() in titles.lower(), (
-            f"Expected '{fragment}' in top 5 results for query '{query}', "
-            f"got: {titles}"
+            f"Expected '{fragment}' in top 5 results for query '{query}', " f"got: {titles}"
         )
 
 
@@ -134,13 +133,9 @@ class TestTopicalSearch:
     ) -> None:
         """Topical search should return results with relevant keywords."""
         results = await search_client.search(query, page_size=10)
-        all_text = " ".join(
-            f"{r.get('title', '')} {r.get('snippet', '')}" for r in results
-        ).lower()
+        all_text = " ".join(f"{r.get('title', '')} {r.get('snippet', '')}" for r in results).lower()
         for kw in keywords:
-            assert kw.lower() in all_text, (
-                f"Expected keyword '{kw}' in results for query '{query}'"
-            )
+            assert kw.lower() in all_text, f"Expected keyword '{kw}' in results for query '{query}'"
 
 
 @pytest.mark.integration

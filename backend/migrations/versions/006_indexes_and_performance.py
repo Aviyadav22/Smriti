@@ -51,8 +51,4 @@ def downgrade() -> None:
     # DROP INDEX CONCURRENTLY also avoids locking but requires autocommit
     connection = op.get_bind()
     connection = connection.execution_options(isolation_level="AUTOCOMMIT")
-    connection.execute(
-        text(
-            "DROP INDEX CONCURRENTLY IF EXISTS ix_case_sections_content_gin"
-        )
-    )
+    connection.execute(text("DROP INDEX CONCURRENTLY IF EXISTS ix_case_sections_content_gin"))

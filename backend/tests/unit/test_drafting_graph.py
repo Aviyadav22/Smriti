@@ -1,4 +1,5 @@
 """Tests for Drafting Agent graph builder and router functions."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -39,7 +40,6 @@ def _make_state(**overrides) -> dict:
         "section_drafts": {},
         "full_draft": "",
         "revision_feedback": "",
-
         "messages": [],
         "iteration": 0,
         "error": "",
@@ -170,7 +170,11 @@ class TestRouteAfterSources:
             messages=[
                 {"type": "user_feedback", "step": "sources", "content": "First feedback."},
                 {"type": "user_feedback", "step": "draft", "content": "Draft feedback."},
-                {"type": "user_feedback", "step": "sources", "content": ""},  # last sources feedback is empty
+                {
+                    "type": "user_feedback",
+                    "step": "sources",
+                    "content": "",
+                },  # last sources feedback is empty
             ],
             iteration=0,
         )
@@ -218,9 +222,7 @@ class TestRouteAfterDraft:
 
     def test_returns_verify_final_when_draft_feedback_is_empty(self) -> None:
         state = _make_state(
-            messages=[
-                {"type": "user_feedback", "step": "draft", "content": ""}
-            ],
+            messages=[{"type": "user_feedback", "step": "draft", "content": ""}],
             iteration=0,
         )
         result = route_after_draft(state)
@@ -280,9 +282,7 @@ class TestRouteAfterFinal:
 
     def test_returns_end_when_final_feedback_is_empty(self) -> None:
         state = _make_state(
-            messages=[
-                {"type": "user_feedback", "step": "final", "content": ""}
-            ],
+            messages=[{"type": "user_feedback", "step": "final", "content": ""}],
             iteration=0,
         )
         result = route_after_final(state)

@@ -5,7 +5,6 @@ Pinecone filter construction, FTS clause building, and API parameter parsing
 all handle single and multiple courts correctly.
 """
 
-
 from app.core.search.fulltext import _build_filter_clauses
 from app.core.search.query import SearchFilters, _parse_llm_result
 
@@ -26,9 +25,7 @@ class TestSearchFiltersCourtType:
         assert filters.court == ["Supreme Court of India"]
 
     def test_court_multiple_items(self) -> None:
-        filters = SearchFilters(
-            court=["Supreme Court of India", "High Court of Delhi"]
-        )
+        filters = SearchFilters(court=["Supreme Court of India", "High Court of Delhi"])
         assert len(filters.court) == 2
         assert "Supreme Court of India" in filters.court
         assert "High Court of Delhi" in filters.court
@@ -58,9 +55,7 @@ class TestPineconeFilterConstruction:
         assert "court" not in result
 
     def test_single_court_uses_eq(self) -> None:
-        result = self._build_pinecone_filter(
-            SearchFilters(court=["Supreme Court of India"])
-        )
+        result = self._build_pinecone_filter(SearchFilters(court=["Supreme Court of India"]))
         assert result["court"] == {"$eq": "Supreme Court of India"}
 
     def test_multiple_courts_uses_in(self) -> None:
@@ -95,9 +90,7 @@ class TestFTSMultiCourtFilter:
         assert params["court_0"] == "Supreme Court"
 
     def test_two_courts_or_clause(self) -> None:
-        filters = SearchFilters(
-            court=["Supreme Court", "High Court of Delhi"]
-        )
+        filters = SearchFilters(court=["Supreme Court", "High Court of Delhi"])
         clauses, params = _build_filter_clauses(filters)
         assert len(clauses) == 1
         # Should produce an OR clause
@@ -193,11 +186,7 @@ class TestCourtParamParsing:
     @staticmethod
     def _parse_court_param(court: str | None) -> list[str] | None:
         """Reproduce the parsing logic from search.py route."""
-        return (
-            [c.strip() for c in court.split(",") if c.strip()]
-            if court
-            else None
-        )
+        return [c.strip() for c in court.split(",") if c.strip()] if court else None
 
     def test_none_returns_none(self) -> None:
         assert self._parse_court_param(None) is None
@@ -207,15 +196,11 @@ class TestCourtParamParsing:
         assert result == ["Supreme Court of India"]
 
     def test_two_courts_comma_separated(self) -> None:
-        result = self._parse_court_param(
-            "Supreme Court of India,High Court of Delhi"
-        )
+        result = self._parse_court_param("Supreme Court of India,High Court of Delhi")
         assert result == ["Supreme Court of India", "High Court of Delhi"]
 
     def test_courts_with_spaces_around_commas(self) -> None:
-        result = self._parse_court_param(
-            "Supreme Court of India , High Court of Delhi"
-        )
+        result = self._parse_court_param("Supreme Court of India , High Court of Delhi")
         assert result == ["Supreme Court of India", "High Court of Delhi"]
 
     def test_trailing_comma_ignored(self) -> None:

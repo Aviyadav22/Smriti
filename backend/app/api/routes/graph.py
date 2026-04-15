@@ -202,7 +202,9 @@ async def authorities(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{case_id}/treatment-summary", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+@router.get(
+    "/{case_id}/treatment-summary", dependencies=[Depends(rate_limit_dependency("30/minute"))]
+)
 async def treatment_summary(
     case_id: str,
     _current_user: TokenPayload | None = Depends(get_current_user_optional),
@@ -258,10 +260,7 @@ async def get_citation_evolution(
 
     # Fetch root case info from PostgreSQL
     result = await db.execute(
-        text(
-            "SELECT id, title, year, citation, court "
-            "FROM cases WHERE id = :id"
-        ),
+        text("SELECT id, title, year, citation, court " "FROM cases WHERE id = :id"),
         {"id": case_id},
     )
     root_row = result.mappings().one_or_none()

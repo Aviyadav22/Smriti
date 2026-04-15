@@ -111,6 +111,7 @@ async def _get_rate_limiter() -> RateLimiter:
 
     if _rate_limiter is None:
         from app.db.redis_client import get_redis
+
         redis_client = await get_redis()
         if redis_client is None:
             raise RuntimeError("Redis is not available for rate limiting")
@@ -187,14 +188,11 @@ def _parse_rate_limit(limit_str: str) -> tuple[int, int]:
     try:
         count = int(count_str)
     except ValueError:
-        raise ValueError(
-            f"Invalid request count in rate limit: '{count_str}'"
-        )
+        raise ValueError(f"Invalid request count in rate limit: '{count_str}'")
 
     if unit not in _TIME_UNITS:
         raise ValueError(
-            f"Unknown time unit '{unit}'. "
-            f"Valid units: {', '.join(_TIME_UNITS.keys())}"
+            f"Unknown time unit '{unit}'. " f"Valid units: {', '.join(_TIME_UNITS.keys())}"
         )
 
     return count, _TIME_UNITS[unit]

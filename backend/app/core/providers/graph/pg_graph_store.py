@@ -18,15 +18,33 @@ _DEFAULT_BATCH_SIZE = 500
 _QUERY_TIMEOUT_SECONDS = 30
 
 # Same validation allowlists as Neo4j store for consistency.
-_VALID_LABELS = frozenset({
-    "Case", "Statute", "Judge", "Act", "Doctrine",
-    "Counsel", "LegalPrinciple", "Issue", "Community",
-})
-_VALID_RELATIONSHIPS = frozenset({
-    "CITES", "EQUIVALENT_TO", "APPLIES_DOCTRINE", "DECIDED_BY",
-    "REPRESENTED_BY", "APPLIES_PRINCIPLE", "ADDRESSES",
-    "BELONGS_TO", "INTERPRETS", "AUTHORED_BY",
-})
+_VALID_LABELS = frozenset(
+    {
+        "Case",
+        "Statute",
+        "Judge",
+        "Act",
+        "Doctrine",
+        "Counsel",
+        "LegalPrinciple",
+        "Issue",
+        "Community",
+    }
+)
+_VALID_RELATIONSHIPS = frozenset(
+    {
+        "CITES",
+        "EQUIVALENT_TO",
+        "APPLIES_DOCTRINE",
+        "DECIDED_BY",
+        "REPRESENTED_BY",
+        "APPLIES_PRINCIPLE",
+        "ADDRESSES",
+        "BELONGS_TO",
+        "INTERPRETS",
+        "AUTHORED_BY",
+    }
+)
 
 
 def _validate_label(label: str) -> str:
@@ -37,7 +55,9 @@ def _validate_label(label: str) -> str:
 
 def _validate_relationship(rel_type: str) -> str:
     if rel_type not in _VALID_RELATIONSHIPS:
-        raise ValueError(f"Invalid relationship: '{rel_type}'. Allowed: {sorted(_VALID_RELATIONSHIPS)}")
+        raise ValueError(
+            f"Invalid relationship: '{rel_type}'. Allowed: {sorted(_VALID_RELATIONSHIPS)}"
+        )
     return rel_type
 
 
@@ -165,9 +185,7 @@ class PgGraphStore:
         else:
             # Both directions — union of outgoing and incoming
             base_join = "(c.source_case_id = :node_id::uuid OR c.target_case_id = :node_id::uuid)"
-            recursive_join = (
-                "(c.source_case_id = net.found_id OR c.target_case_id = net.found_id)"
-            )
+            recursive_join = "(c.source_case_id = net.found_id OR c.target_case_id = net.found_id)"
             target_col = (
                 "CASE WHEN c.source_case_id = net.found_id "
                 "THEN c.target_case_id ELSE c.source_case_id END"
@@ -253,8 +271,11 @@ class PgGraphStore:
                         )
                         total += result.rowcount
                 await session.commit()
-                logger.info("batch_create_nodes: updated %d nodes in %d batches",
-                            total, (len(nodes) + batch_size - 1) // batch_size)
+                logger.info(
+                    "batch_create_nodes: updated %d nodes in %d batches",
+                    total,
+                    (len(nodes) + batch_size - 1) // batch_size,
+                )
                 return total
             except Exception as exc:
                 await session.rollback()
@@ -285,9 +306,7 @@ class PgGraphStore:
                         params[src] = edge["source_id"]
                         params[tgt] = edge["target_citation"]
                         params[treat] = edge.get("treatment", "CITED")
-                        value_clauses.append(
-                            f"(:{src}::uuid, :{tgt}, :{treat})"
-                        )
+                        value_clauses.append(f"(:{src}::uuid, :{tgt}, :{treat})")
 
                     sql = text(
                         "INSERT INTO citations (source_case_id, target_citation, treatment) "
@@ -299,25 +318,26 @@ class PgGraphStore:
                     total += result.rowcount
 
                 # Resolve target_case_id for citations that reference known cases.
-                await session.execute(text(
-                    "UPDATE citations SET target_case_id = c.id "
-                    "FROM cases c "
-                    "WHERE citations.target_citation = c.citation "
-                    "AND citations.target_case_id IS NULL"
-                ))
+                await session.execute(
+                    text(
+                        "UPDATE citations SET target_case_id = c.id "
+                        "FROM cases c "
+                        "WHERE citations.target_citation = c.citation "
+                        "AND citations.target_case_id IS NULL"
+                    )
+                )
 
                 await session.commit()
                 logger.info(
                     "batch_create_citation_edges: merged %d edges in %d batches",
-                    total, (len(edges) + batch_size - 1) // batch_size,
+                    total,
+                    (len(edges) + batch_size - 1) // batch_size,
                 )
                 return total
             except Exception as exc:
                 await session.rollback()
                 logger.error("PgGraph batch_create_citation_edges failed: %s", exc)
-                raise RuntimeError(
-                    f"PgGraph batch_create_citation_edges failed: {exc}"
-                ) from exc
+                raise RuntimeError(f"PgGraph batch_create_citation_edges failed: {exc}") from exc
 
     async def delete_node(self, node_id: str) -> bool:
         """Delete citation edges for a case (does not delete the case itself)."""

@@ -1,6 +1,5 @@
 """Security-focused tests for OWASP-relevant protections."""
 
-
 import pytest
 
 from app.security.sanitizer import (
@@ -14,11 +13,11 @@ class TestXSSProtection:
     """Ensure HTML/script injection is neutralized."""
 
     def test_script_tag_removed(self):
-        result = sanitize_input('<script>document.cookie</script>')
+        result = sanitize_input("<script>document.cookie</script>")
         assert "<script>" not in result
 
     def test_img_onerror_removed(self):
-        result = sanitize_input('<img src=x onerror=alert(1)>')
+        result = sanitize_input("<img src=x onerror=alert(1)>")
         assert "<img" not in result
 
     def test_nested_tags_removed(self):

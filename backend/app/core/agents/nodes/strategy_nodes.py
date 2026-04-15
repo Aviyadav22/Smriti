@@ -5,6 +5,7 @@ injected dependencies, performs a single focused operation, and returns
 a partial state dict for LangGraph to merge.  Dependencies (llm, db, etc.)
 are passed via closures when the graph is built.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -143,8 +144,7 @@ async def fetch_judge_profile_node(
             {"judge_pattern": judge_pattern},
         )
         disposal_breakdown = [
-            {"disposal_nature": row[0], "count": row[1]}
-            for row in disposal_result.fetchall()
+            {"disposal_nature": row[0], "count": row[1]} for row in disposal_result.fetchall()
         ]
 
         # Top acts cited
@@ -159,10 +159,7 @@ async def fetch_judge_profile_node(
             ),
             {"judge_pattern": judge_pattern},
         )
-        top_acts = [
-            {"act": row[0], "count": row[1]}
-            for row in acts_result.fetchall()
-        ]
+        top_acts = [{"act": row[0], "count": row[1]} for row in acts_result.fetchall()]
 
         # Total and recent case counts
         counts_result = await db.execute(
@@ -189,9 +186,7 @@ async def fetch_judge_profile_node(
         return {"judge_profile": profile}
 
     except Exception:
-        logger.warning(
-            "Failed to fetch judge profile for '%s'", target_judge, exc_info=True
-        )
+        logger.warning("Failed to fetch judge profile for '%s'", target_judge, exc_info=True)
         return {"judge_profile": {}}
 
 
@@ -260,7 +255,10 @@ async def search_precedents_node(
 
     # Deduplicate with diversity — keep top N chunks per case
     from app.core.config import settings
-    combined = deduplicate_with_diversity(combined, max_chunks_per_case=settings.strategy_max_chunks_per_case)
+
+    combined = deduplicate_with_diversity(
+        combined, max_chunks_per_case=settings.strategy_max_chunks_per_case
+    )
 
     # Enrich with ratio and bench_type from PostgreSQL
     combined = await enrich_results_with_ratio(combined, db)
@@ -312,23 +310,25 @@ async def search_precedents_node(
         elif opinion == "unanimous":
             strength_note = "unanimous"
 
-        precedent_map.append({
-            "case_id": cid,
-            "title": r.get("title"),
-            "citation": r.get("citation"),
-            "court": court,
-            "year": r.get("year"),
-            "bench_type": bench,
-            "coram_size": r.get("coram_size"),
-            "opinion_type": r.get("opinion_type", ""),
-            "split_ratio": r.get("split_ratio", ""),
-            "disposal_nature": r.get("disposal_nature", ""),
-            "strength": strength,
-            "strength_note": strength_note,
-            "is_overruled": is_overruled,
-            "ratio": r.get("ratio", ""),
-            "relevance_to_argument": r.get("source_query", ""),
-        })
+        precedent_map.append(
+            {
+                "case_id": cid,
+                "title": r.get("title"),
+                "citation": r.get("citation"),
+                "court": court,
+                "year": r.get("year"),
+                "bench_type": bench,
+                "coram_size": r.get("coram_size"),
+                "opinion_type": r.get("opinion_type", ""),
+                "split_ratio": r.get("split_ratio", ""),
+                "disposal_nature": r.get("disposal_nature", ""),
+                "strength": strength,
+                "strength_note": strength_note,
+                "is_overruled": is_overruled,
+                "ratio": r.get("ratio", ""),
+                "relevance_to_argument": r.get("source_query", ""),
+            }
+        )
 
     return {"search_results": combined, "precedent_map": precedent_map}
 
@@ -350,9 +350,7 @@ async def evaluate_relevance_node(
     if not search_results:
         return {"relevance_scores": [], "extracted_passages": []}
 
-    elements_text = "\n".join(
-        f"- {e.get('description', '')}" for e in legal_elements[:5]
-    )
+    elements_text = "\n".join(f"- {e.get('description', '')}" for e in legal_elements[:5])
     query_context = f"Case facts: {case_facts[:500]}\n\nLegal elements:\n{elements_text}"
 
     relevance_scores: list[dict] = []
@@ -361,7 +359,7 @@ async def evaluate_relevance_node(
 
     # Process in batches of 15
     for batch_start in range(0, len(search_results), 15):
-        batch = search_results[batch_start:batch_start + 15]
+        batch = search_results[batch_start : batch_start + 15]
         formatted = "\n\n".join(
             f"[Doc {i}] case_id={r.get('case_id', 'N/A')}\n"
             f"Title: {r.get('title', 'N/A')}\n"
@@ -381,12 +379,14 @@ async def evaluate_relevance_node(
                 if ev.get("verdict") in ("correct", "ambiguous"):
                     kept_ids.add(ev.get("case_id", ""))
                     if ev.get("passage"):
-                        extracted_passages.append({
-                            "case_id": ev.get("case_id"),
-                            "passage": ev["passage"],
-                            "is_verbatim": ev.get("is_verbatim", False),
-                            "ratio_or_obiter": ev.get("ratio_or_obiter", "uncertain"),
-                        })
+                        extracted_passages.append(
+                            {
+                                "case_id": ev.get("case_id"),
+                                "passage": ev["passage"],
+                                "is_verbatim": ev.get("is_verbatim", False),
+                                "ratio_or_obiter": ev.get("ratio_or_obiter", "uncertain"),
+                            }
+                        )
         except Exception as e:
             logger.warning("CRAG evaluation batch failed: %s — keeping all results in batch", e)
             for r in batch:
@@ -397,11 +397,13 @@ async def evaluate_relevance_node(
 
     # Safety: keep at least 5 results even if CRAG filtered too aggressively
     if len(kept_results) < 5 and len(search_results) >= 5:
-        kept_results = search_results[:max(5, len(kept_results))]
+        kept_results = search_results[: max(5, len(kept_results))]
 
     logger.info(
         "CRAG evaluation: %d/%d results kept (%d passages extracted)",
-        len(kept_results), len(search_results), len(extracted_passages),
+        len(kept_results),
+        len(search_results),
+        len(extracted_passages),
     )
 
     return {
@@ -540,7 +542,9 @@ async def generate_arguments_irac_node(
         {
             "title": a.get("title", ""),
             "statutory_basis": a.get("statutory_basis", ""),
-            "supporting_precedents": [auth.get("citation", "") for auth in a.get("rule_authorities", [])],
+            "supporting_precedents": [
+                auth.get("citation", "") for auth in a.get("rule_authorities", [])
+            ],
             "effectiveness_score": a.get("effectiveness_score", 5),
             "reasoning": a.get("application", ""),
         }
@@ -571,8 +575,7 @@ async def adversarial_search_strategy_node(
 
     # Summarize arguments for adversarial query generation
     args_summary = "\n".join(
-        f"- {a.get('title', '')}: {a.get('conclusion', '')}"
-        for a in irac_arguments[:5]
+        f"- {a.get('title', '')}: {a.get('conclusion', '')}" for a in irac_arguments[:5]
     )
 
     prompt = (
@@ -596,7 +599,9 @@ async def adversarial_search_strategy_node(
         return {"adversarial_results": []}
 
     # Run all counter-query searches in parallel
-    valid_queries = [(cq, cq.get("query", "")) for cq in counter_queries[:5] if cq.get("query", "").strip()]
+    valid_queries = [
+        (cq, cq.get("query", "")) for cq in counter_queries[:5] if cq.get("query", "").strip()
+    ]
     if not valid_queries:
         return {"adversarial_results": []}
 
@@ -631,16 +636,25 @@ async def adversarial_search_strategy_node(
 
     # Fetch arguments_raised for adversarial results
     if all_results:
-        adv_case_ids = [r.get("case_id") for r in all_results if r.get("case_id") and not str(r["case_id"]).startswith(("ik:", "statute:"))]
+        adv_case_ids = [
+            r.get("case_id")
+            for r in all_results
+            if r.get("case_id") and not str(r["case_id"]).startswith(("ik:", "statute:"))
+        ]
         if adv_case_ids:
             try:
                 async with async_session_factory() as db:
                     placeholders = ", ".join(f":id{i}" for i in range(len(adv_case_ids)))
                     args_result = await db.execute(
-                        sa_text(f"SELECT id::text, arguments_raised FROM cases WHERE id::text IN ({placeholders}) AND arguments_raised IS NOT NULL"),
+                        sa_text(
+                            f"SELECT id::text, arguments_raised FROM cases WHERE id::text IN ({placeholders}) AND arguments_raised IS NOT NULL"
+                        ),
                         {f"id{i}": cid for i, cid in enumerate(adv_case_ids)},
                     )
-                    args_map = {str(row["id"]): row["arguments_raised"] for row in args_result.mappings().all()}
+                    args_map = {
+                        str(row["id"]): row["arguments_raised"]
+                        for row in args_result.mappings().all()
+                    }
                     for r in all_results:
                         cid = r.get("case_id", "")
                         if cid in args_map:
@@ -668,15 +682,18 @@ async def argument_ordering_node(
     if not irac_arguments:
         return {"argument_order": []}
 
-    args_summary = json.dumps([
-        {
-            "index": i,
-            "title": a.get("title", ""),
-            "statutory_basis": a.get("statutory_basis", ""),
-            "effectiveness_score": a.get("effectiveness_score", 0),
-        }
-        for i, a in enumerate(irac_arguments)
-    ], indent=2)
+    args_summary = json.dumps(
+        [
+            {
+                "index": i,
+                "title": a.get("title", ""),
+                "statutory_basis": a.get("statutory_basis", ""),
+                "effectiveness_score": a.get("effectiveness_score", 0),
+            }
+            for i, a in enumerate(irac_arguments)
+        ],
+        indent=2,
+    )
 
     prompt = (
         f"## Arguments to Order\n{args_summary}\n\n"
@@ -943,11 +960,13 @@ async def synthesize_strategy_node(
         for r in search_results[:15]:
             snippet = r.get("ratio", "") or r.get("snippet", "") or r.get("text", "")
             if snippet:
-                contra_context.append({
-                    "title": r.get("title", "Unknown"),
-                    "citation": r.get("citation", ""),
-                    "holding": snippet[:500],
-                })
+                contra_context.append(
+                    {
+                        "title": r.get("title", "Unknown"),
+                        "citation": r.get("citation", ""),
+                        "holding": snippet[:500],
+                    }
+                )
 
         if len(contra_context) > 3:
             try:
@@ -999,11 +1018,9 @@ async def synthesize_strategy_node(
     # Cross-reference ratio: proportion of causes of action with matching results
     fact_analysis = state.get("fact_analysis", {})
     causes_count = len(fact_analysis.get("causes_of_action", []))
-    queries_with_results = len({
-        r.get("source_query", "")
-        for r in search_results
-        if r.get("source_query")
-    })
+    queries_with_results = len(
+        {r.get("source_query", "") for r in search_results if r.get("source_query")}
+    )
     cross_ref_ratio = queries_with_results / max(causes_count, 1)
 
     confidence = calculate_confidence(
@@ -1046,15 +1063,15 @@ async def verify_citations_node(
 
     # Misgrounding check: verify propositions match cited case ratio
     # Extract citation-proposition pairs from memo
-    citation_refs = re.findall(r'\[(\d+)\]\s*([^[.\n]{20,200})', memo)
+    citation_refs = re.findall(r"\[(\d+)\]\s*([^[.\n]{20,200})", memo)
     misgrounding_warnings: list[str] = []
 
     for ref_num, proposition in citation_refs[:5]:
         # Find the corresponding search result
         matching = [
-            r for r in search_results
-            if str(r.get("ref_num")) == ref_num
-            or r.get("citation", "").strip() == ref_num
+            r
+            for r in search_results
+            if str(r.get("ref_num")) == ref_num or r.get("citation", "").strip() == ref_num
         ]
         if not matching:
             continue
@@ -1100,7 +1117,8 @@ async def format_strategy_footnotes_node(state: StrategyState) -> dict:
     source_defs: dict[int, str] = {}
     sources_match = re.search(
         r"(?:Sources|References|Authorities Cited|Bibliography)\s*[-:]*\s*\n(.*)",
-        memo, re.DOTALL | re.IGNORECASE,
+        memo,
+        re.DOTALL | re.IGNORECASE,
     )
     if sources_match:
         for line in sources_match.group(1).strip().split("\n"):
@@ -1135,8 +1153,9 @@ async def format_strategy_footnotes_node(state: StrategyState) -> dict:
             p_citation = (p.get("citation") or "").upper()
             search_in = citation_text.upper() if citation_text else ""
 
-            if (p_title and len(p_title) > 10 and p_title[:30] in search_in) or \
-               (p_citation and p_citation in search_in):
+            if (p_title and len(p_title) > 10 and p_title[:30] in search_in) or (
+                p_citation and p_citation in search_in
+            ):
                 fn["title"] = p.get("title", "")
                 fn["citation"] = p.get("citation", "")
                 fn["court"] = p.get("court", "")
@@ -1159,7 +1178,7 @@ async def format_strategy_footnotes_node(state: StrategyState) -> dict:
     # Strip the Sources section from memo (footnotes are now structured data)
     clean_memo = memo
     if sources_match:
-        clean_memo = memo[:sources_match.start()].rstrip()
+        clean_memo = memo[: sources_match.start()].rstrip()
 
     return {"footnotes": footnotes, "strategy_memo": clean_memo}
 
@@ -1228,11 +1247,15 @@ async def quality_check_node(
         for lp in result.get("logical_issues", []):
             issues.append(f"- Logical issue: {lp}")
         for om in result.get("omissions", []):
-            issues.append(f"- Omission: {om.get('missed_authority', 'N/A')} ({om.get('relevance', '')})")
+            issues.append(
+                f"- Omission: {om.get('missed_authority', 'N/A')} ({om.get('relevance', '')})"
+            )
         for dp in result.get("data_points", []):
             if dp.get("supported") == "unsupported":
                 issues.append(f"- Unsupported claim: {dp.get('claim', '')[:100]}")
         if issues:
-            output["error"] = "[QUALITY_RETRY] Quality check failed. Please address:\n" + "\n".join(issues[:10])
+            output["error"] = "[QUALITY_RETRY] Quality check failed. Please address:\n" + "\n".join(
+                issues[:10]
+            )
 
     return output

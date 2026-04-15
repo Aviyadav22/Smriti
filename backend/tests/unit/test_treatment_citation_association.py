@@ -3,6 +3,7 @@
 Tests that the pipeline correctly associates citation treatment language
 with specific cited cases when building the citation graph.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -72,10 +73,7 @@ class TestTreatmentCitationAssociation:
         # Should have at least 2 calls (one for MERGE nodes, one for MERGE edges)
         assert len(calls) >= 2
         # Find the edge creation call (the one that has "edges" in params)
-        edge_calls = [
-            c for c in calls
-            if c[1].get("params", {}).get("edges") is not None
-        ]
+        edge_calls = [c for c in calls if c[1].get("params", {}).get("edges") is not None]
         assert len(edge_calls) >= 1, f"No edge creation call found in {calls}"
         edge_data = edge_calls[0][1]["params"]["edges"]
         treatments = [e["treatment"] for e in edge_data]
@@ -101,10 +99,7 @@ class TestTreatmentCitationAssociation:
 
         calls = graph_store.query.call_args_list
         # Find the edge creation call (the one that has "edges" in params)
-        edge_calls = [
-            c for c in calls
-            if c[1].get("params", {}).get("edges") is not None
-        ]
+        edge_calls = [c for c in calls if c[1].get("params", {}).get("edges") is not None]
         if edge_calls:
             edge_data = edge_calls[0][1]["params"]["edges"]
             treatments = [e["treatment"] for e in edge_data]
@@ -128,7 +123,6 @@ class TestTreatmentCitationAssociation:
 
         # No edge-creation query should be present (only placeholder + sync check)
         edge_calls = [
-            c for c in graph_store.query.call_args_list
-            if "CITES" in (c.args[0] if c.args else "")
+            c for c in graph_store.query.call_args_list if "CITES" in (c.args[0] if c.args else "")
         ]
         assert len(edge_calls) == 0, "Should not create CITES edges when no citations"

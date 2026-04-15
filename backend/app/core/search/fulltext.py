@@ -72,9 +72,7 @@ async def search_fulltext(
     tsquery_expr = _build_tsquery_expr(query, params)
 
     # Core FTS clause
-    where_clauses.insert(
-        0, f"searchable_text @@ ({tsquery_expr})"
-    )
+    where_clauses.insert(0, f"searchable_text @@ ({tsquery_expr})")
     params["limit"] = limit
 
     where_sql = " AND ".join(where_clauses)
@@ -269,9 +267,7 @@ def _build_filter_clauses(
         params["bench_type"] = filters.bench_type
 
     if filters.judge:
-        clauses.append(
-            f"EXISTS (SELECT 1 FROM unnest({prefix}judge) AS j WHERE j ILIKE :judge)"
-        )
+        clauses.append(f"EXISTS (SELECT 1 FROM unnest({prefix}judge) AS j WHERE j ILIKE :judge)")
         params["judge"] = f"%{_escape_ilike(filters.judge)}%"
 
     if filters.act:

@@ -34,9 +34,9 @@ class TestLLMProviderContract:
 
         protocol_methods = _get_protocol_methods(LLMProvider)
         for method_name in protocol_methods:
-            assert hasattr(GeminiLLM, method_name), (
-                f"GeminiLLM missing required method: {method_name}"
-            )
+            assert hasattr(
+                GeminiLLM, method_name
+            ), f"GeminiLLM missing required method: {method_name}"
 
     def test_gemini_llm_is_runtime_checkable(self) -> None:
         """GeminiLLM should pass isinstance check against LLMProvider."""
@@ -58,9 +58,9 @@ class TestVectorStoreContract:
 
         protocol_methods = _get_protocol_methods(VectorStore)
         for method_name in protocol_methods:
-            assert hasattr(PineconeStore, method_name), (
-                f"PineconeStore missing required method: {method_name}"
-            )
+            assert hasattr(
+                PineconeStore, method_name
+            ), f"PineconeStore missing required method: {method_name}"
 
 
 class TestGraphStoreContract:
@@ -71,9 +71,9 @@ class TestGraphStoreContract:
 
         protocol_methods = _get_protocol_methods(GraphStore)
         for method_name in protocol_methods:
-            assert hasattr(Neo4jGraph, method_name), (
-                f"Neo4jGraph missing required method: {method_name}"
-            )
+            assert hasattr(
+                Neo4jGraph, method_name
+            ), f"Neo4jGraph missing required method: {method_name}"
 
 
 class TestRerankerContract:
@@ -84,9 +84,9 @@ class TestRerankerContract:
 
         protocol_methods = _get_protocol_methods(Reranker)
         for method_name in protocol_methods:
-            assert hasattr(CohereReranker, method_name), (
-                f"CohereReranker missing required method: {method_name}"
-            )
+            assert hasattr(
+                CohereReranker, method_name
+            ), f"CohereReranker missing required method: {method_name}"
 
 
 class TestEmbeddingProviderContract:
@@ -97,9 +97,9 @@ class TestEmbeddingProviderContract:
 
         protocol_methods = _get_protocol_methods(EmbeddingProvider)
         for method_name in protocol_methods:
-            assert hasattr(GeminiEmbedder, method_name), (
-                f"GeminiEmbedder missing required method: {method_name}"
-            )
+            assert hasattr(
+                GeminiEmbedder, method_name
+            ), f"GeminiEmbedder missing required method: {method_name}"
 
 
 class TestStorageContract:
@@ -110,6 +110,6 @@ class TestStorageContract:
 
         protocol_methods = _get_protocol_methods(FileStorage)
         for method_name in protocol_methods:
-            assert hasattr(LocalStorage, method_name), (
-                f"LocalStorage missing required method: {method_name}"
-            )
+            assert hasattr(
+                LocalStorage, method_name
+            ), f"LocalStorage missing required method: {method_name}"

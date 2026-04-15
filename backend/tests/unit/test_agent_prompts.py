@@ -206,28 +206,39 @@ class TestPromptHardening:
     def test_chat_system_has_anti_sycophancy(self):
         """Chat system prompt must instruct model to flag incorrect assumptions."""
         from app.core.legal.prompts import CHAT_SYSTEM_PROMPT
+
         assert "incorrect" in CHAT_SYSTEM_PROMPT.lower() or "wrong" in CHAT_SYSTEM_PROMPT.lower()
         assert "flag" in CHAT_SYSTEM_PROMPT.lower() or "correct" in CHAT_SYSTEM_PROMPT.lower()
 
     def test_chat_system_has_bench_strength(self):
         """Chat system prompt must request bench strength in citations."""
         from app.core.legal.prompts import CHAT_SYSTEM_PROMPT
+
         assert "bench" in CHAT_SYSTEM_PROMPT.lower()
 
     def test_chat_system_has_anti_supplementation_rule(self):
         """Chat system prompt must forbid supplementing from training data."""
         from app.core.legal.prompts import CHAT_SYSTEM_PROMPT
+
         assert "do not supplement" in CHAT_SYSTEM_PROMPT.lower()
 
     def test_research_synthesize_has_precedent_strength(self):
         """Research synthesis prompt must classify precedent strength."""
         from app.core.legal.prompts import RESEARCH_SYNTHESIZE_SYSTEM
-        assert "BINDING" in RESEARCH_SYNTHESIZE_SYSTEM or "binding" in RESEARCH_SYNTHESIZE_SYSTEM.lower()
+
+        assert (
+            "BINDING" in RESEARCH_SYNTHESIZE_SYSTEM
+            or "binding" in RESEARCH_SYNTHESIZE_SYSTEM.lower()
+        )
 
     def test_case_prep_has_time_bar_check(self):
         """Case prep prompt must flag time-barred arguments."""
         from app.core.legal.prompts import CASE_PREP_PRIORITIZE_SYSTEM
-        assert "time-bar" in CASE_PREP_PRIORITIZE_SYSTEM.lower() or "limitation" in CASE_PREP_PRIORITIZE_SYSTEM.lower()
+
+        assert (
+            "time-bar" in CASE_PREP_PRIORITIZE_SYSTEM.lower()
+            or "limitation" in CASE_PREP_PRIORITIZE_SYSTEM.lower()
+        )
 
 
 class TestV3Prompts:
@@ -236,8 +247,10 @@ class TestV3Prompts:
     def test_element_decomposition_prompt_exists(self) -> None:
         assert isinstance(ELEMENT_DECOMPOSITION_SYSTEM, str)
         assert len(ELEMENT_DECOMPOSITION_SYSTEM) > 100
-        assert "decompose" in ELEMENT_DECOMPOSITION_SYSTEM.lower() or \
-               "element" in ELEMENT_DECOMPOSITION_SYSTEM.lower()
+        assert (
+            "decompose" in ELEMENT_DECOMPOSITION_SYSTEM.lower()
+            or "element" in ELEMENT_DECOMPOSITION_SYSTEM.lower()
+        )
 
     def test_element_decomposition_schema_valid(self) -> None:
         assert isinstance(ELEMENT_DECOMPOSITION_SCHEMA, dict)
@@ -249,8 +262,10 @@ class TestV3Prompts:
     def test_adversarial_search_prompt_exists(self) -> None:
         assert isinstance(ADVERSARIAL_SEARCH_SYSTEM, str)
         assert len(ADVERSARIAL_SEARCH_SYSTEM) > 100
-        assert "opposing" in ADVERSARIAL_SEARCH_SYSTEM.lower() or \
-               "counter" in ADVERSARIAL_SEARCH_SYSTEM.lower()
+        assert (
+            "opposing" in ADVERSARIAL_SEARCH_SYSTEM.lower()
+            or "counter" in ADVERSARIAL_SEARCH_SYSTEM.lower()
+        )
 
     def test_adversarial_search_schema_valid(self) -> None:
         assert isinstance(ADVERSARIAL_SEARCH_SCHEMA, dict)
@@ -270,6 +285,7 @@ class TestV3PromptUpgrades:
 
     def test_evaluate_extract_has_bench_and_obiter(self) -> None:
         from app.core.legal.prompts import RESEARCH_EVALUATE_AND_EXTRACT_SYSTEM
+
         text = RESEARCH_EVALUATE_AND_EXTRACT_SYSTEM.lower()
         assert "bench" in text
         assert "ratio" in text
@@ -277,11 +293,13 @@ class TestV3PromptUpgrades:
 
     def test_merge_has_risk_assessment(self) -> None:
         from app.core.legal.prompts import SPECULATIVE_MERGE_SYSTEM
+
         assert "risk assessment" in SPECULATIVE_MERGE_SYSTEM.lower()
         assert "counter-argument" in SPECULATIVE_MERGE_SYSTEM.lower()
 
     def test_quality_check_has_temporal_and_bench(self) -> None:
         from app.core.legal.prompts import LEGAL_QUALITY_CHECK_SYSTEM
+
         text = LEGAL_QUALITY_CHECK_SYSTEM.lower()
         assert "temporal" in text
         assert "bench" in text
@@ -289,8 +307,12 @@ class TestV3PromptUpgrades:
 
     def test_plan_has_element_context(self) -> None:
         from app.core.legal.prompts import RESEARCH_PLAN_SYSTEM
+
         assert "element" in RESEARCH_PLAN_SYSTEM.lower()
-        assert "statute text" in RESEARCH_PLAN_SYSTEM.lower() or "statute" in RESEARCH_PLAN_SYSTEM.lower()
+        assert (
+            "statute text" in RESEARCH_PLAN_SYSTEM.lower()
+            or "statute" in RESEARCH_PLAN_SYSTEM.lower()
+        )
         assert "procedural_context" in RESEARCH_PLAN_SYSTEM
 
 
@@ -299,19 +321,21 @@ class TestResearchPlanPromptIKFilters:
 
     def test_has_ik_inline_filters(self):
         from app.core.legal.prompts import RESEARCH_PLAN_SYSTEM
+
         for keyword in ["title", "cite", "author", "bench", "court_copy"]:
             assert keyword in RESEARCH_PLAN_SYSTEM, f"Missing IK filter: {keyword}"
 
     def test_has_aggregator_doctypes(self):
         from app.core.legal.prompts import RESEARCH_PLAN_SYSTEM
+
         for agg in ["highcourts", "tribunals"]:
             assert agg in RESEARCH_PLAN_SYSTEM, f"Missing aggregator: {agg}"
 
     def test_schema_has_new_filter_properties(self):
         from app.core.legal.prompts import RESEARCH_PLAN_SCHEMA
-        filters_props = (
-            RESEARCH_PLAN_SCHEMA["properties"]["research_tasks"]["items"]
-            ["properties"]["filters"]["properties"]
-        )
+
+        filters_props = RESEARCH_PLAN_SCHEMA["properties"]["research_tasks"]["items"]["properties"][
+            "filters"
+        ]["properties"]
         for key in ["title", "cite", "author", "bench", "domains"]:
             assert key in filters_props, f"Missing schema filter: {key}"

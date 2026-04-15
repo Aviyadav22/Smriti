@@ -7,9 +7,7 @@ class MockTTS:
     """Returns minimal valid MP3 bytes for testing."""
 
     # Minimal valid MP3 frame header (sync word 0xFFE0+)
-    _SILENT_MP3 = (
-        b"\xff\xfb\x90\x00" + b"\x00" * 140
-    )
+    _SILENT_MP3 = b"\xff\xfb\x90\x00" + b"\x00" * 140
 
     async def synthesize(self, text: str, *, language: str = "en") -> bytes:
         """Return silent MP3 bytes for testing."""

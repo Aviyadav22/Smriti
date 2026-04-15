@@ -6,6 +6,7 @@ response with proper Indian legal citation format.
 
 All external services are mocked but the pipeline logic is exercised end-to-end.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -64,6 +65,7 @@ def _mock_db_execute(rows: list[dict]):
 
     Handles: enrichment, equivalents, FTS, disposal bias, facets, etc.
     """
+
     async def _execute(sql, params=None):
         mock_result = MagicMock()
         sql_text = str(sql.text) if hasattr(sql, "text") else str(sql)
@@ -81,6 +83,7 @@ def _mock_db_execute(rows: list[dict]):
         else:
             mock_result.mappings.return_value.all.return_value = rows
         return mock_result
+
     return _execute
 
 
@@ -222,9 +225,11 @@ class TestSearchPipelineIntegration:
         ]
 
         mock_db = AsyncMock()
-        mock_db.execute = _mock_db_execute([
-            _make_db_row(CASE_ID_1, "(2024) 1 SCC 100", 2024),
-        ])
+        mock_db.execute = _mock_db_execute(
+            [
+                _make_db_row(CASE_ID_1, "(2024) 1 SCC 100", 2024),
+            ]
+        )
 
         response = await hybrid_search(
             query="bail",
@@ -265,9 +270,11 @@ class TestSearchPipelineIntegration:
         ]
 
         mock_db = AsyncMock()
-        mock_db.execute = _mock_db_execute([
-            _make_db_row(CASE_ID_1, "AIR 2019 SC 2005", 2019),
-        ])
+        mock_db.execute = _mock_db_execute(
+            [
+                _make_db_row(CASE_ID_1, "AIR 2019 SC 2005", 2019),
+            ]
+        )
 
         response = await hybrid_search(
             query="anticipatory bail",

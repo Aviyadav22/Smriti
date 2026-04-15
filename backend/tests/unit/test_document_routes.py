@@ -32,9 +32,7 @@ class TestDocumentRoutes:
     def test_list_is_get(self) -> None:
         for route in router.routes:
             if (
-                hasattr(route, "path")
-                and route.path == ""
-                and hasattr(route, "methods")
+                hasattr(route, "path") and route.path == "" and hasattr(route, "methods")
             ) and "GET" in route.methods:
                 return
         pytest.fail("GET route not found for list documents")

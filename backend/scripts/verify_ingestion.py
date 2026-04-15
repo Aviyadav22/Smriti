@@ -60,12 +60,14 @@ async def verify(sample_size: int = 100) -> dict:
                 )
                 actual_count = len(query_result.get("matches", []))
                 if expected_chunks and expected_chunks > 0 and actual_count < expected_chunks:
-                    results["vector_mismatches"].append({
-                        "case_id": case_id_str,
-                        "citation": citation,
-                        "expected": expected_chunks,
-                        "found": actual_count,
-                    })
+                    results["vector_mismatches"].append(
+                        {
+                            "case_id": case_id_str,
+                            "citation": citation,
+                            "expected": expected_chunks,
+                            "found": actual_count,
+                        }
+                    )
                     mismatches += 1
             except Exception as exc:
                 logger.warning("Vector check failed for %s: %s", case_id_str, exc)
@@ -111,7 +113,9 @@ async def verify(sample_size: int = 100) -> dict:
     if results["vector_mismatches"]:
         logger.warning("Cases with missing vectors:")
         for m in results["vector_mismatches"][:10]:
-            logger.warning("  %s (%s): expected %d chunks", m["case_id"], m["citation"], m["expected"])
+            logger.warning(
+                "  %s (%s): expected %d chunks", m["case_id"], m["citation"], m["expected"]
+            )
 
     return results
 

@@ -1,6 +1,5 @@
 """Tests for judge name validation against judgment text and tenure."""
 
-
 from app.core.ingestion.metadata import (
     _validate_judge_tenure,
     _validate_judges_against_text,
@@ -36,10 +35,7 @@ class TestValidateJudgesAgainstText:
         assert rejected == ["P. Sathasivam"]
 
     def test_all_judges_hallucinated(self):
-        header = (
-            "IN THE SUPREME COURT OF INDIA\n"
-            "BEFORE: HON'BLE MR. JUSTICE RANJAN GOGOI\n"
-        )
+        header = "IN THE SUPREME COURT OF INDIA\n" "BEFORE: HON'BLE MR. JUSTICE RANJAN GOGOI\n"
         full_text = header + "\n" * 10 + "Body..." * 100
         judges = ["P. Sathasivam", "B.S. Chauhan"]
         validated, rejected = _validate_judges_against_text(judges, full_text)
@@ -100,7 +96,8 @@ class TestValidateJudgeTenure:
 
     def test_mixed_valid_and_invalid(self):
         valid = _validate_judge_tenure(
-            ["V.R. Krishna Iyer", "P. Sathasivam"], 1978,
+            ["V.R. Krishna Iyer", "P. Sathasivam"],
+            1978,
         )
         assert "V.R. Krishna Iyer" in valid
         assert "P. Sathasivam" not in valid

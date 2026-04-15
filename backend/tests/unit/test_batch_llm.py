@@ -1,6 +1,5 @@
 """Tests for BatchCachedLLM mock provider."""
 
-
 import pytest
 
 from scripts.batch_llm import BatchCachedLLM
@@ -65,6 +64,9 @@ class TestBatchCachedLLM:
         """Empty dict from batch should pass through — pipeline handles validation."""
         llm = BatchCachedLLM(result={})
         result = await llm.generate_structured_from_pdf(
-            "/fake.pdf", prompt="x", system="y", output_schema={},
+            "/fake.pdf",
+            prompt="x",
+            system="y",
+            output_schema={},
         )
         assert result == {}

@@ -24,15 +24,11 @@ async def audit():
 
     src_tables = sorted(
         r["tablename"]
-        for r in await src.fetch(
-            "SELECT tablename FROM pg_tables WHERE schemaname='public'"
-        )
+        for r in await src.fetch("SELECT tablename FROM pg_tables WHERE schemaname='public'")
     )
     dst_tables = sorted(
         r["tablename"]
-        for r in await dst.fetch(
-            "SELECT tablename FROM pg_tables WHERE schemaname='public'"
-        )
+        for r in await dst.fetch("SELECT tablename FROM pg_tables WHERE schemaname='public'")
     )
 
     all_tables = sorted(set(src_tables + dst_tables))
@@ -221,12 +217,10 @@ async def audit():
     dst_triggers = await dst.fetch(trigger_query)
 
     src_trig_set = set(
-        (r["trigger_name"], r["event_object_table"], r["event_manipulation"])
-        for r in src_triggers
+        (r["trigger_name"], r["event_object_table"], r["event_manipulation"]) for r in src_triggers
     )
     dst_trig_set = set(
-        (r["trigger_name"], r["event_object_table"], r["event_manipulation"])
-        for r in dst_triggers
+        (r["trigger_name"], r["event_object_table"], r["event_manipulation"]) for r in dst_triggers
     )
 
     missing_trigs = src_trig_set - dst_trig_set
@@ -282,17 +276,11 @@ async def audit():
                 if c["udt_name"] == "tsvector":
                     skip_cols.add(c["column_name"])
 
-            common = sorted(
-                (src_col_names & dst_col_names) - skip_cols
-            )
+            common = sorted((src_col_names & dst_col_names) - skip_cols)
             col_list = ", ".join(common)
 
-            src_rows = await src.fetch(
-                f"SELECT {col_list} FROM {tbl} ORDER BY {pk}"
-            )
-            dst_rows = await dst.fetch(
-                f"SELECT {col_list} FROM {tbl} ORDER BY {pk}"
-            )
+            src_rows = await src.fetch(f"SELECT {col_list} FROM {tbl} ORDER BY {pk}")
+            dst_rows = await dst.fetch(f"SELECT {col_list} FROM {tbl} ORDER BY {pk}")
 
             if len(src_rows) != len(dst_rows):
                 # Show which rows are extra/missing
@@ -315,12 +303,8 @@ async def audit():
             # Compare row by row
             mismatched_rows = 0
             for i in range(len(src_rows)):
-                src_hash = hashlib.md5(
-                    str(dict(src_rows[i])).encode()
-                ).hexdigest()
-                dst_hash = hashlib.md5(
-                    str(dict(dst_rows[i])).encode()
-                ).hexdigest()
+                src_hash = hashlib.md5(str(dict(src_rows[i])).encode()).hexdigest()
+                dst_hash = hashlib.md5(str(dict(dst_rows[i])).encode()).hexdigest()
                 if src_hash != dst_hash:
                     mismatched_rows += 1
                     if mismatched_rows <= 3:
@@ -344,15 +328,8 @@ async def audit():
     # AUDIT 8: EXTENSIONS
     # ──────────────────────────────────────────────────
 
-    sorted(
-        r["extname"]
-        for r in await src.fetch("SELECT extname FROM pg_extension")
-    )
-    dst_exts = sorted(
-        r["extname"]
-        for r in await dst.fetch("SELECT extname FROM pg_extension")
-    )
-
+    sorted(r["extname"] for r in await src.fetch("SELECT extname FROM pg_extension"))
+    dst_exts = sorted(r["extname"] for r in await dst.fetch("SELECT extname FROM pg_extension"))
 
     required = {"uuid-ossp", "pgcrypto", "pg_trgm", "vector"}
     missing_ext = required - set(dst_exts)

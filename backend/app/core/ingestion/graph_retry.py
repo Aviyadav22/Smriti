@@ -1,4 +1,5 @@
 """Async retry queue for failed citation graph builds."""
+
 from __future__ import annotations
 
 import logging
@@ -13,7 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 async def record_graph_failure(
-    db: AsyncSession, case_id: str, error: str,
+    db: AsyncSession,
+    case_id: str,
+    error: str,
 ) -> None:
     """Record a failed graph build for later retry."""
     await db.execute(
@@ -29,7 +32,8 @@ async def record_graph_failure(
 
 
 async def get_pending_retries(
-    db: AsyncSession, max_retries: int = 3,
+    db: AsyncSession,
+    max_retries: int = 3,
 ) -> list[tuple[str, int]]:
     """Return (case_id, retry_count) pairs pending graph rebuild."""
     result = await db.execute(

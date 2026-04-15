@@ -3,6 +3,7 @@
 Tests that the ingestion script properly handles shutdown signals
 using loop.call_soon_threadsafe for safe async signaling.
 """
+
 from __future__ import annotations
 
 import asyncio

@@ -6,6 +6,7 @@ Covers Bible Section 13 tests:
   59-61 (Code Mapping)
   72 (Statute ingestion)
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -48,10 +49,17 @@ class TestGenerateContextualPrefix:
     async def test_returns_prefix_plus_original(self) -> None:
         """Output should contain both context prefix and original chunk."""
         llm = _make_flash_llm()
-        llm.generate.return_value = "This is from Kesavananda Bharati (1973) regarding basic structure."
+        llm.generate.return_value = (
+            "This is from Kesavananda Bharati (1973) regarding basic structure."
+        )
 
         chunk = "The court held that Parliament cannot amend the basic structure."
-        meta = {"title": "Kesavananda Bharati", "citation": "(1973) 4 SCC 225", "court": "SC", "year": 1973}
+        meta = {
+            "title": "Kesavananda Bharati",
+            "citation": "(1973) 4 SCC 225",
+            "court": "SC",
+            "year": 1973,
+        }
 
         result = await generate_contextual_prefix(chunk, meta, llm, "case_law")
 
@@ -223,7 +231,12 @@ class TestBuildPineconeSummaryVectors:
 
     def test_builds_correct_vector_records(self) -> None:
         summaries = [
-            {"case_id": "c1", "section_type": "HOLDINGS", "summary_text": "Summary text", "summary_level": 1},
+            {
+                "case_id": "c1",
+                "section_type": "HOLDINGS",
+                "summary_text": "Summary text",
+                "summary_level": 1,
+            },
         ]
         embeddings = [[0.1, 0.2, 0.3]]
         base_meta = {"title": "Test Case", "citation": "(2020) 1 SCC 1"}
@@ -273,6 +286,7 @@ class TestCodeMappingBidirectional:
         """Query with IEA reference should expand to BSA."""
         # Find a known mapping
         from app.core.legal.constants import EVIDENCE_TO_BSA_MAP
+
         if EVIDENCE_TO_BSA_MAP:
             first_key = next(iter(EVIDENCE_TO_BSA_MAP))
             query, expanded = expand_statute_references(f"Section {first_key} IEA")
@@ -290,26 +304,32 @@ class TestCodeMappingCompleteness:
 
     def test_ipc_has_substantial_mappings(self) -> None:
         from app.core.legal.constants import IPC_TO_BNS_MAP
+
         assert len(IPC_TO_BNS_MAP) >= 100  # We have 327
 
     def test_crpc_has_substantial_mappings(self) -> None:
         from app.core.legal.constants import CRPC_TO_BNSS_MAP
+
         assert len(CRPC_TO_BNSS_MAP) >= 50  # We have 153
 
     def test_evidence_has_substantial_mappings(self) -> None:
         from app.core.legal.constants import EVIDENCE_TO_BSA_MAP
+
         assert len(EVIDENCE_TO_BSA_MAP) >= 50  # We have 87
 
     def test_ipc_302_maps_to_bns_103(self) -> None:
         from app.core.legal.constants import IPC_TO_BNS_MAP
+
         assert IPC_TO_BNS_MAP.get("302") == "103"
 
     def test_ipc_420_maps_to_bns(self) -> None:
         from app.core.legal.constants import IPC_TO_BNS_MAP
+
         assert "420" in IPC_TO_BNS_MAP
 
     def test_ipc_498a_maps_to_bns(self) -> None:
         from app.core.legal.constants import IPC_TO_BNS_MAP
+
         assert "498A" in IPC_TO_BNS_MAP
 
 
@@ -318,8 +338,11 @@ class TestCodeMappingSynthesisInstruction:
 
     def test_synthesis_prompt_mentions_dual_codes(self) -> None:
         from app.core.legal.prompts import RESEARCH_SYNTHESIZE_SYSTEM
-        assert "old and new code" in RESEARCH_SYNTHESIZE_SYSTEM.lower() or \
-               "BNS" in RESEARCH_SYNTHESIZE_SYSTEM
+
+        assert (
+            "old and new code" in RESEARCH_SYNTHESIZE_SYSTEM.lower()
+            or "BNS" in RESEARCH_SYNTHESIZE_SYSTEM
+        )
 
 
 # ===========================================================================
@@ -336,16 +359,32 @@ class TestStatuteModel:
     def test_statute_has_required_columns(self) -> None:
         columns = {c.name for c in Statute.__table__.columns}
         expected = {
-            "id", "act_name", "act_short_name", "act_number", "act_year",
-            "part", "chapter", "section_number", "section_title", "section_text",
-            "explanation", "effective_date", "is_repealed", "replaced_by",
-            "replaces", "document_type", "searchable_text",
-            "created_at", "updated_at",
+            "id",
+            "act_name",
+            "act_short_name",
+            "act_number",
+            "act_year",
+            "part",
+            "chapter",
+            "section_number",
+            "section_title",
+            "section_text",
+            "explanation",
+            "effective_date",
+            "is_repealed",
+            "replaced_by",
+            "replaces",
+            "document_type",
+            "searchable_text",
+            "created_at",
+            "updated_at",
         }
         assert expected.issubset(columns)
 
     def test_statute_unique_constraint(self) -> None:
-        constraints = [c.name for c in Statute.__table__.constraints if hasattr(c, "name") and c.name]
+        constraints = [
+            c.name for c in Statute.__table__.constraints if hasattr(c, "name") and c.name
+        ]
         assert "uq_statutes_act_section" in constraints
 
     def test_statute_has_fts_index(self) -> None:
@@ -433,7 +472,12 @@ class TestRaptorIngestionPipeline:
 
         summaries = await generate_section_summaries("case_raptor_1", sections, llm)
         embeddings = [[0.1] * 1536 for _ in summaries]
-        base_meta = {"title": "Bachan Singh", "citation": "(1980) 2 SCC 684", "court": "SC", "year": 1980}
+        base_meta = {
+            "title": "Bachan Singh",
+            "citation": "(1980) 2 SCC 684",
+            "court": "SC",
+            "year": 1980,
+        }
 
         vectors = build_pinecone_summary_vectors("case_raptor_1", summaries, embeddings, base_meta)
 
@@ -451,7 +495,12 @@ class TestRaptorIngestionPipeline:
         from app.core.ingestion.section_summarizer import build_pinecone_summary_vectors
 
         summaries = [
-            {"case_id": "c1", "section_type": "HOLDINGS", "summary_text": "Summary", "summary_level": 1},
+            {
+                "case_id": "c1",
+                "section_type": "HOLDINGS",
+                "summary_text": "Summary",
+                "summary_level": 1,
+            },
         ]
         embeddings = [[0.5] * 10]
 
@@ -467,9 +516,24 @@ class TestRaptorIngestionPipeline:
         from app.core.ingestion.section_summarizer import build_pinecone_summary_vectors
 
         summaries = [
-            {"case_id": "c2", "section_type": "FACTS", "summary_text": "Facts summary", "summary_level": 1},
-            {"case_id": "c2", "section_type": "HOLDINGS", "summary_text": "Holdings summary", "summary_level": 1},
-            {"case_id": "c2", "section_type": "ANALYSIS", "summary_text": "Analysis summary", "summary_level": 1},
+            {
+                "case_id": "c2",
+                "section_type": "FACTS",
+                "summary_text": "Facts summary",
+                "summary_level": 1,
+            },
+            {
+                "case_id": "c2",
+                "section_type": "HOLDINGS",
+                "summary_text": "Holdings summary",
+                "summary_level": 1,
+            },
+            {
+                "case_id": "c2",
+                "section_type": "ANALYSIS",
+                "summary_text": "Analysis summary",
+                "summary_level": 1,
+            },
         ]
         embeddings = [[0.1] * 10, [0.2] * 10, [0.3] * 10]
 

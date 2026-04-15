@@ -25,9 +25,7 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     mime_type: Mapped[str] = mapped_column(
         String(100), nullable=False, server_default="application/pdf"
     )
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="pending"
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     processing_step: Mapped[str | None] = mapped_column(String(50), nullable=True)
     processing_started_at: Mapped[datetime | None] = mapped_column(

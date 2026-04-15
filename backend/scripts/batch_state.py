@@ -76,8 +76,16 @@ class BatchStateDB:
                 "INSERT OR IGNORE INTO batch_docs "
                 "(doc_key, year, file_uri, text_hash, full_text_len, parquet_meta, pdf_path, api_key_index) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (doc_key, year, file_uri, text_hash, full_text_len,
-                 json.dumps(parquet_meta), pdf_path, api_key_index),
+                (
+                    doc_key,
+                    year,
+                    file_uri,
+                    text_hash,
+                    full_text_len,
+                    json.dumps(parquet_meta),
+                    pdf_path,
+                    api_key_index,
+                ),
             )
             self._conn.commit()
 

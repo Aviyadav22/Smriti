@@ -91,6 +91,7 @@ class LoginRequest(BaseModel):
 
 class RefreshRequest(BaseModel):
     """Legacy body-based refresh. Prefer reading from httpOnly cookie."""
+
     refresh_token: str | None = None
 
 
@@ -123,7 +124,9 @@ class TokenResponse(BaseModel):
     refresh_token: str  # Always included — dev proxy may not forward httpOnly cookies
 
 
-@router.post("/register", status_code=201, dependencies=[Depends(rate_limit_dependency("5/minute"))])
+@router.post(
+    "/register", status_code=201, dependencies=[Depends(rate_limit_dependency("5/minute"))]
+)
 async def register(
     body: RegisterRequest,
     response: Response,
@@ -367,9 +370,7 @@ async def logout(
             refresh_payload = await verify_refresh_token(refresh_tok)
             await revoke_token(refresh_payload.jti, int(refresh_payload.exp.timestamp()))
         except (HTTPException, ValueError, RuntimeError) as exc:
-            logger.warning(
-                "Failed to revoke refresh token during logout: %s", exc
-            )
+            logger.warning("Failed to revoke refresh token during logout: %s", exc)
 
     _clear_refresh_cookie(response)
     return {"detail": "Successfully logged out"}
@@ -469,6 +470,7 @@ async def delete_account(
             {"uid": uid},
         )
         from app.core.dependencies import get_storage as _get_storage
+
         _storage = _get_storage()
         for row in doc_rows.mappings().all():
             if row.get("storage_path"):
@@ -513,6 +515,7 @@ async def delete_account(
     # Best-effort cleanup of external stores (Pinecone vectors, Neo4j nodes, Redis cache)
     try:
         from app.core.dependencies import get_graph_store, get_vector_store
+
         vector_store = get_vector_store()
         if vector_store and hasattr(vector_store, "delete_by_metadata"):
             await vector_store.delete_by_metadata({"user_id": uid})
@@ -528,6 +531,7 @@ async def delete_account(
 
     try:
         from app.db.redis_client import get_redis
+
         redis_client = await get_redis()
         if redis_client:
             # Scan and delete user-specific cache keys

@@ -87,9 +87,7 @@ def unauth_client(app: FastAPI, mock_db: AsyncMock) -> TestClient:
 class TestGetPreferences:
     """Tests for GET /api/users/me/preferences."""
 
-    def test_returns_empty_for_new_user(
-        self, client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_returns_empty_for_new_user(self, client: TestClient, mock_db: AsyncMock) -> None:
         """A new user with no preferences gets an empty object."""
         select_result = MagicMock()
         select_result.mappings.return_value.one_or_none.return_value = _prefs_row({})
@@ -99,11 +97,12 @@ class TestGetPreferences:
         assert resp.status_code == 200
         assert resp.json() == {}
 
-    def test_returns_existing_preferences(
-        self, client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_returns_existing_preferences(self, client: TestClient, mock_db: AsyncMock) -> None:
         """Existing preferences are returned as-is."""
-        prefs = {"preferred_courts": ["Supreme Court of India"], "common_case_types": ["Criminal Appeal"]}
+        prefs = {
+            "preferred_courts": ["Supreme Court of India"],
+            "common_case_types": ["Criminal Appeal"],
+        }
         select_result = MagicMock()
         select_result.mappings.return_value.one_or_none.return_value = _prefs_row(prefs)
         mock_db.execute.return_value = select_result
@@ -112,9 +111,7 @@ class TestGetPreferences:
         assert resp.status_code == 200
         assert resp.json() == prefs
 
-    def test_requires_auth(
-        self, unauth_client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_requires_auth(self, unauth_client: TestClient, mock_db: AsyncMock) -> None:
         """Endpoint returns 401/403 without authentication."""
         resp = unauth_client.get("/api/users/me/preferences")
         # Without the auth override, get_current_user will raise — should be 4xx
@@ -129,9 +126,7 @@ class TestGetPreferences:
 class TestUpdatePreferences:
     """Tests for PUT /api/users/me/preferences."""
 
-    def test_merges_preferences(
-        self, client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_merges_preferences(self, client: TestClient, mock_db: AsyncMock) -> None:
         """PUT merges new keys into existing preferences."""
         updated = {"preferred_courts": ["Delhi High Court"], "theme": "dark"}
 
@@ -146,9 +141,7 @@ class TestUpdatePreferences:
         assert resp.status_code == 200
         assert resp.json() == updated
 
-    def test_requires_auth(
-        self, unauth_client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_requires_auth(self, unauth_client: TestClient, mock_db: AsyncMock) -> None:
         """Endpoint returns 4xx without authentication."""
         resp = unauth_client.put(
             "/api/users/me/preferences",
@@ -165,15 +158,22 @@ class TestUpdatePreferences:
 class TestRefreshPreferences:
     """Tests for POST /api/users/me/preferences/refresh."""
 
-    def test_computes_from_search_history(
-        self, client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_computes_from_search_history(self, client: TestClient, mock_db: AsyncMock) -> None:
         """Refresh analyzes search history and saves computed preferences."""
         # Mock search history rows
         history_rows = [
-            {"query": "murder section 302", "filters": {"court": "Supreme Court of India", "case_type": "Criminal Appeal"}},
-            {"query": "right to privacy", "filters": {"court": "Supreme Court of India", "jurisdiction": "civil"}},
-            {"query": "land acquisition", "filters": {"court": "Delhi High Court", "case_type": "Writ Petition"}},
+            {
+                "query": "murder section 302",
+                "filters": {"court": "Supreme Court of India", "case_type": "Criminal Appeal"},
+            },
+            {
+                "query": "right to privacy",
+                "filters": {"court": "Supreme Court of India", "jurisdiction": "civil"},
+            },
+            {
+                "query": "land acquisition",
+                "filters": {"court": "Delhi High Court", "case_type": "Writ Petition"},
+            },
         ]
 
         search_result = MagicMock()
@@ -203,9 +203,7 @@ class TestRefreshPreferences:
         assert "common_case_types" in data
         assert "updated_at" in data
 
-    def test_handles_empty_history(
-        self, client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_handles_empty_history(self, client: TestClient, mock_db: AsyncMock) -> None:
         """Refresh with no search history returns empty preference lists."""
         search_result = MagicMock()
         search_result.mappings.return_value.all.return_value = []
@@ -230,9 +228,7 @@ class TestRefreshPreferences:
         assert data["preferred_courts"] == []
         assert data["common_case_types"] == []
 
-    def test_requires_auth(
-        self, unauth_client: TestClient, mock_db: AsyncMock
-    ) -> None:
+    def test_requires_auth(self, unauth_client: TestClient, mock_db: AsyncMock) -> None:
         """Endpoint returns 4xx without authentication."""
         resp = unauth_client.post("/api/users/me/preferences/refresh")
         assert resp.status_code in (401, 403, 422)

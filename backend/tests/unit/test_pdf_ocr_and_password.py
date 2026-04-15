@@ -3,6 +3,7 @@
 Tests the per-page OCR fallback mechanism in _extract_pdf_text_sync
 and the PDFPasswordIncorrect exception handling.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -23,10 +24,14 @@ class TestOCRFallbackPath:
         mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
         mock_pdf.__exit__ = MagicMock(return_value=False)
 
-        with patch("app.core.ingestion.pdf.pdfplumber") as mock_pdfplumber, \
-             patch("app.core.ingestion.pdf._ocr_single_page") as mock_ocr:
+        with (
+            patch("app.core.ingestion.pdf.pdfplumber") as mock_pdfplumber,
+            patch("app.core.ingestion.pdf._ocr_single_page") as mock_ocr,
+        ):
             mock_pdfplumber.open.return_value = mock_pdf
-            mock_ocr.return_value = "This is OCR extracted text from a scanned page of the judgment."
+            mock_ocr.return_value = (
+                "This is OCR extracted text from a scanned page of the judgment."
+            )
 
             text, page_count, page_map = _extract_pdf_text_sync("/fake/scanned.pdf")
 
@@ -47,8 +52,10 @@ class TestOCRFallbackPath:
         mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
         mock_pdf.__exit__ = MagicMock(return_value=False)
 
-        with patch("app.core.ingestion.pdf.pdfplumber") as mock_pdfplumber, \
-             patch("app.core.ingestion.pdf._ocr_single_page") as mock_ocr:
+        with (
+            patch("app.core.ingestion.pdf.pdfplumber") as mock_pdfplumber,
+            patch("app.core.ingestion.pdf._ocr_single_page") as mock_ocr,
+        ):
             mock_pdfplumber.open.return_value = mock_pdf
             text, page_count, page_map = _extract_pdf_text_sync("/fake/good.pdf")
 
@@ -65,8 +72,10 @@ class TestOCRFallbackPath:
         mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
         mock_pdf.__exit__ = MagicMock(return_value=False)
 
-        with patch("app.core.ingestion.pdf.pdfplumber") as mock_pdfplumber, \
-             patch("app.core.ingestion.pdf._ocr_single_page") as mock_ocr:
+        with (
+            patch("app.core.ingestion.pdf.pdfplumber") as mock_pdfplumber,
+            patch("app.core.ingestion.pdf._ocr_single_page") as mock_ocr,
+        ):
             mock_pdfplumber.open.return_value = mock_pdf
             # OCR returns even less text
             mock_ocr.return_value = ""
@@ -92,8 +101,10 @@ class TestOCRFallbackPath:
         mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
         mock_pdf.__exit__ = MagicMock(return_value=False)
 
-        with patch("app.core.ingestion.pdf.pdfplumber") as mock_pdfplumber, \
-             patch("app.core.ingestion.pdf._ocr_single_page") as mock_ocr:
+        with (
+            patch("app.core.ingestion.pdf.pdfplumber") as mock_pdfplumber,
+            patch("app.core.ingestion.pdf._ocr_single_page") as mock_ocr,
+        ):
             mock_pdfplumber.open.return_value = mock_pdf
             mock_ocr.return_value = "OCR text for the scanned page of the judgment."
             text, page_count, page_map = _extract_pdf_text_sync("/fake/mixed.pdf")

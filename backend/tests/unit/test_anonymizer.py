@@ -1,6 +1,5 @@
 """Tests for PII anonymization in ingested judgment text."""
 
-
 from app.core.ingestion.anonymizer import anonymize_text, detect_sensitive_case
 from app.core.ingestion.metadata import CaseMetadata
 
@@ -96,9 +95,7 @@ class TestDetectSensitiveCase:
     """Test sensitive case detection for POCSO/sexual assault."""
 
     def test_detects_pocso_in_acts_cited(self):
-        meta = CaseMetadata(
-            acts_cited=["Protection of Children from Sexual Offences Act"]
-        )
+        meta = CaseMetadata(acts_cited=["Protection of Children from Sexual Offences Act"])
         assert detect_sensitive_case("Some text", meta) is True
 
     def test_detects_pocso_short_name(self):

@@ -15,14 +15,29 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_PROCEED_PHRASES = frozenset({
-    "looks good", "looks good, proceed", "proceed", "continue",
-    "ok", "okay", "yes", "go ahead", "lgtm", "good", "fine",
-    "no changes", "no change", "looks great", "approve", "approved",
-    # Chip suggestions from frontend checkpoints
-    "looks good, proceed to synthesis",
-    "looks good, finalize",
-})
+_PROCEED_PHRASES = frozenset(
+    {
+        "looks good",
+        "looks good, proceed",
+        "proceed",
+        "continue",
+        "ok",
+        "okay",
+        "yes",
+        "go ahead",
+        "lgtm",
+        "good",
+        "fine",
+        "no changes",
+        "no change",
+        "looks great",
+        "approve",
+        "approved",
+        # Chip suggestions from frontend checkpoints
+        "looks good, proceed to synthesis",
+        "looks good, finalize",
+    }
+)
 
 
 def is_proceed(content: str | dict | None) -> bool:
@@ -45,7 +60,9 @@ def is_proceed(content: str | dict | None) -> bool:
             return action_lower in _PROCEED_PHRASES
         return False
     if not isinstance(content, str):
-        logger.warning("is_proceed: unexpected content type %s: %r", type(content).__name__, content)
+        logger.warning(
+            "is_proceed: unexpected content type %s: %r", type(content).__name__, content
+        )
         return True  # Unknown types = don't loop
     # Try parsing JSON strings from frontend (e.g. '{"action": "approve", ...}')
     if content.strip().startswith("{"):
@@ -80,6 +97,7 @@ def make_feedback_router(
     check_error:
         If True, route to END when state contains an error.
     """
+
     def route(state: dict) -> str:
         if check_error and state.get("error"):
             return END
@@ -93,14 +111,19 @@ def make_feedback_router(
         # Count feedback messages for THIS specific step only to avoid
         # iteration counts from one checkpoint blocking a different checkpoint.
         step_feedback_count = sum(
-            1 for m in messages
+            1
+            for m in messages
             if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == step
         )
 
         proceed_check = is_proceed(content)
         logger.warning(
             "ROUTE_DEBUG route_after_%s: content=%r type=%s is_proceed=%s feedback_count=%d",
-            step, str(content)[:200], type(content).__name__, proceed_check, step_feedback_count,
+            step,
+            str(content)[:200],
+            type(content).__name__,
+            proceed_check,
+            step_feedback_count,
         )
 
         if content and not proceed_check and step_feedback_count < max_iterations:
@@ -133,10 +156,15 @@ def make_checkpoint_node(
         Optional callback that receives the user response and returns additional
         fields to include in the node's return dict (beyond messages).
     """
+
     async def checkpoint(state: dict) -> dict:
         # Skip checkpoint when skip_checkpoints is set (auto-approve mode)
         if state.get("skip_checkpoints"):
-            return {"messages": [{"type": "user_feedback", "step": step, "content": {"action": "approve"}}]}
+            return {
+                "messages": [
+                    {"type": "user_feedback", "step": step, "content": {"action": "approve"}}
+                ]
+            }
 
         payload: dict[str, Any] = {"question": question}
         for key, (state_key, default) in state_fields.items():
@@ -148,9 +176,7 @@ def make_checkpoint_node(
             with contextlib.suppress(json.JSONDecodeError, TypeError):
                 parsed = json.loads(response)
         result: dict[str, Any] = {
-            "messages": [
-                {"type": "user_feedback", "step": step, "content": parsed}
-            ],
+            "messages": [{"type": "user_feedback", "step": step, "content": parsed}],
         }
         if extra_return is not None:
             result.update(extra_return(parsed))

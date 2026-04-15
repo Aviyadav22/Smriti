@@ -169,9 +169,7 @@ async def predict_outcome(
             for d in all_dispositions:
                 base_p = probabilities.get(d, 0.0)
                 act_p = act_probs.get(d, 0.0)
-                probabilities[d] = round(
-                    base_p * (1 - blend_weight) + act_p * blend_weight, 4
-                )
+                probabilities[d] = round(base_p * (1 - blend_weight) + act_p * blend_weight, 4)
 
             # Determine top act outcome for factor detail.
             top_act_outcome = max(act_probs, key=act_probs.get)  # type: ignore[arg-type]
@@ -233,18 +231,18 @@ async def predict_outcome(
 
     if raw_total < _LOW_SAMPLE_THRESHOLD:
         confidence = min(confidence, _LOW_SAMPLE_CAP)
-        caveats.append(
-            f"Low sample size ({raw_total} cases). Prediction reliability is limited."
-        )
+        caveats.append(f"Low sample size ({raw_total} cases). Prediction reliability is limited.")
 
     # ------------------------------------------------------------------
     # 6. Standard caveats
     # ------------------------------------------------------------------
-    caveats.extend([
-        f"Based on {raw_total} historical cases from Supreme Court records.",
-        "Past judicial patterns do not predict future outcomes.",
-        "This is a statistical summary, not legal advice.",
-    ])
+    caveats.extend(
+        [
+            f"Based on {raw_total} historical cases from Supreme Court records.",
+            "Past judicial patterns do not predict future outcomes.",
+            "This is a statistical summary, not legal advice.",
+        ]
+    )
 
     # Determine predicted outcome.
     predicted_outcome = max(probabilities, key=probabilities.get)  # type: ignore[arg-type]

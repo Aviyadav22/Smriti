@@ -9,6 +9,7 @@ class TestPoolDefaults:
             from importlib import reload
 
             import app.core.config as config_mod
+
             reload(config_mod)
             s = config_mod.Settings(database_url="postgresql+asyncpg://x:x@localhost/db")
             assert s.database_pool_size == 10
@@ -18,6 +19,7 @@ class TestPoolDefaults:
             from importlib import reload
 
             import app.core.config as config_mod
+
             reload(config_mod)
             s = config_mod.Settings(database_url="postgresql+asyncpg://x:x@localhost/db")
             assert s.database_max_overflow == 20

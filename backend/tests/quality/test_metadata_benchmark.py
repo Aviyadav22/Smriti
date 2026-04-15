@@ -37,9 +37,7 @@ class TestGoldStandardFixture:
         required = {"title", "citation", "court", "year", "judge", "disposal_nature"}
         for case in _load_gold_standard():
             for field in required:
-                assert case.get(field), (
-                    f"Gold case {case['id']} missing {field}"
-                )
+                assert case.get(field), f"Gold case {case['id']} missing {field}"
 
 
 class TestConfidenceOnGoldStandard:
@@ -56,9 +54,7 @@ class TestConfidenceOnGoldStandard:
         filtered = {k: v for k, v in case_data.items() if k in field_names}
         meta = CaseMetadata(**filtered)
         confidence = compute_extraction_confidence(meta)
-        assert confidence >= 0.85, (
-            f"Gold case {case_data['id']} has low confidence {confidence}"
-        )
+        assert confidence >= 0.85, f"Gold case {case_data['id']} has low confidence {confidence}"
 
 
 class TestValidationOnGoldStandard:

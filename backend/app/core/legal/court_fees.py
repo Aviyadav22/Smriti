@@ -3,6 +3,7 @@
 Provides state-wise court fee calculations based on suit valuation,
 court level, and case type. Covers 5 major states.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -66,11 +67,24 @@ _FIXED_FEES: Final[dict[str, float]] = {
 }
 
 _STATE_ALIASES: Final[dict[str, str]] = {
-    "delhi": "delhi", "ncr": "delhi", "new delhi": "delhi",
-    "maharashtra": "maharashtra", "mumbai": "maharashtra", "bombay": "maharashtra", "pune": "maharashtra",
-    "karnataka": "karnataka", "bangalore": "karnataka", "bengaluru": "karnataka",
-    "tamil nadu": "tamil_nadu", "tamil_nadu": "tamil_nadu", "chennai": "tamil_nadu", "madras": "tamil_nadu",
-    "west bengal": "west_bengal", "west_bengal": "west_bengal", "kolkata": "west_bengal", "calcutta": "west_bengal",
+    "delhi": "delhi",
+    "ncr": "delhi",
+    "new delhi": "delhi",
+    "maharashtra": "maharashtra",
+    "mumbai": "maharashtra",
+    "bombay": "maharashtra",
+    "pune": "maharashtra",
+    "karnataka": "karnataka",
+    "bangalore": "karnataka",
+    "bengaluru": "karnataka",
+    "tamil nadu": "tamil_nadu",
+    "tamil_nadu": "tamil_nadu",
+    "chennai": "tamil_nadu",
+    "madras": "tamil_nadu",
+    "west bengal": "west_bengal",
+    "west_bengal": "west_bengal",
+    "kolkata": "west_bengal",
+    "calcutta": "west_bengal",
 }
 
 

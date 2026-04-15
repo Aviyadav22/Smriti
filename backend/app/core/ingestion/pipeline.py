@@ -79,8 +79,7 @@ async def get_cited_by_count(case_id: str, graph_store: GraphStore) -> int:
     """Compute cited_by_count on demand from the graph (avoids non-atomic increment)."""
     try:
         results = await graph_store.query(
-            "MATCH (cited:Case {id: $id})<-[:CITES]-(c) "
-            "RETURN count(c) AS cited_by_count",
+            "MATCH (cited:Case {id: $id})<-[:CITES]-(c) " "RETURN count(c) AS cited_by_count",
             params={"id": case_id},
         )
         return results[0]["cited_by_count"] if results else 0
@@ -150,14 +149,14 @@ async def ingest_judgment(
         return None
 
     if quality.ocr_truncated and warnings_out is not None:
-        warnings_out.append(
-            f"ocr_truncated:{MAX_OCR_PAGES}/{quality.ocr_total_pages}"
-        )
+        warnings_out.append(f"ocr_truncated:{MAX_OCR_PAGES}/{quality.ocr_total_pages}")
 
     if quality.tier == "low":
         logger.warning(
             "Low quality text for %s: %d chars, %d legal keywords (proceeding anyway)",
-            pdf_path, quality.char_count, quality.legal_keyword_count,
+            pdf_path,
+            quality.char_count,
+            quality.legal_keyword_count,
         )
 
     # ------------------------------------------------------------------
@@ -180,7 +179,8 @@ async def ingest_judgment(
             logger.info(
                 "Duplicate content detected via text_hash BEFORE LLM call "
                 "(case_id=%s, pdf=%s), skipping",
-                existing_id, pdf_path,
+                existing_id,
+                pdf_path,
             )
             return existing_id
         logger.info(
@@ -212,7 +212,9 @@ async def ingest_judgment(
     # the PDF is actually uploaded now or later (bulk upload after ingestion).
     # Format: gs://{bucket}/cases/{case_id}/{filename}.pdf
     storage_dest = f"cases/{case_id}/{_safe_filename(parquet_metadata)}"
-    _GCS_BUCKET_FOR_PATH = os.environ.get("GCS_PDF_BUCKET", os.environ.get("GCS_BUCKET_NAME", "smriti-production-documents"))
+    _GCS_BUCKET_FOR_PATH = os.environ.get(
+        "GCS_PDF_BUCKET", os.environ.get("GCS_BUCKET_NAME", "smriti-production-documents")
+    )
     canonical_gcs_path = f"gs://{_GCS_BUCKET_FOR_PATH}/{storage_dest}"
 
     async def _store_pdf() -> str:
@@ -241,11 +243,10 @@ async def ingest_judgment(
         logger.error(
             "LLM metadata extraction FAILED for %s — aborting case ingestion. "
             "Cause: %s. Case will NOT be stored with empty metadata.",
-            pdf_path, exc,
+            pdf_path,
+            exc,
         )
-        raise RuntimeError(
-            f"LLM extraction failed for {pdf_path}: {exc}"
-        ) from exc
+        raise RuntimeError(f"LLM extraction failed for {pdf_path}: {exc}") from exc
     # Pre-normalize LLM acts_cited to filter garbage before merge
     if llm_meta.acts_cited:
         llm_meta.acts_cited = normalize_acts_cited_list(llm_meta.acts_cited)
@@ -268,7 +269,8 @@ async def ingest_judgment(
     if confidence < 0.4:
         logger.warning(
             "Very low extraction confidence (%.3f) for %s — stripping LLM fields",
-            confidence, pdf_path,
+            confidence,
+            pdf_path,
         )
         metadata = _strip_unreliable_llm_fields(metadata)
         provenance["confidence_action"] = "stripped_llm_fields"
@@ -276,7 +278,8 @@ async def ingest_judgment(
     elif confidence < 0.6:
         logger.warning(
             "Borderline extraction confidence (%.3f) for %s — flagging for review",
-            confidence, pdf_path,
+            confidence,
+            pdf_path,
         )
         provenance["confidence_action"] = "flagged_for_review"
         provenance["_needs_review"] = provenance.get("_needs_review", "") + ",borderline_confidence"
@@ -304,12 +307,16 @@ async def ingest_judgment(
     if fields_to_reextract:
         logger.info(
             "Attempting targeted re-extraction for %s (confidence=%.3f)",
-            fields_to_reextract, confidence,
+            fields_to_reextract,
+            confidence,
         )
         if llm_rate_limiter:
             await llm_rate_limiter.acquire()
         metadata = await reextract_missing_fields(
-            metadata, full_text, llm, fields_to_reextract,
+            metadata,
+            full_text,
+            llm,
+            fields_to_reextract,
         )
         for f in fields_to_reextract:
             if getattr(metadata, f, None) is not None:
@@ -321,7 +328,9 @@ async def ingest_judgment(
             hn_list = json.loads(metadata.headnotes) if isinstance(metadata.headnotes, str) else []
             hn_total = sum(len(h.get("proposition", "")) for h in hn_list if isinstance(h, dict))
             if hn_total > 3000:
-                provenance["_needs_review"] = provenance.get("_needs_review", "") + ",headnotes_verbose"
+                provenance["_needs_review"] = (
+                    provenance.get("_needs_review", "") + ",headnotes_verbose"
+                )
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -346,7 +355,8 @@ async def ingest_judgment(
     # Enrich acts_cited with old<->new statute cross-references (U3)
     if metadata.acts_cited:
         metadata.acts_cited = enrich_statute_cross_references(
-            metadata.acts_cited, decision_year=metadata.year,
+            metadata.acts_cited,
+            decision_year=metadata.year,
         )
         provenance["acts_cited"] = provenance.get("acts_cited", "llm") + "+enriched"
 
@@ -399,19 +409,25 @@ async def ingest_judgment(
             logger.warning(
                 "CROSS-CONTAMINATION: case %s has identical ratio_decidendi "
                 "to existing case %s (%s) — possible batch corruption",
-                case_id, dup_row[0], dup_row[1],
+                case_id,
+                dup_row[0],
+                dup_row[1],
             )
             if warnings_out is not None:
-                warnings_out.append(
-                    f"ratio_duplicate:{dup_row[0]}"
-                )
+                warnings_out.append(f"ratio_duplicate:{dup_row[0]}")
 
     # ------------------------------------------------------------------
     # 5. INSERT CASE INTO POSTGRESQL (upsert on citation conflict)
     # ------------------------------------------------------------------
     case_id, already_ingested = await _insert_case(
-        db, case_id, metadata, full_text, storage_path, parquet_metadata,
-        provenance=provenance, text_hash=text_hash,
+        db,
+        case_id,
+        metadata,
+        full_text,
+        storage_path,
+        parquet_metadata,
+        provenance=provenance,
+        text_hash=text_hash,
         extraction_confidence=extraction_confidence,
         page_map=quality.page_map,
     )
@@ -419,7 +435,8 @@ async def ingest_judgment(
     if already_ingested:
         logger.info(
             "Case %s already fully ingested (case_id=%s), skipping pipeline",
-            metadata.citation, case_id,
+            metadata.citation,
+            case_id,
         )
         return case_id
 
@@ -432,7 +449,9 @@ async def ingest_judgment(
     # session — this covers code-logic failures between here and line ~314.
     async with db.begin_nested():
         await db.execute(
-            text("UPDATE cases SET ingestion_status = 'processing', updated_at = NOW() WHERE id = :id"),
+            text(
+                "UPDATE cases SET ingestion_status = 'processing', updated_at = NOW() WHERE id = :id"
+            ),
             {"id": case_id},
         )
 
@@ -454,12 +473,17 @@ async def ingest_judgment(
         if skipped:
             logger.info(
                 "case_id=%s: skipped %d editorial/procedural chunks from embedding",
-                case_id, skipped,
+                case_id,
+                skipped,
             )
 
         logger.info(
             "case_id=%s: %d sections, %d chunks (%d total, %d skipped)",
-            case_id, len(sections), len(chunks), len(all_chunks), skipped,
+            case_id,
+            len(sections),
+            len(chunks),
+            len(all_chunks),
+            skipped,
         )
 
         # --------------------------------------------------------------
@@ -486,6 +510,7 @@ async def ingest_judgment(
         _skip_contextual = os.environ.get("SKIP_CONTEXTUAL_EMBEDDINGS", "").strip() in ("1", "true")
         if fast_llm is not None and not _skip_contextual:
             from app.core.ingestion.contextual_embeddings import batch_contextualize_chunks
+
             chunk_dicts = [{"text": c.text, "section_type": c.section_type} for c in chunks]
             doc_meta = {
                 "title": metadata.title or "",
@@ -494,7 +519,10 @@ async def ingest_judgment(
                 "year": metadata.year or 0,
             }
             contextualized = await batch_contextualize_chunks(
-                chunk_dicts, doc_meta, fast_llm, document_type="case_law",
+                chunk_dicts,
+                doc_meta,
+                fast_llm,
+                document_type="case_law",
                 rate_limiter=llm_rate_limiter,
             )
             # Update chunk texts for embedding (original text preserved in chunk.text for display)
@@ -507,8 +535,9 @@ async def ingest_judgment(
         # --------------------------------------------------------------
         _embed_limiter = embed_rate_limiter or rate_limiter
         embeddings = await asyncio.wait_for(
-            _embed_chunks(chunks, embedder, rate_limiter=_embed_limiter,
-                          texts_override=_contextualized_texts),
+            _embed_chunks(
+                chunks, embedder, rate_limiter=_embed_limiter, texts_override=_contextualized_texts
+            ),
             timeout=300.0,  # 5 min for large documents with many chunks
         )
         if len(embeddings) != len(chunks):
@@ -530,9 +559,7 @@ async def ingest_judgment(
         # Upsert new vectors FIRST, then delete stale ones (excluding the
         # newly upserted IDs). This avoids the data-loss window where old
         # vectors are deleted but new ones haven't been written yet.
-        new_vector_ids = [
-            f"{case_id}_{chunk.chunk_index}" for chunk in chunks
-        ]
+        new_vector_ids = [f"{case_id}_{chunk.chunk_index}" for chunk in chunks]
 
         @retry(
             stop=stop_after_attempt(3),
@@ -541,8 +568,13 @@ async def ingest_judgment(
         )
         async def _upsert_with_retry() -> None:
             await _upsert_vectors(
-                case_id, chunks, embeddings, metadata, vector_store,
-                page_map=quality.page_map, full_text=full_text,
+                case_id,
+                chunks,
+                embeddings,
+                metadata,
+                vector_store,
+                page_map=quality.page_map,
+                full_text=full_text,
             )
 
         try:
@@ -555,7 +587,10 @@ async def ingest_judgment(
         try:
             _embed_limiter_prop = embed_rate_limiter or rate_limiter
             prop_count, prop_vector_ids = await _upsert_proposition_vectors(
-                case_id, metadata, embedder, vector_store,
+                case_id,
+                metadata,
+                embedder,
+                vector_store,
                 rate_limiter=_embed_limiter_prop,
             )
             if prop_count:
@@ -579,8 +614,7 @@ async def ingest_judgment(
                 )
             except Exception:
                 logger.warning(
-                    "Failed to clean stale vectors for case_id=%s (new vectors "
-                    "are safe)",
+                    "Failed to clean stale vectors for case_id=%s (new vectors " "are safe)",
                     case_id,
                 )
 
@@ -597,13 +631,9 @@ async def ingest_judgment(
                     build_pinecone_summary_vectors,
                     generate_section_summaries,
                 )
-                section_dicts = [
-                    {"section_type": s.type, "content": s.text}
-                    for s in sections
-                ]
-                summaries = await generate_section_summaries(
-                    str(case_id), section_dicts, fast_llm
-                )
+
+                section_dicts = [{"section_type": s.type, "content": s.text} for s in sections]
+                summaries = await generate_section_summaries(str(case_id), section_dicts, fast_llm)
                 if summaries:
                     summary_texts = [s["summary_text"] for s in summaries]
                     _embed_limiter2 = embed_rate_limiter or rate_limiter
@@ -628,12 +658,14 @@ async def ingest_judgment(
                     new_vector_ids.extend(v["id"] for v in summary_vectors)
                     logger.info(
                         "case_id=%s: %d RAPTOR section summaries stored",
-                        case_id, len(summaries),
+                        case_id,
+                        len(summaries),
                     )
             except Exception as raptor_exc:
                 logger.warning(
                     "RAPTOR summary generation failed for case_id=%s: %s",
-                    case_id, raptor_exc,
+                    case_id,
+                    raptor_exc,
                 )
 
         # Ensure stale-vector cleanup finished before commit
@@ -675,25 +707,32 @@ async def ingest_judgment(
             # Link citation equivalents in graph (F10)
             if citation_equivalents:
                 await _link_citation_equivalents(
-                    case_id, metadata.citation, citation_equivalents, graph_store,
+                    case_id,
+                    metadata.citation,
+                    citation_equivalents,
+                    graph_store,
                 )
         except (TimeoutError, Exception) as graph_exc:
             # Graph build is non-critical; log but don't fail the pipeline
             logger.error(
                 "Citation graph build failed for case_id=%s: %s",
-                case_id, graph_exc,
+                case_id,
+                graph_exc,
             )
             try:
                 await record_graph_failure(db, case_id, str(graph_exc))
             except Exception as queue_exc:
                 logger.error(
                     "Failed to queue graph retry for case_id=%s: %s",
-                    case_id, queue_exc,
+                    case_id,
+                    queue_exc,
                 )
 
     except Exception as pipeline_exc:
         logger.error(
-            "Pipeline failed for case_id=%s: %s", case_id, pipeline_exc,
+            "Pipeline failed for case_id=%s: %s",
+            case_id,
+            pipeline_exc,
         )
         # Rollback uncommitted partial writes, or mark status as failed
         if not db_committed:
@@ -708,7 +747,8 @@ async def ingest_judgment(
                     logger.info("Cleaned up orphan vectors for case_id=%s", case_id)
                 except Exception:
                     logger.error(
-                        "Failed to clean up orphan vectors for case_id=%s", case_id,
+                        "Failed to clean up orphan vectors for case_id=%s",
+                        case_id,
                     )
         if db_committed:
             try:
@@ -722,10 +762,13 @@ async def ingest_judgment(
                 await db.commit()
             except Exception:
                 logger.error(
-                    "Failed to update ingestion_status for case_id=%s", case_id,
+                    "Failed to update ingestion_status for case_id=%s",
+                    case_id,
                 )
         await _record_ingestion_failure(
-            case_id, pdf_path, str(pipeline_exc),
+            case_id,
+            pdf_path,
+            str(pipeline_exc),
         )
         raise
 
@@ -740,8 +783,8 @@ async def ingest_judgment(
 
 def _compute_text_hash(text: str) -> str:
     """Compute SHA-256 hash of whitespace-normalized text for dedup."""
-    normalized = re.sub(r'\s+', ' ', text.strip().lower())
-    return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+    normalized = re.sub(r"\s+", " ", text.strip().lower())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def _parse_date_str(val: str | None) -> date | None:
@@ -810,7 +853,8 @@ async def _insert_case(
         "respondent": metadata.respondent,
         "decision_date": decision_date,
         "disposal_nature": metadata.disposal_nature,
-        "description": parquet_meta.get("description") or getattr(metadata, "case_description", None),
+        "description": parquet_meta.get("description")
+        or getattr(metadata, "case_description", None),
         "keywords": metadata.keywords,
         "acts_cited": metadata.acts_cited,
         "cases_cited": metadata.cases_cited,
@@ -848,19 +892,29 @@ async def _insert_case(
         "is_anonymized": metadata.is_anonymized,
         "anonymization_flags": metadata.anonymization_flags,
         # V2 fields
-        "arguments_raised": json.dumps(metadata.arguments_raised) if metadata.arguments_raised else None,
+        "arguments_raised": json.dumps(metadata.arguments_raised)
+        if metadata.arguments_raised
+        else None,
         "relief_granted": metadata.relief_granted,
         "relief_sought": metadata.relief_sought,
-        "sentence_details": json.dumps(metadata.sentence_details) if metadata.sentence_details else None,
-        "damages_awarded": json.dumps(metadata.damages_awarded) if metadata.damages_awarded else None,
+        "sentence_details": json.dumps(metadata.sentence_details)
+        if metadata.sentence_details
+        else None,
+        "damages_awarded": json.dumps(metadata.damages_awarded)
+        if metadata.damages_awarded
+        else None,
         "judicial_tone": metadata.judicial_tone,
         "key_observations": metadata.key_observations,
         "hearing_count": metadata.hearing_count,
-        "citation_treatments": json.dumps(metadata.citation_treatments) if metadata.citation_treatments else None,
+        "citation_treatments": json.dumps(metadata.citation_treatments)
+        if metadata.citation_treatments
+        else None,
         "distinguished_cases": metadata.distinguished_cases,
         "overruled_cases": metadata.overruled_cases,
         "legal_principles_applied": metadata.legal_principles_applied,
-        "procedural_history": json.dumps(metadata.procedural_history) if metadata.procedural_history else None,
+        "procedural_history": json.dumps(metadata.procedural_history)
+        if metadata.procedural_history
+        else None,
         "interim_orders": metadata.interim_orders,
         "filing_date": _parse_date_str(metadata.filing_date),
         "urgency_indicators": metadata.urgency_indicators,
@@ -873,10 +927,16 @@ async def _insert_case(
         "page_map": json.dumps(page_map) if page_map else None,
         "enrichment_status": metadata.enrichment_status,
         # V3 fields
-        "legal_propositions": json.dumps(metadata.legal_propositions) if metadata.legal_propositions else None,
-        "statute_sections_interpreted": json.dumps(metadata.statute_sections_interpreted) if metadata.statute_sections_interpreted else None,
+        "legal_propositions": json.dumps(metadata.legal_propositions)
+        if metadata.legal_propositions
+        else None,
+        "statute_sections_interpreted": json.dumps(metadata.statute_sections_interpreted)
+        if metadata.statute_sections_interpreted
+        else None,
         "fact_pattern_summary": metadata.fact_pattern_summary,
-        "source_dataset": metadata.source_dataset if hasattr(metadata, "source_dataset") else "aws_open_data_sc",
+        "source_dataset": metadata.source_dataset
+        if hasattr(metadata, "source_dataset")
+        else "aws_open_data_sc",
     }
 
     # text_hash dedup is already done in ingest_judgment() step 1b (before
@@ -908,7 +968,7 @@ async def _insert_case(
     try:
         result = await db.execute(
             text(
-            """
+                """
             INSERT INTO cases (
                 id, title, citation, case_id, cnr, court, year, case_type,
                 jurisdiction, bench_type, judge, author_judge, petitioner,
@@ -1037,7 +1097,8 @@ async def _insert_case(
             if existing_row:
                 logger.info(
                     "Case with citation %s already exists (id=%s), skipping insert",
-                    metadata.citation, existing_row[0],
+                    metadata.citation,
+                    existing_row[0],
                 )
                 return str(existing_row[0]), False
 
@@ -1126,7 +1187,11 @@ async def _embed_chunks(
                 wait = min(2 ** (attempt + 2), 60)  # 4s, 8s, 16s — aligned with Gemini limits
                 logger.warning(
                     "Embedding batch %d failed (attempt %d/%d), retrying in %ds: %s",
-                    i // _EMBED_BATCH_SIZE, attempt + 1, max_retries, wait, exc,
+                    i // _EMBED_BATCH_SIZE,
+                    attempt + 1,
+                    max_retries,
+                    wait,
+                    exc,
                 )
                 await asyncio.sleep(wait)
 
@@ -1150,7 +1215,9 @@ async def _upsert_vectors(
         if len(chunk.text) > 2000:
             logger.warning(
                 "Chunk %s_%d text truncated from %d to 2000 chars for Pinecone metadata",
-                case_id, chunk.chunk_index, len(chunk.text),
+                case_id,
+                chunk.chunk_index,
+                len(chunk.text),
             )
 
         # V2: compute page location from page_map
@@ -1175,41 +1242,49 @@ async def _upsert_vectors(
                 if page_end == 0:
                     page_end = page_start  # same page if not found
 
-        vectors.append({
-            "id": vector_id,
-            "values": embedding,
-            "metadata": {
-                "case_id": case_id,
-                "chunk_index": chunk.chunk_index,
-                "section_type": chunk.section_type,
-                "court": metadata.court or "",
-                "year": metadata.year or 0,
-                "case_type": metadata.case_type or "",
-                "jurisdiction": metadata.jurisdiction or "",
-                "bench_type": metadata.bench_type or "",
-                "disposal_nature": metadata.disposal_nature or "",
-                "title": (metadata.title or "")[:200],
-                "citation": metadata.citation or "",
-                "author_judge": metadata.author_judge or "",
-                "judge": list(metadata.judge[:20]) if metadata.judge else [],
-                "acts_cited": list(metadata.acts_cited[:25]) if metadata.acts_cited else [],
-                "opinion_author": chunk.opinion_author or "",
-                "para_start": chunk.para_start or 0,
-                "para_end": chunk.para_end or 0,
-                "text": chunk.text[:2000],  # Pinecone 40KB metadata cap; full text lives in PostgreSQL
-                "document_type": "case_law",
-                "vector_type": "chunk",
-                "legal_signal": chunk.legal_signal if hasattr(chunk, "legal_signal") else 0.0,
-                # V2 fields
-                "judicial_tone": metadata.judicial_tone or "",
-                "fact_pattern_tags": list(metadata.fact_pattern_tags[:5]) if metadata.fact_pattern_tags else [],
-                "issue_classification": list(metadata.issue_classification[:5]) if metadata.issue_classification else [],
-                "page_start": page_start,
-                "page_end": page_end,
-                "char_start": char_start,
-                "char_end": char_end,
-            },
-        })
+        vectors.append(
+            {
+                "id": vector_id,
+                "values": embedding,
+                "metadata": {
+                    "case_id": case_id,
+                    "chunk_index": chunk.chunk_index,
+                    "section_type": chunk.section_type,
+                    "court": metadata.court or "",
+                    "year": metadata.year or 0,
+                    "case_type": metadata.case_type or "",
+                    "jurisdiction": metadata.jurisdiction or "",
+                    "bench_type": metadata.bench_type or "",
+                    "disposal_nature": metadata.disposal_nature or "",
+                    "title": (metadata.title or "")[:200],
+                    "citation": metadata.citation or "",
+                    "author_judge": metadata.author_judge or "",
+                    "judge": list(metadata.judge[:20]) if metadata.judge else [],
+                    "acts_cited": list(metadata.acts_cited[:25]) if metadata.acts_cited else [],
+                    "opinion_author": chunk.opinion_author or "",
+                    "para_start": chunk.para_start or 0,
+                    "para_end": chunk.para_end or 0,
+                    "text": chunk.text[
+                        :2000
+                    ],  # Pinecone 40KB metadata cap; full text lives in PostgreSQL
+                    "document_type": "case_law",
+                    "vector_type": "chunk",
+                    "legal_signal": chunk.legal_signal if hasattr(chunk, "legal_signal") else 0.0,
+                    # V2 fields
+                    "judicial_tone": metadata.judicial_tone or "",
+                    "fact_pattern_tags": list(metadata.fact_pattern_tags[:5])
+                    if metadata.fact_pattern_tags
+                    else [],
+                    "issue_classification": list(metadata.issue_classification[:5])
+                    if metadata.issue_classification
+                    else [],
+                    "page_start": page_start,
+                    "page_end": page_end,
+                    "char_start": char_start,
+                    "char_end": char_end,
+                },
+            }
+        )
 
     # Upsert in batches (Pinecone recommended: 100, turbo mode: 300)
     _upsert_batch = int(os.environ.get("PINECONE_UPSERT_BATCH", "100"))
@@ -1249,8 +1324,12 @@ async def _upsert_proposition_vectors(
         "judge": list(metadata.judge[:20]) if metadata.judge else [],
         "jurisdiction": metadata.jurisdiction or "",
         "judicial_tone": metadata.judicial_tone or "",
-        "fact_pattern_tags": list(metadata.fact_pattern_tags[:5]) if metadata.fact_pattern_tags else [],
-        "issue_classification": list(metadata.issue_classification[:5]) if metadata.issue_classification else [],
+        "fact_pattern_tags": list(metadata.fact_pattern_tags[:5])
+        if metadata.fact_pattern_tags
+        else [],
+        "issue_classification": list(metadata.issue_classification[:5])
+        if metadata.issue_classification
+        else [],
     }
 
     # --- Proposition vectors ---
@@ -1261,19 +1340,21 @@ async def _upsert_proposition_vectors(
         vid = f"{case_id}_prop_{i}"
         vector_ids.append(vid)
         texts_to_embed.append(prop_text)
-        vectors.append({
-            "id": vid,
-            "metadata": {
-                **base_meta,
-                "vector_type": "proposition",
-                "text": prop_text[:2000],
-                "section_type": "RATIO",
-                "related_section": prop.get("related_section") or "",
-                "is_novel": prop.get("is_novel", False),
-                "para_start": prop.get("paragraph_number") or 0,
-                "para_end": prop.get("paragraph_number") or 0,
-            },
-        })
+        vectors.append(
+            {
+                "id": vid,
+                "metadata": {
+                    **base_meta,
+                    "vector_type": "proposition",
+                    "text": prop_text[:2000],
+                    "section_type": "RATIO",
+                    "related_section": prop.get("related_section") or "",
+                    "is_novel": prop.get("is_novel", False),
+                    "para_start": prop.get("paragraph_number") or 0,
+                    "para_end": prop.get("paragraph_number") or 0,
+                },
+            }
+        )
 
     # --- Ratio vector (one per case) ---
     ratio = metadata.ratio_decidendi or ""
@@ -1281,22 +1362,26 @@ async def _upsert_proposition_vectors(
         vid = f"{case_id}_ratio"
         vector_ids.append(vid)
         texts_to_embed.append(ratio)
-        vectors.append({
-            "id": vid,
-            "metadata": {
-                **base_meta,
-                "vector_type": "ratio",
-                "text": ratio[:2000],
-                "section_type": "RATIO",
-            },
-        })
+        vectors.append(
+            {
+                "id": vid,
+                "metadata": {
+                    **base_meta,
+                    "vector_type": "ratio",
+                    "text": ratio[:2000],
+                    "section_type": "RATIO",
+                },
+            }
+        )
 
     # --- Headnote vectors ---
     headnotes_raw = metadata.headnotes or ""
     headnotes: list[dict] = []
     if headnotes_raw:
         try:
-            headnotes = json.loads(headnotes_raw) if isinstance(headnotes_raw, str) else headnotes_raw
+            headnotes = (
+                json.loads(headnotes_raw) if isinstance(headnotes_raw, str) else headnotes_raw
+            )
         except (ValueError, TypeError):
             headnotes = []
     for i, hn in enumerate(headnotes):
@@ -1306,15 +1391,17 @@ async def _upsert_proposition_vectors(
         vid = f"{case_id}_headnote_{i}"
         vector_ids.append(vid)
         texts_to_embed.append(hn_text)
-        vectors.append({
-            "id": vid,
-            "metadata": {
-                **base_meta,
-                "vector_type": "headnote",
-                "text": hn_text[:2000],
-                "section_type": "RATIO",
-            },
-        })
+        vectors.append(
+            {
+                "id": vid,
+                "metadata": {
+                    **base_meta,
+                    "vector_type": "headnote",
+                    "text": hn_text[:2000],
+                    "section_type": "RATIO",
+                },
+            }
+        )
 
     if not texts_to_embed:
         return 0, []
@@ -1440,7 +1527,8 @@ async def _build_citation_graph(
         if not verify:
             logger.error(
                 "Neo4j-PostgreSQL ID sync FAILED: case %s exists in PG but "
-                "not found in Neo4j after creation", case_id,
+                "not found in Neo4j after creation",
+                case_id,
             )
     except (OSError, ConnectionError, RuntimeError) as exc:
         logger.warning("Neo4j ID sync check skipped for %s: %s", case_id, exc)
@@ -1468,12 +1556,14 @@ async def _build_citation_graph(
             if treatment_results:
                 best = max(treatment_results, key=lambda r: r.confidence)
                 treatment = best.treatment.value
-        edge_data.append({
-            "citation": cited_ref,
-            "placeholder_id": f"ref_{uuid.uuid4().hex[:12]}",
-            "reporter": citation.reporter,
-            "treatment": treatment,
-        })
+        edge_data.append(
+            {
+                "citation": cited_ref,
+                "placeholder_id": f"ref_{uuid.uuid4().hex[:12]}",
+                "reporter": citation.reporter,
+                "treatment": treatment,
+            }
+        )
 
     # Batch: create placeholder nodes + CITES edges in 2 queries (not N)
     try:
@@ -1515,8 +1605,13 @@ async def _build_citation_graph(
     # --- V2: Enriched CITES edges with treatment context (UNWIND batch) ---
     if metadata.citation_treatments:
         ct_data = [
-            {"fragment": ct.get("cited_case", "")[:50], "context": ct.get("context", "")[:500], "paragraph": ct.get("paragraph", "")}
-            for ct in metadata.citation_treatments if ct.get("cited_case")
+            {
+                "fragment": ct.get("cited_case", "")[:50],
+                "context": ct.get("context", "")[:500],
+                "paragraph": ct.get("paragraph", ""),
+            }
+            for ct in metadata.citation_treatments
+            if ct.get("cited_case")
         ]
         if ct_data:
             try:
@@ -1533,7 +1628,11 @@ async def _build_citation_graph(
     # --- V2: Counsel nodes (UNWIND batch) ---
     if metadata.party_counsel:
         counsel_data = [
-            {"name": pc.get("name", "").strip(), "designation": pc.get("designation", "advocate"), "party": pc.get("party", "")}
+            {
+                "name": pc.get("name", "").strip(),
+                "designation": pc.get("designation", "advocate"),
+                "party": pc.get("party", ""),
+            }
             for pc in metadata.party_counsel
             if isinstance(pc, dict) and pc.get("name", "").strip()
         ]
@@ -1616,9 +1715,7 @@ async def _link_citation_equivalents(
             params={"primary": primary_citation, "equivs": equiv_data},
         )
     except (OSError, ConnectionError, RuntimeError) as exc:
-        logger.warning(
-            "Failed to link citation equivalents for %s: %s", case_id, exc
-        )
+        logger.warning("Failed to link citation equivalents for %s: %s", case_id, exc)
 
 
 def _extract_citation_equivalents(full_text: str, case_id: str) -> list[dict]:
@@ -1634,12 +1731,14 @@ def _extract_citation_equivalents(full_text: str, case_id: str) -> list[dict]:
     citations = extract_citations(header_text)
     results = []
     for c in citations:
-        results.append({
-            "case_id": case_id,
-            "reporter": c.reporter,
-            "citation_text": c.raw_text,
-            "year": c.year,
-        })
+        results.append(
+            {
+                "case_id": case_id,
+                "reporter": c.reporter,
+                "citation_text": c.raw_text,
+                "year": c.year,
+            }
+        )
     return results
 
 
@@ -1865,91 +1964,93 @@ async def bulk_upsert_cases(
         for row in batch:
             row_id = str(row.get("id") or uuid.uuid4())
             row["id"] = row_id  # ensure id is set for return tracking
-            param_list.append({
-                "id": row_id,
-                "title": row.get("title", "Untitled"),
-                "citation": row.get("citation"),
-                "case_id": row.get("case_id"),
-                "cnr": row.get("cnr"),
-                "court": row.get("court", "Supreme Court of India"),
-                "year": row.get("year"),
-                "case_type": row.get("case_type"),
-                "jurisdiction": row.get("jurisdiction"),
-                "bench_type": row.get("bench_type"),
-                "judge": row.get("judge"),
-                "author_judge": row.get("author_judge"),
-                "petitioner": row.get("petitioner"),
-                "respondent": row.get("respondent"),
-                "decision_date": row.get("decision_date"),
-                "disposal_nature": row.get("disposal_nature"),
-                "description": row.get("description"),
-                "keywords": row.get("keywords"),
-                "acts_cited": row.get("acts_cited"),
-                "cases_cited": row.get("cases_cited"),
-                "ratio_decidendi": row.get("ratio_decidendi"),
-                "full_text": row.get("full_text"),
-                "pdf_storage_path": row.get("pdf_storage_path"),
-                "s3_source_path": row.get("s3_source_path"),
-                "source": row.get("source", "aws_open_data"),
-                "language": row.get("language", "english"),
-                "available_languages": row.get("available_languages"),
-                "chunk_count": row.get("chunk_count", 0),
-                # Migration 009 columns
-                "case_number": row.get("case_number"),
-                "is_reportable": row.get("is_reportable"),
-                "headnotes": row.get("headnotes"),
-                "outcome_summary": row.get("outcome_summary"),
-                "ingestion_status": row.get("ingestion_status", "complete"),
-                # Phase C columns
-                "coram_size": row.get("coram_size"),
-                "lower_court": row.get("lower_court"),
-                "lower_court_case_number": row.get("lower_court_case_number"),
-                "appeal_from": row.get("appeal_from"),
-                "opinion_type": row.get("opinion_type"),
-                "dissenting_judges": row.get("dissenting_judges"),
-                "concurring_judges": row.get("concurring_judges"),
-                "split_ratio": row.get("split_ratio"),
-                "petitioner_type": row.get("petitioner_type"),
-                "respondent_type": row.get("respondent_type"),
-                "is_pil": row.get("is_pil"),
-                "companion_cases": row.get("companion_cases"),
-                # Migration 013 columns
-                "metadata_provenance": row.get("metadata_provenance"),
-                "extraction_confidence": row.get("extraction_confidence"),
-                "text_hash": row.get("text_hash"),
-                "is_anonymized": row.get("is_anonymized", False),
-                "anonymization_flags": row.get("anonymization_flags"),
-                # V2 fields
-                "arguments_raised": row.get("arguments_raised"),
-                "relief_granted": row.get("relief_granted"),
-                "relief_sought": row.get("relief_sought"),
-                "sentence_details": row.get("sentence_details"),
-                "damages_awarded": row.get("damages_awarded"),
-                "judicial_tone": row.get("judicial_tone"),
-                "key_observations": row.get("key_observations"),
-                "hearing_count": row.get("hearing_count"),
-                "citation_treatments": row.get("citation_treatments"),
-                "distinguished_cases": row.get("distinguished_cases"),
-                "overruled_cases": row.get("overruled_cases"),
-                "legal_principles_applied": row.get("legal_principles_applied"),
-                "procedural_history": row.get("procedural_history"),
-                "interim_orders": row.get("interim_orders"),
-                "filing_date": row.get("filing_date"),
-                "urgency_indicators": row.get("urgency_indicators"),
-                "party_counsel": row.get("party_counsel"),
-                "issue_classification": row.get("issue_classification"),
-                "fact_pattern_tags": row.get("fact_pattern_tags"),
-                "operative_order": row.get("operative_order"),
-                "conditions_imposed": row.get("conditions_imposed"),
-                "costs_awarded": row.get("costs_awarded"),
-                "page_map": row.get("page_map"),
-                "enrichment_status": row.get("enrichment_status", "flash_only"),
-                # V3 columns
-                "legal_propositions": row.get("legal_propositions"),
-                "statute_sections_interpreted": row.get("statute_sections_interpreted"),
-                "fact_pattern_summary": row.get("fact_pattern_summary"),
-                "source_dataset": row.get("source_dataset", "aws_open_data_sc"),
-            })
+            param_list.append(
+                {
+                    "id": row_id,
+                    "title": row.get("title", "Untitled"),
+                    "citation": row.get("citation"),
+                    "case_id": row.get("case_id"),
+                    "cnr": row.get("cnr"),
+                    "court": row.get("court", "Supreme Court of India"),
+                    "year": row.get("year"),
+                    "case_type": row.get("case_type"),
+                    "jurisdiction": row.get("jurisdiction"),
+                    "bench_type": row.get("bench_type"),
+                    "judge": row.get("judge"),
+                    "author_judge": row.get("author_judge"),
+                    "petitioner": row.get("petitioner"),
+                    "respondent": row.get("respondent"),
+                    "decision_date": row.get("decision_date"),
+                    "disposal_nature": row.get("disposal_nature"),
+                    "description": row.get("description"),
+                    "keywords": row.get("keywords"),
+                    "acts_cited": row.get("acts_cited"),
+                    "cases_cited": row.get("cases_cited"),
+                    "ratio_decidendi": row.get("ratio_decidendi"),
+                    "full_text": row.get("full_text"),
+                    "pdf_storage_path": row.get("pdf_storage_path"),
+                    "s3_source_path": row.get("s3_source_path"),
+                    "source": row.get("source", "aws_open_data"),
+                    "language": row.get("language", "english"),
+                    "available_languages": row.get("available_languages"),
+                    "chunk_count": row.get("chunk_count", 0),
+                    # Migration 009 columns
+                    "case_number": row.get("case_number"),
+                    "is_reportable": row.get("is_reportable"),
+                    "headnotes": row.get("headnotes"),
+                    "outcome_summary": row.get("outcome_summary"),
+                    "ingestion_status": row.get("ingestion_status", "complete"),
+                    # Phase C columns
+                    "coram_size": row.get("coram_size"),
+                    "lower_court": row.get("lower_court"),
+                    "lower_court_case_number": row.get("lower_court_case_number"),
+                    "appeal_from": row.get("appeal_from"),
+                    "opinion_type": row.get("opinion_type"),
+                    "dissenting_judges": row.get("dissenting_judges"),
+                    "concurring_judges": row.get("concurring_judges"),
+                    "split_ratio": row.get("split_ratio"),
+                    "petitioner_type": row.get("petitioner_type"),
+                    "respondent_type": row.get("respondent_type"),
+                    "is_pil": row.get("is_pil"),
+                    "companion_cases": row.get("companion_cases"),
+                    # Migration 013 columns
+                    "metadata_provenance": row.get("metadata_provenance"),
+                    "extraction_confidence": row.get("extraction_confidence"),
+                    "text_hash": row.get("text_hash"),
+                    "is_anonymized": row.get("is_anonymized", False),
+                    "anonymization_flags": row.get("anonymization_flags"),
+                    # V2 fields
+                    "arguments_raised": row.get("arguments_raised"),
+                    "relief_granted": row.get("relief_granted"),
+                    "relief_sought": row.get("relief_sought"),
+                    "sentence_details": row.get("sentence_details"),
+                    "damages_awarded": row.get("damages_awarded"),
+                    "judicial_tone": row.get("judicial_tone"),
+                    "key_observations": row.get("key_observations"),
+                    "hearing_count": row.get("hearing_count"),
+                    "citation_treatments": row.get("citation_treatments"),
+                    "distinguished_cases": row.get("distinguished_cases"),
+                    "overruled_cases": row.get("overruled_cases"),
+                    "legal_principles_applied": row.get("legal_principles_applied"),
+                    "procedural_history": row.get("procedural_history"),
+                    "interim_orders": row.get("interim_orders"),
+                    "filing_date": row.get("filing_date"),
+                    "urgency_indicators": row.get("urgency_indicators"),
+                    "party_counsel": row.get("party_counsel"),
+                    "issue_classification": row.get("issue_classification"),
+                    "fact_pattern_tags": row.get("fact_pattern_tags"),
+                    "operative_order": row.get("operative_order"),
+                    "conditions_imposed": row.get("conditions_imposed"),
+                    "costs_awarded": row.get("costs_awarded"),
+                    "page_map": row.get("page_map"),
+                    "enrichment_status": row.get("enrichment_status", "flash_only"),
+                    # V3 columns
+                    "legal_propositions": row.get("legal_propositions"),
+                    "statute_sections_interpreted": row.get("statute_sections_interpreted"),
+                    "fact_pattern_summary": row.get("fact_pattern_summary"),
+                    "source_dataset": row.get("source_dataset", "aws_open_data_sc"),
+                }
+            )
 
         # Batch execution: single round-trip for all rows in this batch.
         # IDs are pre-generated (line 975), so we don't need RETURNING.
@@ -2121,6 +2222,8 @@ async def ingest_batch(
 
     logger.info(
         "ingest_batch complete: inserted=%d, skipped=%d, failed=%d",
-        stats.inserted, stats.skipped, stats.failed,
+        stats.inserted,
+        stats.skipped,
+        stats.failed,
     )
     return stats

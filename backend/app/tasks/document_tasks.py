@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 def analyze_document(self, document_id: str) -> dict:
     """Run the full document analysis pipeline."""
     import asyncio
+
     return asyncio.run(_analyze_document_async(document_id))
 
 
@@ -62,15 +63,18 @@ async def _analyze_document_async(document_id: str) -> dict:
             reranker = CohereReranker()
 
             mapper = PrecedentMapperService(
-                llm=llm, embedder=embedder, vector_store=vector_store,
-                reranker=reranker, db=db,
+                llm=llm,
+                embedder=embedder,
+                vector_store=vector_store,
+                reranker=reranker,
+                db=db,
             )
             issues_dicts = [
-                {"title": i.title, "description": i.description}
-                for i in extraction.issues
+                {"title": i.title, "description": i.description} for i in extraction.issues
             ]
             precedent_results = await mapper.map_precedents(
-                issues_dicts, acts_referenced=extraction.acts_referenced,
+                issues_dicts,
+                acts_referenced=extraction.acts_referenced,
             )
 
             issues_with_precedents = _format_issues_with_precedents(
@@ -80,13 +84,13 @@ async def _analyze_document_async(document_id: str) -> dict:
             # Step 4: Generate counter-arguments
             await _update_doc_status(db, document_id, "generating", "Generating analysis")
             counter_args = await analyzer.generate_counter_arguments(
-                extraction.document_type, issues_with_precedents,
+                extraction.document_type,
+                issues_with_precedents,
             )
 
             # Step 5: Generate research memo
             counter_args_text = "\n".join(
-                f"- {ca.issue_title}: {ca.argument} → {ca.response}"
-                for ca in counter_args
+                f"- {ca.issue_title}: {ca.argument} → {ca.response}" for ca in counter_args
             )
             memo = await analyzer.generate_research_memo(
                 document_type=extraction.document_type,
@@ -114,7 +118,12 @@ async def _analyze_document_async(document_id: str) -> dict:
                     "title": issue.title,
                     "description": issue.description,
                     "supporting_precedents": [
-                        {"case_id": r.case_id, "title": r.title, "citation": r.citation, "score": r.score}
+                        {
+                            "case_id": r.case_id,
+                            "title": r.title,
+                            "citation": r.citation,
+                            "score": r.score,
+                        }
                         for r in pr.supporting
                     ],
                     "statutes": pr.statutes,
@@ -253,17 +262,19 @@ async def _chunk_embed_and_index(
     vectors: list[dict] = []
     for chunk, embedding in zip(chunks, all_embeddings, strict=False):
         vector_id = f"doc_{document_id}_{chunk.chunk_index}"
-        vectors.append({
-            "id": vector_id,
-            "values": embedding,
-            "metadata": {
-                "case_id": document_id,
-                "chunk_index": chunk.chunk_index,
-                "section_type": chunk.section_type,
-                "source": "upload",
-                "text": chunk.text[:1000],
-            },
-        })
+        vectors.append(
+            {
+                "id": vector_id,
+                "values": embedding,
+                "metadata": {
+                    "case_id": document_id,
+                    "chunk_index": chunk.chunk_index,
+                    "section_type": chunk.section_type,
+                    "source": "upload",
+                    "text": chunk.text[:1000],
+                },
+            }
+        )
 
     for i in range(0, len(vectors), 100):
         await vector_store.upsert(vectors[i : i + 100])
@@ -276,7 +287,9 @@ async def _chunk_embed_and_index(
 
     logger.info(
         "Indexed document %s: %d chunks, %d vectors",
-        document_id, len(chunks), len(vectors),
+        document_id,
+        len(chunks),
+        len(vectors),
     )
 
 

@@ -1,4 +1,5 @@
 """Tests for shared agent node utilities in app.core.agents.nodes.common."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -204,7 +205,7 @@ class TestSafeJsonParse:
         assert safe_json_parse('{"key": "value"}') == {"key": "value"}
 
     def test_valid_json_array(self) -> None:
-        assert safe_json_parse('[1, 2, 3]') == [1, 2, 3]
+        assert safe_json_parse("[1, 2, 3]") == [1, 2, 3]
 
     def test_markdown_fenced_json(self) -> None:
         raw = '```json\n{"key": "value"}\n```'

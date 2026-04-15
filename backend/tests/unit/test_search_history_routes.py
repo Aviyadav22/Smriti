@@ -232,7 +232,7 @@ class TestToggleBookmark:
 
         mock_db.execute.side_effect = [
             select_result,  # SELECT
-            None,           # UPDATE
+            None,  # UPDATE
         ]
 
         resp = client_a.post(f"/api/v1/search/history/{_HISTORY_ID}/bookmark")
@@ -257,7 +257,7 @@ class TestToggleBookmark:
 
         mock_db.execute.side_effect = [
             select_result,  # SELECT
-            None,           # UPDATE
+            None,  # UPDATE
         ]
 
         resp = client_a.post(f"/api/v1/search/history/{_HISTORY_ID}/bookmark")
@@ -343,7 +343,7 @@ class TestDeleteSearchHistory:
 
         mock_db.execute.side_effect = [
             select_result,  # SELECT
-            None,           # DELETE
+            None,  # DELETE
         ]
 
         resp = client_a.delete(f"/api/v1/search/history/{_HISTORY_ID}")

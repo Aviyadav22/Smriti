@@ -101,15 +101,17 @@ async def targeted_search_node(
 
     results = []
     for r in search_response.results:
-        results.append({
-            "case_id": r.case_id,
-            "title": r.title,
-            "citation": r.citation,
-            "court": getattr(r, "court", None),
-            "year": getattr(r, "year", None),
-            "snippet": getattr(r, "snippet", ""),
-            "score": getattr(r, "score", 0.0),
-        })
+        results.append(
+            {
+                "case_id": r.case_id,
+                "title": r.title,
+                "citation": r.citation,
+                "court": getattr(r, "court", None),
+                "year": getattr(r, "year", None),
+                "snippet": getattr(r, "snippet", ""),
+                "score": getattr(r, "score", 0.0),
+            }
+        )
 
     logger.info("Follow-up search returned %d results for query: %r", len(results), query)
 
@@ -186,18 +188,20 @@ async def synthesize_follow_up_node(
     # Build footnotes from new search results
     new_footnotes = []
     for i, r in enumerate(search_results, 1):
-        new_footnotes.append({
-            "number": i,
-            "citation": r.get("citation", ""),
-            "source_type": "case",
-            "case_id": r.get("case_id"),
-            "title": r.get("title", ""),
-            "court": r.get("court", ""),
-            "year": r.get("year"),
-            "excerpt": (r.get("snippet", ""))[:300],
-            "is_used": True,
-            "verification_status": "unverified",
-        })
+        new_footnotes.append(
+            {
+                "number": i,
+                "citation": r.get("citation", ""),
+                "source_type": "case",
+                "case_id": r.get("case_id"),
+                "title": r.get("title", ""),
+                "court": r.get("court", ""),
+                "year": r.get("year"),
+                "excerpt": (r.get("snippet", ""))[:300],
+                "is_used": True,
+                "verification_status": "unverified",
+            }
+        )
 
     logger.info("Follow-up synthesis complete, %d chars", len(response))
 
@@ -221,9 +225,7 @@ async def synthesize_follow_up_node(
 # ---------------------------------------------------------------------------
 
 
-def _format_conversation_history(
-    history: list[dict], max_messages: int = 5
-) -> str:
+def _format_conversation_history(history: list[dict], max_messages: int = 5) -> str:
     """Format conversation history for prompt inclusion."""
     if not history:
         return "(No prior conversation)"

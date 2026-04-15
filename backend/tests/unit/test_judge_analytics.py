@@ -185,7 +185,7 @@ class TestGetJudgeProfile:
         _mock_execute_returns(
             session,
             13,  # total_cases
-            7,   # cases_authored
+            7,  # cases_authored
             year_rows,
             disposal_rows,
             bench_fallback_rows,  # bench fallback query
@@ -224,8 +224,8 @@ class TestGetJudgeProfile:
 
         _mock_execute_returns(
             session,
-            5,   # total_cases
-            3,   # cases_authored
+            5,  # total_cases
+            3,  # cases_authored
             [SimpleNamespace(year=2022, count=5)],  # years
             [],  # disposal
             bench_rows,  # bench fallback
@@ -336,9 +336,7 @@ class TestGetJudgeCases:
         _mock_execute_returns(session, 1, case_rows)
 
         service = JudgeAnalyticsService(session)
-        result = await service.get_judge_cases(
-            "Justice A", year=2020, case_type="Writ Petition"
-        )
+        result = await service.get_judge_cases("Justice A", year=2020, case_type="Writ Petition")
 
         assert result.total == 1
         assert result.items[0].case_type == "Writ Petition"
@@ -370,9 +368,7 @@ class TestCompareJudges:
         service = JudgeAnalyticsService(session)
 
         with pytest.raises(ValueError, match="At most 3"):
-            await service.compare_judges(
-                ["Justice A", "Justice B", "Justice C", "Justice D"]
-            )
+            await service.compare_judges(["Justice A", "Justice B", "Justice C", "Justice D"])
 
     @pytest.mark.asyncio
     async def test_compare_two_judges(self) -> None:
@@ -408,9 +404,7 @@ class TestCompareJudges:
             "get_judge_profile",
             side_effect=profiles,
         ):
-            result = await service.compare_judges(
-                ["Justice A", "Justice B", "Justice C"]
-            )
+            result = await service.compare_judges(["Justice A", "Justice B", "Justice C"])
 
         assert len(result) == 3
 
@@ -532,9 +526,7 @@ class TestDataclasses:
         assert profile.case_types == {}
 
     def test_paginated_result(self) -> None:
-        result = PaginatedResult(
-            items=[], total=0, page=1, page_size=20, total_pages=1
-        )
+        result = PaginatedResult(items=[], total=0, page=1, page_size=20, total_pages=1)
         assert result.items == []
         assert result.total_pages == 1
 

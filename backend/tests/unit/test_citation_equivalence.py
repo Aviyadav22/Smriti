@@ -1,4 +1,5 @@
 """Tests for citation equivalence search integration."""
+
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -12,17 +13,19 @@ class TestExactCitationSearch:
         """Should return results when citation matches in DB."""
         mock_db = AsyncMock()
         mock_result = MagicMock()
-        mock_result.mappings.return_value.all.return_value = [{
-            "id": "case-uuid-1",
-            "title": "State v. XYZ",
-            "citation": "(2023) 5 SCC 123",
-            "court": "Supreme Court of India",
-            "year": 2023,
-            "decision_date": "2023-01-15",
-            "case_type": "Criminal Appeal",
-            "judge": ["Justice A"],
-            "bench_type": "division",
-        }]
+        mock_result.mappings.return_value.all.return_value = [
+            {
+                "id": "case-uuid-1",
+                "title": "State v. XYZ",
+                "citation": "(2023) 5 SCC 123",
+                "court": "Supreme Court of India",
+                "year": 2023,
+                "decision_date": "2023-01-15",
+                "case_type": "Criminal Appeal",
+                "judge": ["Justice A"],
+                "bench_type": "division",
+            }
+        ]
         mock_db.execute.return_value = mock_result
 
         results = await _exact_citation_search("(2023) 5 SCC 123", mock_db)
@@ -49,17 +52,19 @@ class TestExactCitationSearch:
         mock_empty.mappings.return_value.all.return_value = []
         # Second call (equivalents table) returns a match
         mock_found = MagicMock()
-        mock_found.mappings.return_value.all.return_value = [{
-            "id": "case-uuid-1",
-            "title": "Kesavananda Bharati",
-            "citation": "(1973) 4 SCC 225",
-            "court": "Supreme Court of India",
-            "year": 1973,
-            "decision_date": "1973-04-24",
-            "case_type": "Writ Petition",
-            "judge": None,
-            "bench_type": "constitutional",
-        }]
+        mock_found.mappings.return_value.all.return_value = [
+            {
+                "id": "case-uuid-1",
+                "title": "Kesavananda Bharati",
+                "citation": "(1973) 4 SCC 225",
+                "court": "Supreme Court of India",
+                "year": 1973,
+                "decision_date": "1973-04-24",
+                "case_type": "Writ Petition",
+                "judge": None,
+                "bench_type": "constitutional",
+            }
+        ]
         mock_db.execute.side_effect = [mock_empty, mock_found]
 
         results = await _exact_citation_search("AIR 1973 SC 1461", mock_db)

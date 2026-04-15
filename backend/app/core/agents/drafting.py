@@ -15,6 +15,7 @@ With a conditional revise branch from checkpoint_draft:
   checkpoint_draft --(feedback)--> revise_section -> assemble -> checkpoint_draft
   checkpoint_draft --(approved)--> verify_final
 """
+
 from __future__ import annotations
 
 import logging
@@ -63,8 +64,12 @@ def route_after_template(state: DraftingState) -> str:
     return "gather_provisions"
 
 
-route_after_sources = make_feedback_router("sources", "gather_provisions", "draft_sections", check_error=True)
-route_after_draft = make_feedback_router("draft", "revise_section", "verify_final", check_error=True)
+route_after_sources = make_feedback_router(
+    "sources", "gather_provisions", "draft_sections", check_error=True
+)
+route_after_draft = make_feedback_router(
+    "draft", "revise_section", "verify_final", check_error=True
+)
 route_after_final = make_feedback_router("final", "revise_section", check_error=True)
 
 
@@ -123,8 +128,11 @@ def build_drafting_graph(
             result = await gather_provisions_node(state, llm, session, graph_store)
         # Count feedback messages for THIS step only (not shared across checkpoints)
         step_feedback_count = sum(
-            1 for m in state.get("messages", [])
-            if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "sources"
+            1
+            for m in state.get("messages", [])
+            if isinstance(m, dict)
+            and m.get("type") == "user_feedback"
+            and m.get("step") == "sources"
         )
         result["iteration"] = step_feedback_count
         return result
@@ -148,7 +156,8 @@ def build_drafting_graph(
         result = await revise_section_node(state, llm)
         # Count feedback messages for THIS step only (not shared across checkpoints)
         step_feedback_count = sum(
-            1 for m in state.get("messages", [])
+            1
+            for m in state.get("messages", [])
             if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "draft"
         )
         result["iteration"] = step_feedback_count
@@ -163,7 +172,10 @@ def build_drafting_graph(
     checkpoint_sources = make_checkpoint_node(
         "sources",
         "Here are the verified precedents and statutory provisions. Would you like to adjust?",
-        {"verified_precedents": ("verified_precedents", []), "statutory_provisions": ("statutory_provisions", [])},
+        {
+            "verified_precedents": ("verified_precedents", []),
+            "statutory_provisions": ("statutory_provisions", []),
+        },
     )
 
     checkpoint_draft = make_checkpoint_node(

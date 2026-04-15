@@ -1,4 +1,5 @@
 """Tests for the Research Agent LangGraph graph."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _base_state(**overrides: object) -> ResearchState:
     """Return a minimal valid ResearchState with optional overrides."""
@@ -57,8 +59,8 @@ def _build_graph():
 EXPECTED_NODES = {
     "rewrite_query",
     "classify",
-    "statute_lookup",           # [V3]
-    "element_decomposition",    # [V3]
+    "statute_lookup",  # [V3]
+    "element_decomposition",  # [V3]
     "plan_research",
     "checkpoint_plan",
     "dispatch_workers",
@@ -69,8 +71,8 @@ EXPECTED_NODES = {
     "evaluate_and_extract",
     "gap_analysis",
     "checkpoint_findings",
-    "adversarial_search",       # [V3]
-    "temporal_validation",      # [V3]
+    "adversarial_search",  # [V3]
+    "temporal_validation",  # [V3]
     "speculative_synthesis",
     "format_footnotes",
     "verify_v2",
@@ -303,9 +305,7 @@ class TestAdversarialSearchNode:
 
         state = {
             "include_adversarial": True,
-            "worker_results": [
-                {"task_type": "case_law", "results": [{"title": "State v Ram"}]}
-            ],
+            "worker_results": [{"task_type": "case_law", "results": [{"title": "State v Ram"}]}],
             "legal_elements": [{"element_id": "mens_rea", "description": "intent"}],
             "worker_reasonings": ["Cases point toward murder conviction"],
             "rewritten_query": "Is this murder?",
@@ -314,19 +314,25 @@ class TestAdversarialSearchNode:
         with patch(
             "app.core.agents.nodes.research_nodes._run_adversarial_search",
             new_callable=AsyncMock,
-            return_value=[{
-                "task_id": "adv_1",
-                "task_type": "case_law",
-                "query": "provocation",
-                "results": [{"title": "Nanavati v State"}],
-                "source_urls": [],
-                "metadata": {"adversarial": True},
-                "error": None,
-                "reasoning": "",
-            }],
+            return_value=[
+                {
+                    "task_id": "adv_1",
+                    "task_type": "case_law",
+                    "query": "provocation",
+                    "results": [{"title": "Nanavati v State"}],
+                    "source_urls": [],
+                    "metadata": {"adversarial": True},
+                    "error": None,
+                    "reasoning": "",
+                }
+            ],
         ):
             result = await adversarial_search_node(
-                state, mock_llm, AsyncMock(), AsyncMock(), AsyncMock(),
+                state,
+                mock_llm,
+                AsyncMock(),
+                AsyncMock(),
+                AsyncMock(),
             )
 
         assert "worker_results" in result
@@ -349,7 +355,11 @@ class TestAdversarialSearchNode:
         }
 
         result = await adversarial_search_node(
-            state, mock_llm, AsyncMock(), AsyncMock(), AsyncMock(),
+            state,
+            mock_llm,
+            AsyncMock(),
+            AsyncMock(),
+            AsyncMock(),
         )
         assert result == {}
 
@@ -365,14 +375,16 @@ class TestTemporalValidationNode:
         from app.core.agents.nodes.research_nodes import temporal_validation_node
 
         state = {
-            "statute_context": [{
-                "act_short_name": "IPC",
-                "section_number": "302",
-                "section_text": "Whoever commits murder shall be punished with death.",
-                "is_repealed": True,
-                "replaced_by": "BNS, Section 103",
-                "new_code_text": "Whoever commits murder shall be punished with death plus community service and rehabilitation.",
-            }],
+            "statute_context": [
+                {
+                    "act_short_name": "IPC",
+                    "section_number": "302",
+                    "section_text": "Whoever commits murder shall be punished with death.",
+                    "is_repealed": True,
+                    "replaced_by": "BNS, Section 103",
+                    "new_code_text": "Whoever commits murder shall be punished with death plus community service and rehabilitation.",
+                }
+            ],
         }
 
         result = await temporal_validation_node(state)
@@ -387,14 +399,16 @@ class TestTemporalValidationNode:
 
         same_text = "Whoever commits murder shall be punished with death or imprisonment for life."
         state = {
-            "statute_context": [{
-                "act_short_name": "IPC",
-                "section_number": "302",
-                "section_text": same_text,
-                "is_repealed": True,
-                "replaced_by": "BNS, Section 103",
-                "new_code_text": same_text,
-            }],
+            "statute_context": [
+                {
+                    "act_short_name": "IPC",
+                    "section_number": "302",
+                    "section_text": same_text,
+                    "is_repealed": True,
+                    "replaced_by": "BNS, Section 103",
+                    "new_code_text": same_text,
+                }
+            ],
         }
 
         result = await temporal_validation_node(state)
@@ -405,14 +419,16 @@ class TestTemporalValidationNode:
         from app.core.agents.nodes.research_nodes import temporal_validation_node
 
         state = {
-            "statute_context": [{
-                "act_short_name": "CPC",
-                "section_number": "9",
-                "section_text": "Courts shall try all civil suits.",
-                "is_repealed": False,
-                "replaced_by": "",
-                "new_code_text": "",
-            }],
+            "statute_context": [
+                {
+                    "act_short_name": "CPC",
+                    "section_number": "9",
+                    "section_text": "Courts shall try all civil suits.",
+                    "is_repealed": False,
+                    "replaced_by": "",
+                    "new_code_text": "",
+                }
+            ],
         }
 
         result = await temporal_validation_node(state)
@@ -442,9 +458,7 @@ class TestClassifyV3Fields:
             "client_position": "accused",
         }
 
-        state = _base_state(
-            query="My client is accused of murder, appealing against conviction"
-        )
+        state = _base_state(query="My client is accused of murder, appealing against conviction")
         result = await classify_query_node(state, mock_llm)
 
         assert result.get("procedural_context") == "appeal"
@@ -495,19 +509,20 @@ class TestCaseLawWorkerV3:
             "precomputed_embeddings": {},
         }
 
-        with patch(
-            "app.core.agents.nodes.worker_nodes.parallel_hybrid_search",
-            new_callable=AsyncMock,
-            return_value=[],
-        ) as mock_search, patch(
-            "app.core.agents.nodes.worker_nodes.async_session_factory",
-        ) as mock_factory:
+        with (
+            patch(
+                "app.core.agents.nodes.worker_nodes.parallel_hybrid_search",
+                new_callable=AsyncMock,
+                return_value=[],
+            ) as mock_search,
+            patch(
+                "app.core.agents.nodes.worker_nodes.async_session_factory",
+            ) as mock_factory,
+        ):
             mock_factory.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
             mock_factory.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            await case_law_worker(
-                state, AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock()
-            )
+            await case_law_worker(state, AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
 
             # The first query should have element context prepended
             call_args = mock_search.call_args
@@ -534,19 +549,20 @@ class TestCaseLawWorkerV3:
             "precomputed_embeddings": {},
         }
 
-        with patch(
-            "app.core.agents.nodes.worker_nodes.parallel_hybrid_search",
-            new_callable=AsyncMock,
-            return_value=[],
-        ) as mock_search, patch(
-            "app.core.agents.nodes.worker_nodes.async_session_factory",
-        ) as mock_factory:
+        with (
+            patch(
+                "app.core.agents.nodes.worker_nodes.parallel_hybrid_search",
+                new_callable=AsyncMock,
+                return_value=[],
+            ) as mock_search,
+            patch(
+                "app.core.agents.nodes.worker_nodes.async_session_factory",
+            ) as mock_factory,
+        ):
             mock_factory.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
             mock_factory.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            await case_law_worker(
-                state, AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock()
-            )
+            await case_law_worker(state, AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
 
             # Check that filters were passed
             call_kwargs = mock_search.call_args.kwargs
@@ -566,15 +582,17 @@ class TestFastPathSynthesisV3:
         state = _base_state(
             rewritten_query="What is Section 302 IPC?",
             search_results=[{"title": "Test", "score": 0.9, "snippet": "text"}],
-            statute_context=[{
-                "act_short_name": "IPC",
-                "section_number": "302",
-                "section_text": "Whoever commits murder...",
-                "section_title": "Punishment for murder",
-                "is_repealed": True,
-                "replaced_by": "BNS Section 103",
-                "new_code_text": "",
-            }],
+            statute_context=[
+                {
+                    "act_short_name": "IPC",
+                    "section_number": "302",
+                    "section_text": "Whoever commits murder...",
+                    "section_title": "Punishment for murder",
+                    "is_repealed": True,
+                    "replaced_by": "BNS Section 103",
+                    "new_code_text": "",
+                }
+            ],
         )
 
         await fast_path_synthesis_node(state, mock_llm)
@@ -592,37 +610,43 @@ class TestPlanResearchV3:
 
         mock_llm = AsyncMock()
         mock_llm.generate_structured.return_value = {
-            "research_tasks": [{
-                "task_type": "case_law",
-                "nl_query": "cases interpreting Section 300 Exception 1",
-                "boolean_query": "Section 300 exception provocation",
-                "named_cases": [],
-                "rationale": "Need case law on provocation defense",
-                "filters": {"element_id": "provocation_defense"},
-                "priority": 1,
-            }],
+            "research_tasks": [
+                {
+                    "task_type": "case_law",
+                    "nl_query": "cases interpreting Section 300 Exception 1",
+                    "boolean_query": "Section 300 exception provocation",
+                    "named_cases": [],
+                    "rationale": "Need case law on provocation defense",
+                    "filters": {"element_id": "provocation_defense"},
+                    "priority": 1,
+                }
+            ],
         }
 
         state = _base_state(
             rewritten_query="Is this murder or culpable homicide under Section 302/300 IPC?",
             complexity="complex",
             messages=[{"type": "classification", "data": {"topic": "criminal"}}],
-            statute_context=[{
-                "act_short_name": "IPC",
-                "section_number": "300",
-                "section_text": "Murder definition...",
-                "is_repealed": True,
-                "replaced_by": "BNS 101",
-                "new_code_text": "",
-                "section_title": "Murder",
-            }],
-            legal_elements=[{
-                "element_id": "provocation_defense",
-                "description": "Whether Exception 1 applies",
-                "statute_basis": "IPC Section 300, Exception 1",
-                "search_query": "sudden provocation",
-                "is_contested": True,
-            }],
+            statute_context=[
+                {
+                    "act_short_name": "IPC",
+                    "section_number": "300",
+                    "section_text": "Murder definition...",
+                    "is_repealed": True,
+                    "replaced_by": "BNS 101",
+                    "new_code_text": "",
+                    "section_title": "Murder",
+                }
+            ],
+            legal_elements=[
+                {
+                    "element_id": "provocation_defense",
+                    "description": "Whether Exception 1 applies",
+                    "statute_basis": "IPC Section 300, Exception 1",
+                    "search_query": "sudden provocation",
+                    "is_contested": True,
+                }
+            ],
             procedural_context="trial",
             client_position="accused",
         )
@@ -648,6 +672,7 @@ class TestPlanResearchV3:
 class TestDegenerateOutputDetection:
     def test_detects_refusal_loop(self) -> None:
         from app.core.agents.nodes.research_nodes import _is_degenerate_output
+
         refusal = (
             "I am unable to provide a response in that format. "
             "I can provide a comprehensive legal research memo. "
@@ -656,6 +681,7 @@ class TestDegenerateOutputDetection:
 
     def test_accepts_valid_memo(self) -> None:
         from app.core.agents.nodes.research_nodes import _is_degenerate_output
+
         valid = (
             "## Executive Summary\n\n"
             "The Supreme Court in ABC v. State held that Section 302 IPC requires "
@@ -668,11 +694,13 @@ class TestDegenerateOutputDetection:
 
     def test_detects_too_short(self) -> None:
         from app.core.agents.nodes.research_nodes import _is_degenerate_output
+
         assert _is_degenerate_output("Short") is True
         assert _is_degenerate_output("") is True
         assert _is_degenerate_output(None) is True  # type: ignore[arg-type]
 
     def test_detects_extreme_repetition(self) -> None:
         from app.core.agents.nodes.research_nodes import _is_degenerate_output
+
         repeated = "I can provide a comprehensive legal research memo. " * 100
         assert _is_degenerate_output(repeated) is True

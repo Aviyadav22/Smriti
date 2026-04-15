@@ -123,8 +123,9 @@ def compare_types(model_type: str, db_type: str) -> bool:
     if dt.startswith("CHARACTER VARYING") and mt.startswith("VARCHAR"):
         # Compare lengths if both have them
         import re
-        m_len = re.search(r'\((\d+)\)', mt)
-        d_len = re.search(r'\((\d+)\)', dt)
+
+        m_len = re.search(r"\((\d+)\)", mt)
+        d_len = re.search(r"\((\d+)\)", dt)
         if m_len and d_len:
             return m_len.group(1) == d_len.group(1)
         return True  # one has length, other doesn't — close enough
@@ -169,7 +170,7 @@ def get_db_type_name(db_type_obj) -> str:
 
     # Check for TIMESTAMP with timezone attribute
     if isinstance(db_type_obj, sa_types.TIMESTAMP | sa_types.DateTime):
-        if getattr(db_type_obj, 'timezone', False):
+        if getattr(db_type_obj, "timezone", False):
             return "TIMESTAMP WITH TIME ZONE"
         return "TIMESTAMP WITHOUT TIME ZONE"
 
@@ -195,7 +196,7 @@ def get_db_type_name(db_type_obj) -> str:
     if isinstance(db_type_obj, sa_types.Text):
         return "TEXT"
     if isinstance(db_type_obj, sa_types.String | sa_types.VARCHAR):
-        length = getattr(db_type_obj, 'length', None)
+        length = getattr(db_type_obj, "length", None)
         if length:
             return f"VARCHAR({length})"
         return "VARCHAR"
@@ -240,9 +241,7 @@ def audit_table(inspector, table_name: str, model_table) -> list[str]:
         db_type = get_db_type_name(db_type_obj)
 
         if not compare_types(model_type, db_type):
-            issues.append(
-                f"  TYPE MISMATCH '{col_name}': model={model_type}, db={db_type}"
-            )
+            issues.append(f"  TYPE MISMATCH '{col_name}': model={model_type}, db={db_type}")
 
         # Nullable
         model_nullable = model_col.nullable if model_col.nullable is not None else True
@@ -261,9 +260,7 @@ def audit_table(inspector, table_name: str, model_table) -> list[str]:
     model_pk_cols = {c.name for c in model_table.primary_key.columns}
 
     if model_pk_cols != db_pk_cols:
-        issues.append(
-            f"  PK MISMATCH: model={sorted(model_pk_cols)}, db={sorted(db_pk_cols)}"
-        )
+        issues.append(f"  PK MISMATCH: model={sorted(model_pk_cols)}, db={sorted(db_pk_cols)}")
 
     # --- Foreign Keys ---
     db_fks = inspector.get_foreign_keys(table_name)
@@ -299,6 +296,7 @@ def audit_table(inspector, table_name: str, model_table) -> list[str]:
     model_unique_col_sets = set()
     for constraint in model_table.constraints:
         from sqlalchemy import UniqueConstraint
+
         if isinstance(constraint, UniqueConstraint):
             cols = frozenset(c.name for c in constraint.columns)
             if cols:  # skip empty
@@ -312,7 +310,7 @@ def audit_table(inspector, table_name: str, model_table) -> list[str]:
     # Check model unique indexes defined in __table_args__
     for idx in model_table.indexes:
         if idx.unique:
-            cols = frozenset(c.name for c in idx.columns if hasattr(c, 'name'))
+            cols = frozenset(c.name for c in idx.columns if hasattr(c, "name"))
             if cols:
                 model_unique_col_sets.add(cols)
 
@@ -331,9 +329,9 @@ def audit_table(inspector, table_name: str, model_table) -> list[str]:
     for idx in model_table.indexes:
         col_names = []
         for expr in idx.expressions:
-            if hasattr(expr, 'name'):
+            if hasattr(expr, "name"):
                 col_names.append(expr.name)
-            elif hasattr(expr, 'element') and hasattr(expr.element, 'name'):
+            elif hasattr(expr, "element") and hasattr(expr.element, "name"):
                 col_names.append(expr.element.name)
         if col_names:
             model_index_info.append((idx.name, tuple(sorted(col_names))))
@@ -350,7 +348,6 @@ def audit_table(inspector, table_name: str, model_table) -> list[str]:
 
 
 def main() -> None:
-
     engine = create_engine(DB_URL)
     inspector = inspect(engine)
 
@@ -377,7 +374,9 @@ def main() -> None:
     model_table_names = set(model_tables.keys())
     extra_db_tables = db_tables - model_table_names
     # Filter out alembic and internal tables
-    extra_db_tables = {t for t in extra_db_tables if not t.startswith("alembic") and not t.startswith("_")}
+    extra_db_tables = {
+        t for t in extra_db_tables if not t.startswith("alembic") and not t.startswith("_")
+    }
     if extra_db_tables:
         for _t in sorted(extra_db_tables):
             pass

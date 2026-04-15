@@ -29,8 +29,8 @@ async def reset_postgresql():
     async with engine.begin() as conn:
         # Truncate all tables with CASCADE
         tables = [
-            "cases",          # cascades: case_sections, case_citation_equivalents, case_vectors, citations, graph_build_queue, audio_digests
-            "users",          # cascades: chat_sessions (-> chat_messages), documents (-> document_analyses), agent_executions, consents, audit_logs
+            "cases",  # cascades: case_sections, case_citation_equivalents, case_vectors, citations, graph_build_queue, audio_digests
+            "users",  # cascades: chat_sessions (-> chat_messages), documents (-> document_analyses), agent_executions, consents, audit_logs
             "statutes",
             "dpdp_audit_log",
         ]
@@ -100,7 +100,9 @@ async def reset_neo4j():
 
 def reset_sqlite_tracker():
     """Delete the SQLite ingestion tracker database."""
-    tracker_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data", "ingest_tracker.db"))
+    tracker_path = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", "data", "ingest_tracker.db")
+    )
     if os.path.exists(tracker_path):
         os.remove(tracker_path)
     else:
@@ -119,13 +121,11 @@ def reset_local_pdfs():
 
 
 async def main():
-
     await reset_postgresql()
     await reset_pinecone()
     await reset_neo4j()
     reset_sqlite_tracker()
     reset_local_pdfs()
-
 
 
 if __name__ == "__main__":

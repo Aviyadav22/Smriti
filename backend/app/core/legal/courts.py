@@ -251,6 +251,7 @@ _DISTRICT_KEYWORDS: Final[list[str]] = [
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def normalize_court_name(name: str) -> str:
     """Resolve a short name, AIR code, or alias to the canonical full name.
 

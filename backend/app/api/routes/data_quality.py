@@ -39,10 +39,7 @@ async def data_quality_dashboard(
     """
     # Total count + ingestion status breakdown
     status_result = await db.execute(
-        text(
-            "SELECT ingestion_status, COUNT(*) AS cnt "
-            "FROM cases GROUP BY ingestion_status"
-        )
+        text("SELECT ingestion_status, COUNT(*) AS cnt " "FROM cases GROUP BY ingestion_status")
     )
     status_rows = status_result.mappings().all()
     status_breakdown = {row["ingestion_status"]: row["cnt"] for row in status_rows}
@@ -58,33 +55,52 @@ async def data_quality_dashboard(
 
     # Per-field population rates
     fields_to_check = [
-        "title", "citation", "court", "year", "decision_date",
-        "case_type", "jurisdiction", "bench_type", "petitioner",
-        "respondent", "author_judge", "disposal_nature", "ratio_decidendi",
-        "case_number", "headnotes", "outcome_summary", "coram_size",
-        "lower_court", "opinion_type", "split_ratio",
-        "petitioner_type", "respondent_type", "is_pil",
-        "extraction_confidence", "text_hash",
+        "title",
+        "citation",
+        "court",
+        "year",
+        "decision_date",
+        "case_type",
+        "jurisdiction",
+        "bench_type",
+        "petitioner",
+        "respondent",
+        "author_judge",
+        "disposal_nature",
+        "ratio_decidendi",
+        "case_number",
+        "headnotes",
+        "outcome_summary",
+        "coram_size",
+        "lower_court",
+        "opinion_type",
+        "split_ratio",
+        "petitioner_type",
+        "respondent_type",
+        "is_pil",
+        "extraction_confidence",
+        "text_hash",
     ]
     array_fields = [
-        "judge", "acts_cited", "cases_cited", "keywords",
-        "dissenting_judges", "concurring_judges", "companion_cases",
+        "judge",
+        "acts_cited",
+        "cases_cited",
+        "keywords",
+        "dissenting_judges",
+        "concurring_judges",
+        "companion_cases",
     ]
 
     # Build a single query that counts non-null for scalar fields
     # and non-null + non-empty for array fields
-    scalar_parts = [
-        f"COUNT({f}) AS {f}_count" for f in fields_to_check
-    ]
+    scalar_parts = [f"COUNT({f}) AS {f}_count" for f in fields_to_check]
     array_parts = [
         f"COUNT(CASE WHEN {f} IS NOT NULL AND array_length({f}, 1) > 0 THEN 1 END) AS {f}_count"
         for f in array_fields
     ]
     all_parts = scalar_parts + array_parts
 
-    pop_result = await db.execute(
-        text(f"SELECT {', '.join(all_parts)} FROM cases")
-    )
+    pop_result = await db.execute(text(f"SELECT {', '.join(all_parts)} FROM cases"))
     pop_row = pop_result.mappings().first()
 
     field_population = {}
@@ -99,9 +115,7 @@ async def data_quality_dashboard(
     avg_fields_sql = " + ".join(
         f"CASE WHEN {f} IS NOT NULL THEN 1 ELSE 0 END" for f in fields_to_check
     )
-    avg_result = await db.execute(
-        text(f"SELECT AVG({avg_fields_sql}) AS avg_fields FROM cases")
-    )
+    avg_result = await db.execute(text(f"SELECT AVG({avg_fields_sql}) AS avg_fields FROM cases"))
     avg_row = avg_result.mappings().first()
     avg_fields = round(float(avg_row["avg_fields"]), 2) if avg_row and avg_row["avg_fields"] else 0
 

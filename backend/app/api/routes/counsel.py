@@ -50,9 +50,7 @@ async def _get_cached_or_compute(
     if redis_client and result is not None:
         try:
             serializable = (
-                dataclasses.asdict(result)
-                if dataclasses.is_dataclass(result)
-                else result
+                dataclasses.asdict(result) if dataclasses.is_dataclass(result) else result
             )
             await redis_client.set(  # type: ignore[union-attr]
                 cache_key, json.dumps(serializable, default=str), ex=ttl

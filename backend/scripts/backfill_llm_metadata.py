@@ -55,37 +55,58 @@ def _build_llm_pool() -> list[GeminiLLM]:
 
     pool = []
     for key in keys:
-        pool.append(GeminiLLM(
-            api_key=key,
-            model=settings.gemini_flash_model,
-        ))
+        pool.append(
+            GeminiLLM(
+                api_key=key,
+                model=settings.gemini_flash_model,
+            )
+        )
     return pool
 
 
 async def _get_case_text(session, case_id: str) -> str:
     """Reconstruct full text from case_sections."""
-    rows = (await session.execute(text(
-        "SELECT content FROM case_sections WHERE case_id = :cid ORDER BY section_index"
-    ), {"cid": case_id})).fetchall()
+    rows = (
+        await session.execute(
+            text("SELECT content FROM case_sections WHERE case_id = :cid ORDER BY section_index"),
+            {"cid": case_id},
+        )
+    ).fetchall()
     return "\n\n".join(r[0] for r in rows if r[0])
 
 
 async def _get_parquet_metadata(session, case_id: str) -> dict:
     """Get the parquet-sourced fields from the existing case row."""
-    row = (await session.execute(text(
-        "SELECT title, citation, court, year, decision_date::text, "
-        "petitioner, respondent, author_judge, disposal_nature, judge "
-        "FROM cases WHERE id = :cid"
-    ), {"cid": case_id})).fetchone()
+    row = (
+        await session.execute(
+            text(
+                "SELECT title, citation, court, year, decision_date::text, "
+                "petitioner, respondent, author_judge, disposal_nature, judge "
+                "FROM cases WHERE id = :cid"
+            ),
+            {"cid": case_id},
+        )
+    ).fetchone()
     if not row:
         return {}
-    cols = ["title", "citation", "court", "year", "decision_date",
-            "petitioner", "respondent", "author_judge", "disposal_nature", "judge"]
+    cols = [
+        "title",
+        "citation",
+        "court",
+        "year",
+        "decision_date",
+        "petitioner",
+        "respondent",
+        "author_judge",
+        "disposal_nature",
+        "judge",
+    ]
     return {k: v for k, v in zip(cols, row, strict=False) if v is not None}
 
 
-async def _update_case_metadata(session, case_id: str, metadata: CaseMetadata,
-                                 provenance: dict) -> None:
+async def _update_case_metadata(
+    session, case_id: str, metadata: CaseMetadata, provenance: dict
+) -> None:
     """Update the case row with backfilled LLM metadata."""
     update_fields = {
         "case_type": metadata.case_type,
@@ -128,8 +149,9 @@ async def _update_case_metadata(session, case_id: str, metadata: CaseMetadata,
     await session.commit()
 
 
-async def backfill_one(case_id: str, llm: GeminiLLM, semaphore: asyncio.Semaphore,
-                        dry_run: bool = False) -> str:
+async def backfill_one(
+    case_id: str, llm: GeminiLLM, semaphore: asyncio.Semaphore, dry_run: bool = False
+) -> str:
     """Backfill LLM metadata for a single case. Returns 'success', 'skipped', or 'failed'."""
     async with semaphore:
         try:
@@ -137,8 +159,11 @@ async def backfill_one(case_id: str, llm: GeminiLLM, semaphore: asyncio.Semaphor
                 # Get existing text
                 full_text = await _get_case_text(session, case_id)
                 if not full_text or len(full_text) < 100:
-                    logger.warning("Case %s has insufficient text (%d chars), skipping",
-                                   case_id, len(full_text) if full_text else 0)
+                    logger.warning(
+                        "Case %s has insufficient text (%d chars), skipping",
+                        case_id,
+                        len(full_text) if full_text else 0,
+                    )
                     return "skipped"
 
                 # Get parquet metadata for merge
@@ -174,13 +199,17 @@ async def backfill_one(case_id: str, llm: GeminiLLM, semaphore: asyncio.Semaphor
                     metadata.acts_cited = normalize_acts_cited_list(metadata.acts_cited)
                 if metadata.acts_cited:
                     metadata.acts_cited = enrich_statute_cross_references(
-                        metadata.acts_cited, decision_year=metadata.year,
+                        metadata.acts_cited,
+                        decision_year=metadata.year,
                     )
 
                 if dry_run:
-                    logger.info("[DRY-RUN] Would update %s: case_type=%s, ratio=%s...",
-                                case_id, metadata.case_type,
-                                (metadata.ratio_decidendi or "")[:50])
+                    logger.info(
+                        "[DRY-RUN] Would update %s: case_type=%s, ratio=%s...",
+                        case_id,
+                        metadata.case_type,
+                        (metadata.ratio_decidendi or "")[:50],
+                    )
                     return "success"
 
                 # Update PostgreSQL
@@ -206,9 +235,13 @@ async def main():
     # Get cases needing backfill
     async with async_session_factory() as session:
         limit_clause = f"LIMIT {args.limit}" if args.limit else ""
-        rows = (await session.execute(text(
-            f"SELECT id FROM cases WHERE case_type IS NULL ORDER BY decision_date DESC {limit_clause}"
-        ))).fetchall()
+        rows = (
+            await session.execute(
+                text(
+                    f"SELECT id FROM cases WHERE case_type IS NULL ORDER BY decision_date DESC {limit_clause}"
+                )
+            )
+        ).fetchall()
 
     case_ids = [r[0] for r in rows]
     total = len(case_ids)
@@ -226,10 +259,9 @@ async def main():
     # Process in batches for progress tracking
     batch_size = 50
     for i in range(0, total, batch_size):
-        batch = case_ids[i:i + batch_size]
+        batch = case_ids[i : i + batch_size]
         tasks = [
-            backfill_one(cid, next(llm_cycle), semaphore, dry_run=args.dry_run)
-            for cid in batch
+            backfill_one(cid, next(llm_cycle), semaphore, dry_run=args.dry_run) for cid in batch
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -245,8 +277,14 @@ async def main():
         remaining = (total - done) / rate if rate > 0 else 0
         logger.info(
             "[%d/%d] %.1f%% | %.1f cases/min | ETA: %.0fm | success=%d failed=%d skipped=%d",
-            done, total, 100 * done / total, rate, remaining,
-            stats["success"], stats["failed"], stats["skipped"],
+            done,
+            total,
+            100 * done / total,
+            rate,
+            remaining,
+            stats["success"],
+            stats["failed"],
+            stats["skipped"],
         )
 
     logger.info("=== BACKFILL COMPLETE ===")

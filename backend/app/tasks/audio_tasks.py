@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 def generate_audio(self, case_id: str, language: str = "en") -> dict:
     """Generate audio digest for a case."""
     import asyncio
+
     return asyncio.run(_generate_audio_async(case_id, language))
 
 
@@ -47,10 +48,7 @@ async def _generate_audio_async(case_id: str, language: str) -> dict:
 
             # Get case data
             case_result = await db.execute(
-                text(
-                    "SELECT title, court, year, judge, full_text "
-                    "FROM cases WHERE id = :id"
-                ),
+                text("SELECT title, court, year, judge, full_text " "FROM cases WHERE id = :id"),
                 {"id": case_id},
             )
             case = case_result.mappings().one_or_none()
@@ -96,6 +94,7 @@ async def _generate_audio_async(case_id: str, language: str) -> dict:
 
             # Step 2: TTS
             from app.core.dependencies import get_tts
+
             tts = get_tts()
             audio_bytes = await tts.synthesize(summary_text, language=language)
 

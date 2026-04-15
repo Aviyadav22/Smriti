@@ -209,9 +209,7 @@ async def hybrid_search(
     # Returns (original_query, expanded_terms) — expanded terms use OR syntax
     # which is meaningful for FTS but not for vector embeddings.
     search_query, expanded_terms = expand_statute_references(search_query)
-    fts_query = (
-        " OR ".join([search_query, *expanded_terms]) if expanded_terms else search_query
-    )
+    fts_query = " OR ".join([search_query, *expanded_terms]) if expanded_terms else search_query
 
     strategy = qu.search_strategy
 
@@ -271,19 +269,11 @@ async def hybrid_search(
                 language=language,
             )
 
-            gather_results = await asyncio.gather(
-                vector_task, fts_task, return_exceptions=True
-            )
+            gather_results = await asyncio.gather(vector_task, fts_task, return_exceptions=True)
             vector_results = (
-                gather_results[0]
-                if not isinstance(gather_results[0], Exception)
-                else []
+                gather_results[0] if not isinstance(gather_results[0], Exception) else []
             )
-            fts_results = (
-                gather_results[1]
-                if not isinstance(gather_results[1], Exception)
-                else []
-            )
+            fts_results = gather_results[1] if not isinstance(gather_results[1], Exception) else []
             vector_failed = isinstance(gather_results[0], Exception)
             fts_failed = isinstance(gather_results[1], Exception)
             if vector_failed:
@@ -704,8 +694,7 @@ async def _build_facets(
     params = {f"id_{i}": cid for i, cid in enumerate(case_ids)}
 
     sql = text(
-        f"SELECT court, case_type, year, bench_type "
-        f"FROM cases WHERE id IN ({placeholders})"
+        f"SELECT court, case_type, year, bench_type " f"FROM cases WHERE id IN ({placeholders})"
     )
 
     result = await db.execute(sql, params)
@@ -777,8 +766,7 @@ async def _check_outcome_bias(
     if len(natures) == 1 and len(rows) >= 2:
         nature = natures.pop()
         logger.warning(
-            "Outcome bias detected: all %d top results have disposal_nature='%s' "
-            "for query: %s",
+            "Outcome bias detected: all %d top results have disposal_nature='%s' " "for query: %s",
             len(rows),
             nature,
             query,
@@ -815,9 +803,7 @@ async def invalidate_search_cache(redis_client) -> int:
         for pattern in patterns:
             cursor = "0"
             while True:
-                cursor, keys = await redis_client.scan(
-                    cursor=cursor, match=pattern, count=200
-                )
+                cursor, keys = await redis_client.scan(cursor=cursor, match=pattern, count=200)
                 if keys:
                     await redis_client.delete(*keys)
                     deleted += len(keys)

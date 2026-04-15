@@ -249,7 +249,10 @@ class TestListSessions:
         mock_db: AsyncMock,
     ) -> None:
         """GET /chat/sessions returns paginated sessions for the authed user."""
-        rows = [_make_session_row(), _make_session_row(session_id=str(uuid.uuid4()), title="Second")]
+        rows = [
+            _make_session_row(),
+            _make_session_row(session_id=str(uuid.uuid4()), title="Second"),
+        ]
         count_result = MagicMock()
         count_result.scalar_one.return_value = 2
         sessions_result = MagicMock()

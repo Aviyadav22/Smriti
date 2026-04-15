@@ -1,4 +1,5 @@
 """LangGraph checkpointer setup using existing PostgreSQL."""
+
 from __future__ import annotations
 
 from app.core.config import settings

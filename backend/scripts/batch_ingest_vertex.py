@@ -155,6 +155,7 @@ def _get_gcs_client() -> gcs_storage.Client:
     # Fallback to ADC
     return gcs_storage.Client(project=settings.gemini_vertexai_project)
 
+
 # ---------------------------------------------------------------------------
 # Graceful shutdown
 # ---------------------------------------------------------------------------
@@ -250,7 +251,9 @@ async def phase1_extract_and_upload(
     for key in metadata_map:
         stem = Path(str(key)).stem
         if stem in stem_index:
-            logger.warning("Stem collision: '%s' maps to both '%s' and '%s'", stem, stem_index[stem], key)
+            logger.warning(
+                "Stem collision: '%s' maps to both '%s' and '%s'", stem, stem_index[stem], key
+            )
         stem_index[stem] = key
 
     # GCS client initialization skipped — per-PDF uploads removed to prevent OOM.
@@ -274,11 +277,13 @@ async def phase1_extract_and_upload(
         # Skip oversized PDFs that cause OOM (>250 pages)
         try:
             import fitz
+
             with fitz.open(str(pdf_path)) as doc:
                 if doc.page_count > 250:
                     logger.warning(
                         "Skipping oversized PDF %s (%d pages) to prevent OOM",
-                        pdf_path.name, doc.page_count,
+                        pdf_path.name,
+                        doc.page_count,
                     )
                     skipped_extraction += 1
                     continue
@@ -293,12 +298,16 @@ async def phase1_extract_and_upload(
             continue
 
         if not quality.text or quality.char_count < 50:
-            logger.warning("Insufficient text from %s (%d chars)", pdf_path.name, quality.char_count)
+            logger.warning(
+                "Insufficient text from %s (%d chars)", pdf_path.name, quality.char_count
+            )
             skipped_extraction += 1
             continue
 
         if quality.tier == "low":
-            logger.warning("Low quality text for %s (tier=%s), skipping", pdf_path.name, quality.tier)
+            logger.warning(
+                "Low quality text for %s (tier=%s), skipping", pdf_path.name, quality.tier
+            )
             skipped_extraction += 1
             continue
 
@@ -332,7 +341,11 @@ async def phase1_extract_and_upload(
 
         logger.info(
             "[%d/%d] %s: %d chars, tier=%s, gcs=%s",
-            i + 1, len(pdf_paths), pdf_path.name, quality.char_count, quality.tier,
+            i + 1,
+            len(pdf_paths),
+            pdf_path.name,
+            quality.char_count,
+            quality.tier,
             "ok" if gcs_uri.startswith("gs://") else "local",
         )
         entry = ManifestEntry(
@@ -355,7 +368,10 @@ async def phase1_extract_and_upload(
         if (i + 1) % 10 == 0:
             logger.info(
                 "Phase 1 progress: %d/%d PDFs processed, %d in manifest, %d dedup skipped",
-                i + 1, len(pdf_paths), len(manifest), skipped_dedup,
+                i + 1,
+                len(pdf_paths),
+                len(manifest),
+                skipped_dedup,
             )
 
     # Save manifest
@@ -370,7 +386,11 @@ async def phase1_extract_and_upload(
             "page_map": e.page_map,
             "char_count": e.char_count,
             "parquet_meta": {
-                k: (str(v) if v is not None and not isinstance(v, str | int | float | bool | list) else v)
+                k: (
+                    str(v)
+                    if v is not None and not isinstance(v, str | int | float | bool | list)
+                    else v
+                )
                 for k, v in e.parquet_meta.items()
             },
         }
@@ -390,7 +410,9 @@ async def phase1_extract_and_upload(
 
     logger.info(
         "Phase 1 complete: %d cases in manifest, %d dedup skipped, %d extraction failures",
-        len(manifest), skipped_dedup, skipped_extraction,
+        len(manifest),
+        skipped_dedup,
+        skipped_extraction,
     )
     return run_id, manifest
 
@@ -400,7 +422,9 @@ async def phase1_extract_and_upload(
 # ---------------------------------------------------------------------------
 
 
-def _build_batch_jsonl_entry(case_id: str, gcs_pdf_uri: str, full_text: str, year: int | None = None) -> dict:
+def _build_batch_jsonl_entry(
+    case_id: str, gcs_pdf_uri: str, full_text: str, year: int | None = None
+) -> dict:
     """Build a single JSONL entry for the Vertex AI batch request.
 
     Uses PDF multimodal when GCS URI is available, falls back to text.
@@ -422,18 +446,22 @@ def _build_batch_jsonl_entry(case_id: str, gcs_pdf_uri: str, full_text: str, yea
 
     contents: list[dict[str, Any]] = []
     if gcs_pdf_uri.startswith("gs://"):
-        contents.append({
-            "role": "user",
-            "parts": [
-                {"fileData": {"fileUri": gcs_pdf_uri, "mimeType": "application/pdf"}},
-                {"text": user_prompt},
-            ],
-        })
+        contents.append(
+            {
+                "role": "user",
+                "parts": [
+                    {"fileData": {"fileUri": gcs_pdf_uri, "mimeType": "application/pdf"}},
+                    {"text": user_prompt},
+                ],
+            }
+        )
     else:
-        contents.append({
-            "role": "user",
-            "parts": [{"text": user_prompt}],
-        })
+        contents.append(
+            {
+                "role": "user",
+                "parts": [{"text": user_prompt}],
+            }
+        )
 
     return {
         "custom_id": case_id,
@@ -473,7 +501,9 @@ async def phase2_batch_metadata(
     jsonl_lines: list[str] = []
     case_id_order: list[str] = []
     for entry in manifest:
-        line = _build_batch_jsonl_entry(entry.case_id, entry.gcs_pdf_uri, entry.full_text, year=year)
+        line = _build_batch_jsonl_entry(
+            entry.case_id, entry.gcs_pdf_uri, entry.full_text, year=year
+        )
         jsonl_lines.append(json.dumps(line))
         case_id_order.append(entry.case_id)
 
@@ -570,7 +600,8 @@ async def phase2_batch_metadata(
                     # custom_id present but not in our manifest — skip
                     logger.warning(
                         "Unknown custom_id %s in result line %d, skipping",
-                        custom_id[:12], global_line,
+                        custom_id[:12],
+                        global_line,
                     )
                     missing_custom_id_count += 1
                     continue
@@ -584,8 +615,7 @@ async def phase2_batch_metadata(
                     failures += 1
                     if missing_custom_id_count > len(case_id_order) * 0.1:
                         logger.error(
-                            "HALTING: >10%% of batch results lack custom_id "
-                            "(%d missing).",
+                            "HALTING: >10%% of batch results lack custom_id " "(%d missing).",
                             missing_custom_id_count,
                         )
                         break
@@ -611,7 +641,8 @@ async def phase2_batch_metadata(
                             except (json.JSONDecodeError, ValueError) as parse_exc:
                                 logger.warning(
                                     "Failed to parse JSON for case %s: %s",
-                                    case_id, parse_exc,
+                                    case_id,
+                                    parse_exc,
                                 )
                                 failures += 1
                         else:
@@ -622,7 +653,9 @@ async def phase2_batch_metadata(
                     failures += 1
             except (json.JSONDecodeError, KeyError, IndexError) as exc:
                 logger.warning(
-                    "Failed to parse result line %d: %s", global_line, exc,
+                    "Failed to parse result line %d: %s",
+                    global_line,
+                    exc,
                 )
                 global_line += 1
                 failures += 1
@@ -635,7 +668,9 @@ async def phase2_batch_metadata(
     failure_rate = failures / total if total > 0 else 0.0
     logger.info(
         "Phase 2 complete: %d/%d successful (%.1f%% failure rate)",
-        len(results), total, failure_rate * 100,
+        len(results),
+        total,
+        failure_rate * 100,
     )
 
     # Quality gate: abort if >10% failures
@@ -643,11 +678,10 @@ async def phase2_batch_metadata(
         logger.error(
             "QUALITY GATE FAILED: %.1f%% failure rate exceeds 10%% threshold. "
             "Aborting pipeline. Review results at %s",
-            failure_rate * 100, results_path,
+            failure_rate * 100,
+            results_path,
         )
-        raise RuntimeError(
-            f"Batch quality gate failed: {failure_rate:.1%} failure rate"
-        )
+        raise RuntimeError(f"Batch quality gate failed: {failure_rate:.1%} failure rate")
 
     return results
 
@@ -743,9 +777,7 @@ async def phase3_process_cases(
             return
 
         if entry.case_id not in metadata_results:
-            logger.warning(
-                "No batch metadata result for case %s, skipping", entry.case_id
-            )
+            logger.warning("No batch metadata result for case %s, skipping", entry.case_id)
             async with progress_lock:
                 statuses[entry.case_id] = "no_metadata"
             return
@@ -756,7 +788,9 @@ async def phase3_process_cases(
 
             logger.info(
                 "[%d/%d] Processing case %s",
-                idx + 1, len(manifest), entry.case_id,
+                idx + 1,
+                len(manifest),
+                entry.case_id,
             )
 
             try:
@@ -781,13 +815,19 @@ async def phase3_process_cases(
 
             except (PermissionError, gapi_exceptions.Forbidden) as perm_exc:
                 err_str = str(perm_exc).lower()
-                if "billing" in err_str or "403" in err_str or "permission" in err_str or isinstance(perm_exc, gapi_exceptions.Forbidden):
+                if (
+                    "billing" in err_str
+                    or "403" in err_str
+                    or "permission" in err_str
+                    or isinstance(perm_exc, gapi_exceptions.Forbidden)
+                ):
                     logger.error(
                         "GCP CREDITS EXHAUSTED or PERMISSION DENIED: %s\n"
                         "To resume:\n"
                         "  1. Switch to a GCP account with credits/billing enabled\n"
                         "  2. Run: python scripts/batch_ingest_vertex.py --resume %s\n",
-                        perm_exc, run_id,
+                        perm_exc,
+                        run_id,
                     )
                     credits_exhausted = True
                     async with progress_lock:
@@ -795,15 +835,24 @@ async def phase3_process_cases(
                 else:
                     raise
 
-            except (RuntimeError, ConnectionError, TimeoutError, OSError, ValueError,
-                    genai_errors.ClientError, httpx.TimeoutException, httpx.HTTPStatusError,
-                    gapi_exceptions.ServiceUnavailable, gapi_exceptions.DeadlineExceeded,
-                    ) as exc:
+            except (
+                RuntimeError,
+                ConnectionError,
+                TimeoutError,
+                OSError,
+                ValueError,
+                genai_errors.ClientError,
+                httpx.TimeoutException,
+                httpx.HTTPStatusError,
+                gapi_exceptions.ServiceUnavailable,
+                gapi_exceptions.DeadlineExceeded,
+            ) as exc:
                 exc_str = str(exc).lower()
                 if "429" in exc_str or "resource_exhausted" in exc_str:
                     logger.warning(
                         "Rate limit (429) hit for case %s: %s — waiting 60s before retry",
-                        entry.case_id, exc,
+                        entry.case_id,
+                        exc,
                     )
                     async with progress_lock:
                         statuses[entry.case_id] = f"rate_limited: {exc}"
@@ -815,7 +864,8 @@ async def phase3_process_cases(
                         "To resume:\n"
                         "  1. Switch to a GCP account with credits/billing enabled\n"
                         "  2. Run: python scripts/batch_ingest_vertex.py --resume %s\n",
-                        exc, run_id,
+                        exc,
+                        run_id,
                     )
                     credits_exhausted = True
                     async with progress_lock:
@@ -836,7 +886,10 @@ async def phase3_process_cases(
                 if processed_count % 10 == 0:
                     logger.info(
                         "Phase 3 progress: %d/%d processed (%d success, %d failed)",
-                        processed_count, len(manifest), success_count, failure_count,
+                        processed_count,
+                        len(manifest),
+                        success_count,
+                        failure_count,
                     )
                 if processed_count % 50 == 0:
                     gc.collect()
@@ -845,8 +898,7 @@ async def phase3_process_cases(
     try:
         # Run cases concurrently (bounded by semaphore)
         tasks = [
-            asyncio.create_task(_process_one(idx, entry))
-            for idx, entry in enumerate(manifest)
+            asyncio.create_task(_process_one(idx, entry)) for idx, entry in enumerate(manifest)
         ]
         await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -860,7 +912,9 @@ async def phase3_process_cases(
 
     logger.info(
         "Phase 3 complete: %d processed, %d success, %d failed",
-        processed_count, success_count, failure_count,
+        processed_count,
+        success_count,
+        failure_count,
     )
     return statuses
 
@@ -918,7 +972,9 @@ async def _process_single_case(
             hn_list = json.loads(metadata.headnotes) if isinstance(metadata.headnotes, str) else []
             hn_total = sum(len(h.get("proposition", "")) for h in hn_list if isinstance(h, dict))
             if hn_total > 3000:
-                provenance["_needs_review"] = provenance.get("_needs_review", "") + ",headnotes_verbose"
+                provenance["_needs_review"] = (
+                    provenance.get("_needs_review", "") + ",headnotes_verbose"
+                )
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -940,7 +996,8 @@ async def _process_single_case(
     # Enrich with cross-references
     if metadata.acts_cited:
         metadata.acts_cited = enrich_statute_cross_references(
-            metadata.acts_cited, decision_year=metadata.year,
+            metadata.acts_cited,
+            decision_year=metadata.year,
         )
         provenance["acts_cited"] = provenance.get("acts_cited", "batch_llm") + "+enriched"
 
@@ -968,23 +1025,36 @@ async def _process_single_case(
     async with async_session_factory() as db:
         # Store PDF to storage backend
         from app.core.ingestion.pipeline import _safe_filename
+
         storage_dest = f"cases/{case_id}/{_safe_filename(entry.parquet_meta)}"
         try:
             storage_path = await storage.store(entry.pdf_local_path, storage_dest)
-        except (OSError, PermissionError, FileNotFoundError, gapi_exceptions.GoogleAPICallError) as store_exc:
+        except (
+            OSError,
+            PermissionError,
+            FileNotFoundError,
+            gapi_exceptions.GoogleAPICallError,
+        ) as store_exc:
             logger.warning("Failed to store PDF for %s: %s", case_id, store_exc)
             storage_path = entry.pdf_local_path
 
         resolved_case_id, already_ingested = await _insert_case(
-            db, case_id, metadata, full_text, storage_path, entry.parquet_meta,
-            provenance=provenance, text_hash=entry.text_hash,
+            db,
+            case_id,
+            metadata,
+            full_text,
+            storage_path,
+            entry.parquet_meta,
+            provenance=provenance,
+            text_hash=entry.text_hash,
             extraction_confidence=extraction_confidence,
             page_map=entry.page_map,
         )
         if resolved_case_id != case_id:
             logger.info(
                 "case_id resolved: %s -> %s (citation match)",
-                case_id[:12], resolved_case_id[:12],
+                case_id[:12],
+                resolved_case_id[:12],
             )
         case_id = resolved_case_id  # Use resolved ID for all subsequent ops
 
@@ -995,7 +1065,9 @@ async def _process_single_case(
         # Mark as processing
         async with db.begin_nested():
             await db.execute(
-                sa_text("UPDATE cases SET ingestion_status = 'processing', updated_at = NOW() WHERE id = :id"),
+                sa_text(
+                    "UPDATE cases SET ingestion_status = 'processing', updated_at = NOW() WHERE id = :id"
+                ),
                 {"id": case_id},
             )
 
@@ -1009,8 +1081,18 @@ async def _process_single_case(
             chunks = [c for c in all_chunks if c.section_type not in _SKIP_EMBEDDING_SECTIONS]
             skipped = len(all_chunks) - len(chunks)
             if skipped:
-                logger.info("case_id=%s: skipped %d editorial/procedural chunks from embedding", case_id, skipped)
-            logger.info("case_id=%s: %d sections, %d chunks (%d skipped)", case_id, len(sections), len(chunks), skipped)
+                logger.info(
+                    "case_id=%s: skipped %d editorial/procedural chunks from embedding",
+                    case_id,
+                    skipped,
+                )
+            logger.info(
+                "case_id=%s: %d sections, %d chunks (%d skipped)",
+                case_id,
+                len(sections),
+                len(chunks),
+                skipped,
+            )
 
             # Persist sections + statute interpretations + citation equivalents
             await db.execute(
@@ -1038,7 +1120,10 @@ async def _process_single_case(
             try:
                 contextualized = await asyncio.wait_for(
                     batch_contextualize_chunks(
-                        chunk_dicts, doc_meta, llm, document_type="case_law",
+                        chunk_dicts,
+                        doc_meta,
+                        llm,
+                        document_type="case_law",
                         rate_limiter=rate_limiter,
                     ),
                     timeout=300.0,  # 5 min max for contextual prefixes
@@ -1051,7 +1136,9 @@ async def _process_single_case(
             # F. Embed chunks
             embeddings = await asyncio.wait_for(
                 _embed_chunks(
-                    chunks, embedder, rate_limiter=embed_rate_limiter,
+                    chunks,
+                    embedder,
+                    rate_limiter=embed_rate_limiter,
                     texts_override=contextualized_texts,
                 ),
                 timeout=300.0,
@@ -1068,8 +1155,13 @@ async def _process_single_case(
             # G. Upsert chunk vectors
             new_vector_ids = [f"{case_id}_{chunk.chunk_index}" for chunk in chunks]
             await _upsert_vectors(
-                case_id, chunks, embeddings, metadata, vector_store,
-                page_map=entry.page_map, full_text=full_text,
+                case_id,
+                chunks,
+                embeddings,
+                metadata,
+                vector_store,
+                page_map=entry.page_map,
+                full_text=full_text,
             )
             vectors_upserted = True
 
@@ -1077,7 +1169,10 @@ async def _process_single_case(
             proposition_vectors_failed = False
             try:
                 prop_count, prop_vector_ids = await _upsert_proposition_vectors(
-                    case_id, metadata, embedder, vector_store,
+                    case_id,
+                    metadata,
+                    embedder,
+                    vector_store,
                     rate_limiter=embed_rate_limiter,
                 )
                 if prop_count:
@@ -1098,12 +1193,11 @@ async def _process_single_case(
 
             # J. RAPTOR summaries
             try:
-                section_dicts = [
-                    {"section_type": s.type, "content": s.text}
-                    for s in sections
-                ]
+                section_dicts = [{"section_type": s.type, "content": s.text} for s in sections]
                 summaries = await generate_section_summaries(
-                    str(case_id), section_dicts, llm,
+                    str(case_id),
+                    section_dicts,
+                    llm,
                 )
                 if summaries:
                     summary_texts = [s["summary_text"] for s in summaries]
@@ -1120,16 +1214,22 @@ async def _process_single_case(
                         "jurisdiction": metadata.jurisdiction or "",
                     }
                     summary_vectors = build_pinecone_summary_vectors(
-                        str(case_id), summaries, summary_embeddings, base_meta,
+                        str(case_id),
+                        summaries,
+                        summary_embeddings,
+                        base_meta,
                     )
                     await vector_store.upsert(summary_vectors)
                     logger.info(
                         "case_id=%s: %d RAPTOR section summaries stored",
-                        case_id, len(summaries),
+                        case_id,
+                        len(summaries),
                     )
             except (RuntimeError, ConnectionError, TimeoutError) as raptor_exc:
                 logger.warning(
-                    "RAPTOR summary generation failed for %s: %s", case_id, raptor_exc,
+                    "RAPTOR summary generation failed for %s: %s",
+                    case_id,
+                    raptor_exc,
                 )
 
             # K. Update chunk_count, set ingestion_status
@@ -1162,7 +1262,10 @@ async def _process_single_case(
                 )
                 if citation_equivalents:
                     await _link_citation_equivalents(
-                        case_id, metadata.citation, citation_equivalents, graph_store,
+                        case_id,
+                        metadata.citation,
+                        citation_equivalents,
+                        graph_store,
                     )
             except (TimeoutError, OSError, ConnectionError, RuntimeError) as graph_exc:
                 logger.warning("Citation graph build failed for %s: %s", case_id, graph_exc)
@@ -1223,10 +1326,7 @@ async def phase4_quality_check(run_id: str) -> dict[str, Any]:
         return {"error": "no progress file"}
 
     progress = json.loads(progress_path.read_text(encoding="utf-8"))
-    completed = [
-        cid for cid, status in progress.get("statuses", {}).items()
-        if status == "success"
-    ]
+    completed = [cid for cid, status in progress.get("statuses", {}).items() if status == "success"]
 
     if not completed:
         logger.error("No successfully completed cases to check")
@@ -1238,6 +1338,7 @@ async def phase4_quality_check(run_id: str) -> dict[str, Any]:
     logger.info("Sampling %d cases for quality check", sample_size)
 
     from app.core.dependencies import get_vector_store
+
     vector_store = get_vector_store()
 
     report: dict[str, Any] = {
@@ -1382,18 +1483,20 @@ def _load_manifest_from_disk(run_id: str) -> list[ManifestEntry]:
             continue
         full_text = text_path.read_text(encoding="utf-8")
 
-        entries.append(ManifestEntry(
-            case_id=case_id,
-            pdf_local_path=item.get("pdf_local_path", ""),
-            gcs_pdf_uri=item.get("gcs_pdf_uri", ""),
-            text_hash=item.get("text_hash", ""),
-            full_text=full_text,
-            parquet_meta=item.get("parquet_meta", {}),
-            quality_tier=item.get("quality_tier", "medium"),
-            page_count=item.get("page_count", 0),
-            page_map=item.get("page_map", []),
-            char_count=item.get("char_count", 0),
-        ))
+        entries.append(
+            ManifestEntry(
+                case_id=case_id,
+                pdf_local_path=item.get("pdf_local_path", ""),
+                gcs_pdf_uri=item.get("gcs_pdf_uri", ""),
+                text_hash=item.get("text_hash", ""),
+                full_text=full_text,
+                parquet_meta=item.get("parquet_meta", {}),
+                quality_tier=item.get("quality_tier", "medium"),
+                page_count=item.get("page_count", 0),
+                page_map=item.get("page_map", []),
+                char_count=item.get("char_count", 0),
+            )
+        )
 
     return entries
 
@@ -1454,8 +1557,11 @@ async def run_pipeline(
         manifest = _load_manifest_from_disk(resume)
         metadata_results = _load_metadata_results(resume)
         statuses = await phase3_process_cases(
-            resume, manifest, metadata_results,
-            rpm_limit=rpm_limit, concurrency=concurrency,
+            resume,
+            manifest,
+            metadata_results,
+            rpm_limit=rpm_limit,
+            concurrency=concurrency,
         )
         logger.info(
             "Resume complete: %d success, %d failed",
@@ -1493,7 +1599,8 @@ async def run_pipeline(
         if dry_run:
             logger.info(
                 "DRY RUN complete for year %d: %d cases would be processed",
-                yr, len(manifest),
+                yr,
+                len(manifest),
             )
             continue
 
@@ -1530,15 +1637,21 @@ async def run_pipeline(
 
         # Phase 3: Online processing
         statuses = await phase3_process_cases(
-            run_id, manifest, metadata_results,
-            rpm_limit=rpm_limit, concurrency=concurrency,
+            run_id,
+            manifest,
+            metadata_results,
+            rpm_limit=rpm_limit,
+            concurrency=concurrency,
         )
 
         success = sum(1 for s in statuses.values() if s == "success")
         failed = sum(1 for s in statuses.values() if s != "success")
         logger.info(
             "Year %d complete: %d success, %d failed (run_id=%s)",
-            yr, success, failed, run_id,
+            yr,
+            success,
+            failed,
+            run_id,
         )
 
         # Phase 4: Auto quality check
@@ -1558,11 +1671,17 @@ def main() -> None:
     parser.add_argument("--year", type=int, help="Ingest a specific year")
     parser.add_argument("--all", action="store_true", help="Ingest all remaining years (1950-2025)")
     parser.add_argument("--limit", type=int, default=1000, help="Max cases per run (default: 1000)")
-    parser.add_argument("--resume", type=str, help="Resume Phase 3 from a previous batch run directory name")
+    parser.add_argument(
+        "--resume", type=str, help="Resume Phase 3 from a previous batch run directory name"
+    )
     parser.add_argument("--quality-check", type=str, help="Run quality check on a completed run")
     parser.add_argument("--dry-run", action="store_true", help="Phase 1 only, no API calls")
-    parser.add_argument("--rpm-limit", type=int, default=30, help="Gemini RPM limit for online calls (default: 30)")
-    parser.add_argument("--concurrency", type=int, default=1, help="Concurrent cases in Phase 3 (default: 1)")
+    parser.add_argument(
+        "--rpm-limit", type=int, default=30, help="Gemini RPM limit for online calls (default: 30)"
+    )
+    parser.add_argument(
+        "--concurrency", type=int, default=1, help="Concurrent cases in Phase 3 (default: 1)"
+    )
 
     args = parser.parse_args()
 

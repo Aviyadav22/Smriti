@@ -130,9 +130,7 @@ class TestBNSSToCrPCExpansion:
         assert "Section 482 CrPC" in result
 
     def test_bharatiya_nagarik_suraksha_sanhita_full_name(self) -> None:
-        result = _expanded_str(
-            "Section 173 Bharatiya Nagarik Suraksha Sanhita"
-        )
+        result = _expanded_str("Section 173 Bharatiya Nagarik Suraksha Sanhita")
         assert "Section 154 CrPC" in result
 
 

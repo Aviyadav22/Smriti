@@ -1,10 +1,10 @@
 """Poll batch A/B test job and compare results with online baseline."""
+
 import json
 import os
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = (
-    r"C:\Users\yadav\OneDrive - UPES\Desktop"
-    r"\project-9642efb2-7b75-4a7d-811-90cc98bacc13.json"
+    r"C:\Users\yadav\OneDrive - UPES\Desktop" r"\project-9642efb2-7b75-4a7d-811-90cc98bacc13.json"
 )
 
 from google import genai
@@ -43,16 +43,32 @@ def compare(online_path, batch_results):
 
     # Key fields to compare
     CRITICAL_FIELDS = [
-        "title", "citation", "court", "year", "decision_date",
-        "judge", "author_judge", "case_type", "case_number",
+        "title",
+        "citation",
+        "court",
+        "year",
+        "decision_date",
+        "judge",
+        "author_judge",
+        "case_type",
+        "case_number",
     ]
     QUALITY_FIELDS = [
-        "ratio_decidendi", "acts_cited", "cases_cited", "keywords",
-        "disposal_nature", "bench_type", "jurisdiction",
-        "petitioner", "respondent", "is_reportable",
+        "ratio_decidendi",
+        "acts_cited",
+        "cases_cited",
+        "keywords",
+        "disposal_nature",
+        "bench_type",
+        "jurisdiction",
+        "petitioner",
+        "respondent",
+        "is_reportable",
     ]
     V3_FIELDS = [
-        "legal_propositions", "headnotes", "outcome_summary",
+        "legal_propositions",
+        "headnotes",
+        "outcome_summary",
     ]
 
     for i, batch_item in enumerate(batch_results):
@@ -132,14 +148,8 @@ def compare(online_path, batch_results):
                 pass
 
         # Overall score
-        sum(
-            1 for v in online_data.values()
-            if v is not None and v != [] and v != ""
-        )
-        sum(
-            1 for v in batch_data.values()
-            if v is not None and v != [] and v != ""
-        )
+        sum(1 for v in online_data.values() if v is not None and v != [] and v != "")
+        sum(1 for v in batch_data.values() if v is not None and v != [] and v != "")
 
 
 if __name__ == "__main__":

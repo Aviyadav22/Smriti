@@ -1,4 +1,5 @@
 """Tests for graph analytics computation script."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -126,9 +127,18 @@ class TestComputeCommunities:
         # canonical taxonomy labels (e.g. "Criminal Law") or raw keywords
         all_labels = " ".join(info["community_label"] for info in result.values())
         # Canonical practice area labels mapped from keywords, OR raw keywords as fallback
-        known = {"Criminal Law", "Constitutional Law",
-                 "constitutional", "criminal", "article 21", "article 14", "murder", "theft",
-                 "Constitution of India", "Indian Penal Code"}
+        known = {
+            "Criminal Law",
+            "Constitutional Law",
+            "constitutional",
+            "criminal",
+            "article 21",
+            "article 14",
+            "murder",
+            "theft",
+            "Constitution of India",
+            "Indian Penal Code",
+        }
         assert any(kw in all_labels for kw in known)
 
     def test_empty_graph(self) -> None:
@@ -303,7 +313,9 @@ class TestWriteAnalytics:
         communities = {str(i): {"community_id": 0, "community_label": "t"} for i in range(n)}
         pagerank = {str(i): {"pagerank_global": 50.0, "pagerank_community": 50.0} for i in range(n)}
         rising = {str(i): {"recent_citation_ratio": 0.0} for i in range(n)}
-        treatments = {str(i): {"treatment_positive_pct": 1.0, "treatment_summary": {}} for i in range(n)}
+        treatments = {
+            str(i): {"treatment_positive_pct": 1.0, "treatment_summary": {}} for i in range(n)
+        }
 
         count = await write_analytics_to_neo4j(
             mock_store,
@@ -335,7 +347,11 @@ class TestRunAnalytics:
     async def test_orchestrates_full_pipeline(self, mock_session_factory: MagicMock) -> None:
         # Mock async_session_factory to return a mock async context manager
         mock_db_session = AsyncMock()
-        mock_db_session.execute = AsyncMock(return_value=MagicMock(mappings=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))))
+        mock_db_session.execute = AsyncMock(
+            return_value=MagicMock(
+                mappings=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+            )
+        )
         mock_cm = AsyncMock()
         mock_cm.__aenter__ = AsyncMock(return_value=mock_db_session)
         mock_cm.__aexit__ = AsyncMock(return_value=False)

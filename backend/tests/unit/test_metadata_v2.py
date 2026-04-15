@@ -1,4 +1,5 @@
 """Tests for CaseMetadata V2 fields."""
+
 from app.core.ingestion.metadata import CaseMetadata
 
 

@@ -3,6 +3,7 @@
 Covers score_text_quality tier logic, alpha_ratio enforcement,
 chars-per-page enforcement, and extract_and_score OCR fallback path.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -80,9 +81,7 @@ class TestScoreTextQuality:
 
     def test_chars_per_page_not_checked_when_zero_pages(self):
         """When page_count=0, chars-per-page check should be skipped."""
-        text = (
-            "The court held that the petition under Section 302 is dismissed. "
-        ) * 10
+        text = ("The court held that the petition under Section 302 is dismissed. ") * 10
         result = score_text_quality(text, page_count=0)
         assert result.tier in ("high", "medium")
 
@@ -146,14 +145,17 @@ class TestExtractAndScore:
             "The learned counsel for the respondent argued. "
         ) * 20
 
-        with patch(
-            "app.core.ingestion.pdf.extract_pdf_text",
-            new_callable=AsyncMock,
-            return_value=("short", 5, []),  # < 100 chars triggers OCR
-        ), patch(
-            "app.core.ingestion.pdf.extract_with_ocr",
-            new_callable=AsyncMock,
-            return_value=(ocr_text, False, 5),
+        with (
+            patch(
+                "app.core.ingestion.pdf.extract_pdf_text",
+                new_callable=AsyncMock,
+                return_value=("short", 5, []),  # < 100 chars triggers OCR
+            ),
+            patch(
+                "app.core.ingestion.pdf.extract_with_ocr",
+                new_callable=AsyncMock,
+                return_value=(ocr_text, False, 5),
+            ),
         ):
             result = await extract_and_score("/fake/path.pdf")
 
@@ -163,14 +165,17 @@ class TestExtractAndScore:
     @pytest.mark.asyncio
     async def test_extract_and_score_empty_extraction(self):
         """When both pdfplumber and OCR fail, should return empty with 'low' tier."""
-        with patch(
-            "app.core.ingestion.pdf.extract_pdf_text",
-            new_callable=AsyncMock,
-            return_value=("", 0, []),
-        ), patch(
-            "app.core.ingestion.pdf.extract_with_ocr",
-            new_callable=AsyncMock,
-            return_value=("", False, 0),
+        with (
+            patch(
+                "app.core.ingestion.pdf.extract_pdf_text",
+                new_callable=AsyncMock,
+                return_value=("", 0, []),
+            ),
+            patch(
+                "app.core.ingestion.pdf.extract_with_ocr",
+                new_callable=AsyncMock,
+                return_value=("", False, 0),
+            ),
         ):
             result = await extract_and_score("/fake/path.pdf")
 
@@ -186,14 +191,17 @@ class TestExtractAndScore:
             "of the Indian Penal Code is dismissed. "
         )
 
-        with patch(
-            "app.core.ingestion.pdf.extract_pdf_text",
-            new_callable=AsyncMock,
-            return_value=(sufficient_text, 1, []),
-        ) as mock_pdf, patch(
-            "app.core.ingestion.pdf.extract_with_ocr",
-            new_callable=AsyncMock,
-        ) as mock_ocr:
+        with (
+            patch(
+                "app.core.ingestion.pdf.extract_pdf_text",
+                new_callable=AsyncMock,
+                return_value=(sufficient_text, 1, []),
+            ) as mock_pdf,
+            patch(
+                "app.core.ingestion.pdf.extract_with_ocr",
+                new_callable=AsyncMock,
+            ) as mock_ocr,
+        ):
             result = await extract_and_score("/fake/path.pdf")
 
         mock_pdf.assert_called_once()

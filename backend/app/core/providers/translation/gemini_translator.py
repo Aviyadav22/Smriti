@@ -1,4 +1,5 @@
 """Gemini-based translation provider using Flash model for cost-effective translation."""
+
 from __future__ import annotations
 
 import logging
@@ -18,9 +19,7 @@ class GeminiTranslator:
         from google import genai
 
         if not settings.gemini_api_key or not settings.gemini_api_key.strip():
-            raise ValueError(
-                "Gemini API key is required. Set GEMINI_API_KEY environment variable."
-            )
+            raise ValueError("Gemini API key is required. Set GEMINI_API_KEY environment variable.")
         self._client = genai.Client(api_key=settings.gemini_api_key)
         self._model = model or settings.gemini_flash_model
 
@@ -61,7 +60,9 @@ class GeminiTranslator:
                 contents=prompt,
             )
             if response.text is None:
-                logger.warning("Gemini returned None response in translate(), returning original text")
+                logger.warning(
+                    "Gemini returned None response in translate(), returning original text"
+                )
                 return text
             return response.text.strip()
         except Exception:
@@ -77,7 +78,7 @@ class GeminiTranslator:
         text = unicodedata.normalize("NFC", text)
 
         # Quick heuristic: check for Devanagari characters
-        devanagari_count = sum(1 for c in text if "\u0900" <= c <= "\u097F")
+        devanagari_count = sum(1 for c in text if "\u0900" <= c <= "\u097f")
         total_alpha = sum(1 for c in text if c.isalpha())
 
         if total_alpha > 0 and devanagari_count / total_alpha > 0.3:
@@ -103,7 +104,9 @@ class GeminiTranslator:
                 contents=prompt,
             )
             if response.text is None:
-                logger.warning("Gemini returned None response in detect_language(), defaulting to 'en'")
+                logger.warning(
+                    "Gemini returned None response in detect_language(), defaulting to 'en'"
+                )
                 return "en"
             code = response.text.strip().lower()[:2]
             return code if code in ("en", "hi") else "en"
@@ -115,4 +118,5 @@ class GeminiTranslator:
 # Verify protocol compliance at type-check time
 if TYPE_CHECKING:
     from app.core.interfaces.translator import TranslationProvider
+
     _: type[TranslationProvider] = GeminiTranslator

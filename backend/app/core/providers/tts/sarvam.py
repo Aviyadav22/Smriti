@@ -39,10 +39,15 @@ def _wait_for_rate_limit(retry_state) -> float:
 _sarvam_retry = retry(
     stop=stop_after_attempt(3),
     wait=_wait_for_rate_limit,
-    retry=retry_if_exception_type((
-        httpx.TimeoutException, httpx.ConnectError,
-        ConnectionError, OSError, _RateLimitError,
-    )),
+    retry=retry_if_exception_type(
+        (
+            httpx.TimeoutException,
+            httpx.ConnectError,
+            ConnectionError,
+            OSError,
+            _RateLimitError,
+        )
+    ),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )
@@ -128,7 +133,9 @@ class SarvamTTS:
             raise RuntimeError(f"Sarvam TTS returned invalid JSON response: {exc}") from exc
 
         if "audios" not in data:
-            logger.error("Sarvam TTS response missing 'audios' key. Keys present: %s", list(data.keys()))
+            logger.error(
+                "Sarvam TTS response missing 'audios' key. Keys present: %s", list(data.keys())
+            )
             raise RuntimeError("Sarvam TTS response missing 'audios' key")
 
         if not data["audios"]:

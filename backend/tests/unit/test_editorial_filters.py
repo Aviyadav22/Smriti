@@ -1,4 +1,5 @@
 """Tests for editorial content filters in PDF text cleaning."""
+
 import pytest
 
 from app.core.ingestion.pdf import (
@@ -11,33 +12,39 @@ from app.core.ingestion.pdf import (
 class TestEditorialRegex:
     """Verify editorial metadata patterns match expected strings."""
 
-    @pytest.mark.parametrize("line", [
-        "†Headnotes prepared by: Ankit Gyan",
-        "  Headnotes prepared by: Ankit Gyan  ",
-        "Headnote prepared by: Some Name",
-        "† Headnotes prepared by: A.B. Sharma",
-        "Result of the case: Appeals allowed.",
-        "  Result of the case: Petition dismissed.  ",
-        "Prepared by: Legal Editor",
-        "Formatted by: SCR Editorial Team",
-        "Compiled by: Reporter Staff",
-        "Digest: Constitutional law — Article 21",
-        "Catchwords",
-        "Catchword:",
-        "Cases Referred:",
-        "Cases Referred",
-        "Cases Cited:",
-        "Legislation Cited:",
-    ])
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "†Headnotes prepared by: Ankit Gyan",
+            "  Headnotes prepared by: Ankit Gyan  ",
+            "Headnote prepared by: Some Name",
+            "† Headnotes prepared by: A.B. Sharma",
+            "Result of the case: Appeals allowed.",
+            "  Result of the case: Petition dismissed.  ",
+            "Prepared by: Legal Editor",
+            "Formatted by: SCR Editorial Team",
+            "Compiled by: Reporter Staff",
+            "Digest: Constitutional law — Article 21",
+            "Catchwords",
+            "Catchword:",
+            "Cases Referred:",
+            "Cases Referred",
+            "Cases Cited:",
+            "Legislation Cited:",
+        ],
+    )
     def test_editorial_re_matches(self, line: str):
         assert _EDITORIAL_RE.search(line), f"Should match: {line!r}"
 
-    @pytest.mark.parametrize("line", [
-        "The court held that the appeal is allowed.",
-        "The petitioner prepared the documents.",
-        "Headnotes are an important part of legal reporting.",
-        "61. In the aforesaid context, it would be apposite",
-    ])
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "The court held that the appeal is allowed.",
+            "The petitioner prepared the documents.",
+            "Headnotes are an important part of legal reporting.",
+            "61. In the aforesaid context, it would be apposite",
+        ],
+    )
     def test_editorial_re_does_not_match_judgment_text(self, line: str):
         assert not _EDITORIAL_RE.search(line), f"Should NOT match: {line!r}"
 
@@ -45,21 +52,27 @@ class TestEditorialRegex:
 class TestReporterPageMarkerRegex:
     """Verify SCR page marker patterns match expected strings."""
 
-    @pytest.mark.parametrize("line", [
-        "[2026] 1 S.C.R. 63",
-        "[2026] 1 S.C.R. 30",
-        "64 [2026] 1 S.C.R.",
-        "65 [2026] 1 S.C.R.",
-        "2026 1 SCR 63",
-    ])
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "[2026] 1 S.C.R. 63",
+            "[2026] 1 S.C.R. 30",
+            "64 [2026] 1 S.C.R.",
+            "65 [2026] 1 S.C.R.",
+            "2026 1 SCR 63",
+        ],
+    )
     def test_reporter_page_marker_matches(self, line: str):
         assert _REPORTER_PAGE_MARKER_RE.search(line), f"Should match: {line!r}"
 
-    @pytest.mark.parametrize("line", [
-        "reported in (2018) 12 SCC 471",
-        "[2026] 1 S.C.R. 30 some text continues here",
-        "Section 302 of the IPC",
-    ])
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "reported in (2018) 12 SCC 471",
+            "[2026] 1 S.C.R. 30 some text continues here",
+            "Section 302 of the IPC",
+        ],
+    )
     def test_reporter_page_marker_no_false_positives(self, line: str):
         assert not _REPORTER_PAGE_MARKER_RE.search(line), f"Should NOT match: {line!r}"
 
@@ -102,13 +115,16 @@ class TestPromptEditorialExclusion:
 
     def test_headnotes_rule_excludes_editorial(self):
         from app.core.legal.prompts import METADATA_EXTRACTION_SYSTEM
+
         assert "Headnotes prepared by" in METADATA_EXTRACTION_SYSTEM
 
     def test_operative_order_excludes_editorial(self):
         from app.core.legal.prompts import METADATA_EXTRACTION_SYSTEM
+
         assert "Result of the case:" in METADATA_EXTRACTION_SYSTEM
 
     def test_rule_30_editorial_content(self):
         from app.core.legal.prompts import METADATA_EXTRACTION_SYSTEM
+
         assert "EDITORIAL CONTENT" in METADATA_EXTRACTION_SYSTEM
         assert "reporter-added content" in METADATA_EXTRACTION_SYSTEM

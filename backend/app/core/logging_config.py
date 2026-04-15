@@ -49,9 +49,7 @@ class JSONFormatter(logging.Formatter):
             "message": _redact(record.getMessage()),
             "module": record.module,
             "function": record.funcName,
-            "timestamp": datetime.fromtimestamp(
-                record.created, tz=UTC
-            ).isoformat(),
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
         }
         # Add request_id from context if available
         request_id = getattr(record, "request_id", None)

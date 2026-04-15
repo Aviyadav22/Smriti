@@ -5,6 +5,7 @@ Covers Bible Section 13 tests:
   6  (Send() fan-out with all worker types)
   21-25 (GraphRAG community detection)
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -19,11 +20,13 @@ import pytest
 def _make_mock_llm(**overrides: object) -> AsyncMock:
     llm = AsyncMock()
     llm.generate = AsyncMock(return_value="test response")
-    llm.generate_structured = AsyncMock(return_value={
-        "title": "Test Community",
-        "summary": "Test summary",
-        "legal_principles": ["Principle 1"],
-    })
+    llm.generate_structured = AsyncMock(
+        return_value={
+            "title": "Test Community",
+            "summary": "Test summary",
+            "legal_principles": ["Principle 1"],
+        }
+    )
     for k, v in overrides.items():
         setattr(llm, k, v)
     return llm
@@ -89,15 +92,19 @@ class TestIndianKanoonClient:
 
         mock_response = httpx.Response(
             200,
-            json={"docs": [
-                {"tid": "123", "title": "Test Case", "citation": "AIR 2020 SC 1"},
-                {"tid": "456", "title": "Another Case", "citation": "AIR 2021 SC 2"},
-            ]},
+            json={
+                "docs": [
+                    {"tid": "123", "title": "Test Case", "citation": "AIR 2020 SC 1"},
+                    {"tid": "456", "title": "Another Case", "citation": "AIR 2021 SC 2"},
+                ]
+            },
             request=httpx.Request("POST", "https://api.indiankanoon.org/search/"),
         )
 
         with patch.object(
-            httpx.AsyncClient, "post", return_value=mock_response,
+            httpx.AsyncClient,
+            "post",
+            return_value=mock_response,
         ):
             client = IndianKanoonClient(token="test-token")
             results = await client.search("murder Section 302", max_results=2)
@@ -120,7 +127,9 @@ class TestIndianKanoonClient:
         )
 
         with patch.object(
-            httpx.AsyncClient, "post", return_value=mock_response,
+            httpx.AsyncClient,
+            "post",
+            return_value=mock_response,
         ):
             client = IndianKanoonClient(token="test-token")
             result = await client.get_fragment("123", "Section 302")
@@ -142,7 +151,9 @@ class TestIndianKanoonClient:
         )
 
         with patch.object(
-            httpx.AsyncClient, "post", return_value=mock_response,
+            httpx.AsyncClient,
+            "post",
+            return_value=mock_response,
         ):
             client = IndianKanoonClient(token="test-token")
             result = await client.get_metadata("123")
@@ -164,7 +175,9 @@ class TestIndianKanoonClient:
         )
 
         with patch.object(
-            httpx.AsyncClient, "post", return_value=mock_response,
+            httpx.AsyncClient,
+            "post",
+            return_value=mock_response,
         ):
             client = IndianKanoonClient(token="test-token")
             result = await client.get_document("123")
@@ -183,7 +196,8 @@ class TestIndianKanoonClient:
         async def capture_post(url: str, data: dict | None = None, **kw: object) -> httpx.Response:
             calls.append((url, data))
             return httpx.Response(
-                200, json={"docs": []},
+                200,
+                json={"docs": []},
                 request=httpx.Request("POST", url),
             )
 
@@ -201,6 +215,7 @@ class TestIndianKanoonClient:
             mock_settings.ik_api_token = ""
             with pytest.raises(ValueError, match="Indian Kanoon API token"):
                 from app.core.providers.external.indiankanoon import IndianKanoonClient
+
                 IndianKanoonClient(token="")
 
 
@@ -221,10 +236,22 @@ class TestTavilySearchClient:
 
         mock_response = httpx.Response(
             200,
-            json={"results": [
-                {"title": "Legal News", "url": "https://livelaw.in/article", "content": "Article text", "score": 0.9},
-                {"title": "Case Update", "url": "https://barandbench.com/case", "content": "Case text", "score": 0.8},
-            ]},
+            json={
+                "results": [
+                    {
+                        "title": "Legal News",
+                        "url": "https://livelaw.in/article",
+                        "content": "Article text",
+                        "score": 0.9,
+                    },
+                    {
+                        "title": "Case Update",
+                        "url": "https://barandbench.com/case",
+                        "content": "Case text",
+                        "score": 0.8,
+                    },
+                ]
+            },
             request=httpx.Request("POST", "https://api.tavily.com/search"),
         )
 
@@ -249,7 +276,8 @@ class TestTavilySearchClient:
         async def capture_post(url: str, json: dict | None = None, **kw: object) -> httpx.Response:
             calls.append(json or {})
             return httpx.Response(
-                200, json={"results": []},
+                200,
+                json={"results": []},
                 request=httpx.Request("POST", url),
             )
 
@@ -266,6 +294,7 @@ class TestTavilySearchClient:
             mock_settings.tavily_api_key = ""
             with pytest.raises(ValueError, match="Tavily API key"):
                 from app.core.providers.web_search.tavily import TavilySearchClient
+
                 TavilySearchClient(api_key="")
 
 
@@ -285,9 +314,13 @@ class TestStatuteWorker:
         mock_db_result = MagicMock()
         mock_db_result.scalars.return_value.all.return_value = [
             MagicMock(
-                id=1, act_name="IPC", section_number="302",
-                section_title="Murder", section_text="Punishment for murder...",
-                document_type="statute", new_law_equivalent="Section 103 BNS",
+                id=1,
+                act_name="IPC",
+                section_number="302",
+                section_title="Murder",
+                section_text="Punishment for murder...",
+                document_type="statute",
+                new_law_equivalent="Section 103 BNS",
             ),
         ]
         mock_session = AsyncMock()
@@ -300,9 +333,13 @@ class TestStatuteWorker:
 
         task = _make_task("statute", nl_query="Section 302 IPC punishment")
 
-        with patch("app.core.agents.nodes.worker_nodes.async_session_factory", return_value=mock_session):
+        with patch(
+            "app.core.agents.nodes.worker_nodes.async_session_factory", return_value=mock_session
+        ):
             result = await statute_worker(
-                {"task": task}, embedder, vector_store,
+                {"task": task},
+                embedder,
+                vector_store,
             )
 
         assert "worker_results" in result
@@ -327,11 +364,17 @@ class TestStatuteWorker:
 
         task = _make_task("statute", nl_query="Section 302 IPC")
 
-        with patch("app.core.agents.nodes.worker_nodes.async_session_factory", return_value=mock_session):
-            with patch("app.core.agents.nodes.worker_nodes.expand_statute_references") as mock_expand:
+        with patch(
+            "app.core.agents.nodes.worker_nodes.async_session_factory", return_value=mock_session
+        ):
+            with patch(
+                "app.core.agents.nodes.worker_nodes.expand_statute_references"
+            ) as mock_expand:
                 mock_expand.return_value = ("Section 302 IPC", ["Section 103 BNS"])
                 await statute_worker(
-                    {"task": task}, embedder, vector_store,
+                    {"task": task},
+                    embedder,
+                    vector_store,
                 )
                 mock_expand.assert_called_once()
 
@@ -350,9 +393,16 @@ class TestIKSearchWorker:
         from app.core.agents.nodes.worker_nodes import ik_search_worker
 
         mock_ik = AsyncMock()
-        mock_ik.search = AsyncMock(return_value=[
-            {"tid": "123", "title": "Test v. State", "citation": "AIR 2020 SC 1", "court": "Supreme Court"},
-        ])
+        mock_ik.search = AsyncMock(
+            return_value=[
+                {
+                    "tid": "123",
+                    "title": "Test v. State",
+                    "citation": "AIR 2020 SC 1",
+                    "court": "Supreme Court",
+                },
+            ]
+        )
         mock_ik.get_fragment = AsyncMock(return_value={"fragment": "Relevant text..."})
 
         task = _make_task("ik_search")
@@ -396,9 +446,16 @@ class TestWebSearchWorker:
         from app.core.agents.nodes.worker_nodes import web_search_worker
 
         mock_ws = AsyncMock()
-        mock_ws.search = AsyncMock(return_value=[
-            {"title": "News Article", "url": "https://livelaw.in/art", "content": "Text", "score": 0.9},
-        ])
+        mock_ws.search = AsyncMock(
+            return_value=[
+                {
+                    "title": "News Article",
+                    "url": "https://livelaw.in/art",
+                    "content": "Text",
+                    "score": 0.9,
+                },
+            ]
+        )
 
         task = _make_task("web")
         result = await web_search_worker({"task": task}, mock_ws)
@@ -440,10 +497,16 @@ class TestGraphWorker:
         from app.core.agents.nodes.worker_nodes import graph_worker
 
         mock_gs = _make_mock_graph_store()
-        mock_gs.query = AsyncMock(return_value=[
-            {"id": "case-1", "title": "Landmark Case", "citation": "AIR 2019 SC 100",
-             "treatment": "followed"},
-        ])
+        mock_gs.query = AsyncMock(
+            return_value=[
+                {
+                    "id": "case-1",
+                    "title": "Landmark Case",
+                    "citation": "AIR 2019 SC 100",
+                    "treatment": "followed",
+                },
+            ]
+        )
 
         task = _make_task("graph", nl_query="citing cases for murder under IPC 302")
         result = await graph_worker({"task": task}, mock_gs)
@@ -494,6 +557,7 @@ class TestCommunityDetection:
         G.add_edge("case-3", "case-8")
 
         from app.core.agents.nodes.worker_nodes import _detect_communities
+
         communities = _detect_communities(G, resolution=1.0)
 
         assert len(communities) == 10  # all nodes assigned
@@ -530,7 +594,9 @@ class TestGraphCommunityWorker:
         task = _make_task("graph_community")
         result = await graph_community_worker(
             {"task": task, "parent_state": {}},
-            embedder, vector_store, graph_store,
+            embedder,
+            vector_store,
+            graph_store,
         )
 
         assert "worker_results" in result
@@ -553,10 +619,18 @@ class TestGraphCommunityWorker:
         vector_store.search = AsyncMock(return_value=[])
 
         # But graph has community overlap
-        graph_store.query = AsyncMock(return_value=[
-            {"id": "comm-2", "title": "Bail Jurisprudence", "summary": "Evolution of bail...",
-             "principles": ["Bail is rule", "Jail is exception"], "size": 15, "overlap": 3},
-        ])
+        graph_store.query = AsyncMock(
+            return_value=[
+                {
+                    "id": "comm-2",
+                    "title": "Bail Jurisprudence",
+                    "summary": "Evolution of bail...",
+                    "principles": ["Bail is rule", "Jail is exception"],
+                    "size": 15,
+                    "overlap": 3,
+                },
+            ]
+        )
 
         parent_state = {
             "worker_results": [
@@ -567,7 +641,9 @@ class TestGraphCommunityWorker:
         task = _make_task("graph_community")
         result = await graph_community_worker(
             {"task": task, "parent_state": parent_state},
-            embedder, vector_store, graph_store,
+            embedder,
+            vector_store,
+            graph_store,
         )
 
         wr = result["worker_results"][0]
@@ -587,17 +663,28 @@ class TestGraphCommunityWorker:
         mock_result = MagicMock()
         mock_result.score = 0.85
         mock_result.metadata = {
-            "community_id": "comm-1", "title": "Test",
-            "text": "Summary", "legal_principles": "P1",
-            "size": 10, "document_type": "community",
+            "community_id": "comm-1",
+            "title": "Test",
+            "text": "Summary",
+            "legal_principles": "P1",
+            "size": 10,
+            "document_type": "community",
         }
         vector_store.search = AsyncMock(return_value=[mock_result])
 
         # Graph also finds comm-1
-        graph_store.query = AsyncMock(return_value=[
-            {"id": "comm-1", "title": "Test", "summary": "Summary",
-             "principles": ["P1"], "size": 10, "overlap": 2},
-        ])
+        graph_store.query = AsyncMock(
+            return_value=[
+                {
+                    "id": "comm-1",
+                    "title": "Test",
+                    "summary": "Summary",
+                    "principles": ["P1"],
+                    "size": 10,
+                    "overlap": 2,
+                },
+            ]
+        )
 
         parent_state = {
             "worker_results": [{"results": [{"case_id": "case-1"}]}],
@@ -606,7 +693,9 @@ class TestGraphCommunityWorker:
         task = _make_task("graph_community")
         result = await graph_community_worker(
             {"task": task, "parent_state": parent_state},
-            embedder, vector_store, graph_store,
+            embedder,
+            vector_store,
+            graph_store,
         )
 
         wr = result["worker_results"][0]
@@ -623,10 +712,12 @@ class TestCommunityBuildScript:
         from scripts.build_citation_communities import export_citation_graph
 
         mock_gs = _make_mock_graph_store()
-        mock_gs.query = AsyncMock(return_value=[
-            {"source": "case-1", "target": "case-2", "treatment": "followed"},
-            {"source": "case-2", "target": "case-3", "treatment": "cited"},
-        ])
+        mock_gs.query = AsyncMock(
+            return_value=[
+                {"source": "case-1", "target": "case-2", "treatment": "followed"},
+                {"source": "case-2", "target": "case-3", "treatment": "cited"},
+            ]
+        )
 
         G = await export_citation_graph(mock_gs)
         assert len(G.nodes) == 3
@@ -641,13 +732,21 @@ class TestCommunityBuildScript:
         mock_session = AsyncMock()
         mock_scalars = MagicMock()
         mock_scalars.scalars.return_value = [
-            MagicMock(title="Case 1", citation="AIR 2020 SC 1", court="SC",
-                      year=2020, ratio_decidendi="Ratio text"),
+            MagicMock(
+                title="Case 1",
+                citation="AIR 2020 SC 1",
+                court="SC",
+                year=2020,
+                ratio_decidendi="Ratio text",
+            ),
         ]
         mock_session.execute = AsyncMock(return_value=mock_scalars)
 
         result = await summarize_community(
-            "comm-1", ["case-1", "case-2"], mock_session, mock_llm,
+            "comm-1",
+            ["case-1", "case-2"],
+            mock_session,
+            mock_llm,
         )
 
         assert result["community_id"] == "comm-1"

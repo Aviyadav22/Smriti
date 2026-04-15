@@ -51,9 +51,7 @@ async def _get_cached_or_compute(
     if redis_client and result is not None:
         try:
             serializable = (
-                dataclasses.asdict(result)
-                if dataclasses.is_dataclass(result)
-                else result
+                dataclasses.asdict(result) if dataclasses.is_dataclass(result) else result
             )
             await redis_client.set(  # type: ignore[union-attr]
                 cache_key, json.dumps(serializable, default=str), ex=ttl
@@ -98,13 +96,13 @@ async def list_judges(
 
 @router.get("/judges/compare", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def compare_judges(
-    names: str = Query(..., min_length=1, max_length=500, description="Comma-separated judge names (2-3)"),
+    names: str = Query(
+        ..., min_length=1, max_length=500, description="Comma-separated judge names (2-3)"
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Compare 2-3 judges side-by-side."""
-    judge_names = [
-        urllib.parse.unquote(n.strip()) for n in names.split(",") if n.strip()
-    ]
+    judge_names = [urllib.parse.unquote(n.strip()) for n in names.split(",") if n.strip()]
 
     service = JudgeAnalyticsService(db)
     try:
@@ -113,9 +111,7 @@ async def compare_judges(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {
-        "judges": [
-            dataclasses.asdict(p) if p is not None else None for p in profiles
-        ],
+        "judges": [dataclasses.asdict(p) if p is not None else None for p in profiles],
     }
 
 
@@ -135,12 +131,8 @@ async def predict_judge_outcome(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Predict case outcome based on historical judicial patterns."""
-    judge_list = [
-        urllib.parse.unquote(j.strip()) for j in judges.split(",") if j.strip()
-    ]
-    act_list = (
-        [a.strip() for a in acts.split(",") if a.strip()] if acts else None
-    )
+    judge_list = [urllib.parse.unquote(j.strip()) for j in judges.split(",") if j.strip()]
+    act_list = [a.strip() for a in acts.split(",") if a.strip()] if acts else None
 
     prediction = await predict_outcome(
         db=db,
@@ -163,8 +155,7 @@ async def predict_judge_outcome(
         "confidence": prediction.confidence,
         "sample_size": prediction.sample_size,
         "factors": [
-            {"name": f.name, "impact": f.impact, "detail": f.detail}
-            for f in prediction.factors
+            {"name": f.name, "impact": f.impact, "detail": f.detail} for f in prediction.factors
         ],
         "caveats": prediction.caveats,
     }
@@ -210,7 +201,9 @@ async def get_judge_profile(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/judges/{judge_name}/cases", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+@router.get(
+    "/judges/{judge_name}/cases", dependencies=[Depends(rate_limit_dependency("30/minute"))]
+)
 async def get_judge_cases(
     judge_name: str,
     page: int = Query(1, ge=1, description="Page number"),
@@ -252,7 +245,9 @@ async def get_judge_cases(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/courts/{court_name}/stats", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+@router.get(
+    "/courts/{court_name}/stats", dependencies=[Depends(rate_limit_dependency("30/minute"))]
+)
 async def get_court_stats(
     court_name: str,
     db: AsyncSession = Depends(get_db),

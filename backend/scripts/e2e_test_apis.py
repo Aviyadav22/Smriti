@@ -226,7 +226,9 @@ async def test_ik_title_filter(token: str) -> bool:
         for _r in results:
             pass
         assert len(results) > 0, "No results with title filter"
-        assert any("puttaswamy" in r.get("title", "").lower() for r in results), "No Puttaswamy in titles"
+        assert any(
+            "puttaswamy" in r.get("title", "").lower() for r in results
+        ), "No Puttaswamy in titles"
         return True
     except Exception:
         return False
@@ -240,7 +242,9 @@ async def test_ik_author_filter(token: str) -> bool:
 
     client = IndianKanoonClient(token=token)
     try:
-        results = await client.search("fundamental rights", author_filter="chandrachud", max_results=3)
+        results = await client.search(
+            "fundamental rights", author_filter="chandrachud", max_results=3
+        )
         for _r in results:
             pass
         assert len(results) > 0, "No results with author filter"
@@ -302,7 +306,6 @@ async def test_ik_rich_fields(token: str) -> bool:
 
 
 async def main():
-
     passed = 0
     failed = 0
     total_start = time.time()

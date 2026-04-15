@@ -3,6 +3,7 @@
 Maps a single case to all its known citation formats (SCC, AIR, SCR, etc.)
 enabling cross-format search and display.
 """
+
 from __future__ import annotations
 
 import uuid

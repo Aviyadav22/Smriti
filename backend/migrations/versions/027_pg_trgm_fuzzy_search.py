@@ -7,6 +7,7 @@ Create Date: 2026-03-21
 Enables fuzzy name matching in named_case_worker — e.g., "Keshavananda Bharti"
 (misspelled) finds "Kesavananda Bharati" via trigram similarity.
 """
+
 from alembic import op
 
 revision = "027"
@@ -18,8 +19,7 @@ depends_on = None
 def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_cases_title_trgm "
-        "ON cases USING gin (title gin_trgm_ops)"
+        "CREATE INDEX IF NOT EXISTS ix_cases_title_trgm " "ON cases USING gin (title gin_trgm_ops)"
     )
 
 

@@ -3,6 +3,7 @@
 Tests the three-state circuit breaker: closed → open → half_open → closed.
 Verifies thread safety, cooldown, and probe mechanics.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -81,7 +82,7 @@ class TestCircuitBreakerOpenState:
         breaker = CircuitBreaker(threshold=3)
         assert await breaker.record_failure() is False  # 1st
         assert await breaker.record_failure() is False  # 2nd
-        assert await breaker.record_failure() is True   # 3rd — trips
+        assert await breaker.record_failure() is True  # 3rd — trips
 
 
 class TestCircuitBreakerHalfOpenState:

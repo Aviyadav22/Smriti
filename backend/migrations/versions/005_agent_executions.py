@@ -58,23 +58,13 @@ def upgrade() -> None:
     )
 
     # Indexes for agent_executions
-    op.create_index(
-        "ix_agent_executions_user_id", "agent_executions", ["user_id"]
-    )
-    op.create_index(
-        "ix_agent_executions_status", "agent_executions", ["status"]
-    )
+    op.create_index("ix_agent_executions_user_id", "agent_executions", ["user_id"])
+    op.create_index("ix_agent_executions_status", "agent_executions", ["status"])
 
     # Missing indexes on existing tables
-    op.create_index(
-        "ix_chat_messages_session_id", "chat_messages", ["session_id"]
-    )
-    op.create_index(
-        "ix_documents_user_id", "documents", ["user_id"]
-    )
-    op.create_index(
-        "ix_chat_sessions_user_id", "chat_sessions", ["user_id"]
-    )
+    op.create_index("ix_chat_messages_session_id", "chat_messages", ["session_id"])
+    op.create_index("ix_documents_user_id", "documents", ["user_id"])
+    op.create_index("ix_chat_sessions_user_id", "chat_sessions", ["user_id"])
 
 
 def downgrade() -> None:

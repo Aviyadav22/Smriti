@@ -32,17 +32,36 @@ _neo4j_retry = retry(
 # Input validation allowlists
 # ---------------------------------------------------------------------------
 
-_VALID_LABELS = frozenset({
-    "Case", "Statute", "Judge", "Act", "Doctrine",
-    "Counsel", "LegalPrinciple", "Issue", "Community",
-    "IssueTopic", "StatuteSection",
-})
-_VALID_RELATIONSHIPS = frozenset({
-    "CITES", "EQUIVALENT_TO", "APPLIES_DOCTRINE", "DECIDED_BY",
-    "REPRESENTED_BY", "APPLIES_PRINCIPLE", "ADDRESSES",
-    "BELONGS_TO", "INTERPRETS", "AUTHORED_BY",
-    "CLASSIFIED_AS",
-})
+_VALID_LABELS = frozenset(
+    {
+        "Case",
+        "Statute",
+        "Judge",
+        "Act",
+        "Doctrine",
+        "Counsel",
+        "LegalPrinciple",
+        "Issue",
+        "Community",
+        "IssueTopic",
+        "StatuteSection",
+    }
+)
+_VALID_RELATIONSHIPS = frozenset(
+    {
+        "CITES",
+        "EQUIVALENT_TO",
+        "APPLIES_DOCTRINE",
+        "DECIDED_BY",
+        "REPRESENTED_BY",
+        "APPLIES_PRINCIPLE",
+        "ADDRESSES",
+        "BELONGS_TO",
+        "INTERPRETS",
+        "AUTHORED_BY",
+        "CLASSIFIED_AS",
+    }
+)
 
 
 def _validate_label(label: str) -> str:
@@ -53,7 +72,9 @@ def _validate_label(label: str) -> str:
 
 def _validate_relationship(rel_type: str) -> str:
     if rel_type not in _VALID_RELATIONSHIPS:
-        raise ValueError(f"Invalid relationship: '{rel_type}'. Allowed: {sorted(_VALID_RELATIONSHIPS)}")
+        raise ValueError(
+            f"Invalid relationship: '{rel_type}'. Allowed: {sorted(_VALID_RELATIONSHIPS)}"
+        )
     return rel_type
 
 
@@ -66,13 +87,9 @@ class Neo4jGraph:
 
     def __init__(self) -> None:
         if not settings.neo4j_uri or not settings.neo4j_uri.strip():
-            raise ValueError(
-                "Neo4j URI is required. Set NEO4J_URI environment variable."
-            )
+            raise ValueError("Neo4j URI is required. Set NEO4J_URI environment variable.")
         if not settings.neo4j_password or not settings.neo4j_password.strip():
-            raise ValueError(
-                "Neo4j password is required. Set NEO4J_PASSWORD environment variable."
-            )
+            raise ValueError("Neo4j password is required. Set NEO4J_PASSWORD environment variable.")
         try:
             self._driver = AsyncGraphDatabase.driver(
                 settings.neo4j_uri,
@@ -188,7 +205,9 @@ class Neo4jGraph:
 
             return await asyncio.wait_for(_run(), timeout=_QUERY_TIMEOUT_SECONDS)
         except TimeoutError:
-            logger.error("Neo4j query timed out after %ds (cypher: %.200s)", _QUERY_TIMEOUT_SECONDS, cypher)
+            logger.error(
+                "Neo4j query timed out after %ds (cypher: %.200s)", _QUERY_TIMEOUT_SECONDS, cypher
+            )
             raise RuntimeError(f"Neo4j query timed out after {_QUERY_TIMEOUT_SECONDS}s")
         except Neo4jError as exc:
             logger.error("Neo4j query failed: %s (cypher: %.200s)", exc, cypher)
@@ -242,10 +261,7 @@ class Neo4jGraph:
         else:
             pattern = f"-[r{rel_filter}*1..{depth}]-"
 
-        cypher = (
-            f"MATCH (n {{id: $id}}){pattern}(m) "
-            "RETURN DISTINCT m, type(r[-1]) AS rel_type"
-        )
+        cypher = f"MATCH (n {{id: $id}}){pattern}(m) " "RETURN DISTINCT m, type(r[-1]) AS rel_type"
         try:
 
             async def _run() -> dict:
@@ -253,15 +269,19 @@ class Neo4jGraph:
                     result = await session.run(cypher, id=node_id)
                     nodes: list[dict] = []
                     async for record in result:
-                        nodes.append({
-                            "node": dict(record["m"]),
-                            "relationship": record["rel_type"],
-                        })
+                        nodes.append(
+                            {
+                                "node": dict(record["m"]),
+                                "relationship": record["rel_type"],
+                            }
+                        )
                     return {"center": node_id, "neighbors": nodes}
 
             return await asyncio.wait_for(_run(), timeout=_QUERY_TIMEOUT_SECONDS)
         except TimeoutError:
-            logger.error("Neo4j get_neighbors timed out after %ds (id=%s)", _QUERY_TIMEOUT_SECONDS, node_id)
+            logger.error(
+                "Neo4j get_neighbors timed out after %ds (id=%s)", _QUERY_TIMEOUT_SECONDS, node_id
+            )
             raise RuntimeError(f"Neo4j get_neighbors timed out after {_QUERY_TIMEOUT_SECONDS}s")
         except Neo4jError as exc:
             logger.error("Neo4j get_neighbors failed (id=%s): %s", node_id, exc)
@@ -350,54 +370,90 @@ class Neo4jGraph:
     async def _seed_doctrines(self, session) -> None:
         """Seed 12 foundational Indian constitutional/legal doctrines."""
         doctrines = [
-            {"id": "doctrine:basic_structure", "name": "Basic Structure Doctrine",
-             "description": "Parliament cannot amend the Constitution to destroy its basic structure",
-             "origin_case": "Kesavananda Bharati v. State of Kerala (1973) 4 SCC 225",
-             "category": "constitutional"},
-            {"id": "doctrine:eclipse", "name": "Doctrine of Eclipse",
-             "description": "Pre-constitutional laws inconsistent with fundamental rights are eclipsed but not dead",
-             "origin_case": "Bhikaji Narain Dhakras v. State of MP AIR 1955 SC 781",
-             "category": "constitutional"},
-            {"id": "doctrine:pith_and_substance", "name": "Doctrine of Pith and Substance",
-             "description": "Legislation is valid if its true nature falls within the competence of the legislature",
-             "origin_case": "State of Bombay v. FN Balsara AIR 1951 SC 318",
-             "category": "constitutional"},
-            {"id": "doctrine:colourable_legislation", "name": "Doctrine of Colourable Legislation",
-             "description": "Legislature cannot do indirectly what it cannot do directly",
-             "origin_case": "K.C. Gajapati Narayan Deo v. State of Orissa AIR 1953 SC 375",
-             "category": "constitutional"},
-            {"id": "doctrine:severability", "name": "Doctrine of Severability",
-             "description": "Only offending parts of a statute are void; rest survives if separable",
-             "origin_case": "A.K. Gopalan v. State of Madras AIR 1950 SC 27",
-             "category": "constitutional"},
-            {"id": "doctrine:prospective_overruling", "name": "Doctrine of Prospective Overruling",
-             "description": "Supreme Court may limit the effect of overruling to future cases only",
-             "origin_case": "I.C. Golaknath v. State of Punjab AIR 1967 SC 1643",
-             "category": "constitutional"},
-            {"id": "doctrine:legitimate_expectation", "name": "Doctrine of Legitimate Expectation",
-             "description": "A person may have a legitimate expectation of being treated in a certain way by a public authority",
-             "origin_case": "Food Corporation of India v. Kamdhenu Cattle Feed Industries (1993) 1 SCC 71",
-             "category": "administrative"},
-            {"id": "doctrine:proportionality", "name": "Doctrine of Proportionality",
-             "description": "State action must be proportionate to the objective pursued",
-             "origin_case": "K.S. Puttaswamy v. Union of India (2017) 10 SCC 1",
-             "category": "constitutional"},
-            {"id": "doctrine:res_judicata", "name": "Doctrine of Res Judicata",
-             "description": "A matter once finally decided cannot be re-litigated between the same parties",
-             "origin_case": "Section 11, Code of Civil Procedure 1908",
-             "category": "procedural"},
-            {"id": "doctrine:lifting_corporate_veil", "name": "Doctrine of Lifting the Corporate Veil",
-             "description": "Courts may look behind the corporate entity to the persons controlling it",
-             "origin_case": "LIC of India v. Escorts Ltd (1986) 1 SCC 264",
-             "category": "corporate"},
-            {"id": "doctrine:last_seen_together", "name": "Doctrine of Last Seen Together",
-             "description": "If accused was last seen with deceased, burden shifts to explain circumstances",
-             "origin_case": "Trimukh Maroti Kirkan v. State of Maharashtra (2006) 10 SCC 681",
-             "category": "criminal"},
-            {"id": "doctrine:double_jeopardy", "name": "Doctrine of Double Jeopardy",
-             "description": "No person shall be prosecuted and punished for the same offence more than once",
-             "origin_case": "Article 20(2), Constitution of India",
-             "category": "criminal"},
+            {
+                "id": "doctrine:basic_structure",
+                "name": "Basic Structure Doctrine",
+                "description": "Parliament cannot amend the Constitution to destroy its basic structure",
+                "origin_case": "Kesavananda Bharati v. State of Kerala (1973) 4 SCC 225",
+                "category": "constitutional",
+            },
+            {
+                "id": "doctrine:eclipse",
+                "name": "Doctrine of Eclipse",
+                "description": "Pre-constitutional laws inconsistent with fundamental rights are eclipsed but not dead",
+                "origin_case": "Bhikaji Narain Dhakras v. State of MP AIR 1955 SC 781",
+                "category": "constitutional",
+            },
+            {
+                "id": "doctrine:pith_and_substance",
+                "name": "Doctrine of Pith and Substance",
+                "description": "Legislation is valid if its true nature falls within the competence of the legislature",
+                "origin_case": "State of Bombay v. FN Balsara AIR 1951 SC 318",
+                "category": "constitutional",
+            },
+            {
+                "id": "doctrine:colourable_legislation",
+                "name": "Doctrine of Colourable Legislation",
+                "description": "Legislature cannot do indirectly what it cannot do directly",
+                "origin_case": "K.C. Gajapati Narayan Deo v. State of Orissa AIR 1953 SC 375",
+                "category": "constitutional",
+            },
+            {
+                "id": "doctrine:severability",
+                "name": "Doctrine of Severability",
+                "description": "Only offending parts of a statute are void; rest survives if separable",
+                "origin_case": "A.K. Gopalan v. State of Madras AIR 1950 SC 27",
+                "category": "constitutional",
+            },
+            {
+                "id": "doctrine:prospective_overruling",
+                "name": "Doctrine of Prospective Overruling",
+                "description": "Supreme Court may limit the effect of overruling to future cases only",
+                "origin_case": "I.C. Golaknath v. State of Punjab AIR 1967 SC 1643",
+                "category": "constitutional",
+            },
+            {
+                "id": "doctrine:legitimate_expectation",
+                "name": "Doctrine of Legitimate Expectation",
+                "description": "A person may have a legitimate expectation of being treated in a certain way by a public authority",
+                "origin_case": "Food Corporation of India v. Kamdhenu Cattle Feed Industries (1993) 1 SCC 71",
+                "category": "administrative",
+            },
+            {
+                "id": "doctrine:proportionality",
+                "name": "Doctrine of Proportionality",
+                "description": "State action must be proportionate to the objective pursued",
+                "origin_case": "K.S. Puttaswamy v. Union of India (2017) 10 SCC 1",
+                "category": "constitutional",
+            },
+            {
+                "id": "doctrine:res_judicata",
+                "name": "Doctrine of Res Judicata",
+                "description": "A matter once finally decided cannot be re-litigated between the same parties",
+                "origin_case": "Section 11, Code of Civil Procedure 1908",
+                "category": "procedural",
+            },
+            {
+                "id": "doctrine:lifting_corporate_veil",
+                "name": "Doctrine of Lifting the Corporate Veil",
+                "description": "Courts may look behind the corporate entity to the persons controlling it",
+                "origin_case": "LIC of India v. Escorts Ltd (1986) 1 SCC 264",
+                "category": "corporate",
+            },
+            {
+                "id": "doctrine:last_seen_together",
+                "name": "Doctrine of Last Seen Together",
+                "description": "If accused was last seen with deceased, burden shifts to explain circumstances",
+                "origin_case": "Trimukh Maroti Kirkan v. State of Maharashtra (2006) 10 SCC 681",
+                "category": "criminal",
+            },
+            {
+                "id": "doctrine:double_jeopardy",
+                "name": "Doctrine of Double Jeopardy",
+                "description": "No person shall be prosecuted and punished for the same offence more than once",
+                "origin_case": "Article 20(2), Constitution of India",
+                "category": "criminal",
+            },
         ]
         for d in doctrines:
             try:
@@ -456,9 +512,7 @@ class Neo4jGraph:
             raise RuntimeError(f"Neo4j batch_create_nodes failed: {exc}") from exc
         except Exception as exc:
             logger.error("Unexpected error in batch_create_nodes: %s", exc)
-            raise RuntimeError(
-                f"Neo4j batch_create_nodes failed unexpectedly: {exc}"
-            ) from exc
+            raise RuntimeError(f"Neo4j batch_create_nodes failed unexpectedly: {exc}") from exc
 
     @_neo4j_retry
     async def batch_create_citation_edges(
@@ -506,9 +560,7 @@ class Neo4jGraph:
             return total
         except Neo4jError as exc:
             logger.error("Neo4j batch_create_citation_edges failed: %s", exc)
-            raise RuntimeError(
-                f"Neo4j batch_create_citation_edges failed: {exc}"
-            ) from exc
+            raise RuntimeError(f"Neo4j batch_create_citation_edges failed: {exc}") from exc
         except Exception as exc:
             logger.error("Unexpected error in batch_create_citation_edges: %s", exc)
             raise RuntimeError(

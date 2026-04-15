@@ -20,6 +20,7 @@ Usage:
     python scripts/backfill_ingestion_quality.py --limit 50         # First 50 cases
     python scripts/backfill_ingestion_quality.py --batch-size 200   # Larger batches
 """
+
 from __future__ import annotations
 
 import argparse
@@ -80,9 +81,19 @@ _DISPOSAL_MAP: dict[str, str] = {
 }
 
 _VALID_DISPOSALS = {
-    "Allowed", "Dismissed", "Partly Allowed", "Withdrawn", "Remanded",
-    "Disposed Of", "Settled", "Transferred", "Modified", "Other",
-    "Referred to Larger Bench", "Abated", "Not Pressed",
+    "Allowed",
+    "Dismissed",
+    "Partly Allowed",
+    "Withdrawn",
+    "Remanded",
+    "Disposed Of",
+    "Settled",
+    "Transferred",
+    "Modified",
+    "Other",
+    "Referred to Larger Bench",
+    "Abated",
+    "Not Pressed",
 }
 
 _CORAM_BENCH_MAP = {
@@ -132,20 +143,14 @@ def fix_case(row: dict) -> dict[str, object]:
     # 2. Remove self-citations
     if cases_cited and citation:
         own_norm = re.sub(r"\s+", " ", citation.strip().lower())
-        filtered = [
-            c for c in cases_cited
-            if re.sub(r"\s+", " ", c.strip().lower()) != own_norm
-        ]
+        filtered = [c for c in cases_cited if re.sub(r"\s+", " ", c.strip().lower()) != own_norm]
         if len(filtered) != len(cases_cited):
             cases_cited = filtered
             changes["cases_cited"] = filtered or None
 
     # 3. Remove bare docket numbers
     if cases_cited:
-        filtered = [
-            c for c in cases_cited
-            if not re.match(r"^\d{3,5}\s+[Oo]f\s+\d{4}$", c.strip())
-        ]
+        filtered = [c for c in cases_cited if not re.match(r"^\d{3,5}\s+[Oo]f\s+\d{4}$", c.strip())]
         if len(filtered) != len(cases_cited):
             cases_cited = filtered
             changes["cases_cited"] = filtered or None
@@ -178,9 +183,13 @@ def fix_case(row: dict) -> dict[str, object]:
             changes["bench_type"] = inferred
 
     # 8. Judge array completion
-    if (coram_size and judge and author_judge
-            and isinstance(coram_size, int)
-            and coram_size > len(judge)) and author_judge.lower() not in [j.lower() for j in judge]:
+    if (
+        coram_size
+        and judge
+        and author_judge
+        and isinstance(coram_size, int)
+        and coram_size > len(judge)
+    ) and author_judge.lower() not in [j.lower() for j in judge]:
         new_judge = [*judge, author_judge]
         changes["judge"] = new_judge
 
@@ -244,13 +253,21 @@ async def backfill(
                 if changed_count <= 20:
                     logger.info(
                         "[DRY-RUN] Case %s (year=%s): %s",
-                        row["id"], row["year"],
-                        {k: (f"[{len(v)} items]" if isinstance(v, list) else v) for k, v in changes.items()},
+                        row["id"],
+                        row["year"],
+                        {
+                            k: (f"[{len(v)} items]" if isinstance(v, list) else v)
+                            for k, v in changes.items()
+                        },
                     )
             else:
                 # Positional args: acts, cases, judge, bench, reportable, disposal, id
                 acts = changes.get("acts_cited", row["acts_cited"] or [])
-                cases = changes.get("cases_cited") if "cases_cited" in changes else (row["cases_cited"] or [])
+                cases = (
+                    changes.get("cases_cited")
+                    if "cases_cited" in changes
+                    else (row["cases_cited"] or [])
+                )
                 judge = changes.get("judge", row["judge"] or [])
                 bench = changes.get("bench_type", row["bench_type"])
                 reportable = changes.get("is_reportable", row["is_reportable"])

@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 # Database setup
 # ---------------------------------------------------------------------------
 
+
 def get_pg_dsn() -> str:
     """Get PostgreSQL DSN, normalized for asyncpg."""
     url = os.getenv("DATABASE_URL", "")
@@ -70,6 +71,7 @@ def get_neo4j_driver():
 # Citation normalization & matching
 # ---------------------------------------------------------------------------
 
+
 def _normalize_citation(s: str) -> str:
     """Normalize citation string for matching.
 
@@ -77,11 +79,11 @@ def _normalize_citation(s: str) -> str:
     collapses whitespace, lowercases.
     """
     # Remove dots between single letters: S.C.R. -> SCR, A.I.R. -> AIR
-    s = re.sub(r'(?<=[A-Za-z])\.(?=[A-Za-z])', '', s)
+    s = re.sub(r"(?<=[A-Za-z])\.(?=[A-Za-z])", "", s)
     # Remove trailing dot after abbreviation
-    s = re.sub(r'(?<=[A-Z])\.(?=\s|$)', '', s)
+    s = re.sub(r"(?<=[A-Z])\.(?=\s|$)", "", s)
     # Collapse whitespace
-    s = re.sub(r'\s+', ' ', s).strip().lower()
+    s = re.sub(r"\s+", " ", s).strip().lower()
     return s
 
 
@@ -94,15 +96,15 @@ def _extract_citation_patterns(cited_str: str) -> list[str]:
     patterns = []
 
     # Pattern 1: [year] volume REPORTER page  (e.g. [1978] 2 SCR 371)
-    for m in re.finditer(r'\[(\d{4})\]\s+(\d+)\s+([A-Za-z.]+)\s+(\d+)', cited_str):
+    for m in re.finditer(r"\[(\d{4})\]\s+(\d+)\s+([A-Za-z.]+)\s+(\d+)", cited_str):
         patterns.append(_normalize_citation(m.group(0)))
 
     # Pattern 2: (year) volume REPORTER page  (e.g. (1978) 1 SCC 240)
-    for m in re.finditer(r'\((\d{4})\)\s+(\d+)\s+([A-Za-z.]+)\s+(\d+)', cited_str):
+    for m in re.finditer(r"\((\d{4})\)\s+(\d+)\s+([A-Za-z.]+)\s+(\d+)", cited_str):
         patterns.append(_normalize_citation(m.group(0)))
 
     # Pattern 3: (year) REPORTER OnLine COURT page  (e.g. (2023) SCC OnLine SC 951)
-    for m in re.finditer(r'\((\d{4})\)\s+([A-Za-z.]+)\s+OnLine\s+([A-Za-z]+)\s+(\d+)', cited_str):
+    for m in re.finditer(r"\((\d{4})\)\s+([A-Za-z.]+)\s+OnLine\s+([A-Za-z]+)\s+(\d+)", cited_str):
         patterns.append(_normalize_citation(m.group(0)))
 
     return patterns
@@ -129,7 +131,7 @@ def _resolve_citation(
             return citation_map[pattern]
 
     # 3. Title-based fallback
-    title_match = re.match(r'^(.+?)\s*[\[\(]\d{4}', cited_str)
+    title_match = re.match(r"^(.+?)\s*[\[\(]\d{4}", cited_str)
     if title_match:
         title = title_match.group(1).strip().lower()
         if title in title_map:
@@ -152,11 +154,11 @@ def _extract_act_name(act_string: str) -> str | None:
     name = act_string.strip()
 
     # Remove "Section X of " prefix
-    name = re.sub(r'^Section\s+\S+\s+of\s+', '', name, flags=re.IGNORECASE).strip()
+    name = re.sub(r"^Section\s+\S+\s+of\s+", "", name, flags=re.IGNORECASE).strip()
     # Remove "Order X Rule Y of " prefix
-    name = re.sub(r'^Order\s+\S+\s+Rule\s+\S+\s+of\s+', '', name, flags=re.IGNORECASE).strip()
+    name = re.sub(r"^Order\s+\S+\s+Rule\s+\S+\s+of\s+", "", name, flags=re.IGNORECASE).strip()
     # Remove "Article X of " prefix
-    name = re.sub(r'^Article\s+\S+\s+of\s+', '', name, flags=re.IGNORECASE).strip()
+    name = re.sub(r"^Article\s+\S+\s+of\s+", "", name, flags=re.IGNORECASE).strip()
 
     return name if name else None
 
@@ -164,6 +166,7 @@ def _extract_act_name(act_string: str) -> str | None:
 # ---------------------------------------------------------------------------
 # PostgreSQL queries (using raw asyncpg)
 # ---------------------------------------------------------------------------
+
 
 async def fetch_cases(conn: asyncpg.Connection, offset: int, limit: int) -> list[dict]:
     """Fetch a batch of cases from PostgreSQL."""
@@ -174,7 +177,8 @@ async def fetch_cases(conn: asyncpg.Connection, offset: int, limit: int) -> list
         "FROM cases "
         "ORDER BY id "
         "OFFSET $1 LIMIT $2",
-        offset, limit,
+        offset,
+        limit,
     )
     return [dict(r) for r in rows]
 
@@ -190,9 +194,7 @@ async def build_citation_index(conn: asyncpg.Connection) -> tuple[dict[str, str]
     citation_map: dict[str, str] = {}
 
     # Primary: citation column (e.g. "[2024] 9 S.C.R. 770")
-    rows = await conn.fetch(
-        "SELECT id, citation FROM cases WHERE citation IS NOT NULL"
-    )
+    rows = await conn.fetch("SELECT id, citation FROM cases WHERE citation IS NOT NULL")
     for row in rows:
         cit = str(row["citation"]).strip()
         uid = str(row["id"])
@@ -212,8 +214,7 @@ async def build_citation_index(conn: asyncpg.Connection) -> tuple[dict[str, str]
     # Tertiary: citation equivalents table
     try:
         rows = await conn.fetch(
-            "SELECT case_id, citation FROM case_citation_equivalents "
-            "WHERE citation IS NOT NULL"
+            "SELECT case_id, citation FROM case_citation_equivalents " "WHERE citation IS NOT NULL"
         )
         for row in rows:
             cit = str(row["citation"]).strip()
@@ -234,7 +235,8 @@ async def build_citation_index(conn: asyncpg.Connection) -> tuple[dict[str, str]
 
     logger.info(
         "Citation index: %d citation entries, %d title entries",
-        len(citation_map), len(title_map),
+        len(citation_map),
+        len(title_map),
     )
     return citation_map, title_map
 
@@ -242,6 +244,7 @@ async def build_citation_index(conn: asyncpg.Connection) -> tuple[dict[str, str]
 # ---------------------------------------------------------------------------
 # Neo4j operations
 # ---------------------------------------------------------------------------
+
 
 async def clear_graph(driver, database: str) -> None:
     """Delete all nodes and relationships."""
@@ -260,8 +263,7 @@ async def create_constraints(driver, database: str) -> None:
             )
         with contextlib.suppress(Exception):
             await session.run(
-                "CREATE INDEX case_citation_idx IF NOT EXISTS "
-                "FOR (c:Case) ON (c.citation)"
+                "CREATE INDEX case_citation_idx IF NOT EXISTS " "FOR (c:Case) ON (c.citation)"
             )
         with contextlib.suppress(Exception):
             await session.run(
@@ -319,9 +321,7 @@ async def batch_create_nodes(
 
     async with driver.session(database=database) as session:
         await session.run(
-            "UNWIND $nodes AS props "
-            "MERGE (c:Case {id: props.id}) "
-            "SET c += props",
+            "UNWIND $nodes AS props " "MERGE (c:Case {id: props.id}) " "SET c += props",
             nodes=nodes,
         )
     return len(nodes)
@@ -481,16 +481,11 @@ async def batch_create_judge_nodes(
 async def update_cited_by_counts(driver, database: str) -> None:
     """Update cited_by_count on each node based on incoming CITES edges."""
     async with driver.session(database=database) as session:
-        await session.run(
-            "MATCH (c:Case) "
-            "SET c.cited_by_count = size([(x)-[:CITES]->(c) | x])"
-        )
+        await session.run("MATCH (c:Case) " "SET c.cited_by_count = size([(x)-[:CITES]->(c) | x])")
     logger.info("Updated cited_by_count for all nodes")
 
 
-async def sync_cited_by_counts_to_pg(
-    driver, database: str, conn
-) -> int:
+async def sync_cited_by_counts_to_pg(driver, database: str, conn) -> int:
     """Sync cited_by_count from Neo4j back to PostgreSQL.
 
     Returns the number of rows updated.
@@ -550,15 +545,11 @@ async def get_neo4j_stats(driver, database: str) -> dict:
         act_record = await act_result.single()
         act_count = act_record["cnt"] if act_record else 0
 
-        interprets_result = await session.run(
-            "MATCH ()-[r:INTERPRETS]->() RETURN count(r) AS cnt"
-        )
+        interprets_result = await session.run("MATCH ()-[r:INTERPRETS]->() RETURN count(r) AS cnt")
         interprets_record = await interprets_result.single()
         interprets_count = interprets_record["cnt"] if interprets_record else 0
 
-        decided_by_result = await session.run(
-            "MATCH ()-[r:DECIDED_BY]->() RETURN count(r) AS cnt"
-        )
+        decided_by_result = await session.run("MATCH ()-[r:DECIDED_BY]->() RETURN count(r) AS cnt")
         decided_by_record = await decided_by_result.single()
         decided_by_count = decided_by_record["cnt"] if decided_by_record else 0
 
@@ -583,6 +574,7 @@ async def get_neo4j_stats(driver, database: str) -> dict:
 # Main pipeline
 # ---------------------------------------------------------------------------
 
+
 async def _get_neo4j_case_ids(driver, database: str) -> set[str]:
     """Return the set of Case node IDs currently in Neo4j."""
     async with driver.session(database=database) as session:
@@ -592,7 +584,9 @@ async def _get_neo4j_case_ids(driver, database: str) -> set[str]:
 
 
 async def populate(
-    batch_size: int = 200, dry_run: bool = False, incremental: bool = False,
+    batch_size: int = 200,
+    dry_run: bool = False,
+    incremental: bool = False,
 ) -> None:
     """Main population pipeline.
 
@@ -614,7 +608,10 @@ async def populate(
         logger.info(
             "Neo4j connected. Current: %d Case nodes, %d CITES edges, "
             "%d Judge nodes, %d Act nodes",
-            stats["nodes"], stats["edges"], stats["judges"], stats["acts"],
+            stats["nodes"],
+            stats["edges"],
+            stats["judges"],
+            stats["acts"],
         )
 
         # In incremental mode, collect existing IDs and skip clearing
@@ -699,11 +696,16 @@ async def populate(
             elapsed = time.time() - batch_start
             progress = min(offset + batch_size, total_cases)
             logger.info(
-                "Batch %d-%d/%d: %d nodes, %d edges (%d unresolved), "
-                "%d acts, %d judges [%.1fs]",
-                offset + 1, progress, total_cases,
-                created, edges_created, unresolved,
-                act_count, judge_count, elapsed,
+                "Batch %d-%d/%d: %d nodes, %d edges (%d unresolved), " "%d acts, %d judges [%.1fs]",
+                offset + 1,
+                progress,
+                total_cases,
+                created,
+                edges_created,
+                unresolved,
+                act_count,
+                judge_count,
+                elapsed,
             )
 
             # Periodic cumulative progress checkpoint with ETA
@@ -718,10 +720,16 @@ async def populate(
                     "CHECKPOINT [batch %d]: %d/%d cases (%.1f%%) | "
                     "cumulative: %d nodes, %d edges, %d acts, %d judges | "
                     "rate: %.1f cases/s | ETA: %.1f min",
-                    batch_number, cases_done, total_cases,
+                    batch_number,
+                    cases_done,
+                    total_cases,
                     100.0 * cases_done / total_cases,
-                    total_nodes, total_edges, total_acts, total_judges,
-                    rate, eta_mins,
+                    total_nodes,
+                    total_edges,
+                    total_acts,
+                    total_judges,
+                    rate,
+                    eta_mins,
                 )
 
         # Update cited_by_count on Neo4j nodes, then sync back to PostgreSQL
@@ -737,9 +745,15 @@ async def populate(
             "%sPopulation complete: %d Case nodes, %d CITES edges "
             "(%d unresolved), %d Act nodes (%d INTERPRETS edges), "
             "%d Judge nodes (%d DECIDED_BY edges) in %.1fs",
-            prefix, total_nodes, total_edges, total_unresolved,
-            total_acts, total_act_edges,
-            total_judges, total_judge_edges, total_time,
+            prefix,
+            total_nodes,
+            total_edges,
+            total_unresolved,
+            total_acts,
+            total_act_edges,
+            total_judges,
+            total_judge_edges,
+            total_time,
         )
 
         if not dry_run:
@@ -748,9 +762,12 @@ async def populate(
                 "Final Neo4j stats: %d Case nodes, %d CITES edges, "
                 "%d Judge nodes, %d Act nodes, "
                 "%d INTERPRETS, %d DECIDED_BY, %d AUTHORED_BY",
-                stats["nodes"], stats["edges"],
-                stats["judges"], stats["acts"],
-                stats["interprets_edges"], stats["decided_by_edges"],
+                stats["nodes"],
+                stats["edges"],
+                stats["judges"],
+                stats["acts"],
+                stats["interprets_edges"],
+                stats["decided_by_edges"],
                 stats["authored_by_edges"],
             )
 
@@ -769,9 +786,12 @@ async def show_stats() -> None:
             "Neo4j: %d Case nodes, %d CITES edges, "
             "%d Judge nodes, %d Act nodes, "
             "%d INTERPRETS, %d DECIDED_BY, %d AUTHORED_BY",
-            stats["nodes"], stats["edges"],
-            stats["judges"], stats["acts"],
-            stats["interprets_edges"], stats["decided_by_edges"],
+            stats["nodes"],
+            stats["edges"],
+            stats["judges"],
+            stats["acts"],
+            stats["interprets_edges"],
+            stats["decided_by_edges"],
             stats["authored_by_edges"],
         )
     finally:
@@ -782,21 +802,15 @@ async def show_stats() -> None:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main():
-    parser = argparse.ArgumentParser(
-        description="Populate Neo4j citation graph from PostgreSQL"
-    )
+    parser = argparse.ArgumentParser(description="Populate Neo4j citation graph from PostgreSQL")
+    parser.add_argument("--batch", type=int, default=200, help="Batch size (default: 200)")
+    parser.add_argument("--dry-run", action="store_true", help="Preview without writing to Neo4j")
+    parser.add_argument("--stats", action="store_true", help="Show current Neo4j statistics")
     parser.add_argument(
-        "--batch", type=int, default=200, help="Batch size (default: 200)"
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Preview without writing to Neo4j"
-    )
-    parser.add_argument(
-        "--stats", action="store_true", help="Show current Neo4j statistics"
-    )
-    parser.add_argument(
-        "--incremental", action="store_true",
+        "--incremental",
+        action="store_true",
         help="Only process cases not already in Neo4j (skip graph clearing)",
     )
 
@@ -805,11 +819,13 @@ def main():
     if args.stats:
         asyncio.run(show_stats())
     else:
-        asyncio.run(populate(
-            batch_size=args.batch,
-            dry_run=args.dry_run,
-            incremental=args.incremental,
-        ))
+        asyncio.run(
+            populate(
+                batch_size=args.batch,
+                dry_run=args.dry_run,
+                incremental=args.incremental,
+            )
+        )
 
 
 if __name__ == "__main__":

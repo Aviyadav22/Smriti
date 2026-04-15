@@ -7,6 +7,7 @@ runs a single Flash call after all workers finish.
 
 Workers use pre-warmed embeddings [S6] when available.
 """
+
 from __future__ import annotations
 
 import logging
@@ -113,10 +114,10 @@ async def case_law_worker(
     if task.get("boolean_query"):
         # [M2] Convert IK boolean operators to PostgreSQL websearch_to_tsquery format
         fts_query = task["boolean_query"]
-        fts_query = re.sub(r'\bANDD\b', 'AND', fts_query)
-        fts_query = re.sub(r'\bORR\b', 'OR', fts_query)
-        fts_query = re.sub(r'\bNOTT\b', 'NOT', fts_query)
-        fts_query = re.sub(r'\bNEAR\b', 'AND', fts_query)  # NEAR → AND (closest FTS equivalent)
+        fts_query = re.sub(r"\bANDD\b", "AND", fts_query)
+        fts_query = re.sub(r"\bORR\b", "OR", fts_query)
+        fts_query = re.sub(r"\bNOTT\b", "NOT", fts_query)
+        fts_query = re.sub(r"\bNEAR\b", "AND", fts_query)  # NEAR → AND (closest FTS equivalent)
         queries.append(fts_query)
 
     # [B8] Skip understand_query — agent has already rewritten the query
@@ -133,6 +134,7 @@ async def case_law_worker(
         bench_value = bench_map.get(target_bench)
         if bench_value:
             from app.core.search.query import SearchFilters
+
             search_kwargs["filters"] = SearchFilters(bench_type=bench_value)
 
     # [H10] Propagate court and date range filters from research plan
@@ -141,12 +143,18 @@ async def case_law_worker(
     to_year = task_filters.get("to_year")
     if court_filter or from_year or to_year:
         from app.core.search.query import SearchFilters
+
         existing = search_kwargs.get("filters")
         # SearchFilters is frozen — build a new instance merging existing + new
         merge: dict[str, Any] = {}
         if existing:
             import dataclasses
-            merge = {f.name: getattr(existing, f.name) for f in dataclasses.fields(existing) if getattr(existing, f.name) is not None}
+
+            merge = {
+                f.name: getattr(existing, f.name)
+                for f in dataclasses.fields(existing)
+                if getattr(existing, f.name) is not None
+            }
         if court_filter:
             merge["court"] = [court_filter] if isinstance(court_filter, str) else court_filter
         if from_year:
@@ -161,19 +169,32 @@ async def case_law_worker(
     try:
         async with async_session_factory() as db:
             results = await parallel_hybrid_search(
-                queries, llm, embedder, vector_store, reranker, db,
+                queries,
+                llm,
+                embedder,
+                vector_store,
+                reranker,
+                db,
                 precomputed_embeddings=precomputed,
                 **search_kwargs,
             )
             results = await enrich_results_with_ratio(results, db, max_ratio_len=3000)
     except Exception as exc:
         logger.exception("case_law_worker failed: %s", exc)
-        return {"worker_results": [WorkerResult(
-            task_id=task["task_id"], task_type="case_law",
-            query=task["nl_query"], results=[],
-            source_urls=[], metadata={}, error=str(exc),
-            reasoning="",
-        )]}
+        return {
+            "worker_results": [
+                WorkerResult(
+                    task_id=task["task_id"],
+                    task_type="case_law",
+                    query=task["nl_query"],
+                    results=[],
+                    source_urls=[],
+                    metadata={},
+                    error=str(exc),
+                    reasoning="",
+                )
+            ]
+        }
 
     # [V3] Proposition-level semantic search (skip FTS — propositions are vector-only)
     try:
@@ -205,27 +226,35 @@ async def case_law_worker(
             if case_id not in existing_ids:
                 vtype = r.metadata.get("vector_type", "chunk")
                 boost = 1.5 if vtype in _BOOSTED_VECTOR_TYPES else 1.0
-                results.append({
-                    "case_id": case_id,
-                    "title": r.metadata.get("title", ""),
-                    "citation": r.metadata.get("citation", ""),
-                    "court": r.metadata.get("court", ""),
-                    "year": r.metadata.get("year"),
-                    "snippet": r.metadata.get("text", "")[:500],
-                    "score": r.score * boost,
-                    "source": "proposition_search",
-                })
+                results.append(
+                    {
+                        "case_id": case_id,
+                        "title": r.metadata.get("title", ""),
+                        "citation": r.metadata.get("citation", ""),
+                        "court": r.metadata.get("court", ""),
+                        "year": r.metadata.get("year"),
+                        "snippet": r.metadata.get("text", "")[:500],
+                        "score": r.score * boost,
+                        "source": "proposition_search",
+                    }
+                )
                 existing_ids.add(case_id)
     except Exception as exc:
         logger.warning("Proposition search failed (non-fatal): %s", exc)
 
     return {
-        "worker_results": [WorkerResult(
-            task_id=task["task_id"], task_type="case_law",
-            query=task["nl_query"], results=results,
-            source_urls=[], metadata={}, error=None,
-            reasoning="",  # Populated by batch_worker_cot_node [S4]
-        )],
+        "worker_results": [
+            WorkerResult(
+                task_id=task["task_id"],
+                task_type="case_law",
+                query=task["nl_query"],
+                results=results,
+                source_urls=[],
+                metadata={},
+                error=None,
+                reasoning="",  # Populated by batch_worker_cot_node [S4]
+            )
+        ],
         "process_events": [_worker_found_event("case_law", results)],
     }
 
@@ -259,8 +288,10 @@ async def named_case_worker(
                 # Try exact citation search first
                 if named.get("citation"):
                     from dataclasses import asdict
+
                     citation_results = await _exact_citation_search(
-                        named["citation"], db,
+                        named["citation"],
+                        db,
                     )
                     found = [asdict(r) for r in citation_results]
 
@@ -275,7 +306,7 @@ async def named_case_worker(
                             named["name"],
                             max_results=3,
                         )
-                        for doc in (ik_results or []):
+                        for doc in ik_results or []:
                             doc_id = str(doc.get("tid", doc.get("docid", "")))
                             if not doc_id:
                                 continue
@@ -295,18 +326,20 @@ async def named_case_worker(
                                     ik_citation = f"{title} ({court})"
                                 else:
                                     ik_citation = title
-                            found.append({
-                                "case_id": f"ik:{doc_id}",
-                                "title": title,
-                                "citation": ik_citation,
-                                "court": court,
-                                "author": doc.get("author", ""),
-                                "year": ik_year,
-                                "snippet": _strip_html_tags(doc.get("headline", ""))[:500],
-                                "score": 0.8,
-                                "source": "indian_kanoon",
-                                "ik_doc_id": doc_id,
-                            })
+                            found.append(
+                                {
+                                    "case_id": f"ik:{doc_id}",
+                                    "title": title,
+                                    "citation": ik_citation,
+                                    "court": court,
+                                    "author": doc.get("author", ""),
+                                    "year": ik_year,
+                                    "snippet": _strip_html_tags(doc.get("headline", ""))[:500],
+                                    "score": 0.8,
+                                    "source": "indian_kanoon",
+                                    "ik_doc_id": doc_id,
+                                }
+                            )
                     except Exception:
                         logger.debug(
                             "IK fallback search for named case '%s' failed",
@@ -318,27 +351,44 @@ async def named_case_worker(
             # Enrich with ratio decidendi
             if results:
                 results = await enrich_results_with_ratio(
-                    results, db, max_ratio_len=3000,
+                    results,
+                    db,
+                    max_ratio_len=3000,
                 )
     except Exception as exc:
         logger.exception("named_case_worker failed: %s", exc)
-        return {"worker_results": [WorkerResult(
-            task_id=task["task_id"], task_type="named_case",
-            query=str(task.get("named_cases", [])),
-            results=[], source_urls=[], metadata={},
-            error=str(exc), reasoning="",
-        )]}
+        return {
+            "worker_results": [
+                WorkerResult(
+                    task_id=task["task_id"],
+                    task_type="named_case",
+                    query=str(task.get("named_cases", [])),
+                    results=[],
+                    source_urls=[],
+                    metadata={},
+                    error=str(exc),
+                    reasoning="",
+                )
+            ]
+        }
 
     # Also try the NL query as a hybrid search if we have one and few results
     if len(results) < 2 and task.get("nl_query"):
         try:
             async with async_session_factory() as db:
                 supplemental = await parallel_hybrid_search(
-                    [task["nl_query"]], llm, embedder, vector_store, reranker, db,
+                    [task["nl_query"]],
+                    llm,
+                    embedder,
+                    vector_store,
+                    reranker,
+                    db,
                     pre_understood=True,
                 )
                 supplemental = await enrich_results_with_ratio(
-                    supplemental, db, max_ratio_len=3000,
+                    supplemental,
+                    db,
+                    max_ratio_len=3000,
                 )
                 # Add only new results (not already found by citation)
                 existing_ids = {r.get("case_id") for r in results}
@@ -349,12 +399,18 @@ async def named_case_worker(
             pass  # Supplemental search is best-effort
 
     return {
-        "worker_results": [WorkerResult(
-            task_id=task["task_id"], task_type="named_case",
-            query=task.get("nl_query", ""),
-            results=results, source_urls=[], metadata={},
-            error=None, reasoning="",
-        )],
+        "worker_results": [
+            WorkerResult(
+                task_id=task["task_id"],
+                task_type="named_case",
+                query=task.get("nl_query", ""),
+                results=results,
+                source_urls=[],
+                metadata={},
+                error=None,
+                reasoning="",
+            )
+        ],
         "process_events": [_worker_found_event("named_case", results)],
     }
 
@@ -392,30 +448,28 @@ async def statute_worker(
                 # Try exact section lookup via PG FTS
                 stmt = (
                     select(Statute)
-                    .where(
-                        Statute.searchable_text.op("@@")(
-                            func_websearch_to_tsquery(query_text)
-                        )
-                    )
+                    .where(Statute.searchable_text.op("@@")(func_websearch_to_tsquery(query_text)))
                     .limit(10)
                 )
                 try:
                     db_result = await db.execute(stmt)
                     for s in db_result.scalars().all():
-                        results.append({
-                            "case_id": f"statute:{s.id}",
-                            "title": f"{s.act_short_name} Section {s.section_number}",
-                            "citation": f"{s.act_short_name} Section {s.section_number}",
-                            "section_title": s.section_title or "",
-                            "section_text": s.section_text[:2000],
-                            "act_name": s.act_name,
-                            "act_short_name": s.act_short_name,
-                            "section_number": s.section_number,
-                            "document_type": s.document_type,
-                            "is_repealed": s.is_repealed,
-                            "replaced_by": s.replaced_by,
-                            "source": "statute_db",
-                        })
+                        results.append(
+                            {
+                                "case_id": f"statute:{s.id}",
+                                "title": f"{s.act_short_name} Section {s.section_number}",
+                                "citation": f"{s.act_short_name} Section {s.section_number}",
+                                "section_title": s.section_title or "",
+                                "section_text": s.section_text[:2000],
+                                "act_name": s.act_name,
+                                "act_short_name": s.act_short_name,
+                                "section_number": s.section_number,
+                                "document_type": s.document_type,
+                                "is_repealed": s.is_repealed,
+                                "replaced_by": s.replaced_by,
+                                "source": "statute_db",
+                            }
+                        )
                 except Exception:
                     pass  # FTS may fail on some queries, fall through to semantic
 
@@ -428,17 +482,21 @@ async def statute_worker(
         )
         for r in pinecone_results:
             meta = r.metadata if hasattr(r, "metadata") else {}
-            results.append({
-                "case_id": r.id if r.id.startswith("statute:") else f"statute:{r.id}",
-                "title": meta.get("title", ""),
-                "citation": f"{meta.get('act_short_name', meta.get('act_name', ''))} Section {meta.get('section_number', '')}".strip() if meta.get("section_number") else meta.get("act_short_name", meta.get("act_name", "")),
-                "section_text": meta.get("text", "")[:2000],
-                "act_name": meta.get("act_name", ""),
-                "section_number": meta.get("section_number", ""),
-                "document_type": meta.get("document_type", "statute"),
-                "source": "statute_pinecone",
-                "score": r.score,
-            })
+            results.append(
+                {
+                    "case_id": r.id if r.id.startswith("statute:") else f"statute:{r.id}",
+                    "title": meta.get("title", ""),
+                    "citation": f"{meta.get('act_short_name', meta.get('act_name', ''))} Section {meta.get('section_number', '')}".strip()
+                    if meta.get("section_number")
+                    else meta.get("act_short_name", meta.get("act_name", "")),
+                    "section_text": meta.get("text", "")[:2000],
+                    "act_name": meta.get("act_name", ""),
+                    "section_number": meta.get("section_number", ""),
+                    "document_type": meta.get("document_type", "statute"),
+                    "source": "statute_pinecone",
+                    "score": r.score,
+                }
+            )
 
         # Deduplicate by title
         seen_titles: set[str] = set()
@@ -452,21 +510,34 @@ async def statute_worker(
 
     except Exception as exc:
         logger.warning("statute_worker failed: %s", exc)
-        return {"worker_results": [WorkerResult(
-            task_id=task["task_id"], task_type="statute",
-            query=task["nl_query"], results=[],
-            source_urls=[], metadata={}, error=str(exc),
-            reasoning="",
-        )]}
+        return {
+            "worker_results": [
+                WorkerResult(
+                    task_id=task["task_id"],
+                    task_type="statute",
+                    query=task["nl_query"],
+                    results=[],
+                    source_urls=[],
+                    metadata={},
+                    error=str(exc),
+                    reasoning="",
+                )
+            ]
+        }
 
     return {
-        "worker_results": [WorkerResult(
-            task_id=task["task_id"], task_type="statute",
-            query=task["nl_query"], results=results,
-            source_urls=[],
-            metadata={"expanded_terms": expanded_terms if expanded_terms else []},
-            error=None, reasoning="",
-        )],
+        "worker_results": [
+            WorkerResult(
+                task_id=task["task_id"],
+                task_type="statute",
+                query=task["nl_query"],
+                results=results,
+                source_urls=[],
+                metadata={"expanded_terms": expanded_terms if expanded_terms else []},
+                error=None,
+                reasoning="",
+            )
+        ],
         "process_events": [_worker_found_event("statute", results)],
     }
 
@@ -474,6 +545,7 @@ async def statute_worker(
 def func_websearch_to_tsquery(query: str) -> object:
     """Create a websearch_to_tsquery SQL function call."""
     from sqlalchemy import func
+
     return func.websearch_to_tsquery("english", query)
 
 
@@ -491,6 +563,7 @@ _IK_MAX_PAGES = 2  # Fetch 2 pages (20 results) to avoid missing good cases
 def _strip_html_tags(text: str) -> str:
     """Strip HTML tags from IK API responses (headlines contain <b>, <em>, etc.)."""
     import re
+
     if not text:
         return text
     return re.sub(r"<[^>]+>", "", text).strip()
@@ -530,35 +603,55 @@ async def ik_search_worker(
 
     # Build cache key that includes ALL search parameters (not just nl_query)
     cache_filters = {
-        k: v for k, v in {
-            "court": court_filter, "from_date": from_date, "to_date": to_date,
-            "boolean_query": boolean_query, "sort_by": sort_by,
-            "title": title_filter, "author": author_filter, "bench": bench_filter,
-        }.items() if v is not None
+        k: v
+        for k, v in {
+            "court": court_filter,
+            "from_date": from_date,
+            "to_date": to_date,
+            "boolean_query": boolean_query,
+            "sort_by": sort_by,
+            "title": title_filter,
+            "author": author_filter,
+            "bench": bench_filter,
+        }.items()
+        if v is not None
     }
 
     try:
         # [S8-L3] Check IK search cache (with filter-aware key)
         cached_results = await get_cached_ik_search(
-            redis, task["nl_query"], **cache_filters,
+            redis,
+            task["nl_query"],
+            **cache_filters,
         )
         if cached_results is not None:
             logger.debug("IK search cache hit for: %s", task["nl_query"][:60])
             return {
-                "worker_results": [WorkerResult(
-                    task_id=task["task_id"], task_type="ik_search",
-                    query=task["nl_query"], results=cached_results,
-                    source_urls=[f"https://indiankanoon.org/doc/{r.get('ik_doc_id', '')}/" for r in cached_results],
-                    metadata={"source": "indian_kanoon", "cached": True},
-                    error=None, reasoning="",
-                )],
+                "worker_results": [
+                    WorkerResult(
+                        task_id=task["task_id"],
+                        task_type="ik_search",
+                        query=task["nl_query"],
+                        results=cached_results,
+                        source_urls=[
+                            f"https://indiankanoon.org/doc/{r.get('ik_doc_id', '')}/"
+                            for r in cached_results
+                        ],
+                        metadata={"source": "indian_kanoon", "cached": True},
+                        error=None,
+                        reasoning="",
+                    )
+                ],
                 "process_events": [_worker_found_event("ik_search", cached_results)],
             }
 
         logger.info(
             "IK search: nl_query=%s, boolean_query=%s, court=%s, dates=%s-%s",
-            task["nl_query"][:80], boolean_query[:80] if boolean_query else None,
-            court_filter, from_date, to_date,
+            task["nl_query"][:80],
+            boolean_query[:80] if boolean_query else None,
+            court_filter,
+            from_date,
+            to_date,
         )
 
         search_results = await ik_client.search(
@@ -685,22 +778,24 @@ async def ik_search_worker(
                     if _ym:
                         ik_year = int(_ym.group())
 
-            results.append({
-                "case_id": f"ik:{doc_id}",
-                "title": doc.get("title", ""),
-                "citation": ik_citation,
-                "court": doc.get("docsource", doc.get("court", "")),
-                "author": doc.get("author", ""),
-                "date": doc.get("publishdate", ""),
-                "year": ik_year,
-                "num_cites": doc.get("numcites", 0),
-                "num_cited_by": doc.get("numcitedby", 0),
-                "snippet": snippet,
-                "score": max(0.3, 1.0 - (idx * 0.05)),  # [H8] Position-based score
-                "source": "indian_kanoon",
-                "ik_doc_id": doc_id,
-                "court_copy_url": f"https://indiankanoon.org/origdoc/{doc_id}/",
-            })
+            results.append(
+                {
+                    "case_id": f"ik:{doc_id}",
+                    "title": doc.get("title", ""),
+                    "citation": ik_citation,
+                    "court": doc.get("docsource", doc.get("court", "")),
+                    "author": doc.get("author", ""),
+                    "date": doc.get("publishdate", ""),
+                    "year": ik_year,
+                    "num_cites": doc.get("numcites", 0),
+                    "num_cited_by": doc.get("numcitedby", 0),
+                    "snippet": snippet,
+                    "score": max(0.3, 1.0 - (idx * 0.05)),  # [H8] Position-based score
+                    "source": "indian_kanoon",
+                    "ik_doc_id": doc_id,
+                    "court_copy_url": f"https://indiankanoon.org/origdoc/{doc_id}/",
+                }
+            )
             source_urls.append(f"https://indiankanoon.org/doc/{doc_id}/")
 
         # [S8-L3] Cache IK search results (with filter-aware key)
@@ -708,21 +803,34 @@ async def ik_search_worker(
 
     except Exception as exc:
         logger.warning("ik_search_worker failed: %s", exc)
-        return {"worker_results": [WorkerResult(
-            task_id=task["task_id"], task_type="ik_search",
-            query=task["nl_query"], results=[],
-            source_urls=[], metadata={"source": "indian_kanoon"},
-            error=str(exc), reasoning="",
-        )]}
+        return {
+            "worker_results": [
+                WorkerResult(
+                    task_id=task["task_id"],
+                    task_type="ik_search",
+                    query=task["nl_query"],
+                    results=[],
+                    source_urls=[],
+                    metadata={"source": "indian_kanoon"},
+                    error=str(exc),
+                    reasoning="",
+                )
+            ]
+        }
 
     return {
-        "worker_results": [WorkerResult(
-            task_id=task["task_id"], task_type="ik_search",
-            query=task["nl_query"], results=results,
-            source_urls=source_urls,
-            metadata={"source": "indian_kanoon", "filters_applied": bool(filters)},
-            error=None, reasoning="",
-        )],
+        "worker_results": [
+            WorkerResult(
+                task_id=task["task_id"],
+                task_type="ik_search",
+                query=task["nl_query"],
+                results=results,
+                source_urls=source_urls,
+                metadata={"source": "indian_kanoon", "filters_applied": bool(filters)},
+                error=None,
+                reasoning="",
+            )
+        ],
         "process_events": [_worker_found_event("ik_search", results)],
     }
 
@@ -764,34 +872,49 @@ async def web_search_worker(
         source_urls: list[str] = []
         for r in search_results:
             url = r.get("url", "")
-            results.append({
-                "case_id": f"web:{hash(url) & 0xFFFFFFFF}",  # [H29] Unique ID for dedup
-                "title": r.get("title", ""),
-                "snippet": r.get("raw_content", r.get("content", ""))[:2000],
-                "url": url,
-                "score": r.get("score", 0.0),
-                "source": "web",
-            })
+            results.append(
+                {
+                    "case_id": f"web:{hash(url) & 0xFFFFFFFF}",  # [H29] Unique ID for dedup
+                    "title": r.get("title", ""),
+                    "snippet": r.get("raw_content", r.get("content", ""))[:2000],
+                    "url": url,
+                    "score": r.get("score", 0.0),
+                    "source": "web",
+                }
+            )
             if r.get("url"):
                 source_urls.append(r["url"])
 
     except Exception as exc:
         logger.warning("web_search_worker failed (non-blocking): %s", exc)
-        return {"worker_results": [WorkerResult(
-            task_id=task["task_id"], task_type="web",
-            query=task["nl_query"], results=[],
-            source_urls=[], metadata={"source": "web"},
-            error=str(exc), reasoning="",
-        )]}
+        return {
+            "worker_results": [
+                WorkerResult(
+                    task_id=task["task_id"],
+                    task_type="web",
+                    query=task["nl_query"],
+                    results=[],
+                    source_urls=[],
+                    metadata={"source": "web"},
+                    error=str(exc),
+                    reasoning="",
+                )
+            ]
+        }
 
     return {
-        "worker_results": [WorkerResult(
-            task_id=task["task_id"], task_type="web",
-            query=task["nl_query"], results=results,
-            source_urls=source_urls,
-            metadata={"source": "web", "country": "IN"},
-            error=None, reasoning="",
-        )],
+        "worker_results": [
+            WorkerResult(
+                task_id=task["task_id"],
+                task_type="web",
+                query=task["nl_query"],
+                results=results,
+                source_urls=source_urls,
+                metadata={"source": "web", "country": "IN"},
+                error=None,
+                reasoning="",
+            )
+        ],
         "process_events": [_worker_found_event("web", results)],
     }
 
@@ -857,36 +980,42 @@ async def graph_worker(
             case_id = r.get("seed_id", "")
             if case_id and case_id not in seen_ids:
                 seen_ids.add(case_id)
-                results.append({
-                    "case_id": case_id,
-                    "title": r.get("seed_title", ""),
-                    "citation": r.get("seed_citation", ""),
-                    "source": "citation_graph",
-                    "graph_score": r.get("seed_score", 0.0),
-                })
+                results.append(
+                    {
+                        "case_id": case_id,
+                        "title": r.get("seed_title", ""),
+                        "citation": r.get("seed_citation", ""),
+                        "source": "citation_graph",
+                        "graph_score": r.get("seed_score", 0.0),
+                    }
+                )
             # Add hop-1 case
             hop1_id = r.get("hop1_id", "")
             if hop1_id and hop1_id not in seen_ids:
                 seen_ids.add(hop1_id)
-                results.append({
-                    "case_id": hop1_id,
-                    "title": r.get("hop1_title", ""),
-                    "citation": r.get("hop1_citation", ""),
-                    "treatment": r.get("treatment"),
-                    "rel_type": r.get("rel_type"),
-                    "cited_by_count": r.get("cited_by_count", 0),
-                    "source": "citation_graph",
-                })
+                results.append(
+                    {
+                        "case_id": hop1_id,
+                        "title": r.get("hop1_title", ""),
+                        "citation": r.get("hop1_citation", ""),
+                        "treatment": r.get("treatment"),
+                        "rel_type": r.get("rel_type"),
+                        "cited_by_count": r.get("cited_by_count", 0),
+                        "source": "citation_graph",
+                    }
+                )
             # Add hop-2 case (if exists)
             hop2_id = r.get("hop2_id", "")
             if hop2_id and hop2_id not in seen_ids:
                 seen_ids.add(hop2_id)
-                results.append({
-                    "case_id": hop2_id,
-                    "title": r.get("hop2_title", ""),
-                    "citation": r.get("hop2_citation", ""),
-                    "source": "citation_graph_hop2",
-                })
+                results.append(
+                    {
+                        "case_id": hop2_id,
+                        "title": r.get("hop2_title", ""),
+                        "citation": r.get("hop2_citation", ""),
+                        "source": "citation_graph_hop2",
+                    }
+                )
 
         # [E1] Query legal principles via principle_text fulltext index
         # Note: case_search index only covers Case nodes, not Doctrine/LegalPrinciple,
@@ -912,13 +1041,15 @@ async def graph_worker(
                 cid = dr.get("case_id", "")
                 if cid and cid not in seen_ids:
                     seen_ids.add(cid)
-                    results.append({
-                        "case_id": cid,
-                        "title": dr.get("case_title", ""),
-                        "citation": dr.get("case_citation", ""),
-                        "doctrine": dr.get("doctrine_name", ""),
-                        "source": "doctrine_graph",
-                    })
+                    results.append(
+                        {
+                            "case_id": cid,
+                            "title": dr.get("case_title", ""),
+                            "citation": dr.get("case_citation", ""),
+                            "doctrine": dr.get("doctrine_name", ""),
+                            "source": "doctrine_graph",
+                        }
+                    )
         except Exception:
             pass  # Best-effort — doctrine search is supplementary
 
@@ -936,20 +1067,34 @@ async def graph_worker(
 
     except Exception as exc:
         logger.exception("graph_worker failed: %s", exc)
-        return {"worker_results": [WorkerResult(
-            task_id=task["task_id"], task_type="graph",
-            query=task["nl_query"], results=[],
-            source_urls=[], metadata={"source": "citation_graph"},
-            error=str(exc), reasoning="",
-        )]}
+        return {
+            "worker_results": [
+                WorkerResult(
+                    task_id=task["task_id"],
+                    task_type="graph",
+                    query=task["nl_query"],
+                    results=[],
+                    source_urls=[],
+                    metadata={"source": "citation_graph"},
+                    error=str(exc),
+                    reasoning="",
+                )
+            ]
+        }
 
     return {
-        "worker_results": [WorkerResult(
-            task_id=task["task_id"], task_type="graph",
-            query=task["nl_query"], results=results,
-            source_urls=[], metadata={"source": "citation_graph"},
-            error=None, reasoning="",
-        )],
+        "worker_results": [
+            WorkerResult(
+                task_id=task["task_id"],
+                task_type="graph",
+                query=task["nl_query"],
+                results=results,
+                source_urls=[],
+                metadata={"source": "citation_graph"},
+                error=None,
+                reasoning="",
+            )
+        ],
         "process_events": [_worker_found_event("graph", results)],
     }
 
@@ -971,7 +1116,9 @@ def _detect_communities(G: nx.Graph, resolution: float = 1.0) -> dict[str, int]:
     try:
         # NetworkX Louvain is always available (no extra deps)
         partition_sets = nx.community.louvain_communities(
-            G, resolution=resolution, seed=42,
+            G,
+            resolution=resolution,
+            seed=42,
         )
         communities: dict[str, int] = {}
         for idx, community_set in enumerate(partition_sets):
@@ -1070,7 +1217,9 @@ async def graph_community_worker(
                 # Avoid duplicates from semantic search
                 if not any(cr["community_id"] == gc["id"] for cr in community_results):
                     # [S8-L5] Check community cache
-                    cached_gc = await get_cached_community(redis, str(gc["id"])) if gc.get("id") else None
+                    cached_gc = (
+                        await get_cached_community(redis, str(gc["id"])) if gc.get("id") else None
+                    )
                     if cached_gc is not None:
                         cached_gc["retrieval_method"] = "graph_overlap"
                         cached_gc["overlap_count"] = gc["overlap"]
@@ -1091,12 +1240,20 @@ async def graph_community_worker(
 
     except Exception as exc:
         logger.warning("graph_community_worker failed: %s", exc)
-        return {"worker_results": [WorkerResult(
-            task_id=task["task_id"], task_type="graph_community",
-            query=task["nl_query"], results=[],
-            source_urls=[], metadata={"source": "graph_community"},
-            error=str(exc), reasoning="",
-        )]}
+        return {
+            "worker_results": [
+                WorkerResult(
+                    task_id=task["task_id"],
+                    task_type="graph_community",
+                    query=task["nl_query"],
+                    results=[],
+                    source_urls=[],
+                    metadata={"source": "graph_community"},
+                    error=str(exc),
+                    reasoning="",
+                )
+            ]
+        }
 
     # [MA-RAG] Generate CoT reasoning about communities found
     reasoning = f"Found {len(community_results)} relevant citation communities. "
@@ -1107,14 +1264,22 @@ async def graph_community_worker(
             "These provide macro-level legal context for synthesis."
         )
     else:
-        reasoning += "No pre-computed communities matched — synthesis will rely on individual case analysis."
+        reasoning += (
+            "No pre-computed communities matched — synthesis will rely on individual case analysis."
+        )
 
     return {
-        "worker_results": [WorkerResult(
-            task_id=task["task_id"], task_type="graph_community",
-            query=task["nl_query"], results=community_results,
-            source_urls=[], metadata={"source": "graph_community"},
-            error=None, reasoning=reasoning,
-        )],
+        "worker_results": [
+            WorkerResult(
+                task_id=task["task_id"],
+                task_type="graph_community",
+                query=task["nl_query"],
+                results=community_results,
+                source_urls=[],
+                metadata={"source": "graph_community"},
+                error=None,
+                reasoning=reasoning,
+            )
+        ],
         "process_events": [_worker_found_event("graph_community", community_results)],
     }

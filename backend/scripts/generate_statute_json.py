@@ -7,6 +7,7 @@ using the bidirectional code mappings in constants.py.
 Usage:
     python scripts/generate_statute_json.py
 """
+
 from __future__ import annotations
 
 import json
@@ -126,20 +127,22 @@ def generate_ipc() -> list[dict]:
     for sec_num in sorted(IPC_TO_BNS_MAP, key=_sort_key):
         bns_num = IPC_TO_BNS_MAP[sec_num]
         title = IPC_TITLES.get(sec_num, f"Section {sec_num}")
-        sections.append({
-            "act_name": "Indian Penal Code, 1860",
-            "act_short_name": "IPC",
-            "act_number": "45",
-            "act_year": 1860,
-            "section_number": sec_num,
-            "section_title": title,
-            "section_text": (
-                f"Section {sec_num} of the Indian Penal Code, 1860. "
-                f"{title}. Now replaced by Section {bns_num} of "
-                f"Bharatiya Nyaya Sanhita, 2023."
-            ),
-            "document_type": "statute",
-        })
+        sections.append(
+            {
+                "act_name": "Indian Penal Code, 1860",
+                "act_short_name": "IPC",
+                "act_number": "45",
+                "act_year": 1860,
+                "section_number": sec_num,
+                "section_title": title,
+                "section_text": (
+                    f"Section {sec_num} of the Indian Penal Code, 1860. "
+                    f"{title}. Now replaced by Section {bns_num} of "
+                    f"Bharatiya Nyaya Sanhita, 2023."
+                ),
+                "document_type": "statute",
+            }
+        )
     return sections
 
 
@@ -149,21 +152,23 @@ def generate_bns() -> list[dict]:
     for sec_num in sorted(reverse, key=_sort_key):
         old_sec = reverse[sec_num]
         old_title = IPC_TITLES.get(old_sec, "")
-        sections.append({
-            "act_name": "Bharatiya Nyaya Sanhita, 2023",
-            "act_short_name": "BNS",
-            "act_number": "45",
-            "act_year": 2023,
-            "section_number": sec_num,
-            "section_title": f"Section {sec_num} (replaces IPC {old_sec})",
-            "section_text": (
-                f"Section {sec_num} of Bharatiya Nyaya Sanhita, 2023. "
-                f"Replaces Section {old_sec}"
-                f"{' (' + old_title + ')' if old_title else ''} "
-                f"of the Indian Penal Code, 1860. Effective from 1 July 2024."
-            ),
-            "document_type": "statute",
-        })
+        sections.append(
+            {
+                "act_name": "Bharatiya Nyaya Sanhita, 2023",
+                "act_short_name": "BNS",
+                "act_number": "45",
+                "act_year": 2023,
+                "section_number": sec_num,
+                "section_title": f"Section {sec_num} (replaces IPC {old_sec})",
+                "section_text": (
+                    f"Section {sec_num} of Bharatiya Nyaya Sanhita, 2023. "
+                    f"Replaces Section {old_sec}"
+                    f"{' (' + old_title + ')' if old_title else ''} "
+                    f"of the Indian Penal Code, 1860. Effective from 1 July 2024."
+                ),
+                "document_type": "statute",
+            }
+        )
     return sections
 
 
@@ -171,20 +176,22 @@ def generate_crpc() -> list[dict]:
     sections = []
     for sec_num in sorted(CRPC_TO_BNSS_MAP, key=_sort_key):
         bnss_num = CRPC_TO_BNSS_MAP[sec_num]
-        sections.append({
-            "act_name": "Code of Criminal Procedure, 1973",
-            "act_short_name": "CrPC",
-            "act_number": "2",
-            "act_year": 1974,
-            "section_number": sec_num,
-            "section_title": f"Section {sec_num}",
-            "section_text": (
-                f"Section {sec_num} of the Code of Criminal Procedure, 1973. "
-                f"Now replaced by Section {bnss_num} of "
-                f"Bharatiya Nagarik Suraksha Sanhita, 2023."
-            ),
-            "document_type": "statute",
-        })
+        sections.append(
+            {
+                "act_name": "Code of Criminal Procedure, 1973",
+                "act_short_name": "CrPC",
+                "act_number": "2",
+                "act_year": 1974,
+                "section_number": sec_num,
+                "section_title": f"Section {sec_num}",
+                "section_text": (
+                    f"Section {sec_num} of the Code of Criminal Procedure, 1973. "
+                    f"Now replaced by Section {bnss_num} of "
+                    f"Bharatiya Nagarik Suraksha Sanhita, 2023."
+                ),
+                "document_type": "statute",
+            }
+        )
     return sections
 
 
@@ -193,20 +200,22 @@ def generate_bnss() -> list[dict]:
     sections = []
     for sec_num in sorted(reverse, key=_sort_key):
         old_sec = reverse[sec_num]
-        sections.append({
-            "act_name": "Bharatiya Nagarik Suraksha Sanhita, 2023",
-            "act_short_name": "BNSS",
-            "act_number": "46",
-            "act_year": 2023,
-            "section_number": sec_num,
-            "section_title": f"Section {sec_num} (replaces CrPC {old_sec})",
-            "section_text": (
-                f"Section {sec_num} of Bharatiya Nagarik Suraksha Sanhita, 2023. "
-                f"Replaces Section {old_sec} of the Code of Criminal Procedure, 1973. "
-                f"Effective from 1 July 2024."
-            ),
-            "document_type": "statute",
-        })
+        sections.append(
+            {
+                "act_name": "Bharatiya Nagarik Suraksha Sanhita, 2023",
+                "act_short_name": "BNSS",
+                "act_number": "46",
+                "act_year": 2023,
+                "section_number": sec_num,
+                "section_title": f"Section {sec_num} (replaces CrPC {old_sec})",
+                "section_text": (
+                    f"Section {sec_num} of Bharatiya Nagarik Suraksha Sanhita, 2023. "
+                    f"Replaces Section {old_sec} of the Code of Criminal Procedure, 1973. "
+                    f"Effective from 1 July 2024."
+                ),
+                "document_type": "statute",
+            }
+        )
     return sections
 
 
@@ -214,20 +223,22 @@ def generate_iea() -> list[dict]:
     sections = []
     for sec_num in sorted(EVIDENCE_TO_BSA_MAP, key=_sort_key):
         bsa_num = EVIDENCE_TO_BSA_MAP[sec_num]
-        sections.append({
-            "act_name": "Indian Evidence Act, 1872",
-            "act_short_name": "IEA",
-            "act_number": "1",
-            "act_year": 1872,
-            "section_number": sec_num,
-            "section_title": f"Section {sec_num}",
-            "section_text": (
-                f"Section {sec_num} of the Indian Evidence Act, 1872. "
-                f"Now replaced by Section {bsa_num} of "
-                f"Bharatiya Sakshya Adhiniyam, 2023."
-            ),
-            "document_type": "statute",
-        })
+        sections.append(
+            {
+                "act_name": "Indian Evidence Act, 1872",
+                "act_short_name": "IEA",
+                "act_number": "1",
+                "act_year": 1872,
+                "section_number": sec_num,
+                "section_title": f"Section {sec_num}",
+                "section_text": (
+                    f"Section {sec_num} of the Indian Evidence Act, 1872. "
+                    f"Now replaced by Section {bsa_num} of "
+                    f"Bharatiya Sakshya Adhiniyam, 2023."
+                ),
+                "document_type": "statute",
+            }
+        )
     return sections
 
 
@@ -236,20 +247,22 @@ def generate_bsa() -> list[dict]:
     sections = []
     for sec_num in sorted(reverse, key=_sort_key):
         old_sec = reverse[sec_num]
-        sections.append({
-            "act_name": "Bharatiya Sakshya Adhiniyam, 2023",
-            "act_short_name": "BSA",
-            "act_number": "47",
-            "act_year": 2023,
-            "section_number": sec_num,
-            "section_title": f"Section {sec_num} (replaces IEA {old_sec})",
-            "section_text": (
-                f"Section {sec_num} of Bharatiya Sakshya Adhiniyam, 2023. "
-                f"Replaces Section {old_sec} of the Indian Evidence Act, 1872. "
-                f"Effective from 1 July 2024."
-            ),
-            "document_type": "statute",
-        })
+        sections.append(
+            {
+                "act_name": "Bharatiya Sakshya Adhiniyam, 2023",
+                "act_short_name": "BSA",
+                "act_number": "47",
+                "act_year": 2023,
+                "section_number": sec_num,
+                "section_title": f"Section {sec_num} (replaces IEA {old_sec})",
+                "section_text": (
+                    f"Section {sec_num} of Bharatiya Sakshya Adhiniyam, 2023. "
+                    f"Replaces Section {old_sec} of the Indian Evidence Act, 1872. "
+                    f"Effective from 1 July 2024."
+                ),
+                "document_type": "statute",
+            }
+        )
     return sections
 
 
@@ -272,7 +285,6 @@ def main() -> None:
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(sections, f, indent=2, ensure_ascii=False)
         total += len(sections)
-
 
 
 if __name__ == "__main__":

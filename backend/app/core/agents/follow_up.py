@@ -117,7 +117,9 @@ def build_follow_up_graph(
 
     async def synthesize(state: FollowUpState) -> dict:
         return await synthesize_follow_up_node(
-            state, llm, memo_stream_callback=memo_stream_callback,
+            state,
+            llm,
+            memo_stream_callback=memo_stream_callback,
         )
 
     # -- Graph construction --------------------------------------------------

@@ -51,10 +51,7 @@ class PrecedentMapperService:
         max_per_issue: int = 5,
     ) -> list[PrecedentResult]:
         """Find precedents for each issue in parallel."""
-        tasks = [
-            self._search_for_issue(issue, acts_referenced, max_per_issue)
-            for issue in issues
-        ]
+        tasks = [self._search_for_issue(issue, acts_referenced, max_per_issue) for issue in issues]
         return await asyncio.gather(*tasks)
 
     async def _search_for_issue(

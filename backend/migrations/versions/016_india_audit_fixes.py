@@ -23,10 +23,7 @@ def upgrade() -> None:
     # ----------------------------------------------------------------
     # 1. Hindi FTS infrastructure (forward-looking)
     # ----------------------------------------------------------------
-    op.execute(
-        "ALTER TABLE cases ADD COLUMN IF NOT EXISTS "
-        "hindi_searchable_text tsvector"
-    )
+    op.execute("ALTER TABLE cases ADD COLUMN IF NOT EXISTS " "hindi_searchable_text tsvector")
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_cases_hindi_searchable_text "
         "ON cases USING gin (hindi_searchable_text) "
@@ -59,13 +56,9 @@ def upgrade() -> None:
     # ----------------------------------------------------------------
     # 2. Anonymization tracking columns
     # ----------------------------------------------------------------
+    op.execute("ALTER TABLE cases ADD COLUMN IF NOT EXISTS " "is_anonymized BOOLEAN DEFAULT FALSE")
     op.execute(
-        "ALTER TABLE cases ADD COLUMN IF NOT EXISTS "
-        "is_anonymized BOOLEAN DEFAULT FALSE"
-    )
-    op.execute(
-        "ALTER TABLE cases ADD COLUMN IF NOT EXISTS "
-        "anonymization_flags TEXT[] DEFAULT '{}'"
+        "ALTER TABLE cases ADD COLUMN IF NOT EXISTS " "anonymization_flags TEXT[] DEFAULT '{}'"
     )
 
 

@@ -1,4 +1,5 @@
 """Tests for Drafting Agent node functions."""
+
 from __future__ import annotations
 
 import json
@@ -42,7 +43,6 @@ def _make_state(**overrides) -> dict:
         "section_drafts": {},
         "full_draft": "",
         "revision_feedback": "",
-
         "messages": [],
         "iteration": 0,
         "error": "",
@@ -669,13 +669,16 @@ class TestVerifyFinalNode:
         state = _make_state(full_draft="A clean legal document with no citations.")
         db = AsyncMock()
 
-        with patch(
-            "app.core.agents.nodes.common.verify_case_ids",
-            new_callable=AsyncMock,
-        ) as mock_verify_ids, patch(
-            "app.core.agents.nodes.common.verify_citations_against_db",
-            new_callable=AsyncMock,
-        ) as mock_verify_cites:
+        with (
+            patch(
+                "app.core.agents.nodes.common.verify_case_ids",
+                new_callable=AsyncMock,
+            ) as mock_verify_ids,
+            patch(
+                "app.core.agents.nodes.common.verify_citations_against_db",
+                new_callable=AsyncMock,
+            ) as mock_verify_cites,
+        ):
             mock_verify_ids.return_value = set()
             mock_verify_cites.return_value = ([], [])
 
@@ -689,18 +692,19 @@ class TestVerifyFinalNode:
     @pytest.mark.asyncio
     async def test_appends_warning_for_invalid_uuid(self) -> None:
         uid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-        state = _make_state(
-            full_draft=f"This document relies on case {uid} for the proposition."
-        )
+        state = _make_state(full_draft=f"This document relies on case {uid} for the proposition.")
         db = AsyncMock()
 
-        with patch(
-            "app.core.agents.nodes.common.verify_case_ids",
-            new_callable=AsyncMock,
-        ) as mock_verify_ids, patch(
-            "app.core.agents.nodes.common.verify_citations_against_db",
-            new_callable=AsyncMock,
-        ) as mock_verify_cites:
+        with (
+            patch(
+                "app.core.agents.nodes.common.verify_case_ids",
+                new_callable=AsyncMock,
+            ) as mock_verify_ids,
+            patch(
+                "app.core.agents.nodes.common.verify_citations_against_db",
+                new_callable=AsyncMock,
+            ) as mock_verify_cites,
+        ):
             # UUID not found in DB
             mock_verify_ids.return_value = set()
             mock_verify_cites.return_value = ([], [])
@@ -712,9 +716,7 @@ class TestVerifyFinalNode:
 
     @pytest.mark.asyncio
     async def test_appends_warning_for_unverified_human_readable_citation(self) -> None:
-        state = _make_state(
-            full_draft="The court relied on (2099) 1 SCC 999 in this matter."
-        )
+        state = _make_state(full_draft="The court relied on (2099) 1 SCC 999 in this matter.")
         db = AsyncMock()
 
         with patch(
@@ -801,21 +803,29 @@ class TestResolveTemplateV2:
 
     @pytest.mark.asyncio
     async def test_resolve_template_sets_primary_code_new(self) -> None:
-        state = _make_state(additional_context={
-            "accused_name": "Test", "fir_number": "123/2025",
-            "police_station": "Test PS", "offences_charged": "S.420 IPC",
-            "fir_date": "2025-01-15",
-        })
+        state = _make_state(
+            additional_context={
+                "accused_name": "Test",
+                "fir_number": "123/2025",
+                "police_station": "Test PS",
+                "offences_charged": "S.420 IPC",
+                "fir_date": "2025-01-15",
+            }
+        )
         result = await resolve_template_node(state)
         assert result["primary_code"] == "new"
 
     @pytest.mark.asyncio
     async def test_resolve_template_sets_primary_code_old(self) -> None:
-        state = _make_state(additional_context={
-            "accused_name": "Test", "fir_number": "123/2023",
-            "police_station": "Test PS", "offences_charged": "S.420 IPC",
-            "fir_date": "2023-06-01",
-        })
+        state = _make_state(
+            additional_context={
+                "accused_name": "Test",
+                "fir_number": "123/2023",
+                "police_station": "Test PS",
+                "offences_charged": "S.420 IPC",
+                "fir_date": "2023-06-01",
+            }
+        )
         result = await resolve_template_node(state)
         assert result["primary_code"] == "old"
 
@@ -830,9 +840,16 @@ class TestGatherProvisionsV2:
     async def test_provisions_include_new_code_mapping(self) -> None:
         """S.438 CrPC should get new_code_section=482, new_code_act=BNSS."""
         mock_llm = AsyncMock()
-        mock_llm.generate.return_value = json.dumps([
-            {"act": "CrPC", "section": "438", "description": "Anticipatory bail", "current": True},
-        ])
+        mock_llm.generate.return_value = json.dumps(
+            [
+                {
+                    "act": "CrPC",
+                    "section": "438",
+                    "description": "Anticipatory bail",
+                    "current": True,
+                },
+            ]
+        )
         mock_db = AsyncMock()
         mock_db.execute.return_value = MagicMock(fetchall=lambda: [])
 
@@ -969,9 +986,7 @@ class TestVerifyPrecedentsV2:
     @pytest.mark.asyncio
     async def test_no_graph_store_defaults_to_good_law(self) -> None:
         state = _make_state(
-            relevant_precedents=[
-                {"citation": "2020 SCC 123", "title": "X v Y"}
-            ],
+            relevant_precedents=[{"citation": "2020 SCC 123", "title": "X v Y"}],
         )
 
         with patch(
@@ -1048,7 +1063,9 @@ class TestDraftSectionsStatuteInjection:
     @pytest.mark.asyncio
     async def test_statute_text_injected_for_substantive_section(self) -> None:
         mock_llm = AsyncMock()
-        mock_llm.generate.return_value = "Under Section 438 CrPC, the accused seeks anticipatory bail."
+        mock_llm.generate.return_value = (
+            "Under Section 438 CrPC, the accused seeks anticipatory bail."
+        )
 
         mock_embedder = AsyncMock()
         mock_embedder.embed.return_value = [0.1] * 1536
@@ -1266,7 +1283,14 @@ class TestVersionTracking:
                 "sections": ["court_header", "prayer"],
             },
             revision_history=[
-                {"version": 1, "section": "grounds", "old_text": "a", "new_text": "b", "feedback": "f", "timestamp": 1.0}
+                {
+                    "version": 1,
+                    "section": "grounds",
+                    "old_text": "a",
+                    "new_text": "b",
+                    "feedback": "f",
+                    "timestamp": 1.0,
+                }
             ],
         )
         result = await revise_section_node(state, mock_llm)
@@ -1285,7 +1309,9 @@ class TestVersionTracking:
         )
         result = await revise_section_node(state, mock_llm)
         # No revision happened, so no snapshot should be added
-        assert result.get("revision_history") is None or len(result.get("revision_history", [])) == 0
+        assert (
+            result.get("revision_history") is None or len(result.get("revision_history", [])) == 0
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1297,17 +1323,19 @@ class TestParseOpposingDocNode:
     @pytest.mark.asyncio
     async def test_parses_and_enriches_state(self) -> None:
         mock_llm = AsyncMock()
-        mock_llm.generate.return_value = json.dumps({
-            "doc_type": "plaint",
-            "parties": {"petitioner": "Alice", "respondent": "Bob"},
-            "court": "District Court Delhi",
-            "case_number": "CS 100/2025",
-            "facts": ["Fact 1"],
-            "reliefs_claimed": ["Rs 10 lakh"],
-            "legal_provisions": ["S.420 IPC"],
-            "precedents_cited": [],
-            "key_arguments": ["Cheating"],
-        })
+        mock_llm.generate.return_value = json.dumps(
+            {
+                "doc_type": "plaint",
+                "parties": {"petitioner": "Alice", "respondent": "Bob"},
+                "court": "District Court Delhi",
+                "case_number": "CS 100/2025",
+                "facts": ["Fact 1"],
+                "reliefs_claimed": ["Rs 10 lakh"],
+                "legal_provisions": ["S.420 IPC"],
+                "precedents_cited": [],
+                "key_arguments": ["Cheating"],
+            }
+        )
         state = _make_state(
             opposing_document_text="Full plaint text...",
             doc_type="",
@@ -1329,17 +1357,19 @@ class TestParseOpposingDocNode:
     @pytest.mark.asyncio
     async def test_preserves_user_doc_type_over_auto_detect(self) -> None:
         mock_llm = AsyncMock()
-        mock_llm.generate.return_value = json.dumps({
-            "doc_type": "plaint",
-            "parties": {},
-            "court": "",
-            "case_number": "",
-            "facts": [],
-            "reliefs_claimed": [],
-            "legal_provisions": [],
-            "precedents_cited": [],
-            "key_arguments": [],
-        })
+        mock_llm.generate.return_value = json.dumps(
+            {
+                "doc_type": "plaint",
+                "parties": {},
+                "court": "",
+                "case_number": "",
+                "facts": [],
+                "reliefs_claimed": [],
+                "legal_provisions": [],
+                "precedents_cited": [],
+                "key_arguments": [],
+            }
+        )
         state = _make_state(
             opposing_document_text="Some text",
             doc_type="appeal",  # User explicitly set this
@@ -1351,17 +1381,19 @@ class TestParseOpposingDocNode:
     @pytest.mark.asyncio
     async def test_user_context_overrides_parsed_context(self) -> None:
         mock_llm = AsyncMock()
-        mock_llm.generate.return_value = json.dumps({
-            "doc_type": "plaint",
-            "parties": {"petitioner": "Alice", "respondent": "Bob"},
-            "court": "District Court",
-            "case_number": "CS 1/2025",
-            "facts": ["Fact 1"],
-            "reliefs_claimed": [],
-            "legal_provisions": [],
-            "precedents_cited": [],
-            "key_arguments": [],
-        })
+        mock_llm.generate.return_value = json.dumps(
+            {
+                "doc_type": "plaint",
+                "parties": {"petitioner": "Alice", "respondent": "Bob"},
+                "court": "District Court",
+                "case_number": "CS 1/2025",
+                "facts": ["Fact 1"],
+                "reliefs_claimed": [],
+                "legal_provisions": [],
+                "precedents_cited": [],
+                "key_arguments": [],
+            }
+        )
         state = _make_state(
             opposing_document_text="Some text",
             doc_type="",
@@ -1374,17 +1406,19 @@ class TestParseOpposingDocNode:
     @pytest.mark.asyncio
     async def test_converts_precedents_to_relevant_precedents(self) -> None:
         mock_llm = AsyncMock()
-        mock_llm.generate.return_value = json.dumps({
-            "doc_type": "plaint",
-            "parties": {},
-            "court": "",
-            "case_number": "",
-            "facts": [],
-            "reliefs_claimed": [],
-            "legal_provisions": [],
-            "precedents_cited": ["Ram v Shyam (2020) 5 SCC 100", "X v Y AIR 2019 SC 500"],
-            "key_arguments": [],
-        })
+        mock_llm.generate.return_value = json.dumps(
+            {
+                "doc_type": "plaint",
+                "parties": {},
+                "court": "",
+                "case_number": "",
+                "facts": [],
+                "reliefs_claimed": [],
+                "legal_provisions": [],
+                "precedents_cited": ["Ram v Shyam (2020) 5 SCC 100", "X v Y AIR 2019 SC 500"],
+                "key_arguments": [],
+            }
+        )
         state = _make_state(
             opposing_document_text="Some text",
             doc_type="",
@@ -1406,9 +1440,9 @@ class TestCrossDocConsistency:
         mock_db = AsyncMock()
         mock_db.execute = AsyncMock(return_value=MagicMock(fetchall=lambda: []))
         mock_llm = AsyncMock()
-        mock_llm.generate.return_value = json.dumps([
-            "Draft says payment was Rs. 25 lakhs but opposing doc claims Rs. 30 lakhs"
-        ])
+        mock_llm.generate.return_value = json.dumps(
+            ["Draft says payment was Rs. 25 lakhs but opposing doc claims Rs. 30 lakhs"]
+        )
         state = _make_state(
             full_draft="The payment of Rs. 25 lakhs was made on 01.03.2025.",
             opposing_document_analysis={
@@ -1418,13 +1452,16 @@ class TestCrossDocConsistency:
             verified_precedents=[],
         )
 
-        with patch(
-            "app.core.agents.nodes.common.verify_case_ids",
-            new_callable=AsyncMock,
-        ) as mock_verify_ids, patch(
-            "app.core.agents.nodes.common.verify_citations_against_db",
-            new_callable=AsyncMock,
-        ) as mock_verify_cites:
+        with (
+            patch(
+                "app.core.agents.nodes.common.verify_case_ids",
+                new_callable=AsyncMock,
+            ) as mock_verify_ids,
+            patch(
+                "app.core.agents.nodes.common.verify_citations_against_db",
+                new_callable=AsyncMock,
+            ) as mock_verify_cites,
+        ):
             mock_verify_ids.return_value = set()
             mock_verify_cites.return_value = ([], [])
             result = await verify_final_node(state, mock_db, mock_llm)
@@ -1443,13 +1480,16 @@ class TestCrossDocConsistency:
             verified_precedents=[],
         )
 
-        with patch(
-            "app.core.agents.nodes.common.verify_case_ids",
-            new_callable=AsyncMock,
-        ) as mock_verify_ids, patch(
-            "app.core.agents.nodes.common.verify_citations_against_db",
-            new_callable=AsyncMock,
-        ) as mock_verify_cites:
+        with (
+            patch(
+                "app.core.agents.nodes.common.verify_case_ids",
+                new_callable=AsyncMock,
+            ) as mock_verify_ids,
+            patch(
+                "app.core.agents.nodes.common.verify_citations_against_db",
+                new_callable=AsyncMock,
+            ) as mock_verify_cites,
+        ):
             mock_verify_ids.return_value = set()
             mock_verify_cites.return_value = ([], [])
             result = await verify_final_node(state, mock_db, mock_llm)
@@ -1472,13 +1512,16 @@ class TestCrossDocConsistency:
             verified_precedents=[],
         )
 
-        with patch(
-            "app.core.agents.nodes.common.verify_case_ids",
-            new_callable=AsyncMock,
-        ) as mock_verify_ids, patch(
-            "app.core.agents.nodes.common.verify_citations_against_db",
-            new_callable=AsyncMock,
-        ) as mock_verify_cites:
+        with (
+            patch(
+                "app.core.agents.nodes.common.verify_case_ids",
+                new_callable=AsyncMock,
+            ) as mock_verify_ids,
+            patch(
+                "app.core.agents.nodes.common.verify_citations_against_db",
+                new_callable=AsyncMock,
+            ) as mock_verify_cites,
+        ):
             mock_verify_ids.return_value = set()
             mock_verify_cites.return_value = ([], [])
             result = await verify_final_node(state, mock_db, mock_llm)

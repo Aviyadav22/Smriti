@@ -6,6 +6,7 @@ acts_cited, section_type).
 
 All external services mocked. Pipeline logic exercised end-to-end.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -93,9 +94,9 @@ class TestChunkingProducesValidChunks:
         """No chunk should exceed 2000 chars (the configured max)."""
         chunks = chunk_judgment(JUDGMENT_TEXT, case_id=CASE_ID)
         for chunk in chunks:
-            assert len(chunk.text) <= 2200, (
-                f"Chunk {chunk.chunk_index} exceeds max size: {len(chunk.text)} chars"
-            )
+            assert (
+                len(chunk.text) <= 2200
+            ), f"Chunk {chunk.chunk_index} exceeds max size: {len(chunk.text)} chars"
 
     def test_chunks_have_case_id(self):
         """Every chunk should be tagged with the case_id."""
@@ -111,10 +112,18 @@ class TestUpsertVectorsMetadata:
     async def test_upsert_includes_case_metadata(self):
         """Vectors should be upserted with case_id, citation, year, court, acts_cited."""
         chunks = [
-            Chunk(text="Section 302 IPC murder charge.", section_type="HOLDINGS",
-                  chunk_index=0, case_id=CASE_ID),
-            Chunk(text="Bail was granted under Section 438 CrPC.", section_type="ORDER",
-                  chunk_index=1, case_id=CASE_ID),
+            Chunk(
+                text="Section 302 IPC murder charge.",
+                section_type="HOLDINGS",
+                chunk_index=0,
+                case_id=CASE_ID,
+            ),
+            Chunk(
+                text="Bail was granted under Section 438 CrPC.",
+                section_type="ORDER",
+                chunk_index=1,
+                case_id=CASE_ID,
+            ),
         ]
         embeddings = [[0.1] * 1536, [0.2] * 1536]
         metadata = _make_metadata()
@@ -153,10 +162,12 @@ class TestUpsertVectorsMetadata:
     async def test_upsert_includes_section_type(self):
         """Each vector should have the section_type from its chunk."""
         chunks = [
-            Chunk(text="Facts of the case...", section_type="FACTS",
-                  chunk_index=0, case_id=CASE_ID),
-            Chunk(text="The court held...", section_type="HOLDINGS",
-                  chunk_index=1, case_id=CASE_ID),
+            Chunk(
+                text="Facts of the case...", section_type="FACTS", chunk_index=0, case_id=CASE_ID
+            ),
+            Chunk(
+                text="The court held...", section_type="HOLDINGS", chunk_index=1, case_id=CASE_ID
+            ),
         ]
         embeddings = [[0.1] * 1536, [0.2] * 1536]
         metadata = _make_metadata()
@@ -172,8 +183,10 @@ class TestUpsertVectorsMetadata:
             vector_store=mock_vector_store,
         )
 
-        vectors = mock_vector_store.upsert.call_args.kwargs.get("vectors") or \
-                  mock_vector_store.upsert.call_args.args[0]
+        vectors = (
+            mock_vector_store.upsert.call_args.kwargs.get("vectors")
+            or mock_vector_store.upsert.call_args.args[0]
+        )
 
         assert vectors[0]["metadata"]["section_type"] == "FACTS"
         assert vectors[1]["metadata"]["section_type"] == "HOLDINGS"
@@ -190,9 +203,7 @@ class TestEndToEndChunkEmbed:
 
         # Mock embedder that returns correct-dimension vectors
         mock_embedder = AsyncMock()
-        mock_embedder.embed_batch.return_value = [
-            [0.1] * 1536 for _ in chunks
-        ]
+        mock_embedder.embed_batch.return_value = [[0.1] * 1536 for _ in chunks]
         mock_embedder.dimension.return_value = 1536
 
         embeddings = await mock_embedder.embed_batch([c.text for c in chunks])

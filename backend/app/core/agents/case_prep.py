@@ -10,6 +10,7 @@ Graph flow:
   argument_order -> checkpoint_strategy -> strategy_memo -> verify ->
   checkpoint_memo -> END
 """
+
 from __future__ import annotations
 
 import logging
@@ -49,7 +50,9 @@ def route_after_load(state: CasePrepState) -> str:
 
 
 route_after_issues = make_feedback_router("issues", "prioritize", "deep_search", check_error=True)
-route_after_strategy = make_feedback_router("strategy", "argument_order", "strategy_memo", check_error=True)
+route_after_strategy = make_feedback_router(
+    "strategy", "argument_order", "strategy_memo", check_error=True
+)
 route_after_memo = make_feedback_router("memo", "strategy_memo", check_error=True)
 
 
@@ -104,8 +107,11 @@ def build_case_prep_graph(
         result = await prioritize_issues_node(state, llm)
         # Count feedback messages for THIS step only (not shared across checkpoints)
         step_feedback_count = sum(
-            1 for m in state.get("messages", [])
-            if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "issues"
+            1
+            for m in state.get("messages", [])
+            if isinstance(m, dict)
+            and m.get("type") == "user_feedback"
+            and m.get("step") == "issues"
         )
         result["iteration"] = step_feedback_count
         return result

@@ -1,4 +1,5 @@
 """Agent state schemas for LangGraph."""
+
 from __future__ import annotations
 
 import operator
@@ -11,30 +12,33 @@ from typing import Annotated, TypedDict
 
 class ResearchTask(TypedDict):
     """A single typed research task produced by plan_research_node."""
-    task_id: str          # UUID
-    task_type: str        # "case_law"|"named_case"|"statute"|"constitution"|"ik_search"|"web"|"graph"|"llm_direct"
-    nl_query: str         # Natural language query (for vector/semantic search)
-    boolean_query: str    # Structured boolean query (for FTS/keyword search)
+
+    task_id: str  # UUID
+    task_type: str  # "case_law"|"named_case"|"statute"|"constitution"|"ik_search"|"web"|"graph"|"llm_direct"
+    nl_query: str  # Natural language query (for vector/semantic search)
+    boolean_query: str  # Structured boolean query (for FTS/keyword search)
     named_cases: list[dict]  # [{name, citation, relevance}] — LLM-known landmark cases
-    rationale: str        # Why this task exists (shown in HITL review)
-    filters: dict         # year, court, act, etc.
-    priority: int         # 1=high, 3=low
+    rationale: str  # Why this task exists (shown in HITL review)
+    filters: dict  # year, court, act, etc.
+    priority: int  # 1=high, 3=low
 
 
 class WorkerResult(TypedDict):
     """Result from a single worker execution."""
+
     task_id: str
     task_type: str
     query: str
-    results: list[dict]   # Standard search result dicts
+    results: list[dict]  # Standard search result dicts
     source_urls: list[str]  # Indian Kanoon URLs, web URLs for linking
-    metadata: dict        # source-specific: ik_doc_id, web_domain, etc.
+    metadata: dict  # source-specific: ik_doc_id, web_domain, etc.
     error: str | None
-    reasoning: str        # [MA-RAG] Worker-level CoT (populated by batch_worker_cot_node)
+    reasoning: str  # [MA-RAG] Worker-level CoT (populated by batch_worker_cot_node)
 
 
 class EvidenceGap(TypedDict):
     """A gap identified by gap_analysis_node."""
+
     description: str
     suggested_query: str
     suggested_source: str  # Which worker should handle it
@@ -45,39 +49,43 @@ class EvidenceGap(TypedDict):
 
 class ExtractedPassage(TypedDict):
     """A verbatim passage extracted from a source document."""
+
     case_id: str
     citation: str
-    passage: str          # Verbatim text from source
-    source_field: str     # "chunk_text" | "ratio" | "ik_fragment" | "full_text"
-    relevance: str        # Why this passage matters
-    is_verbatim: bool     # True if exact copy, False if paraphrased
+    passage: str  # Verbatim text from source
+    source_field: str  # "chunk_text" | "ratio" | "ik_fragment" | "full_text"
+    relevance: str  # Why this passage matters
+    is_verbatim: bool  # True if exact copy, False if paraphrased
 
 
 class RelevanceScore(TypedDict):
     """[CRAG] Per-document relevance evaluation from the retrieval evaluator."""
+
     case_id: str
-    score: float          # 0.0-1.0 relevance to research question
-    verdict: str          # "correct" | "ambiguous" | "incorrect"
-    reason: str           # Why this document is/isn't relevant
-    action: str           # "keep" | "filter" | "needs_web_fallback"
+    score: float  # 0.0-1.0 relevance to research question
+    verdict: str  # "correct" | "ambiguous" | "incorrect"
+    reason: str  # Why this document is/isn't relevant
+    action: str  # "keep" | "filter" | "needs_web_fallback"
     adjusted_score: float  # [H13] Bench-strength-adjusted score
-    ratio_or_obiter: str   # [H14] "ratio" | "obiter" | "uncertain" | "unknown"
+    ratio_or_obiter: str  # [H14] "ratio" | "obiter" | "uncertain" | "unknown"
 
 
 class CommunitySummary(TypedDict):
     """[GraphRAG] Pre-computed summary of a citation community cluster."""
+
     community_id: str
-    title: str            # "Section 498A IPC misuse cluster"
-    summary: str          # 2-3 paragraph summary
+    title: str  # "Section 498A IPC misuse cluster"
+    summary: str  # 2-3 paragraph summary
     key_cases: list[str]  # Top 5 case_ids in this community
     legal_principles: list[str]
-    size: int             # Number of cases in community
+    size: int  # Number of cases in community
 
 
 class SynthesisDraft(TypedDict):
     """[Speculative RAG] One of N parallel synthesis drafts."""
+
     draft_id: str
-    strategy: str         # "relevance" | "authority" | "recency"
+    strategy: str  # "relevance" | "authority" | "recency"
     memo_text: str
     confidence: float
     sources_used: list[str]
@@ -85,71 +93,79 @@ class SynthesisDraft(TypedDict):
 
 class Footnote(TypedDict):
     """A structured footnote linking to a source document."""
+
     number: int
-    citation: str         # Full case citation or statute reference
-    source_type: str      # "case_law"|"statute"|"constitution"|"web"|"llm_knowledge"
-    source_url: str       # Link to case viewer, IK page, or web URL
-    case_id: str | None   # Our internal case_id if available
-    excerpt: str          # Relevant passage
-    is_used: bool         # True if cited in memo, False if searched but not cited
-    verification_status: str  # [T4] "verified_pg"|"verified_ik"|"verified_neo4j"|"unverified"|"removed"
-    verified_against: str     # [T4] Which source confirmed
+    citation: str  # Full case citation or statute reference
+    source_type: str  # "case_law"|"statute"|"constitution"|"web"|"llm_knowledge"
+    source_url: str  # Link to case viewer, IK page, or web URL
+    case_id: str | None  # Our internal case_id if available
+    excerpt: str  # Relevant passage
+    is_used: bool  # True if cited in memo, False if searched but not cited
+    verification_status: (
+        str  # [T4] "verified_pg"|"verified_ik"|"verified_neo4j"|"unverified"|"removed"
+    )
+    verified_against: str  # [T4] Which source confirmed
     # Enriched fields for preview panel
-    title: str                # Case title or web page title
-    court: str                # Court name (e.g., "Supreme Court of India")
-    year: int | None          # Decision year
-    author: str               # Author judge
-    bench: str                # Bench composition
-    ik_doc_id: str            # Indian Kanoon doc ID (for IK link)
-    pdf_available: bool       # True if pdf_storage_path exists
-    source_label: str         # Display label: "Case" | "Statute" | "Web" | "Constitution"
+    title: str  # Case title or web page title
+    court: str  # Court name (e.g., "Supreme Court of India")
+    year: int | None  # Decision year
+    author: str  # Author judge
+    bench: str  # Bench composition
+    ik_doc_id: str  # Indian Kanoon doc ID (for IK link)
+    pdf_available: bool  # True if pdf_storage_path exists
+    source_label: str  # Display label: "Case" | "Statute" | "Web" | "Constitution"
 
 
 class LegalQualityResult(TypedDict):
     """[Q4 LeMAJ] Legal reasoning quality assessment of final memo."""
+
     overall_score: float
     data_points: list[dict]  # [{claim, supported, evidence_id, issue}]
-    omissions: list[dict]    # [{missed_authority, relevance}]
+    omissions: list[dict]  # [{missed_authority, relevance}]
     logical_issues: list[str]
-    pass_threshold: bool     # True if score >= 0.7
+    pass_threshold: bool  # True if score >= 0.7
 
 
 class StrategyAdjustment(TypedDict):
     """[Q5 Deep Research Reflection] Mid-research strategy pivot."""
+
     should_pivot: bool
     pivot_reason: str
-    new_tasks: list[dict]     # Additional ResearchTask-shaped dicts
+    new_tasks: list[dict]  # Additional ResearchTask-shaped dicts
     reframe_query: str | None
 
 
 class StatuteContext(TypedDict):
     """[V3] Statute text retrieved before planning."""
-    act_short_name: str         # "IPC"
-    section_number: str         # "302"
-    section_title: str          # "Punishment for murder"
-    section_text: str           # Full section text
+
+    act_short_name: str  # "IPC"
+    section_number: str  # "302"
+    section_title: str  # "Punishment for murder"
+    section_text: str  # Full section text
     is_repealed: bool
-    replaced_by: str            # "BNS, Section 103"
-    new_code_text: str          # Auto-fetched new-code equivalent text
+    replaced_by: str  # "BNS, Section 103"
+    new_code_text: str  # Auto-fetched new-code equivalent text
 
 
 class LegalElement(TypedDict):
     """[V3] Constituent legal element decomposed from the research question."""
-    element_id: str             # "mens_rea"
-    description: str            # What needs to be established
-    statute_basis: str          # "IPC Section 300, Exception 1"
-    search_query: str           # Targeted case law search query
-    is_contested: bool          # Whether likely disputed
+
+    element_id: str  # "mens_rea"
+    description: str  # What needs to be established
+    statute_basis: str  # "IPC Section 300, Exception 1"
+    search_query: str  # Targeted case law search query
+    is_contested: bool  # Whether likely disputed
 
 
 class TemporalWarning(TypedDict):
     """[V3] Warning about old-code case validity under new codes."""
+
     case_id: str
     case_citation: str
-    old_section: str            # "IPC 302"
-    new_section: str            # "BNS 103"
-    similarity: float           # 0.0-1.0 text similarity
-    warning: str                # Human-readable warning
+    old_section: str  # "IPC 302"
+    new_section: str  # "BNS 103"
+    similarity: float  # 0.0-1.0 text similarity
+    warning: str  # Human-readable warning
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +175,7 @@ class TemporalWarning(TypedDict):
 
 class ResearchState(TypedDict):
     """State for the Research Agent graph."""
+
     # --- V1 fields (kept for backward compatibility) ---
     query: str
     target_court: str
@@ -194,23 +211,24 @@ class ResearchState(TypedDict):
     citation_verification_results: list[dict]  # [T4] Per-citation verification
     process_events: Annotated[list[dict], operator.add]  # [T1] Accumulated SSE events
     # --- V3 fields (sequential-reactive pipeline) ---
-    statute_context: list[StatuteContext]     # [V3] Statute text found before planning
-    legal_elements: list[LegalElement]        # [V3] Element-wise breakdown
-    procedural_context: str                   # [V3] "trial"|"appeal"|"slp"|"advisory"|""
-    client_position: str                      # [V3] "petitioner"|"respondent"|"accused"|""
-    include_adversarial: bool                 # [V3] User toggle from HITL
+    statute_context: list[StatuteContext]  # [V3] Statute text found before planning
+    legal_elements: list[LegalElement]  # [V3] Element-wise breakdown
+    procedural_context: str  # [V3] "trial"|"appeal"|"slp"|"advisory"|""
+    client_position: str  # [V3] "petitioner"|"respondent"|"accused"|""
+    include_adversarial: bool  # [V3] User toggle from HITL
     temporal_warnings: list[TemporalWarning]  # [V3] Old-code vs new-code warnings
-    confidence_breakdown: dict               # [C5] {data_confidence, legal_confidence, consistency_confidence}
-    citation_registry: dict                  # Pre-assigned [^N] → search result mapping for deterministic footnotes
-    quality_attempts: int                    # [B3] Quality retry counter (0, 1, 2)
-    auto_approve: bool                       # [D10] Skip HITL checkpoints when True
-    skip_verification: bool                  # [PERF] Skip verify_v2 step (citations are RAG-grounded)
-    _gathered_task_ids: list[str]            # Internal: task_ids already gathered (prevents re-processing)
-    _total_workers_dispatched: int           # Internal: cumulative worker count across all dispatch rounds
+    confidence_breakdown: dict  # [C5] {data_confidence, legal_confidence, consistency_confidence}
+    citation_registry: dict  # Pre-assigned [^N] → search result mapping for deterministic footnotes
+    quality_attempts: int  # [B3] Quality retry counter (0, 1, 2)
+    auto_approve: bool  # [D10] Skip HITL checkpoints when True
+    skip_verification: bool  # [PERF] Skip verify_v2 step (citations are RAG-grounded)
+    _gathered_task_ids: list[str]  # Internal: task_ids already gathered (prevents re-processing)
+    _total_workers_dispatched: int  # Internal: cumulative worker count across all dispatch rounds
 
 
 class CasePrepState(TypedDict):
     """State for the Case Prep Agent graph."""
+
     document_id: str
     language: str
     analysis: dict
@@ -224,70 +242,73 @@ class CasePrepState(TypedDict):
 
 class StrategyState(TypedDict):
     """State for the Strategy/Argument Builder Agent graph."""
+
     case_facts: str
-    target_judge: str          # optional, empty string if not provided
-    target_bench: str          # optional, empty string if not provided
-    target_court: str          # inferred or explicit
+    target_judge: str  # optional, empty string if not provided
+    target_bench: str  # optional, empty string if not provided
+    target_court: str  # inferred or explicit
     desired_relief: str
-    language: str              # "en" or "hi"
+    language: str  # "en" or "hi"
     # Produced by nodes:
-    fact_analysis: dict        # parsed facts, parties, causes of action
-    legal_elements: list[dict]           # from element_decomposition
-    judge_profile: dict        # from Judge Analytics (if target_judge set)
+    fact_analysis: dict  # parsed facts, parties, causes of action
+    legal_elements: list[dict]  # from element_decomposition
+    judge_profile: dict  # from Judge Analytics (if target_judge set)
     search_results: list[dict]  # hybrid search hits
     precedent_map: list[dict]  # per-argument precedents with strength
     strength_assessment: dict  # {level: "strong"|"moderate"|"weak", reasoning: str, score: float}
     legal_arguments: list[dict]  # ordered arguments with citations
-    irac_arguments: list[dict]           # structured IRAC format
+    irac_arguments: list[dict]  # structured IRAC format
     counter_arguments: list[dict]  # anticipated counters + rebuttals
-    adversarial_results: list[dict]      # evidence-backed counter-arguments
+    adversarial_results: list[dict]  # evidence-backed counter-arguments
     judge_considerations: list[dict]  # judge-specific strategic notes
     procedural_suggestions: list[str]
-    argument_order: list[int]            # optimal ordering indices
-    strategy_memo: str         # final synthesized output
+    argument_order: list[int]  # optimal ordering indices
+    strategy_memo: str  # final synthesized output
     confidence: float
     contradictions: list[dict]  # detected contradictions between precedents
-    relevance_scores: list[dict]        # CRAG evaluation scores per result
-    extracted_passages: list[dict]       # Key passages from relevant results
-    footnotes: list[dict]              # Structured footnote objects from format_footnotes
-    legal_quality_result: dict         # LeMAJ quality assessment
-    quality_attempts: int              # retry counter for quality loop
-    skip_checkpoints: bool       # when True, all HITL checkpoints auto-approve
+    relevance_scores: list[dict]  # CRAG evaluation scores per result
+    extracted_passages: list[dict]  # Key passages from relevant results
+    footnotes: list[dict]  # Structured footnote objects from format_footnotes
+    legal_quality_result: dict  # LeMAJ quality assessment
+    quality_attempts: int  # retry counter for quality loop
+    skip_checkpoints: bool  # when True, all HITL checkpoints auto-approve
     messages: Annotated[list[dict], operator.add]
     iteration: int
     error: str
 
 
 class DraftingState(TypedDict):
-
     """State for the Drafting Agent graph."""
-    doc_type: str            # key into TEMPLATES
+
+    doc_type: str  # key into TEMPLATES
     case_facts: str
-    language: str            # "en" or "hi"
+    language: str  # "en" or "hi"
     relevant_precedents: list[dict]  # user-provided or from prior agent
     additional_context: dict  # type-specific fields (e.g., fir_details for bail)
     target_court: str
     # Produced by nodes:
-    template: dict           # resolved DocumentTemplate as dict
+    template: dict  # resolved DocumentTemplate as dict
     statutory_provisions: list[dict]  # relevant statute sections
-    verified_precedents: list[dict]   # citation-verified precedents
-    section_drafts: dict     # {section_name: draft_text}
-    full_draft: str          # assembled document
-    revision_feedback: str   # user feedback for section revision
+    verified_precedents: list[dict]  # citation-verified precedents
+    section_drafts: dict  # {section_name: draft_text}
+    full_draft: str  # assembled document
+    revision_feedback: str  # user feedback for section revision
     messages: Annotated[list[dict], operator.add]
     iteration: int
     error: str
     # V2 fields:
-    court_profile: dict          # resolved CourtProfile as dict
-    research_context: dict       # extracted from research session (empty if standalone)
-    affidavit_draft: str         # auto-generated companion affidavit
+    court_profile: dict  # resolved CourtProfile as dict
+    research_context: dict  # extracted from research session (empty if standalone)
+    affidavit_draft: str  # auto-generated companion affidavit
     suggested_precedents: list[dict]  # graph-suggested precedents from citation graph
-    primary_code: str            # "old" or "new" — IPC vs BNS as primary
+    primary_code: str  # "old" or "new" — IPC vs BNS as primary
     # V3 fields:
     bench_composition: list[str]  # judge names for judge-aware drafting
-    judge_context: dict           # analytics results for bench
-    revision_history: list[dict]  # version snapshots [{version, timestamp, section, old_text, new_text, feedback}]
+    judge_context: dict  # analytics results for bench
+    revision_history: list[
+        dict
+    ]  # version snapshots [{version, timestamp, section, old_text, new_text, feedback}]
     # V3 — Opposing document fields:
-    opposing_document_text: str        # raw text from uploaded opposing doc
-    opposing_document_analysis: dict   # parsed OpposingDocAnalysis as dict
-    source_document_id: str            # reference to uploaded document
+    opposing_document_text: str  # raw text from uploaded opposing doc
+    opposing_document_analysis: dict  # parsed OpposingDocAnalysis as dict
+    source_document_id: str  # reference to uploaded document

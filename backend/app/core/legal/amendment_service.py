@@ -3,6 +3,7 @@
 Provides bidirectional old↔new section lookups, reading from the
 ``amendment_maps`` PostgreSQL table and caching in Redis.
 """
+
 from __future__ import annotations
 
 import contextlib

@@ -8,6 +8,7 @@ Covers Bible Section 13 tests:
   51-55 (Dual-stage verification + LeMAJ quality)
   62-63 (Process visualization)
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -64,14 +65,21 @@ def _make_mock_flash_llm() -> AsyncMock:
             "critical factors in determining the applicable provision."
         )
     )
-    llm.generate_structured = AsyncMock(return_value={
-        "overall_score": 0.85,
-        "data_points": [
-            {"claim": "Test claim", "supported": "supported", "evidence_id": "case-1", "issue": None}
-        ],
-        "omissions": [],
-        "logical_issues": [],
-    })
+    llm.generate_structured = AsyncMock(
+        return_value={
+            "overall_score": 0.85,
+            "data_points": [
+                {
+                    "claim": "Test claim",
+                    "supported": "supported",
+                    "evidence_id": "case-1",
+                    "issue": None,
+                }
+            ],
+            "omissions": [],
+            "logical_issues": [],
+        }
+    )
     return llm
 
 
@@ -79,53 +87,65 @@ def _make_worker_results(n: int = 10) -> list[WorkerResult]:
     """Create N mock worker results across different types."""
     results: list[WorkerResult] = []
     for i in range(min(n, 5)):
-        results.append(WorkerResult(
-            task_id=f"task-{i}",
-            task_type="case_law",
-            query=f"test query {i}",
-            results=[
-                {
-                    "case_id": f"case-{j}",
-                    "title": f"Test Case {j} v. State",
-                    "citation": f"(2024) {j+1} SCC {100+j}",
-                    "court": "Supreme Court of India",
-                    "year": 2024,
-                    "bench_type": "division",
-                    "score": 0.9 - (j * 0.1),
-                    "snippet": f"Held that the provisions of Section 302 apply to case {j}.",
-                    "ratio": f"The ratio decidendi in case {j}.",
-                    "source": "internal",
-                    "precedent_strength": "BINDING" if j == 0 else "PERSUASIVE",
-                }
-                for j in range(3)
-            ],
-            source_urls=[],
-            metadata={},
-            error=None,
-            reasoning=f"Analysis for task {i}",
-        ))
+        results.append(
+            WorkerResult(
+                task_id=f"task-{i}",
+                task_type="case_law",
+                query=f"test query {i}",
+                results=[
+                    {
+                        "case_id": f"case-{j}",
+                        "title": f"Test Case {j} v. State",
+                        "citation": f"(2024) {j+1} SCC {100+j}",
+                        "court": "Supreme Court of India",
+                        "year": 2024,
+                        "bench_type": "division",
+                        "score": 0.9 - (j * 0.1),
+                        "snippet": f"Held that the provisions of Section 302 apply to case {j}.",
+                        "ratio": f"The ratio decidendi in case {j}.",
+                        "source": "internal",
+                        "precedent_strength": "BINDING" if j == 0 else "PERSUASIVE",
+                    }
+                    for j in range(3)
+                ],
+                source_urls=[],
+                metadata={},
+                error=None,
+                reasoning=f"Analysis for task {i}",
+            )
+        )
     if n > 5:
-        results.append(WorkerResult(
-            task_id="task-community",
-            task_type="graph_community",
-            query="community query",
-            results=[{
-                "title": "Section 302 IPC cluster",
-                "summary": "Cases related to murder under Section 302",
-                "size": 15,
-                "legal_principles": ["Murder requires intent"],
-            }],
-            source_urls=[],
-            metadata={},
-            error=None,
-            reasoning="",
-        ))
+        results.append(
+            WorkerResult(
+                task_id="task-community",
+                task_type="graph_community",
+                query="community query",
+                results=[
+                    {
+                        "title": "Section 302 IPC cluster",
+                        "summary": "Cases related to murder under Section 302",
+                        "size": 15,
+                        "legal_principles": ["Murder requires intent"],
+                    }
+                ],
+                source_urls=[],
+                metadata={},
+                error=None,
+                reasoning="",
+            )
+        )
     return results
 
 
 def _make_relevance_scores() -> list[RelevanceScore]:
     return [
-        RelevanceScore(case_id=f"case-{i}", score=0.9 - i * 0.1, verdict="correct", reason="relevant", action="keep")
+        RelevanceScore(
+            case_id=f"case-{i}",
+            score=0.9 - i * 0.1,
+            verdict="correct",
+            reason="relevant",
+            action="keep",
+        )
         for i in range(3)
     ]
 
@@ -186,7 +206,9 @@ class TestSpeculativeSynthesisNode:
         state = _make_base_state()
 
         result = await speculative_synthesis_with_contradictions_node(
-            state, llm, flash_llm,
+            state,
+            llm,
+            flash_llm,
         )
 
         # 3 drafts should be generated
@@ -219,7 +241,9 @@ class TestSpeculativeSynthesisNode:
         state = _make_base_state()
 
         result = await speculative_synthesis_with_contradictions_node(
-            state, llm, flash_llm,
+            state,
+            llm,
+            flash_llm,
         )
 
         for draft in result["synthesis_drafts"]:
@@ -250,7 +274,9 @@ class TestSpeculativeSynthesisNode:
         state = _make_base_state()
 
         result = await speculative_synthesis_with_contradictions_node(
-            state, llm, flash_llm,
+            state,
+            llm,
+            flash_llm,
         )
 
         assert result["draft_memo"]
@@ -270,15 +296,23 @@ class TestSpeculativeSynthesisNode:
         state = _make_base_state(
             worker_results=[
                 WorkerResult(
-                    task_id="empty", task_type="case_law", query="q",
-                    results=[], source_urls=[], metadata={}, error=None, reasoning="",
+                    task_id="empty",
+                    task_type="case_law",
+                    query="q",
+                    results=[],
+                    source_urls=[],
+                    metadata={},
+                    error=None,
+                    reasoning="",
                 )
             ],
             search_results=[],
         )
 
         result = await speculative_synthesis_with_contradictions_node(
-            state, llm, flash_llm,
+            state,
+            llm,
+            flash_llm,
         )
 
         assert result["confidence"] == 0.0
@@ -296,7 +330,9 @@ class TestSpeculativeSynthesisNode:
         state = _make_base_state()
 
         result = await speculative_synthesis_with_contradictions_node(
-            state, llm, flash_llm,
+            state,
+            llm,
+            flash_llm,
         )
 
         assert isinstance(result["source_attribution"], dict)
@@ -325,6 +361,7 @@ class TestStreamingSynthesis:
             chunks_received.append(chunk)
 
         llm = _make_mock_llm()
+
         # Mock streaming: llm.stream returns an async iterator
         async def mock_stream(**kwargs: object):
             for chunk in ["## Executive ", "Summary\n\n", "Test memo ", "content."]:
@@ -335,7 +372,9 @@ class TestStreamingSynthesis:
         state = _make_base_state()
 
         result = await speculative_synthesis_with_contradictions_node(
-            state, llm, flash_llm,
+            state,
+            llm,
+            flash_llm,
             stream_callback=mock_stream_callback,
         )
 
@@ -357,7 +396,9 @@ class TestStreamingSynthesis:
         state = _make_base_state()
 
         result = await speculative_synthesis_with_contradictions_node(
-            state, llm, flash_llm,
+            state,
+            llm,
+            flash_llm,
             stream_callback=None,
         )
 
@@ -436,11 +477,25 @@ class TestDualStageVerification:
 
         memo = "The court held [^1] this and [^99] that."
         footnotes = [
-            Footnote(number=1, citation="(2024) 1 SCC 100", source_type="case_law",
-                     source_url="/case/1", case_id="case-1", excerpt="test",
-                     is_used=True, verification_status="pending", verified_against="none",
-                     title="Test v State", court="Supreme Court of India", year=2024,
-                     author="", bench="", ik_doc_id="", pdf_available=True, source_label="Case"),
+            Footnote(
+                number=1,
+                citation="(2024) 1 SCC 100",
+                source_type="case_law",
+                source_url="/case/1",
+                case_id="case-1",
+                excerpt="test",
+                is_used=True,
+                verification_status="pending",
+                verified_against="none",
+                title="Test v State",
+                court="Supreme Court of India",
+                year=2024,
+                author="",
+                bench="",
+                ik_doc_id="",
+                pdf_available=True,
+                source_label="Case",
+            ),
         ]
 
         db = AsyncMock()
@@ -456,11 +511,23 @@ class TestDualStageVerification:
         from app.core.agents.nodes.research_nodes import _deterministic_verify
 
         malicious_footnote = Footnote(
-            number=1, citation="Test v Test", source_type="case_law",
-            source_url="", case_id="'; DROP TABLE cases; --", excerpt="x",
-            is_used=True, verification_status="pending", verified_against="none",
-            title="", court="", year=None, author="", bench="",
-            ik_doc_id="", pdf_available=False, source_label="Case",
+            number=1,
+            citation="Test v Test",
+            source_type="case_law",
+            source_url="",
+            case_id="'; DROP TABLE cases; --",
+            excerpt="x",
+            is_used=True,
+            verification_status="pending",
+            verified_against="none",
+            title="",
+            court="",
+            year=None,
+            author="",
+            bench="",
+            ik_doc_id="",
+            pdf_available=False,
+            source_label="Case",
         )
 
         db = AsyncMock()
@@ -501,12 +568,23 @@ class TestDualStageVerification:
 
         footnotes = [
             Footnote(
-                number=1, citation="(2020) 5 SCC 1", source_type="case_law",
-                source_url="", case_id=None, excerpt="Test",
-                is_used=True, verification_status="pending", verified_against="none",
-                title="State of Punjab v. Mohinder Singh", court="", year=2020,
-                author="", bench="",
-                ik_doc_id="", pdf_available=False, source_label="Case",
+                number=1,
+                citation="(2020) 5 SCC 1",
+                source_type="case_law",
+                source_url="",
+                case_id=None,
+                excerpt="Test",
+                is_used=True,
+                verification_status="pending",
+                verified_against="none",
+                title="State of Punjab v. Mohinder Singh",
+                court="",
+                year=2020,
+                author="",
+                bench="",
+                ik_doc_id="",
+                pdf_available=False,
+                source_label="Case",
             ),
         ]
         result = await _verify_citations_against_sources(footnotes, mock_db, mock_ik, None)
@@ -523,16 +601,44 @@ class TestDualStageVerification:
         from app.core.agents.nodes.research_nodes import _verify_citations_against_sources
 
         footnotes = [
-            Footnote(number=1, citation="(2024) 1 SCC 100", source_type="case_law",
-                     source_url="/case/1", case_id="00000000-0000-0000-0000-000000000001", excerpt="test",
-                     is_used=True, verification_status="pending", verified_against="none",
-                     title="Test v State", court="Supreme Court of India", year=2024,
-                     author="", bench="", ik_doc_id="", pdf_available=True, source_label="Case"),
-            Footnote(number=2, citation="Fake Case v. State", source_type="case_law",
-                     source_url="", case_id=None, excerpt="fake",
-                     is_used=True, verification_status="pending", verified_against="none",
-                     title="", court="", year=None, author="", bench="",
-                     ik_doc_id="", pdf_available=False, source_label="Case"),
+            Footnote(
+                number=1,
+                citation="(2024) 1 SCC 100",
+                source_type="case_law",
+                source_url="/case/1",
+                case_id="00000000-0000-0000-0000-000000000001",
+                excerpt="test",
+                is_used=True,
+                verification_status="pending",
+                verified_against="none",
+                title="Test v State",
+                court="Supreme Court of India",
+                year=2024,
+                author="",
+                bench="",
+                ik_doc_id="",
+                pdf_available=True,
+                source_label="Case",
+            ),
+            Footnote(
+                number=2,
+                citation="Fake Case v. State",
+                source_type="case_law",
+                source_url="",
+                case_id=None,
+                excerpt="fake",
+                is_used=True,
+                verification_status="pending",
+                verified_against="none",
+                title="",
+                court="",
+                year=None,
+                author="",
+                bench="",
+                ik_doc_id="",
+                pdf_available=False,
+                source_label="Case",
+            ),
         ]
 
         # DB returns case UUID as existing via batch verify_case_ids query
@@ -540,8 +646,10 @@ class TestDualStageVerification:
         mock_result = MagicMock()
         mock_result.fetchall = MagicMock(return_value=[("00000000-0000-0000-0000-000000000001",)])
         db = AsyncMock()
+
         async def _fake_execute(*args, **kwargs):
             return mock_result
+
         db.execute = _fake_execute
 
         result = await _verify_citations_against_sources(footnotes, db, None, None)
@@ -560,11 +668,25 @@ class TestDualStageVerification:
 
         state = _make_base_state(
             footnotes=[
-                Footnote(number=1, citation="(2024) 1 SCC 100", source_type="case_law",
-                         source_url="/case/00000000-0000-0000-0000-000000000000", case_id="00000000-0000-0000-0000-000000000000", excerpt="test",
-                         is_used=True, verification_status="pending", verified_against="none",
-                         title="Test v State", court="Supreme Court of India", year=2024,
-                         author="", bench="", ik_doc_id="", pdf_available=True, source_label="Case"),
+                Footnote(
+                    number=1,
+                    citation="(2024) 1 SCC 100",
+                    source_type="case_law",
+                    source_url="/case/00000000-0000-0000-0000-000000000000",
+                    case_id="00000000-0000-0000-0000-000000000000",
+                    excerpt="test",
+                    is_used=True,
+                    verification_status="pending",
+                    verified_against="none",
+                    title="Test v State",
+                    court="Supreme Court of India",
+                    year=2024,
+                    author="",
+                    bench="",
+                    ik_doc_id="",
+                    pdf_available=True,
+                    source_label="Case",
+                ),
             ],
             research_audit={"total_sources_searched": 10},
             draft_memo="Test memo [^1] citation.\n\n[^1]: (2024) 1 SCC 100",
@@ -574,8 +696,10 @@ class TestDualStageVerification:
         mock_result = MagicMock()
         mock_result.scalar = MagicMock(return_value=1)
         mock_result.fetchall = MagicMock(return_value=[("00000000-0000-0000-0000-000000000000",)])
+
         async def _fake_execute(*args, **kwargs):
             return mock_result
+
         db = MagicMock()
         db.execute = _fake_execute
 
@@ -611,17 +735,27 @@ class TestLegalQualityCheck:
         from app.core.agents.nodes.research_nodes import legal_quality_check_node
 
         flash_llm = _make_mock_flash_llm()
-        flash_llm.generate_structured = AsyncMock(return_value={
-            "overall_score": 0.85,
-            "data_points": [
-                {"claim": "Section 302 applies to murder", "supported": "supported",
-                 "evidence_id": "case-0", "issue": None},
-                {"claim": "Culpable homicide is different", "supported": "partially_supported",
-                 "evidence_id": "case-1", "issue": "Nuance missing"},
-            ],
-            "omissions": [],
-            "logical_issues": [],
-        })
+        flash_llm.generate_structured = AsyncMock(
+            return_value={
+                "overall_score": 0.85,
+                "data_points": [
+                    {
+                        "claim": "Section 302 applies to murder",
+                        "supported": "supported",
+                        "evidence_id": "case-0",
+                        "issue": None,
+                    },
+                    {
+                        "claim": "Culpable homicide is different",
+                        "supported": "partially_supported",
+                        "evidence_id": "case-1",
+                        "issue": "Nuance missing",
+                    },
+                ],
+                "omissions": [],
+                "logical_issues": [],
+            }
+        )
 
         state = _make_base_state(
             draft_memo="## Executive Summary\n\nSection 302 IPC applies to murder cases.",
@@ -640,18 +774,26 @@ class TestLegalQualityCheck:
         from app.core.agents.nodes.research_nodes import legal_quality_check_node
 
         flash_llm = _make_mock_flash_llm()
-        flash_llm.generate_structured = AsyncMock(return_value={
-            "overall_score": 0.4,
-            "data_points": [
-                {"claim": "Unsupported claim", "supported": "unsupported",
-                 "evidence_id": None, "issue": "No evidence"},
-            ],
-            "omissions": [
-                {"missed_authority": "Bachan Singh v. State of Punjab",
-                 "relevance": "Key authority on Section 302"},
-            ],
-            "logical_issues": ["Conclusion doesn't follow from analysis"],
-        })
+        flash_llm.generate_structured = AsyncMock(
+            return_value={
+                "overall_score": 0.4,
+                "data_points": [
+                    {
+                        "claim": "Unsupported claim",
+                        "supported": "unsupported",
+                        "evidence_id": None,
+                        "issue": "No evidence",
+                    },
+                ],
+                "omissions": [
+                    {
+                        "missed_authority": "Bachan Singh v. State of Punjab",
+                        "relevance": "Key authority on Section 302",
+                    },
+                ],
+                "logical_issues": ["Conclusion doesn't follow from analysis"],
+            }
+        )
 
         state = _make_base_state(
             draft_memo="## Executive Summary\n\nPoor quality memo.",
@@ -710,7 +852,9 @@ class TestMergedContradictions:
         state = _make_base_state()
 
         result = await speculative_synthesis_with_contradictions_node(
-            state, llm, flash_llm,
+            state,
+            llm,
+            flash_llm,
         )
 
         assert "Contradictions" in result["draft_memo"]
@@ -748,8 +892,11 @@ class TestPhase4GraphWiring:
         reranker.rerank = AsyncMock(return_value=[])
 
         graph = build_research_graph(
-            llm=llm, flash_llm=flash_llm, embedder=embedder,
-            vector_store=vs, reranker=reranker,
+            llm=llm,
+            flash_llm=flash_llm,
+            embedder=embedder,
+            vector_store=vs,
+            reranker=reranker,
         )
 
         # Check Phase 4 nodes exist in compiled graph
@@ -792,7 +939,10 @@ class TestOutputFormat:
         assert "IRAC" in RESEARCH_SYNTHESIZE_SYSTEM
         assert "ISSUE" in RESEARCH_SYNTHESIZE_SYSTEM
         assert "RULE" in RESEARCH_SYNTHESIZE_SYSTEM
-        assert "APPLICATION" in RESEARCH_SYNTHESIZE_SYSTEM or "Application" in RESEARCH_SYNTHESIZE_SYSTEM
+        assert (
+            "APPLICATION" in RESEARCH_SYNTHESIZE_SYSTEM
+            or "Application" in RESEARCH_SYNTHESIZE_SYSTEM
+        )
         assert "CONCLUSION" in RESEARCH_SYNTHESIZE_SYSTEM
 
     def test_synthesize_system_has_footnote_format(self) -> None:
@@ -800,7 +950,10 @@ class TestOutputFormat:
         from app.core.legal.prompts import RESEARCH_SYNTHESIZE_SYSTEM
 
         assert "[^N]" in RESEARCH_SYNTHESIZE_SYSTEM
-        assert "source url" in RESEARCH_SYNTHESIZE_SYSTEM.lower() or "source_url" in RESEARCH_SYNTHESIZE_SYSTEM.lower()
+        assert (
+            "source url" in RESEARCH_SYNTHESIZE_SYSTEM.lower()
+            or "source_url" in RESEARCH_SYNTHESIZE_SYSTEM.lower()
+        )
 
     def test_synthesize_system_has_dual_code_refs(self) -> None:
         """Synthesis prompt instructs old/new code dual references."""
@@ -835,19 +988,23 @@ class TestCitationPatternMatcher:
 
     def test_scc_citation(self) -> None:
         from app.core.agents.nodes.research_nodes import _matches_indian_citation_pattern
+
         assert _matches_indian_citation_pattern("(2024) 1 SCC 100")
         assert _matches_indian_citation_pattern("(2019) 15 SCC 125")
 
     def test_air_citation(self) -> None:
         from app.core.agents.nodes.research_nodes import _matches_indian_citation_pattern
+
         assert _matches_indian_citation_pattern("AIR 2020 SC 500")
 
     def test_neutral_citation(self) -> None:
         from app.core.agents.nodes.research_nodes import _matches_indian_citation_pattern
+
         assert _matches_indian_citation_pattern("2024:INSC:0001")
 
     def test_invalid_citation(self) -> None:
         from app.core.agents.nodes.research_nodes import _matches_indian_citation_pattern
+
         assert not _matches_indian_citation_pattern("some random text")
         assert not _matches_indian_citation_pattern("")
 
@@ -857,14 +1014,19 @@ class TestFuzzyMatch:
 
     def test_exact_substring(self) -> None:
         from app.core.agents.nodes.research_nodes import _fuzzy_match
+
         assert _fuzzy_match("court held that", "The court held that this applies")
 
     def test_no_match(self) -> None:
         from app.core.agents.nodes.research_nodes import _fuzzy_match
-        assert not _fuzzy_match("completely unrelated text about dogs", "Legal analysis of Section 302")
+
+        assert not _fuzzy_match(
+            "completely unrelated text about dogs", "Legal analysis of Section 302"
+        )
 
     def test_empty_strings(self) -> None:
         from app.core.agents.nodes.research_nodes import _fuzzy_match
+
         assert not _fuzzy_match("", "text")
         assert not _fuzzy_match("text", "")
 
@@ -879,6 +1041,7 @@ class TestEmitStatusHelper:
 
     def test_emit_status_creates_valid_event(self) -> None:
         from app.core.agents.nodes.research_nodes import emit_status
+
         event = emit_status("plan", {"tasks": [{"type": "case_law"}], "total_workers": 3})
         assert event["type"] == "plan"
         assert event["data"]["total_workers"] == 3
@@ -887,9 +1050,17 @@ class TestEmitStatusHelper:
     def test_emit_status_all_event_types(self) -> None:
         """All T1 event types produce valid dicts."""
         from app.core.agents.nodes.research_nodes import emit_status
+
         event_types = [
-            "plan", "searching", "found", "evaluating",
-            "reflection", "gap", "drafting", "verification", "quality",
+            "plan",
+            "searching",
+            "found",
+            "evaluating",
+            "reflection",
+            "gap",
+            "drafting",
+            "verification",
+            "quality",
         ]
         for et in event_types:
             event = emit_status(et, {"test": True})
@@ -906,19 +1077,21 @@ class TestProcessEventsInNodes:
         from app.core.agents.nodes.research_nodes import plan_research_node
 
         llm = _make_mock_llm()
-        llm.generate_structured = AsyncMock(return_value={
-            "research_tasks": [
-                {
-                    "task_type": "case_law",
-                    "nl_query": "Section 302 IPC punishment",
-                    "boolean_query": "302 AND IPC AND punishment",
-                    "named_cases": [{"name": "Bachan Singh", "citation": "(1980) 2 SCC 684"}],
-                    "rationale": "Core criminal law search",
-                    "filters": {},
-                    "priority": 1,
-                }
-            ]
-        })
+        llm.generate_structured = AsyncMock(
+            return_value={
+                "research_tasks": [
+                    {
+                        "task_type": "case_law",
+                        "nl_query": "Section 302 IPC punishment",
+                        "boolean_query": "302 AND IPC AND punishment",
+                        "named_cases": [{"name": "Bachan Singh", "citation": "(1980) 2 SCC 684"}],
+                        "rationale": "Core criminal law search",
+                        "filters": {},
+                        "priority": 1,
+                    }
+                ]
+            }
+        )
 
         state: dict = {
             "query": "What is the punishment for murder?",
@@ -952,10 +1125,12 @@ class TestProcessEventsInNodes:
         from app.core.agents.nodes.research_nodes import batch_worker_cot_with_reflection_node
 
         llm = _make_mock_flash_llm()
-        llm.generate_structured = AsyncMock(return_value={
-            "reasoning": "Analysis shows IPC 302 is relevant",
-            "should_pivot": False,
-        })
+        llm.generate_structured = AsyncMock(
+            return_value={
+                "reasoning": "Analysis shows IPC 302 is relevant",
+                "should_pivot": False,
+            }
+        )
         state: dict = {
             "query": "Section 302 IPC",
             "rewritten_query": "Section 302 IPC punishment",
@@ -974,16 +1149,18 @@ class TestProcessEventsInNodes:
         from app.core.agents.nodes.research_nodes import gap_analysis_node
 
         llm = _make_mock_flash_llm()
-        llm.generate_structured = AsyncMock(return_value={
-            "gaps": [
-                {
-                    "description": "No overruling cases found",
-                    "suggested_query": "overruled Section 302",
-                    "suggested_source": "case_law",
-                    "priority": 1,
-                }
-            ]
-        })
+        llm.generate_structured = AsyncMock(
+            return_value={
+                "gaps": [
+                    {
+                        "description": "No overruling cases found",
+                        "suggested_query": "overruled Section 302",
+                        "suggested_source": "case_law",
+                        "priority": 1,
+                    }
+                ]
+            }
+        )
         state: dict = {
             "query": "Section 302 IPC",
             "rewritten_query": "Section 302 IPC",
@@ -1027,7 +1204,9 @@ class TestProcessEventsInNodes:
         }
 
         result = await speculative_synthesis_with_contradictions_node(
-            state, llm, flash_llm,
+            state,
+            llm,
+            flash_llm,
         )
         assert "process_events" in result
         drafting_events = [e for e in result["process_events"] if e["type"] == "drafting"]
@@ -1047,19 +1226,30 @@ class TestProcessEventsInNodes:
             mock_result = MagicMock()
             mock_result.scalar.return_value = True
             return mock_result
+
         db.execute = _fake_execute
 
         state: dict = {
             "draft_memo": "Test memo [^1] citation",
             "footnotes": [
                 Footnote(
-                    number=1, citation="(2024) 1 SCC 100",
-                    source_type="case_law", source_url="/case/00000000-0000-0000-0000-000000000000",
-                    case_id="00000000-0000-0000-0000-000000000000", excerpt="Test", is_used=True,
-                    verification_status="unverified", verified_against="none",
-                    title="Test Case v. State", court="Supreme Court of India",
-                    year=2024, author="Justice X", bench="Division Bench",
-                    ik_doc_id="", pdf_available=True, source_label="Case",
+                    number=1,
+                    citation="(2024) 1 SCC 100",
+                    source_type="case_law",
+                    source_url="/case/00000000-0000-0000-0000-000000000000",
+                    case_id="00000000-0000-0000-0000-000000000000",
+                    excerpt="Test",
+                    is_used=True,
+                    verification_status="unverified",
+                    verified_against="none",
+                    title="Test Case v. State",
+                    court="Supreme Court of India",
+                    year=2024,
+                    author="Justice X",
+                    bench="Division Bench",
+                    ik_doc_id="",
+                    pdf_available=True,
+                    source_label="Case",
                 ),
             ],
             "extracted_passages": _make_extracted_passages(),
@@ -1098,6 +1288,7 @@ class TestProcessEventsAccumulation:
     def test_state_process_events_is_annotated_reducer(self) -> None:
         """ResearchState.process_events should use operator.add reducer."""
         import typing
+
         hints = typing.get_type_hints(ResearchState, include_extras=True)
         pe_hint = hints["process_events"]
         # Annotated types have __metadata__
@@ -1106,6 +1297,7 @@ class TestProcessEventsAccumulation:
     def test_sse_layer_forwards_process_events(self) -> None:
         """process_events in node output are forwarded via SSE."""
         import json
+
         # Simulate what _stream_agent_events does:
         node_output = {
             "draft_memo": "test",
@@ -1158,10 +1350,13 @@ class TestFuzzyMatch:
     def test_near_exact_with_typo(self) -> None:
         from app.core.agents.nodes.research_nodes import _fuzzy_match
 
-        assert _fuzzy_match(
-            "the court dismissed the appeal",
-            "the court dismissed the appael",
-        ) is True
+        assert (
+            _fuzzy_match(
+                "the court dismissed the appeal",
+                "the court dismissed the appael",
+            )
+            is True
+        )
 
     def test_empty_strings(self) -> None:
         from app.core.agents.nodes.research_nodes import _fuzzy_match
@@ -1290,14 +1485,24 @@ class TestGatherWorkerDedup:
         state: dict = {
             "worker_results": [
                 WorkerResult(
-                    task_id="task-1", task_type="case_law", query="old query",
+                    task_id="task-1",
+                    task_type="case_law",
+                    query="old query",
                     results=[{"case_id": "old-case", "title": "Old", "score": 0.5}],
-                    source_urls=[], metadata={}, error=None, reasoning="",
+                    source_urls=[],
+                    metadata={},
+                    error=None,
+                    reasoning="",
                 ),
                 WorkerResult(
-                    task_id="task-1", task_type="case_law", query="new query",
+                    task_id="task-1",
+                    task_type="case_law",
+                    query="new query",
                     results=[{"case_id": "new-case", "title": "New", "score": 0.9}],
-                    source_urls=[], metadata={}, error=None, reasoning="",
+                    source_urls=[],
+                    metadata={},
+                    error=None,
+                    reasoning="",
                 ),
             ],
         }
@@ -1315,14 +1520,24 @@ class TestGatherWorkerDedup:
         state: dict = {
             "worker_results": [
                 WorkerResult(
-                    task_id="task-1", task_type="case_law", query="q1",
+                    task_id="task-1",
+                    task_type="case_law",
+                    query="q1",
                     results=[{"case_id": "case-1", "title": "C1", "score": 0.9}],
-                    source_urls=[], metadata={}, error=None, reasoning="",
+                    source_urls=[],
+                    metadata={},
+                    error=None,
+                    reasoning="",
                 ),
                 WorkerResult(
-                    task_id="task-2", task_type="statute", query="q2",
+                    task_id="task-2",
+                    task_type="statute",
+                    query="q2",
                     results=[{"case_id": "case-2", "title": "C2", "score": 0.8}],
-                    source_urls=[], metadata={}, error=None, reasoning="",
+                    source_urls=[],
+                    metadata={},
+                    error=None,
+                    reasoning="",
                 ),
             ],
         }

@@ -107,6 +107,7 @@ def mock_db() -> AsyncMock:
 @pytest.fixture
 def authed_client(app: FastAPI, mock_db: AsyncMock) -> TestClient:
     """Client authenticated as the test user."""
+
     async def _override_db():
         yield mock_db
 
@@ -119,6 +120,7 @@ def authed_client(app: FastAPI, mock_db: AsyncMock) -> TestClient:
 @pytest.fixture
 def anon_client(app: FastAPI, mock_db: AsyncMock) -> TestClient:
     """Unauthenticated client (only DB override, no auth override)."""
+
     async def _override_db():
         yield mock_db
 
@@ -140,7 +142,7 @@ class TestCreateShare:
         mock_db.execute = AsyncMock(
             side_effect=[
                 _scalar_result(execution),  # execution lookup
-                _scalar_result(None),       # no existing share
+                _scalar_result(None),  # no existing share
             ]
         )
         mock_db.add = MagicMock()
@@ -273,7 +275,7 @@ class TestGetSharedMemo:
         execution = _mock_execution()
         mock_db.execute = AsyncMock(
             side_effect=[
-                _scalar_result(share),      # share lookup
+                _scalar_result(share),  # share lookup
                 _scalar_result(execution),  # execution lookup
             ]
         )
@@ -319,7 +321,9 @@ class TestGetSharedMemo:
         resp = anon_client.get(f"/api/shared/{_SHARE_TOKEN}")
         assert resp.status_code == 200
 
-    def test_get_shared_memo_increments_view_count(self, anon_client: TestClient, mock_db: AsyncMock):
+    def test_get_shared_memo_increments_view_count(
+        self, anon_client: TestClient, mock_db: AsyncMock
+    ):
         """View count is incremented on each access."""
         share = _mock_share(view_count=10)
         execution = _mock_execution()

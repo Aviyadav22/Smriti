@@ -8,6 +8,7 @@ Three-level hierarchy per judgment:
   Level 1: Section summaries (1 per section type) — generated here
   Level 2: Full judgment summary (ratio_decidendi in cases table)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -60,10 +61,7 @@ async def generate_section_summaries(
 
     tasks = [
         flash_llm.generate(
-            prompt=(
-                f"Section type: {section['section_type']}\n\n"
-                f"{section['content'][:8000]}"
-            ),
+            prompt=(f"Section type: {section['section_type']}\n\n" f"{section['content'][:8000]}"),
             system=SECTION_SUMMARY_SYSTEM,
         )
         for section in eligible
@@ -76,15 +74,19 @@ async def generate_section_summaries(
         if isinstance(result, Exception):
             logger.warning(
                 "Section summary failed for %s/%s: %s",
-                case_id, section["section_type"], result,
+                case_id,
+                section["section_type"],
+                result,
             )
             continue
-        summaries.append({
-            "case_id": case_id,
-            "section_type": section["section_type"],
-            "summary_text": result.strip(),
-            "summary_level": 1,
-        })
+        summaries.append(
+            {
+                "case_id": case_id,
+                "section_type": section["section_type"],
+                "summary_text": result.strip(),
+                "summary_level": 1,
+            }
+        )
 
     return summaries
 
@@ -127,10 +129,12 @@ def build_pinecone_summary_vectors(
             "case_id": case_id,
             "text": summary["summary_text"],
         }
-        records.append({
-            "id": vector_id,
-            "values": embedding,
-            "metadata": metadata,
-        })
+        records.append(
+            {
+                "id": vector_id,
+                "values": embedding,
+                "metadata": metadata,
+            }
+        )
 
     return records

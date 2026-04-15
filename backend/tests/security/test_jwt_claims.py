@@ -21,32 +21,44 @@ class TestJWTClaims:
     def test_access_token_has_iss_claim(self) -> None:
         token = create_access_token("user-1", "researcher")
         decoded = pyjwt.decode(
-            token, settings.jwt_secret_key, algorithms=[_ALGORITHM],
-            audience="smriti-api", issuer="smriti",
+            token,
+            settings.jwt_secret_key,
+            algorithms=[_ALGORITHM],
+            audience="smriti-api",
+            issuer="smriti",
         )
         assert decoded["iss"] == "smriti"
 
     def test_access_token_has_aud_claim(self) -> None:
         token = create_access_token("user-1", "researcher")
         decoded = pyjwt.decode(
-            token, settings.jwt_secret_key, algorithms=[_ALGORITHM],
-            audience="smriti-api", issuer="smriti",
+            token,
+            settings.jwt_secret_key,
+            algorithms=[_ALGORITHM],
+            audience="smriti-api",
+            issuer="smriti",
         )
         assert decoded["aud"] == "smriti-api"
 
     def test_refresh_token_has_iss_claim(self) -> None:
         token = create_refresh_token("user-1")
         decoded = pyjwt.decode(
-            token, settings.jwt_refresh_secret_key, algorithms=[_ALGORITHM],
-            audience="smriti-api", issuer="smriti",
+            token,
+            settings.jwt_refresh_secret_key,
+            algorithms=[_ALGORITHM],
+            audience="smriti-api",
+            issuer="smriti",
         )
         assert decoded["iss"] == "smriti"
 
     def test_refresh_token_has_aud_claim(self) -> None:
         token = create_refresh_token("user-1")
         decoded = pyjwt.decode(
-            token, settings.jwt_refresh_secret_key, algorithms=[_ALGORITHM],
-            audience="smriti-api", issuer="smriti",
+            token,
+            settings.jwt_refresh_secret_key,
+            algorithms=[_ALGORITHM],
+            audience="smriti-api",
+            issuer="smriti",
         )
         assert decoded["aud"] == "smriti-api"
 

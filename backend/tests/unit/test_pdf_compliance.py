@@ -1,4 +1,5 @@
 """Tests for filing-ready PDF compliance."""
+
 from __future__ import annotations
 
 from app.core.drafting.court_profiles import COURT_PROFILES
@@ -62,8 +63,7 @@ class TestGenerateFilingChecklist:
         profile = COURT_PROFILES["supreme_court"]
         items = generate_filing_checklist(profile, "bail_application", False)
         assert any(
-            "dsc" in item["item"].lower()
-            or "digital signature" in item["item"].lower()
+            "dsc" in item["item"].lower() or "digital signature" in item["item"].lower()
             for item in items
         )
 

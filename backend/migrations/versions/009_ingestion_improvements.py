@@ -20,29 +20,52 @@ def upgrade() -> None:
     op.add_column("cases", sa.Column("is_reportable", sa.Boolean(), nullable=True))
     op.add_column("cases", sa.Column("headnotes", sa.Text(), nullable=True))
     op.add_column("cases", sa.Column("outcome_summary", sa.Text(), nullable=True))
-    op.add_column("cases", sa.Column("ingestion_status", sa.String(20), nullable=False, server_default="complete"))
+    op.add_column(
+        "cases",
+        sa.Column("ingestion_status", sa.String(20), nullable=False, server_default="complete"),
+    )
 
     # --- Indexes ---
-    op.create_index("ix_cases_case_number", "cases", ["case_number"], postgresql_where=sa.text("case_number IS NOT NULL"))
-    op.create_index("ix_cases_decision_date", "cases", ["decision_date"], postgresql_where=sa.text("decision_date IS NOT NULL"))
-    op.create_index("ix_cases_s3_source_unique", "cases", ["s3_source_path"], unique=True, postgresql_where=sa.text("s3_source_path IS NOT NULL"))
+    op.create_index(
+        "ix_cases_case_number",
+        "cases",
+        ["case_number"],
+        postgresql_where=sa.text("case_number IS NOT NULL"),
+    )
+    op.create_index(
+        "ix_cases_decision_date",
+        "cases",
+        ["decision_date"],
+        postgresql_where=sa.text("decision_date IS NOT NULL"),
+    )
+    op.create_index(
+        "ix_cases_s3_source_unique",
+        "cases",
+        ["s3_source_path"],
+        unique=True,
+        postgresql_where=sa.text("s3_source_path IS NOT NULL"),
+    )
 
     # --- CHECK constraints ---
     op.create_check_constraint(
-        "ck_cases_bench_type", "cases",
-        "bench_type IN ('single','division','full','constitutional') OR bench_type IS NULL"
+        "ck_cases_bench_type",
+        "cases",
+        "bench_type IN ('single','division','full','constitutional') OR bench_type IS NULL",
     )
     op.create_check_constraint(
-        "ck_cases_jurisdiction", "cases",
-        "jurisdiction IN ('civil','criminal','constitutional','tax','labor','company','family','environmental','arbitration','consumer','election','service','IP/commercial','other') OR jurisdiction IS NULL"
+        "ck_cases_jurisdiction",
+        "cases",
+        "jurisdiction IN ('civil','criminal','constitutional','tax','labor','company','family','environmental','arbitration','consumer','election','service','IP/commercial','other') OR jurisdiction IS NULL",
     )
     op.create_check_constraint(
-        "ck_cases_disposal_nature", "cases",
-        "disposal_nature IN ('Allowed','Dismissed','Partly Allowed','Withdrawn','Remanded','Disposed Of','Settled','Transferred','Modified','Other') OR disposal_nature IS NULL"
+        "ck_cases_disposal_nature",
+        "cases",
+        "disposal_nature IN ('Allowed','Dismissed','Partly Allowed','Withdrawn','Remanded','Disposed Of','Settled','Transferred','Modified','Other') OR disposal_nature IS NULL",
     )
     op.create_check_constraint(
-        "ck_cases_ingestion_status", "cases",
-        "ingestion_status IN ('pending','complete','vectors_failed')"
+        "ck_cases_ingestion_status",
+        "cases",
+        "ingestion_status IN ('pending','complete','vectors_failed')",
     )
 
     # --- Update FTS trigger to include full_text, petitioner, respondent, case_number ---

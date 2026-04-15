@@ -5,6 +5,7 @@ Tests that the pipeline handles concurrent operations safely:
 - Duplicate citation conflict resolution
 - _embed_chunks retry doesn't double-insert
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -87,7 +88,7 @@ class TestEmbedChunksRetry:
         embedder = AsyncMock()
         embedder.embed_batch.side_effect = [
             RuntimeError("Transient failure"),  # 1st attempt fails
-            [[0.1, 0.2], [0.3, 0.4]],          # 2nd attempt succeeds
+            [[0.1, 0.2], [0.3, 0.4]],  # 2nd attempt succeeds
         ]
 
         chunks = [_make_chunk("text a", 0), _make_chunk("text b", 1)]

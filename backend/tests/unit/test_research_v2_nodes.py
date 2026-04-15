@@ -3,6 +3,7 @@
 Covers Bible Section 13 tests 1-9 (Core), 10-13 (CRAG), 18-20 (MA-RAG CoT),
 39-41 (Fast Path), and worker tests (1D.4).
 """
+
 from __future__ import annotations
 
 import uuid
@@ -197,7 +198,9 @@ class TestPlanResearchNode:
                     "task_type": "named_case",
                     "nl_query": "Sushila Aggarwal anticipatory bail conditions",
                     "boolean_query": "Sushila Aggarwal AND anticipatory bail",
-                    "named_cases": [{"name": "Sushila Aggarwal v. State", "citation": "(2020) 5 SCC 1"}],
+                    "named_cases": [
+                        {"name": "Sushila Aggarwal v. State", "citation": "(2020) 5 SCC 1"}
+                    ],
                     "rationale": "Landmark case on anticipatory bail",
                     "filters": {},
                     "priority": 1,
@@ -207,7 +210,9 @@ class TestPlanResearchNode:
 
         state = _make_v2_state(
             rewritten_query="anticipatory bail under Section 438 CrPC",
-            messages=[{"type": "classification", "data": {"topic": "criminal", "complexity": "complex"}}],
+            messages=[
+                {"type": "classification", "data": {"topic": "criminal", "complexity": "complex"}}
+            ],
         )
         result = await plan_research_node(state, llm)
 
@@ -224,8 +229,15 @@ class TestPlanResearchNode:
         llm = _make_llm()
         llm.generate_structured.return_value = {
             "research_tasks": [
-                {"task_type": "case_law", "nl_query": "q", "boolean_query": "b",
-                 "named_cases": [], "rationale": "r", "filters": {}, "priority": 1}
+                {
+                    "task_type": "case_law",
+                    "nl_query": "q",
+                    "boolean_query": "b",
+                    "named_cases": [],
+                    "rationale": "r",
+                    "filters": {},
+                    "priority": 1,
+                }
             ]
         }
 
@@ -241,10 +253,24 @@ class TestPlanResearchNode:
         llm = _make_llm()
         llm.generate_structured.return_value = {
             "research_tasks": [
-                {"task_type": "case_law", "nl_query": "query one", "boolean_query": "",
-                 "named_cases": [], "rationale": "r", "filters": {}, "priority": 1},
-                {"task_type": "case_law", "nl_query": "query two", "boolean_query": "",
-                 "named_cases": [], "rationale": "r", "filters": {}, "priority": 2},
+                {
+                    "task_type": "case_law",
+                    "nl_query": "query one",
+                    "boolean_query": "",
+                    "named_cases": [],
+                    "rationale": "r",
+                    "filters": {},
+                    "priority": 1,
+                },
+                {
+                    "task_type": "case_law",
+                    "nl_query": "query two",
+                    "boolean_query": "",
+                    "named_cases": [],
+                    "rationale": "r",
+                    "filters": {},
+                    "priority": 2,
+                },
             ]
         }
 
@@ -312,9 +338,11 @@ class TestEvaluateAndExtractNode:
             ]
         }
 
-        worker_results = [_make_worker_result(
-            results=[_make_search_result(case_id="c1", citation="(2020) 5 SCC 1")]
-        )]
+        worker_results = [
+            _make_worker_result(
+                results=[_make_search_result(case_id="c1", citation="(2020) 5 SCC 1")]
+            )
+        ]
         state = _make_v2_state(
             worker_results=worker_results,
             rewritten_query="anticipatory bail",
@@ -336,21 +364,39 @@ class TestEvaluateAndExtractNode:
         llm = _make_llm()
         evaluations = []
         for i in range(5):
-            evaluations.append({
-                "case_id": f"correct_{i}", "score": 0.9, "verdict": "correct",
-                "reason": "relevant", "action": "keep", "passage": f"passage {i}",
-                "passage_source_field": "chunk_text", "is_verbatim": True,
-            })
+            evaluations.append(
+                {
+                    "case_id": f"correct_{i}",
+                    "score": 0.9,
+                    "verdict": "correct",
+                    "reason": "relevant",
+                    "action": "keep",
+                    "passage": f"passage {i}",
+                    "passage_source_field": "chunk_text",
+                    "is_verbatim": True,
+                }
+            )
         for i in range(5):
-            evaluations.append({
-                "case_id": f"ambiguous_{i}", "score": 0.5, "verdict": "ambiguous",
-                "reason": "unclear", "action": "keep", "passage": "",
-            })
+            evaluations.append(
+                {
+                    "case_id": f"ambiguous_{i}",
+                    "score": 0.5,
+                    "verdict": "ambiguous",
+                    "reason": "unclear",
+                    "action": "keep",
+                    "passage": "",
+                }
+            )
         for i in range(5):
-            evaluations.append({
-                "case_id": f"incorrect_{i}", "score": 0.1, "verdict": "incorrect",
-                "reason": "irrelevant", "action": "filter",
-            })
+            evaluations.append(
+                {
+                    "case_id": f"incorrect_{i}",
+                    "score": 0.1,
+                    "verdict": "incorrect",
+                    "reason": "irrelevant",
+                    "action": "filter",
+                }
+            )
 
         llm.generate_structured.return_value = {"evaluations": evaluations}
 
@@ -377,19 +423,31 @@ class TestEvaluateAndExtractNode:
         llm = _make_llm()
         llm.generate_structured.return_value = {
             "evaluations": [
-                {"case_id": "good", "score": 0.9, "verdict": "correct",
-                 "reason": "relevant", "action": "keep"},
-                {"case_id": "bad", "score": 0.1, "verdict": "incorrect",
-                 "reason": "irrelevant", "action": "filter"},
+                {
+                    "case_id": "good",
+                    "score": 0.9,
+                    "verdict": "correct",
+                    "reason": "relevant",
+                    "action": "keep",
+                },
+                {
+                    "case_id": "bad",
+                    "score": 0.1,
+                    "verdict": "incorrect",
+                    "reason": "irrelevant",
+                    "action": "filter",
+                },
             ]
         }
 
-        worker_results = [_make_worker_result(
-            results=[
-                _make_search_result(case_id="good"),
-                _make_search_result(case_id="bad"),
-            ]
-        )]
+        worker_results = [
+            _make_worker_result(
+                results=[
+                    _make_search_result(case_id="good"),
+                    _make_search_result(case_id="bad"),
+                ]
+            )
+        ]
         state = _make_v2_state(worker_results=worker_results)
         db = AsyncMock()
 
@@ -407,9 +465,14 @@ class TestEvaluateAndExtractNode:
         llm = _make_llm()
         llm.generate_structured.return_value = {
             "evaluations": [
-                {"case_id": "bad", "score": 0.1, "verdict": "incorrect",
-                 "reason": "irrelevant", "action": "filter",
-                 "passage": "This should not be extracted"},
+                {
+                    "case_id": "bad",
+                    "score": 0.1,
+                    "verdict": "incorrect",
+                    "reason": "irrelevant",
+                    "action": "filter",
+                    "passage": "This should not be extracted",
+                },
             ]
         }
 
@@ -490,10 +553,16 @@ class TestNamedCaseWorker:
             score: float = 1.0
             snippet: str = "text"
 
-        with patch("app.core.agents.nodes.worker_nodes.async_session_factory") as mock_sf, \
-             patch("app.core.agents.nodes.worker_nodes._exact_citation_search", new_callable=AsyncMock) as mock_cite, \
-             patch("app.core.agents.nodes.worker_nodes.enrich_results_with_ratio", new_callable=AsyncMock) as mock_enrich:
-
+        with (
+            patch("app.core.agents.nodes.worker_nodes.async_session_factory") as mock_sf,
+            patch(
+                "app.core.agents.nodes.worker_nodes._exact_citation_search", new_callable=AsyncMock
+            ) as mock_cite,
+            patch(
+                "app.core.agents.nodes.worker_nodes.enrich_results_with_ratio",
+                new_callable=AsyncMock,
+            ) as mock_enrich,
+        ):
             mock_ctx = AsyncMock()
             mock_sf.return_value = mock_ctx
             mock_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
@@ -534,12 +603,22 @@ class TestNamedCaseWorker:
             "precomputed_embeddings": {},
         }
 
-        with patch("app.core.agents.nodes.worker_nodes.async_session_factory") as mock_sf, \
-             patch("app.core.agents.nodes.worker_nodes._exact_citation_search", new_callable=AsyncMock) as mock_cite, \
-             patch("app.core.agents.nodes.worker_nodes._search_by_title", new_callable=AsyncMock) as mock_title, \
-             patch("app.core.agents.nodes.worker_nodes.enrich_results_with_ratio", new_callable=AsyncMock) as mock_enrich, \
-             patch("app.core.agents.nodes.worker_nodes.parallel_hybrid_search", new_callable=AsyncMock) as mock_hybrid:
-
+        with (
+            patch("app.core.agents.nodes.worker_nodes.async_session_factory") as mock_sf,
+            patch(
+                "app.core.agents.nodes.worker_nodes._exact_citation_search", new_callable=AsyncMock
+            ) as mock_cite,
+            patch(
+                "app.core.agents.nodes.worker_nodes._search_by_title", new_callable=AsyncMock
+            ) as mock_title,
+            patch(
+                "app.core.agents.nodes.worker_nodes.enrich_results_with_ratio",
+                new_callable=AsyncMock,
+            ) as mock_enrich,
+            patch(
+                "app.core.agents.nodes.worker_nodes.parallel_hybrid_search", new_callable=AsyncMock
+            ) as mock_hybrid,
+        ):
             mock_ctx = AsyncMock()
             mock_sf.return_value = mock_ctx
             mock_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
@@ -549,8 +628,12 @@ class TestNamedCaseWorker:
             mock_cite.return_value = []
             # Title search returns a result
             mock_title.return_value = [
-                {"case_id": "c2", "title": "Maneka Gandhi v. Union of India",
-                 "citation": "(1978) 1 SCC 248", "score": 0.95}
+                {
+                    "case_id": "c2",
+                    "title": "Maneka Gandhi v. Union of India",
+                    "citation": "(1978) 1 SCC 248",
+                    "score": 0.95,
+                }
             ]
             mock_enrich.side_effect = lambda results, db, **kw: results
             mock_hybrid.return_value = []
@@ -567,10 +650,14 @@ class TestNamedCaseWorker:
     async def test_error_handling(self) -> None:
         state = {
             "task": {
-                "task_id": "t1", "task_type": "named_case",
-                "nl_query": "test", "boolean_query": "",
+                "task_id": "t1",
+                "task_type": "named_case",
+                "nl_query": "test",
+                "boolean_query": "",
                 "named_cases": [{"name": "Test", "citation": "X"}],
-                "rationale": "r", "filters": {}, "priority": 1,
+                "rationale": "r",
+                "filters": {},
+                "priority": 1,
             },
             "precomputed_embeddings": {},
         }
@@ -615,10 +702,16 @@ class TestCaseLawWorker:
             "precomputed_embeddings": {},
         }
 
-        with patch("app.core.agents.nodes.worker_nodes.async_session_factory") as mock_sf, \
-             patch("app.core.agents.nodes.worker_nodes.parallel_hybrid_search", new_callable=AsyncMock) as mock_search, \
-             patch("app.core.agents.nodes.worker_nodes.enrich_results_with_ratio", new_callable=AsyncMock) as mock_enrich:
-
+        with (
+            patch("app.core.agents.nodes.worker_nodes.async_session_factory") as mock_sf,
+            patch(
+                "app.core.agents.nodes.worker_nodes.parallel_hybrid_search", new_callable=AsyncMock
+            ) as mock_search,
+            patch(
+                "app.core.agents.nodes.worker_nodes.enrich_results_with_ratio",
+                new_callable=AsyncMock,
+            ) as mock_enrich,
+        ):
             mock_ctx = AsyncMock()
             mock_sf.return_value = mock_ctx
             mock_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
@@ -647,17 +740,28 @@ class TestCaseLawWorker:
     async def test_single_query_when_no_boolean(self) -> None:
         state = {
             "task": {
-                "task_id": "t1", "task_type": "case_law",
-                "nl_query": "bail provisions", "boolean_query": "",
-                "named_cases": [], "rationale": "r", "filters": {}, "priority": 1,
+                "task_id": "t1",
+                "task_type": "case_law",
+                "nl_query": "bail provisions",
+                "boolean_query": "",
+                "named_cases": [],
+                "rationale": "r",
+                "filters": {},
+                "priority": 1,
             },
             "precomputed_embeddings": {},
         }
 
-        with patch("app.core.agents.nodes.worker_nodes.async_session_factory") as mock_sf, \
-             patch("app.core.agents.nodes.worker_nodes.parallel_hybrid_search", new_callable=AsyncMock) as mock_search, \
-             patch("app.core.agents.nodes.worker_nodes.enrich_results_with_ratio", new_callable=AsyncMock) as mock_enrich:
-
+        with (
+            patch("app.core.agents.nodes.worker_nodes.async_session_factory") as mock_sf,
+            patch(
+                "app.core.agents.nodes.worker_nodes.parallel_hybrid_search", new_callable=AsyncMock
+            ) as mock_search,
+            patch(
+                "app.core.agents.nodes.worker_nodes.enrich_results_with_ratio",
+                new_callable=AsyncMock,
+            ) as mock_enrich,
+        ):
             mock_ctx = AsyncMock()
             mock_sf.return_value = mock_ctx
             mock_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
@@ -674,9 +778,14 @@ class TestCaseLawWorker:
     async def test_error_handling(self) -> None:
         state = {
             "task": {
-                "task_id": "t1", "task_type": "case_law",
-                "nl_query": "test", "boolean_query": "",
-                "named_cases": [], "rationale": "r", "filters": {}, "priority": 1,
+                "task_id": "t1",
+                "task_type": "case_law",
+                "nl_query": "test",
+                "boolean_query": "",
+                "named_cases": [],
+                "rationale": "r",
+                "filters": {},
+                "priority": 1,
             },
             "precomputed_embeddings": {},
         }
@@ -719,12 +828,12 @@ class TestGatherWorkerResultsNode:
     @pytest.mark.asyncio
     async def test_cross_references_from_multiple_workers(self) -> None:
         wr1 = _make_worker_result(
-            task_id="t1", task_type="case_law",
-            results=[_make_search_result(case_id="shared_case")]
+            task_id="t1", task_type="case_law", results=[_make_search_result(case_id="shared_case")]
         )
         wr2 = _make_worker_result(
-            task_id="t2", task_type="named_case",
-            results=[_make_search_result(case_id="shared_case")]
+            task_id="t2",
+            task_type="named_case",
+            results=[_make_search_result(case_id="shared_case")],
         )
 
         state = _make_v2_state(worker_results=[wr1, wr2])
@@ -765,8 +874,9 @@ class TestBatchWorkerCotWithReflectionNode:
 
         worker_results = [
             _make_worker_result(
-                task_type="case_law", query="bail query",
-                results=[_make_search_result(case_id=f"c{i}") for i in range(3)]
+                task_type="case_law",
+                query="bail query",
+                results=[_make_search_result(case_id=f"c{i}") for i in range(3)],
             )
         ]
         state = _make_v2_state(
@@ -788,12 +898,14 @@ class TestBatchWorkerCotWithReflectionNode:
             "should_pivot": False,
         }
 
-        worker_results = [_make_worker_result(
-            results=[
-                _make_search_result(case_id="c1", title="Sushila Aggarwal"),
-                _make_search_result(case_id="c2", title="Bhadresh Bipinbhai"),
-            ]
-        )]
+        worker_results = [
+            _make_worker_result(
+                results=[
+                    _make_search_result(case_id="c1", title="Sushila Aggarwal"),
+                    _make_search_result(case_id="c2", title="Bhadresh Bipinbhai"),
+                ]
+            )
+        ]
         state = _make_v2_state(worker_results=worker_results)
         await batch_worker_cot_with_reflection_node(state, llm)
 
@@ -812,7 +924,11 @@ class TestBatchWorkerCotWithReflectionNode:
             "should_pivot": True,
             "pivot_reason": "SC cases insufficient — need HC perspective",
             "new_tasks": [
-                {"task_type": "case_law", "nl_query": "HC anticipatory bail", "rationale": "HC rulings"}
+                {
+                    "task_type": "case_law",
+                    "nl_query": "HC anticipatory bail",
+                    "rationale": "HC rulings",
+                }
             ],
             "reframe_query": "anticipatory bail across all courts",
         }
@@ -892,9 +1008,14 @@ class TestGapAnalysisNode:
         llm = _make_llm()
         llm.generate_structured.return_value = {
             "gaps": [
-                {"description": "gap", "suggested_query": "new query",
-                 "suggested_source": "case_law", "priority": 1,
-                 "conditioned_on": [], "conditioning_context": ""},
+                {
+                    "description": "gap",
+                    "suggested_query": "new query",
+                    "suggested_source": "case_law",
+                    "priority": 1,
+                    "conditioned_on": [],
+                    "conditioning_context": "",
+                },
             ]
         }
 
@@ -916,9 +1037,14 @@ class TestGapAnalysisNode:
         llm = _make_llm()
         llm.generate_structured.return_value = {
             "gaps": [
-                {"description": "gap", "suggested_query": "q",
-                 "suggested_source": "case_law", "priority": 1,
-                 "conditioned_on": [], "conditioning_context": ""},
+                {
+                    "description": "gap",
+                    "suggested_query": "q",
+                    "suggested_source": "case_law",
+                    "priority": 1,
+                    "conditioned_on": [],
+                    "conditioning_context": "",
+                },
             ]
         }
 
@@ -939,11 +1065,15 @@ class TestGapAnalysisNode:
         llm.generate_structured.return_value = {"gaps": []}
 
         state = _make_v2_state(
-            worker_results=[_make_worker_result(
-                results=[_make_search_result(
-                    case_id="c1", title="Bachan Singh", citation="(1980) 2 SCC 684"
-                )]
-            )],
+            worker_results=[
+                _make_worker_result(
+                    results=[
+                        _make_search_result(
+                            case_id="c1", title="Bachan Singh", citation="(1980) 2 SCC 684"
+                        )
+                    ]
+                )
+            ],
             refinement_round=1,
         )
         await gap_analysis_node(state, llm)
@@ -977,7 +1107,9 @@ class TestGapAnalysisNode:
         result = await gap_analysis_node(state, llm)
 
         # Strategy pivot tasks should appear as gaps
-        strategy_gaps = [g for g in result["evidence_gaps"] if "[Strategy pivot]" in g["description"]]
+        strategy_gaps = [
+            g for g in result["evidence_gaps"] if "[Strategy pivot]" in g["description"]
+        ]
         assert len(strategy_gaps) >= 1
 
     @pytest.mark.asyncio
@@ -1008,8 +1140,16 @@ class TestFastPathSearchNode:
 
         results = [_make_search_result(case_id=f"c{i}") for i in range(5)]
 
-        with patch("app.core.agents.nodes.research_nodes.parallel_hybrid_search", new_callable=AsyncMock) as mock_search, \
-             patch("app.core.agents.nodes.research_nodes.enrich_results_with_ratio", new_callable=AsyncMock) as mock_enrich:
+        with (
+            patch(
+                "app.core.agents.nodes.research_nodes.parallel_hybrid_search",
+                new_callable=AsyncMock,
+            ) as mock_search,
+            patch(
+                "app.core.agents.nodes.research_nodes.enrich_results_with_ratio",
+                new_callable=AsyncMock,
+            ) as mock_enrich,
+        ):
             mock_search.return_value = results
             mock_enrich.side_effect = lambda results, db, **kw: results
 
@@ -1018,7 +1158,9 @@ class TestFastPathSearchNode:
                 complexity="simple",
                 messages=[{"type": "classification", "data": {"topic": "criminal"}}],
             )
-            result = await fast_path_search_node(state, llm, flash_llm, embedder, vector_store, reranker, db)
+            result = await fast_path_search_node(
+                state, llm, flash_llm, embedder, vector_store, reranker, db
+            )
 
         assert "search_results" in result
         assert len(result["search_results"]) == 5
@@ -1027,8 +1169,16 @@ class TestFastPathSearchNode:
     @pytest.mark.asyncio
     async def test_fallback_when_few_results(self) -> None:
         """Bible test 40 — fast path fallback when < 3 results."""
-        with patch("app.core.agents.nodes.research_nodes.parallel_hybrid_search", new_callable=AsyncMock) as mock_search, \
-             patch("app.core.agents.nodes.research_nodes.enrich_results_with_ratio", new_callable=AsyncMock) as mock_enrich:
+        with (
+            patch(
+                "app.core.agents.nodes.research_nodes.parallel_hybrid_search",
+                new_callable=AsyncMock,
+            ) as mock_search,
+            patch(
+                "app.core.agents.nodes.research_nodes.enrich_results_with_ratio",
+                new_callable=AsyncMock,
+            ) as mock_enrich,
+        ):
             mock_search.return_value = [_make_search_result()]  # Only 1 result
             mock_enrich.side_effect = lambda results, db, **kw: results
 
@@ -1043,7 +1193,9 @@ class TestFastPathSearchNode:
 
     @pytest.mark.asyncio
     async def test_fallback_on_search_error(self) -> None:
-        with patch("app.core.agents.nodes.research_nodes.parallel_hybrid_search", new_callable=AsyncMock) as mock_search:
+        with patch(
+            "app.core.agents.nodes.research_nodes.parallel_hybrid_search", new_callable=AsyncMock
+        ) as mock_search:
             mock_search.side_effect = RuntimeError("Search failed")
 
             state = _make_v2_state(complexity="simple")
@@ -1090,7 +1242,10 @@ class TestFastPathSynthesisNode:
             search_results=[_make_search_result(score=0.8)],
         )
         result = await fast_path_synthesis_node(state, llm)
-        assert "disclaimer" in result["draft_memo"].lower() or "legal advice" in result["draft_memo"].lower()
+        assert (
+            "disclaimer" in result["draft_memo"].lower()
+            or "legal advice" in result["draft_memo"].lower()
+        )
 
     @pytest.mark.asyncio
     async def test_error_handling(self) -> None:
@@ -1118,15 +1273,24 @@ class TestDispatchWorkersIntegration:
         state = _make_v2_state(
             research_plan=[
                 ResearchTask(
-                    task_id="t1", task_type="case_law",
-                    nl_query="bail query", boolean_query="bail AND query",
-                    named_cases=[], rationale="r", filters={}, priority=1,
+                    task_id="t1",
+                    task_type="case_law",
+                    nl_query="bail query",
+                    boolean_query="bail AND query",
+                    named_cases=[],
+                    rationale="r",
+                    filters={},
+                    priority=1,
                 ),
                 ResearchTask(
-                    task_id="t2", task_type="named_case",
-                    nl_query="Sushila Aggarwal", boolean_query="",
+                    task_id="t2",
+                    task_type="named_case",
+                    nl_query="Sushila Aggarwal",
+                    boolean_query="",
                     named_cases=[{"name": "Sushila Aggarwal"}],
-                    rationale="r", filters={}, priority=1,
+                    rationale="r",
+                    filters={},
+                    priority=1,
                 ),
             ],
             precomputed_embeddings={},
@@ -1136,8 +1300,11 @@ class TestDispatchWorkersIntegration:
         # We need to test the inner function, so we build the graph first
         llm = _make_llm()
         build_research_graph(
-            llm=llm, flash_llm=llm, embedder=AsyncMock(),
-            vector_store=AsyncMock(), reranker=AsyncMock(),
+            llm=llm,
+            flash_llm=llm,
+            embedder=AsyncMock(),
+            vector_store=AsyncMock(),
+            reranker=AsyncMock(),
         )
 
         # Access the dispatch_workers node function directly
@@ -1154,10 +1321,15 @@ class TestDispatchWorkersIntegration:
             task_type = task.get("task_type", "case_law")
             if task_type in ("case_law", "named_case"):
                 worker_name = f"{task_type}_worker"
-                sends.append(Send(worker_name, {
-                    "task": task,
-                    "precomputed_embeddings": precomputed,
-                }))
+                sends.append(
+                    Send(
+                        worker_name,
+                        {
+                            "task": task,
+                            "precomputed_embeddings": precomputed,
+                        },
+                    )
+                )
 
         assert len(sends) == 2
         assert sends[0].node == "case_law_worker"
@@ -1173,19 +1345,24 @@ class TestDispatchWorkersIntegration:
         sends: list = []
         plan = state.get("research_plan", [])
         if not plan:
-            sends.append(Send("case_law_worker", {
-                "task": {
-                    "task_id": "fallback",
-                    "task_type": "case_law",
-                    "nl_query": state.get("rewritten_query") or state["query"],
-                    "boolean_query": "",
-                    "named_cases": [],
-                    "rationale": "Fallback search",
-                    "filters": {},
-                    "priority": 1,
-                },
-                "precomputed_embeddings": {},
-            }))
+            sends.append(
+                Send(
+                    "case_law_worker",
+                    {
+                        "task": {
+                            "task_id": "fallback",
+                            "task_type": "case_law",
+                            "nl_query": state.get("rewritten_query") or state["query"],
+                            "boolean_query": "",
+                            "named_cases": [],
+                            "rationale": "Fallback search",
+                            "filters": {},
+                            "priority": 1,
+                        },
+                        "precomputed_embeddings": {},
+                    },
+                )
+            )
 
         assert len(sends) == 1
         assert sends[0].node == "case_law_worker"
@@ -1208,15 +1385,25 @@ class TestCragGapAnalysisTrigger:
         # Many incorrect results
         relevance_scores = []
         for i in range(3):
-            relevance_scores.append(RelevanceScore(
-                case_id=f"correct_{i}", score=0.9, verdict="correct",
-                reason="ok", action="keep",
-            ))
+            relevance_scores.append(
+                RelevanceScore(
+                    case_id=f"correct_{i}",
+                    score=0.9,
+                    verdict="correct",
+                    reason="ok",
+                    action="keep",
+                )
+            )
         for i in range(7):
-            relevance_scores.append(RelevanceScore(
-                case_id=f"incorrect_{i}", score=0.1, verdict="incorrect",
-                reason="irrelevant", action="needs_web_fallback",
-            ))
+            relevance_scores.append(
+                RelevanceScore(
+                    case_id=f"incorrect_{i}",
+                    score=0.1,
+                    verdict="incorrect",
+                    reason="irrelevant",
+                    action="needs_web_fallback",
+                )
+            )
 
         state = _make_v2_state(
             worker_results=[_make_worker_result(results=[_make_search_result()])],
@@ -1254,4 +1441,6 @@ class TestCotSynthesisIntegration:
 
         # These reasonings would be in state for synthesis
         assert result["worker_reasonings"][0] != ""
-        assert "Bail" in result["worker_reasonings"][0] or "finding" in result["worker_reasonings"][0]
+        assert (
+            "Bail" in result["worker_reasonings"][0] or "finding" in result["worker_reasonings"][0]
+        )

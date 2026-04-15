@@ -65,10 +65,7 @@ class TestExtractCitations:
         assert len(scale) == 1
 
     def test_multiple_citations_in_text(self):
-        text = (
-            "See (2020) 3 SCC 145 and AIR 2019 SC 3452. "
-            "Also 2023 INSC 789."
-        )
+        text = "See (2020) 3 SCC 145 and AIR 2019 SC 3452. " "Also 2023 INSC 789."
         citations = extract_citations(text)
         assert len(citations) >= 3
 
@@ -326,18 +323,24 @@ class TestRegulationClausePatterns:
 class TestNewShortActNames:
     """B15: New short act name codes resolve correctly."""
 
-    @pytest.mark.parametrize("code,expected", [
-        ("RERA", "Real Estate (Regulation and Development) Act"),
-        ("POSH ACT", "Prevention of Sexual Harassment at Workplace Act"),
-        ("JJ ACT", "Juvenile Justice (Care and Protection of Children) Act"),
-        ("MCOCA", "Maharashtra Control of Organised Crime Act"),
-        ("COFEPOSA", "Conservation of Foreign Exchange and Prevention of Smuggling Activities Act"),
-        ("ESI ACT", "Employees' State Insurance Act"),
-        ("ID ACT", "Industrial Disputes Act"),
-        ("COMPETITION ACT", "Competition Act"),
-        ("CUSTOMS ACT", "Customs Act"),
-        ("RBI ACT", "Reserve Bank of India Act"),
-    ])
+    @pytest.mark.parametrize(
+        "code,expected",
+        [
+            ("RERA", "Real Estate (Regulation and Development) Act"),
+            ("POSH ACT", "Prevention of Sexual Harassment at Workplace Act"),
+            ("JJ ACT", "Juvenile Justice (Care and Protection of Children) Act"),
+            ("MCOCA", "Maharashtra Control of Organised Crime Act"),
+            (
+                "COFEPOSA",
+                "Conservation of Foreign Exchange and Prevention of Smuggling Activities Act",
+            ),
+            ("ESI ACT", "Employees' State Insurance Act"),
+            ("ID ACT", "Industrial Disputes Act"),
+            ("COMPETITION ACT", "Competition Act"),
+            ("CUSTOMS ACT", "Customs Act"),
+            ("RBI ACT", "Reserve Bank of India Act"),
+        ],
+    )
     def test_short_act_resolves(self, code, expected):
         text = f"Section 5 {code}"
         acts = extract_acts_cited(text)
@@ -493,65 +496,77 @@ from app.core.legal.extractor import _is_valid_act_citation, normalize_acts_cite
 class TestActsCitedGarbageFilter:
     """Test that sentence fragments and garbage are rejected by _is_valid_act_citation."""
 
-    @pytest.mark.parametrize("garbage", [
-        "those candidates who went ahead",
-        "Erstwhile Act which governed the field",
-        "empowers the resolution professional",
-        "how accused",
-        "how the accused",
-        "Act of",
-        "Act plainly",
-        "society",
-        "subsequently",
-        "new Act so as to include even a petitioner",
-        "2013 Act deals with a scenario wherein",
-        "Erstwhile Act before the High Court",
-        "Erstwhile Act to the appellant company",
-        "an offence punishable under Section 4 of the PMLA",
-        "deposit of cash amount of Rs",
-        "PMLA punishable under Section 4",
-        "IBC by any of the petitioners",
-        "1963 Act as well",
-        "Act may be compared with Sections 4",
-    ])
+    @pytest.mark.parametrize(
+        "garbage",
+        [
+            "those candidates who went ahead",
+            "Erstwhile Act which governed the field",
+            "empowers the resolution professional",
+            "how accused",
+            "how the accused",
+            "Act of",
+            "Act plainly",
+            "society",
+            "subsequently",
+            "new Act so as to include even a petitioner",
+            "2013 Act deals with a scenario wherein",
+            "Erstwhile Act before the High Court",
+            "Erstwhile Act to the appellant company",
+            "an offence punishable under Section 4 of the PMLA",
+            "deposit of cash amount of Rs",
+            "PMLA punishable under Section 4",
+            "IBC by any of the petitioners",
+            "1963 Act as well",
+            "Act may be compared with Sections 4",
+        ],
+    )
     def test_rejects_sentence_fragments(self, garbage):
         assert not _is_valid_act_citation(garbage), f"Should reject: {garbage!r}"
 
-    @pytest.mark.parametrize("garbage", [
-        "Section 95",
-        "Section 302",
-        "Article 21",
-        "Section 313CrPC",
-        "Chapter III of Part III",
-        "Part II",
-        "Section 18",
-        "Sections 4 and 5",
-    ])
+    @pytest.mark.parametrize(
+        "garbage",
+        [
+            "Section 95",
+            "Section 302",
+            "Article 21",
+            "Section 313CrPC",
+            "Chapter III of Part III",
+            "Part II",
+            "Section 18",
+            "Sections 4 and 5",
+        ],
+    )
     def test_rejects_standalone_section_article_references(self, garbage):
         assert not _is_valid_act_citation(garbage), f"Should reject: {garbage!r}"
 
-    @pytest.mark.parametrize("garbage", [
-        "Madras5",
-        "Part III 57",
-    ])
+    @pytest.mark.parametrize(
+        "garbage",
+        [
+            "Madras5",
+            "Part III 57",
+        ],
+    )
     def test_rejects_digit_glued_to_text(self, garbage):
         assert not _is_valid_act_citation(garbage), f"Should reject: {garbage!r}"
 
-    @pytest.mark.parametrize("valid", [
-        "IPC",
-        "CrPC",
-        "CRPC",
-        "COI",
-        "BNS",
-        "NDPS ACT",
-        "Indian Penal Code",
-        "Motor Vehicles Act",
-        "Limitation Act",
-        "CA2013",
-        "Transfer of Property Act",
-        "Right to Fair Compensation Act",
-        "RFCTLARR ACT",
-    ])
+    @pytest.mark.parametrize(
+        "valid",
+        [
+            "IPC",
+            "CrPC",
+            "CRPC",
+            "COI",
+            "BNS",
+            "NDPS ACT",
+            "Indian Penal Code",
+            "Motor Vehicles Act",
+            "Limitation Act",
+            "CA2013",
+            "Transfer of Property Act",
+            "Right to Fair Compensation Act",
+            "RFCTLARR ACT",
+        ],
+    )
     def test_accepts_legitimate_act_names(self, valid):
         assert _is_valid_act_citation(valid), f"Should accept: {valid!r}"
 
@@ -569,11 +584,13 @@ class TestActsCitedCanonicalDedup:
         assert len(result) == 1
 
     def test_garbage_filtered_before_dedup(self):
-        result = normalize_acts_cited_list([
-            "IPC",
-            "those candidates who went ahead",
-            "Section 95",
-            "Madras5",
-        ])
+        result = normalize_acts_cited_list(
+            [
+                "IPC",
+                "those candidates who went ahead",
+                "Section 95",
+                "Madras5",
+            ]
+        )
         assert "IPC" in result or any("Penal" in r for r in result)
         assert len(result) == 1  # Only IPC survives

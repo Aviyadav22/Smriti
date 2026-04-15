@@ -69,6 +69,7 @@ _background_tasks: set[asyncio.Task] = set()
 # [D9] Error categorization for SSE error events
 # ---------------------------------------------------------------------------
 
+
 def _categorize_error(exc: Exception) -> dict:
     """Categorize an exception into an SSE error event payload."""
     msg = str(exc)
@@ -90,8 +91,13 @@ def _categorize_error(exc: Exception) -> dict:
         }
     # Distinguish app-level auth errors from upstream provider (Gemini/Google) auth errors.
     # Google API errors mention "auth", "403", "permission" but are provider issues, not user auth.
-    _is_google_err = any(kw in lower for kw in ("google", "gemini", "vertex", "api_key", "service account", "credentials"))
-    if ("401" in lower or "403" in lower or "permission" in lower or "auth" in lower) and not _is_google_err:
+    _is_google_err = any(
+        kw in lower
+        for kw in ("google", "gemini", "vertex", "api_key", "service account", "credentials")
+    )
+    if (
+        "401" in lower or "403" in lower or "permission" in lower or "auth" in lower
+    ) and not _is_google_err:
         return {
             "type": "error",
             "category": "auth_error",
@@ -120,6 +126,7 @@ def _categorize_error(exc: Exception) -> dict:
         "recoverable": False,
     }
 
+
 # ---------------------------------------------------------------------------
 # Request / Response schemas
 # ---------------------------------------------------------------------------
@@ -128,9 +135,15 @@ def _categorize_error(exc: Exception) -> dict:
 class ResearchRequest(BaseModel):
     query: str = Field(..., min_length=5, max_length=5000)
     language: str = Field(default="en", pattern="^(en|hi)$")
-    auto_approve: bool = Field(default=True, description="Skip HITL checkpoints, auto-approve all (default: on for speed)")
-    steer_research: bool = Field(default=False, description="Enable HITL checkpoints to steer the research interactively")
-    skip_verification: bool = Field(default=True, description="Skip citation re-verification step (citations are RAG-grounded)")
+    auto_approve: bool = Field(
+        default=True, description="Skip HITL checkpoints, auto-approve all (default: on for speed)"
+    )
+    steer_research: bool = Field(
+        default=False, description="Enable HITL checkpoints to steer the research interactively"
+    )
+    skip_verification: bool = Field(
+        default=True, description="Skip citation re-verification step (citations are RAG-grounded)"
+    )
 
 
 class CasePrepRequest(BaseModel):
@@ -243,17 +256,35 @@ def _launch_graph_task(
     # Known research graph node names — used to filter astream_events
     # (only emit SSE for actual graph steps, not internal LangChain sub-chains)
     _KNOWN_NODES = {
-        "rewrite_query", "classify", "statute_lookup", "element_decomposition",
-        "plan_research", "checkpoint_plan", "pre_warm_embeddings",
-        "dispatch_workers", "gather_results", "batch_cot_with_reflection",
-        "evaluate_and_extract", "gap_analysis", "checkpoint_findings",
-        "adversarial_search", "temporal_validation",
-        "speculative_synthesis", "format_footnotes", "verify_v2", "quality_check",
+        "rewrite_query",
+        "classify",
+        "statute_lookup",
+        "element_decomposition",
+        "plan_research",
+        "checkpoint_plan",
+        "pre_warm_embeddings",
+        "dispatch_workers",
+        "gather_results",
+        "batch_cot_with_reflection",
+        "evaluate_and_extract",
+        "gap_analysis",
+        "checkpoint_findings",
+        "adversarial_search",
+        "temporal_validation",
+        "speculative_synthesis",
+        "format_footnotes",
+        "verify_v2",
+        "quality_check",
         "checkpoint_memo",
-        "fast_path_search", "fast_path_synthesis",
+        "fast_path_search",
+        "fast_path_synthesis",
         # Workers
-        "case_law_worker", "named_case_worker", "statute_worker",
-        "ik_search_worker", "web_search_worker", "graph_worker",
+        "case_law_worker",
+        "named_case_worker",
+        "statute_worker",
+        "ik_search_worker",
+        "web_search_worker",
+        "graph_worker",
         "graph_community_worker",
     }
 
@@ -282,6 +313,7 @@ def _launch_graph_task(
                 await _safe_put(
                     f'data: {json.dumps({"type": "memo_stream", "execution_id": str(exec_id), "chunk": chunk})}\n\n'
                 )
+
             # Build the appropriate graph type with streaming callback
             _graph_type = graph_kwargs.pop("_graph_type", "research")
             if _graph_type == "strategy":
@@ -291,6 +323,7 @@ def _launch_graph_task(
 
         # --- Progress ticker: sends ONE update during long silences ---
         import time as _time_mod
+
         _ticker_state = {"active": True, "last_event": _time_mod.monotonic()}
 
         async def _progress_ticker() -> None:
@@ -319,17 +352,19 @@ def _launch_graph_task(
                     continue
                 msg = _MESSAGES[idx % len(_MESSAGES)]
                 idx += 1
-                await _safe_put(f"data: {json.dumps({'type': 'progress', 'data': {'stage': '', 'progress': 0, 'detail': msg}, 'execution_id': str(exec_id)})}\n\n")
+                await _safe_put(
+                    f"data: {json.dumps({'type': 'progress', 'data': {'stage': '', 'progress': 0, 'detail': msg}, 'execution_id': str(exec_id)})}\n\n"
+                )
 
         ticker_task = asyncio.create_task(_progress_ticker())
 
         # Send an immediate event so the frontend never shows empty state
-        await _safe_put(f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'understand', 'progress': 0.01, 'detail': 'Starting research...'}, 'execution_id': str(exec_id)})}\n\n")
+        await _safe_put(
+            f"data: {json.dumps({'type': 'progress', 'data': {'stage': 'understand', 'progress': 0.01, 'detail': 'Starting research...'}, 'execution_id': str(exec_id)})}\n\n"
+        )
 
         try:
-            async for event in graph.astream(
-                initial_input, config=config, stream_mode="updates"
-            ):
+            async for event in graph.astream(initial_input, config=config, stream_mode="updates"):
                 for node_name, node_output in event.items():
                     _ticker_state["last_event"] = _time_mod.monotonic()
 
@@ -356,7 +391,8 @@ def _launch_graph_task(
             state = await graph.aget_state(config)
             logger.warning(
                 "STREAM_DEBUG exec_id=%s: stream ended. state.next=%s values_keys=%s error=%s plan_len=%d memo_len=%d",
-                exec_id, state.next,
+                exec_id,
+                state.next,
                 list(state.values.keys())[:15] if state.values else [],
                 str(state.values.get("error", ""))[:200] if state.values else "N/A",
                 len(state.values.get("research_plan", [])) if state.values else 0,
@@ -421,7 +457,8 @@ def _launch_graph_task(
                 if state_error and not memo:
                     logger.error(
                         "Agent %s ended with error in state and no memo: %s",
-                        exec_id, state_error[:500],
+                        exec_id,
+                        state_error[:500],
                     )
                     async with async_session_factory() as db:
                         await db.execute(
@@ -432,7 +469,9 @@ def _launch_graph_task(
                             {"id": exec_id, "msg": state_error[:2000]},
                         )
                         await db.commit()
-                    await _safe_put(f"data: {json.dumps({'type': 'error', 'execution_id': str(exec_id), 'message': state_error[:500]})}\n\n")
+                    await _safe_put(
+                        f"data: {json.dumps({'type': 'error', 'execution_id': str(exec_id), 'message': state_error[:500]})}\n\n"
+                    )
                     return
 
                 result_data = {
@@ -452,15 +491,19 @@ def _launch_graph_task(
                         if not cite or cite in seen_citations:
                             continue
                         seen_citations.add(cite)
-                        synth_footnotes.append({
-                            "number": len(synth_footnotes) + 1,
-                            "citation": cite,
-                            "title": sr.get("title", ""),
-                            "court": sr.get("court", ""),
-                            "year": sr.get("year", ""),
-                            "case_id": sr.get("case_id", ""),
-                            "verification_status": "verified_pg" if sr.get("case_id") else "unverified",
-                        })
+                        synth_footnotes.append(
+                            {
+                                "number": len(synth_footnotes) + 1,
+                                "citation": cite,
+                                "title": sr.get("title", ""),
+                                "court": sr.get("court", ""),
+                                "year": sr.get("year", ""),
+                                "case_id": sr.get("case_id", ""),
+                                "verification_status": "verified_pg"
+                                if sr.get("case_id")
+                                else "unverified",
+                            }
+                        )
                     if synth_footnotes:
                         result_data["footnotes"] = synth_footnotes
                 if final_state.get("source_attribution"):
@@ -519,8 +562,12 @@ def _launch_graph_task(
                     memo_event_data["legal_quality_result"] = result_data["legal_quality_result"]
                 if result_data.get("contradictions"):
                     memo_event_data["contradictions"] = result_data["contradictions"]
-                await _safe_put(f"data: {json.dumps({'type': 'memo', 'execution_id': str(exec_id), 'content': result_data['memo'], 'data': memo_event_data})}\n\n")
-                await _safe_put(f"data: {json.dumps({'type': 'done', 'execution_id': str(exec_id), 'status': 'completed'})}\n\n")
+                await _safe_put(
+                    f"data: {json.dumps({'type': 'memo', 'execution_id': str(exec_id), 'content': result_data['memo'], 'data': memo_event_data})}\n\n"
+                )
+                await _safe_put(
+                    f"data: {json.dumps({'type': 'done', 'execution_id': str(exec_id), 'status': 'completed'})}\n\n"
+                )
 
         except (Exception, asyncio.CancelledError) as exc:
             _ticker_state["active"] = False
@@ -533,11 +580,14 @@ def _launch_graph_task(
                             "UPDATE agent_executions SET status = 'failed', "
                             "error_message = :msg WHERE id = :id"
                         ),
-                        {"id": exec_id, "msg": re.sub(
-                            r'(postgresql|redis|neo4j|https?)://[^\s]+',
-                            '[REDACTED_URL]',
-                            str(exc)[:2000],
-                        )},
+                        {
+                            "id": exec_id,
+                            "msg": re.sub(
+                                r"(postgresql|redis|neo4j|https?)://[^\s]+",
+                                "[REDACTED_URL]",
+                                str(exc)[:2000],
+                            ),
+                        },
                     )
                     await db.commit()
             except Exception:
@@ -562,7 +612,10 @@ def _launch_graph_task(
                             "UPDATE agent_executions SET status = 'failed', "
                             "error_message = :msg WHERE id = :id"
                         ),
-                        {"id": exec_id, "msg": "Background task was cancelled (client disconnect?)"},
+                        {
+                            "id": exec_id,
+                            "msg": "Background task was cancelled (client disconnect?)",
+                        },
                     )
                     await db.commit()
             except Exception:
@@ -578,7 +631,10 @@ def _launch_graph_task(
                             "UPDATE agent_executions SET status = 'failed', "
                             "error_message = :msg WHERE id = :id"
                         ),
-                        {"id": exec_id, "msg": f"Agent execution timed out after {_GRAPH_TIMEOUT // 60} minutes"},
+                        {
+                            "id": exec_id,
+                            "msg": f"Agent execution timed out after {_GRAPH_TIMEOUT // 60} minutes",
+                        },
                     )
                     await db.commit()
             except Exception:
@@ -659,7 +715,11 @@ async def run_agent(
     agent_type: str,
     user: TokenPayload = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    request_body: ResearchRequest | CasePrepRequest | StrategyRequest | DraftingRequest | None = None,
+    request_body: ResearchRequest
+    | CasePrepRequest
+    | StrategyRequest
+    | DraftingRequest
+    | None = None,
 ) -> StreamingResponse:
     """Start an agent execution and stream SSE events."""
     # Validate agent_type
@@ -676,14 +736,18 @@ async def run_agent(
     # Sanitize user input for research queries
     if isinstance(request_body, ResearchRequest):
         if detect_prompt_injection(request_body.query):
-            raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
+            raise HTTPException(
+                status_code=400, detail="Input contains potentially harmful content"
+            )
         request_body.query = sanitize_search_query(request_body.query)
 
     if isinstance(request_body, StrategyRequest):
         for field_name in ("case_facts", "desired_relief", "target_judge", "target_bench"):
             value = getattr(request_body, field_name)
             if value and detect_prompt_injection(value):
-                raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
+                raise HTTPException(
+                    status_code=400, detail="Input contains potentially harmful content"
+                )
             if value:
                 setattr(request_body, field_name, sanitize_search_query(value))
 
@@ -691,7 +755,9 @@ async def run_agent(
         for field_name in ("case_facts", "target_court"):
             value = getattr(request_body, field_name)
             if value and detect_prompt_injection(value):
-                raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
+                raise HTTPException(
+                    status_code=400, detail="Input contains potentially harmful content"
+                )
             if value:
                 setattr(request_body, field_name, sanitize_search_query(value))
 
@@ -772,11 +838,13 @@ async def run_agent(
         # [S11] Semantic cache check (before hash cache)
         try:
             from app.core.search.semantic_cache import SemanticCache
+
             _sem_cache = SemanticCache(_redis, embedder) if _redis else None
             if _sem_cache:
                 cached_semantic = await _sem_cache.get(request_body.query)
                 if cached_semantic:
                     cached_semantic["cache_type"] = "semantic"
+
                     async def _cached_stream_semantic():
                         exec_str = str(execution.id)
                         yield f"data: {json.dumps({'type': 'status', 'execution_id': exec_str, 'step': 'cache_hit', 'message': 'Found cached result (semantic)'})}\n\n"
@@ -787,10 +855,15 @@ async def run_agent(
                             memo_data["research_audit"] = cached_semantic["research_audit"]
                         yield f"data: {json.dumps({'type': 'memo', 'execution_id': exec_str, 'content': cached_semantic.get('memo', ''), 'data': memo_data})}\n\n"
                         yield f"data: {json.dumps({'type': 'done', 'execution_id': exec_str, 'status': 'completed'})}\n\n"
+
                     return StreamingResponse(
                         _cached_stream_semantic(),
                         media_type="text/event-stream",
-                        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+                        headers={
+                            "Cache-Control": "no-cache",
+                            "Connection": "keep-alive",
+                            "X-Accel-Buffering": "no",
+                        },
                     )
         except Exception:
             pass  # Best-effort — fall through
@@ -798,6 +871,7 @@ async def run_agent(
         # [S8-L1] Hash cache check
         cached_memo = await get_cached_memo(_redis, request_body.query)
         if cached_memo:
+
             async def _cached_stream():
                 exec_str = str(execution.id)
                 yield f"data: {json.dumps({'type': 'status', 'execution_id': exec_str, 'step': 'cache_hit', 'message': 'Found cached result'})}\n\n"
@@ -808,10 +882,15 @@ async def run_agent(
                     memo_data_h["research_audit"] = cached_memo["research_audit"]
                 yield f"data: {json.dumps({'type': 'memo', 'execution_id': exec_str, 'content': cached_memo.get('memo', ''), 'data': memo_data_h})}\n\n"
                 yield f"data: {json.dumps({'type': 'done', 'execution_id': exec_str, 'status': 'completed'})}\n\n"
+
             return StreamingResponse(
                 _cached_stream(),
                 media_type="text/event-stream",
-                headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
             )
 
         graph_kwargs = dict(
@@ -936,9 +1015,7 @@ async def list_executions(
     user_uuid = uuid.UUID(user.sub)
 
     count_stmt = (
-        select(func.count())
-        .select_from(AgentExecution)
-        .where(AgentExecution.user_id == user_uuid)
+        select(func.count()).select_from(AgentExecution).where(AgentExecution.user_id == user_uuid)
     )
     total = (await db.execute(count_stmt)).scalar_one()
 
@@ -982,7 +1059,9 @@ async def list_executions(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/executions/{execution_id}", dependencies=[Depends(rate_limit_dependency("60/minute"))])
+@router.get(
+    "/executions/{execution_id}", dependencies=[Depends(rate_limit_dependency("60/minute"))]
+)
 async def get_execution(
     execution_id: str,
     user: TokenPayload = Depends(get_current_user),
@@ -1026,7 +1105,9 @@ async def get_execution(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/executions/{execution_id}/resume", dependencies=[Depends(rate_limit_dependency("10/minute"))])
+@router.post(
+    "/executions/{execution_id}/resume", dependencies=[Depends(rate_limit_dependency("10/minute"))]
+)
 async def resume_execution(
     execution_id: str,
     body: ResumeRequest,
@@ -1153,7 +1234,9 @@ async def resume_execution(
 
     logger.debug(
         "Resume: exec_id=%s thread_id=%s agent_type=%s input=%r",
-        exec_uuid, execution.thread_id, execution.agent_type,
+        exec_uuid,
+        execution.thread_id,
+        execution.agent_type,
         body.input[:200],
     )
 
@@ -1164,7 +1247,9 @@ async def resume_execution(
             # Checkpoint state was lost (e.g. server restart with InMemorySaver)
             async with async_session_factory() as err_db:
                 await err_db.execute(
-                    text("UPDATE agent_executions SET status = 'failed', error_message = 'Checkpoint state lost (server was restarted). Please start a new research query.' WHERE id = :id"),
+                    text(
+                        "UPDATE agent_executions SET status = 'failed', error_message = 'Checkpoint state lost (server was restarted). Please start a new research query.' WHERE id = :id"
+                    ),
                     {"id": exec_uuid},
                 )
                 await err_db.commit()
@@ -1195,7 +1280,9 @@ async def resume_execution(
     )
 
     return StreamingResponse(
-        _stream_agent_events(graph, resume_input, config, exec_uuid, graph_kwargs=resume_graph_kwargs),
+        _stream_agent_events(
+            graph, resume_input, config, exec_uuid, graph_kwargs=resume_graph_kwargs
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -1210,7 +1297,9 @@ async def resume_execution(
 # ---------------------------------------------------------------------------
 
 
-@router.delete("/executions/{execution_id}", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+@router.delete(
+    "/executions/{execution_id}", dependencies=[Depends(rate_limit_dependency("30/minute"))]
+)
 async def cancel_execution(
     execution_id: str,
     user: TokenPayload = Depends(get_current_user),
@@ -1269,6 +1358,7 @@ async def get_drafting_templates(
 ) -> dict:
     """Return available document templates grouped by category."""
     from collections import defaultdict
+
     categories: dict[str, list[dict]] = defaultdict(list)
     _category_names = {
         "criminal": "Criminal Litigation",
@@ -1279,16 +1369,18 @@ async def get_drafting_templates(
         "transactional": "Notices & General",
     }
     for t in TEMPLATES.values():
-        categories[t.category].append({
-            "doc_type": t.doc_type,
-            "display_name": t.display_name,
-            "sections": t.sections,
-            "required_fields": t.required_fields,
-            "statutory_basis": t.statutory_basis,
-            "category": t.category,
-            "requires_affidavit": t.requires_affidavit,
-            "argument_style": t.argument_style,
-        })
+        categories[t.category].append(
+            {
+                "doc_type": t.doc_type,
+                "display_name": t.display_name,
+                "sections": t.sections,
+                "required_fields": t.required_fields,
+                "statutory_basis": t.statutory_basis,
+                "category": t.category,
+                "requires_affidavit": t.requires_affidavit,
+                "argument_style": t.argument_style,
+            }
+        )
     return {
         "categories": [
             {"id": cat, "display_name": _category_names.get(cat, cat), "templates": tmpls}
@@ -1302,7 +1394,9 @@ async def get_drafting_templates(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/drafting/export/{execution_id}", dependencies=[Depends(rate_limit_dependency("20/minute"))])
+@router.post(
+    "/drafting/export/{execution_id}", dependencies=[Depends(rate_limit_dependency("20/minute"))]
+)
 async def export_draft(
     execution_id: str,
     format: str = Query("docx", pattern="^(docx|pdf)$"),
@@ -1325,7 +1419,9 @@ async def export_draft(
     if str(execution.user_id) != user.sub:
         raise HTTPException(status_code=403, detail="Access denied.")
     if execution.agent_type != AgentType.drafting.value:
-        raise HTTPException(status_code=400, detail="Export is only available for drafting executions.")
+        raise HTTPException(
+            status_code=400, detail="Export is only available for drafting executions."
+        )
     if execution.status != AgentStatus.completed.value:
         raise HTTPException(status_code=400, detail="Execution is not completed.")
 
@@ -1339,12 +1435,15 @@ async def export_draft(
 
     # V2: Extract court profile and affidavit from result_data
     court_profile_dict = (execution.result_data or {}).get("court_profile")
-    affidavit_text = (execution.result_data or {}).get("affidavit_draft", "") if include_affidavit else ""
+    affidavit_text = (
+        (execution.result_data or {}).get("affidavit_draft", "") if include_affidavit else ""
+    )
 
     # Reconstruct CourtProfile if available
     court_profile_obj = None
     if court_profile_dict:
         from app.core.drafting.court_profiles import CourtProfile
+
         try:
             court_profile_obj = CourtProfile(**court_profile_dict)
         except (TypeError, KeyError):
@@ -1355,11 +1454,15 @@ async def export_draft(
     fmt = format  # already validated by Query pattern
 
     if fmt == "docx":
-        file_bytes = await export_to_docx(content, template, court_profile=court_profile_obj, affidavit=affidavit_text)
+        file_bytes = await export_to_docx(
+            content, template, court_profile=court_profile_obj, affidavit=affidavit_text
+        )
         media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         filename = f"draft_{safe_doc_type}.docx"
     else:
-        file_bytes = await export_to_pdf(content, template, court_profile=court_profile_obj, affidavit=affidavit_text)
+        file_bytes = await export_to_pdf(
+            content, template, court_profile=court_profile_obj, affidavit=affidavit_text
+        )
         media_type = "application/pdf"
         filename = f"draft_{safe_doc_type}.pdf"
 
@@ -1374,6 +1477,7 @@ async def export_draft(
     )
 
     from io import BytesIO
+
     return StreamingResponse(
         BytesIO(file_bytes),
         media_type=media_type,
@@ -1421,10 +1525,12 @@ async def draft_from_research(
     relevant_precedents: list[dict] = []
     for cite in grounding_citations[:20]:
         if isinstance(cite, dict):
-            relevant_precedents.append({
-                "citation": cite.get("citation", ""),
-                "title": cite.get("title", ""),
-            })
+            relevant_precedents.append(
+                {
+                    "citation": cite.get("citation", ""),
+                    "title": cite.get("title", ""),
+                }
+            )
         elif isinstance(cite, str):
             relevant_precedents.append({"citation": cite, "title": ""})
 
@@ -1444,7 +1550,8 @@ async def draft_from_research(
 
     # Validate required fields
     missing = [
-        f for f in template.required_fields
+        f
+        for f in template.required_fields
         if f not in body.additional_context or not body.additional_context[f]
     ]
     if missing:
@@ -1610,6 +1717,7 @@ async def draft_from_document(
         raise HTTPException(status_code=500, detail="Failed to extract text from PDF.")
     finally:
         import os
+
         with contextlib.suppress(OSError):
             os.unlink(tmp_path)
 
@@ -1700,7 +1808,9 @@ async def draft_from_document(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/drafting/versions/{execution_id}", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+@router.get(
+    "/drafting/versions/{execution_id}", dependencies=[Depends(rate_limit_dependency("30/minute"))]
+)
 async def get_draft_versions(
     execution_id: str,
     user: TokenPayload = Depends(get_current_user),
@@ -1738,11 +1848,15 @@ async def get_draft_versions(
 
 class ReviseSectionRequest(BaseModel):
     """Request body for section-level revision."""
+
     section_heading: str = Field(..., min_length=1, max_length=200)
     feedback: str = Field(..., min_length=1, max_length=2000)
 
 
-@router.post("/research/revise-section/{execution_id}", dependencies=[Depends(rate_limit_dependency("10/minute"))])
+@router.post(
+    "/research/revise-section/{execution_id}",
+    dependencies=[Depends(rate_limit_dependency("10/minute"))],
+)
 async def revise_research_section(
     execution_id: str,
     body: ReviseSectionRequest,
@@ -1767,7 +1881,9 @@ async def revise_research_section(
     if str(execution.user_id) != user.sub:
         raise HTTPException(status_code=403, detail="Access denied.")
     if execution.agent_type != AgentType.research.value:
-        raise HTTPException(status_code=400, detail="Revision is only available for research executions.")
+        raise HTTPException(
+            status_code=400, detail="Revision is only available for research executions."
+        )
     if execution.status != AgentStatus.completed.value:
         raise HTTPException(status_code=400, detail="Execution is not completed.")
 
@@ -1793,7 +1909,9 @@ async def revise_research_section(
             elif section_start_idx is not None and section_end_idx is None:
                 section_end_idx = i
     if section_start_idx is None:
-        raise HTTPException(status_code=404, detail=f"Section '{section_heading}' not found in memo.")
+        raise HTTPException(
+            status_code=404, detail=f"Section '{section_heading}' not found in memo."
+        )
     if section_end_idx is None:
         section_end_idx = len(lines)
 
@@ -1820,7 +1938,9 @@ async def revise_research_section(
             revised_text = await llm.generate(revision_prompt)
 
             # Update memo content in-place
-            new_lines = lines[:section_start_idx] + revised_text.split("\n") + lines[section_end_idx:]
+            new_lines = (
+                lines[:section_start_idx] + revised_text.split("\n") + lines[section_end_idx:]
+            )
             new_memo = "\n".join(new_lines)
 
             # Persist updated memo
@@ -1844,12 +1964,15 @@ async def revise_research_section(
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
+
 # ---------------------------------------------------------------------------
 # GET /research/export/{execution_id} -- Export research memo as DOCX, PDF, or MD
 # ---------------------------------------------------------------------------
 
 
-@router.get("/research/export/{execution_id}", dependencies=[Depends(rate_limit_dependency("20/minute"))])
+@router.get(
+    "/research/export/{execution_id}", dependencies=[Depends(rate_limit_dependency("20/minute"))]
+)
 async def export_research_memo(
     execution_id: str,
     format: str = Query("docx", pattern="^(docx|pdf|md)$"),
@@ -1871,7 +1994,9 @@ async def export_research_memo(
     if str(execution.user_id) != user.sub:
         raise HTTPException(status_code=403, detail="Access denied.")
     if execution.agent_type != AgentType.research.value:
-        raise HTTPException(status_code=400, detail="Export is only available for research executions.")
+        raise HTTPException(
+            status_code=400, detail="Export is only available for research executions."
+        )
     if execution.status != AgentStatus.completed.value:
         raise HTTPException(status_code=400, detail="Execution is not completed.")
 
@@ -1892,13 +2017,17 @@ async def export_research_memo(
         filename = "research_memo.md"
     elif fmt == "docx":
         file_bytes = await export_research_memo_docx(
-            memo_content, title=memo_title, footnotes=footnotes,
+            memo_content,
+            title=memo_title,
+            footnotes=footnotes,
         )
         media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         filename = "research_memo.docx"
     else:
         file_bytes = await export_research_memo_pdf(
-            memo_content, title=memo_title, footnotes=footnotes,
+            memo_content,
+            title=memo_title,
+            footnotes=footnotes,
         )
         media_type = "application/pdf"
         filename = "research_memo.pdf"
@@ -1932,7 +2061,11 @@ async def export_research_memo(
 @router.post("/{agent_type}/session", dependencies=[Depends(rate_limit_dependency("10/minute"))])
 async def create_agent_session(
     agent_type: str,
-    request_body: ResearchRequest | CasePrepRequest | StrategyRequest | DraftingRequest | None = None,
+    request_body: ResearchRequest
+    | CasePrepRequest
+    | StrategyRequest
+    | DraftingRequest
+    | None = None,
     user: TokenPayload = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
@@ -1949,14 +2082,18 @@ async def create_agent_session(
     # Input sanitization (same as run_agent)
     if isinstance(request_body, ResearchRequest):
         if detect_prompt_injection(request_body.query):
-            raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
+            raise HTTPException(
+                status_code=400, detail="Input contains potentially harmful content"
+            )
         request_body.query = sanitize_search_query(request_body.query)
 
     if isinstance(request_body, StrategyRequest):
         for field_name in ("case_facts", "desired_relief", "target_judge", "target_bench"):
             value = getattr(request_body, field_name)
             if value and detect_prompt_injection(value):
-                raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
+                raise HTTPException(
+                    status_code=400, detail="Input contains potentially harmful content"
+                )
             if value:
                 setattr(request_body, field_name, sanitize_search_query(value))
 
@@ -1964,11 +2101,15 @@ async def create_agent_session(
         for field_name in ("case_facts", "target_court"):
             value = getattr(request_body, field_name)
             if value and detect_prompt_injection(value):
-                raise HTTPException(status_code=400, detail="Input contains potentially harmful content")
+                raise HTTPException(
+                    status_code=400, detail="Input contains potentially harmful content"
+                )
             if value:
                 setattr(request_body, field_name, sanitize_search_query(value))
         if request_body.doc_type not in TEMPLATES:
-            raise HTTPException(status_code=422, detail=f"Unknown doc_type. Valid types: {list(TEMPLATES.keys())}")
+            raise HTTPException(
+                status_code=422, detail=f"Unknown doc_type. Valid types: {list(TEMPLATES.keys())}"
+            )
 
     # Generate session title from first query
     if isinstance(request_body, ResearchRequest):
@@ -2086,8 +2227,12 @@ async def create_agent_session(
     elif agent_type == "case_prep":
         graph_store_inst = get_graph_store()
         graph = build_case_prep_graph(
-            llm=llm, embedder=embedder, vector_store=vector_store,
-            reranker=reranker, graph_store=graph_store_inst, checkpointer=checkpointer,
+            llm=llm,
+            embedder=embedder,
+            vector_store=vector_store,
+            reranker=reranker,
+            graph_store=graph_store_inst,
+            checkpointer=checkpointer,
         )
         initial_input = {"document_id": request_body.document_id, "language": request_language}
     elif agent_type == "strategy":
@@ -2113,8 +2258,12 @@ async def create_agent_session(
         }
     else:
         graph = build_drafting_graph(
-            llm=llm, flash_llm=get_flash_llm(), embedder=embedder,
-            vector_store=vector_store, reranker=reranker, checkpointer=checkpointer,
+            llm=llm,
+            flash_llm=get_flash_llm(),
+            embedder=embedder,
+            vector_store=vector_store,
+            reranker=reranker,
+            checkpointer=checkpointer,
             graph_store=get_graph_store(),
         )
         initial_input = {
@@ -2127,8 +2276,11 @@ async def create_agent_session(
         }
 
     await create_audit_log(
-        db=db, action="agent_session.create", user_id=user.sub,
-        resource_type="agent_session", resource_id=str(session.id),
+        db=db,
+        action="agent_session.create",
+        user_id=user.sub,
+        resource_type="agent_session",
+        resource_id=str(session.id),
         metadata={"agent_type": agent_type},
     )
 
@@ -2138,7 +2290,11 @@ async def create_agent_session(
 
         # Then delegate to standard agent stream
         async for event in _stream_agent_events(
-            graph, initial_input, config, execution.id, graph_kwargs=graph_kwargs,
+            graph,
+            initial_input,
+            config,
+            execution.id,
+            graph_kwargs=graph_kwargs,
         ):
             yield event
 
@@ -2148,7 +2304,11 @@ async def create_agent_session(
     return StreamingResponse(
         _session_stream(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -2157,7 +2317,9 @@ async def create_agent_session(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/sessions/{session_id}/follow-up", dependencies=[Depends(rate_limit_dependency("10/minute"))])
+@router.post(
+    "/sessions/{session_id}/follow-up", dependencies=[Depends(rate_limit_dependency("10/minute"))]
+)
 async def session_follow_up(
     session_id: str,
     body: FollowUpRequest,
@@ -2198,7 +2360,9 @@ async def session_follow_up(
         {"sid": sess_uuid},
     )
     if running_check.one_or_none():
-        raise HTTPException(status_code=409, detail="An execution is already in progress for this session.")
+        raise HTTPException(
+            status_code=409, detail="An execution is already in progress for this session."
+        )
 
     # Load last completed execution for context
     last_exec_result = await db.execute(
@@ -2222,6 +2386,7 @@ async def session_follow_up(
 
     # Load conversation history
     from app.core.config import settings
+
     hist_result = await db.execute(
         text(
             "SELECT role, content, message_type FROM agent_messages "
@@ -2231,8 +2396,7 @@ async def session_follow_up(
     )
     hist_rows = hist_result.mappings().all()
     conversation_history = [
-        {"role": r["role"], "content": safe_decrypt(r["content"])}
-        for r in reversed(hist_rows)
+        {"role": r["role"], "content": safe_decrypt(r["content"])} for r in reversed(hist_rows)
     ]
 
     # Save user's follow-up message
@@ -2292,8 +2456,11 @@ async def session_follow_up(
     )
 
     await create_audit_log(
-        db=db, action="agent_session.follow_up", user_id=user.sub,
-        resource_type="agent_session", resource_id=session_id,
+        db=db,
+        action="agent_session.follow_up",
+        user_id=user.sub,
+        resource_type="agent_session",
+        resource_id=session_id,
         metadata={"agent_type": agent_type},
     )
 
@@ -2312,13 +2479,16 @@ async def session_follow_up(
             )
 
         fu_graph = build_follow_up_graph(
-            **graph_kwargs_fu, memo_stream_callback=_memo_stream_cb,
+            **graph_kwargs_fu,
+            memo_stream_callback=_memo_stream_cb,
         )
 
         async def _producer() -> None:
             try:
                 async for event in fu_graph.astream(
-                    initial_input, config=config, stream_mode="updates",
+                    initial_input,
+                    config=config,
+                    stream_mode="updates",
                 ):
                     for node_name, node_output in event.items():
                         if isinstance(node_output, dict):
@@ -2418,7 +2588,11 @@ async def session_follow_up(
     return StreamingResponse(
         _follow_up_stream(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -2503,7 +2677,9 @@ async def get_session(
         raise HTTPException(status_code=422, detail="Invalid session_id format.")
 
     sess_result = await db.execute(
-        text("SELECT id, user_id, agent_type, title, created_at, updated_at FROM agent_sessions WHERE id = :id"),
+        text(
+            "SELECT id, user_id, agent_type, title, created_at, updated_at FROM agent_sessions WHERE id = :id"
+        ),
         {"id": sess_uuid},
     )
     sess = sess_result.mappings().one_or_none()
@@ -2547,7 +2723,9 @@ async def get_session(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/sessions/{session_id}/messages", dependencies=[Depends(rate_limit_dependency("60/minute"))])
+@router.get(
+    "/sessions/{session_id}/messages", dependencies=[Depends(rate_limit_dependency("60/minute"))]
+)
 async def get_session_messages(
     session_id: str,
     user: TokenPayload = Depends(get_current_user),
@@ -2632,8 +2810,11 @@ async def delete_session(
     await db.commit()
 
     await create_audit_log(
-        db=db, action="agent_session.delete", user_id=user.sub,
-        resource_type="agent_session", resource_id=session_id,
+        db=db,
+        action="agent_session.delete",
+        user_id=user.sub,
+        resource_type="agent_session",
+        resource_id=session_id,
     )
 
     return {"status": "deleted", "session_id": session_id}

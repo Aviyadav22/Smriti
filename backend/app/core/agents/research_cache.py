@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # TTLs (seconds)
 # ---------------------------------------------------------------------------
-MEMO_TTL = 86400        # 24 hours
-SEARCH_TTL = 3600       # 1 hour
-IK_TTL = 86400          # 24 hours
+MEMO_TTL = 86400  # 24 hours
+SEARCH_TTL = 3600  # 1 hour
+IK_TTL = 86400  # 24 hours
 EMBEDDING_TTL = 604800  # 7 days
 COMMUNITY_TTL = 604800  # 7 days
 
@@ -35,6 +35,7 @@ COMMUNITY_TTL = 604800  # 7 days
 # ---------------------------------------------------------------------------
 # Key normalization
 # ---------------------------------------------------------------------------
+
 
 def normalize_cache_key(query: str, **filters: Any) -> str:
     """Normalize query for cache key: lowercase, strip whitespace, sort filters."""
@@ -48,6 +49,7 @@ def normalize_cache_key(query: str, **filters: Any) -> str:
 # ---------------------------------------------------------------------------
 # L1: Full research memo cache
 # ---------------------------------------------------------------------------
+
 
 async def get_cached_memo(redis: aioredis.Redis | None, query: str) -> dict | None:
     """[S8-L1] Check for a cached research memo."""
@@ -88,6 +90,7 @@ def get_memo_cache_hash(query: str) -> str:
 # L2: Search result cache (for parallel_hybrid_search in agent pipeline)
 # ---------------------------------------------------------------------------
 
+
 async def get_cached_search(
     redis: aioredis.Redis | None, query: str, **filters: Any
 ) -> list[dict] | None:
@@ -122,8 +125,11 @@ async def set_cached_search(
 # L3: Indian Kanoon API result cache
 # ---------------------------------------------------------------------------
 
+
 async def get_cached_ik_search(
-    redis: aioredis.Redis | None, query: str, **filters: Any,
+    redis: aioredis.Redis | None,
+    query: str,
+    **filters: Any,
 ) -> list[dict] | None:
     """[S8-L3] Check for cached IK search results.
 
@@ -144,7 +150,9 @@ async def get_cached_ik_search(
 
 
 async def set_cached_ik_search(
-    redis: aioredis.Redis | None, query: str, results: list[dict],
+    redis: aioredis.Redis | None,
+    query: str,
+    results: list[dict],
     **filters: Any,
 ) -> None:
     """[S8-L3] Cache IK search results. Skip caching empty results to allow
@@ -192,9 +200,8 @@ async def set_cached_ik_fragment(
 # L4: Embedding cache
 # ---------------------------------------------------------------------------
 
-async def get_cached_embedding(
-    redis: aioredis.Redis | None, text: str
-) -> list[float] | None:
+
+async def get_cached_embedding(redis: aioredis.Redis | None, text: str) -> list[float] | None:
     """[S8-L4] Check for a cached embedding vector."""
     if redis is None:
         return None
@@ -226,9 +233,8 @@ async def set_cached_embedding(
 # L5: Community summary cache
 # ---------------------------------------------------------------------------
 
-async def get_cached_community(
-    redis: aioredis.Redis | None, community_id: str
-) -> dict | None:
+
+async def get_cached_community(redis: aioredis.Redis | None, community_id: str) -> dict | None:
     """[S8-L5] Check for a cached community summary."""
     if redis is None:
         return None

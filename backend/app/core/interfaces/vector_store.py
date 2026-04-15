@@ -45,4 +45,3 @@ class VectorStore(Protocol):
             exclude_ids: Optional list of vector IDs to exclude from deletion.
         """
         ...
-

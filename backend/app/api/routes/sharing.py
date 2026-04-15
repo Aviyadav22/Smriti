@@ -59,9 +59,7 @@ async def create_share(
         raise HTTPException(status_code=422, detail="Invalid execution_id format.")
 
     # Validate ownership and completion
-    result = await db.execute(
-        select(AgentExecution).where(AgentExecution.id == exec_uuid)
-    )
+    result = await db.execute(select(AgentExecution).where(AgentExecution.id == exec_uuid))
     execution = result.scalar_one_or_none()
 
     if execution is None:

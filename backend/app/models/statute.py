@@ -26,18 +26,14 @@ class Statute(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     effective_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     amendment_history: Mapped[list | None] = mapped_column(JSONB, nullable=True)
-    is_repealed: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="false"
-    )
+    is_repealed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     replaced_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     replaces: Mapped[str | None] = mapped_column(String(200), nullable=True)
     document_type: Mapped[str] = mapped_column(String(20), nullable=False)
     searchable_text: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
 
     __table_args__ = (
-        UniqueConstraint(
-            "act_short_name", "section_number", name="uq_statutes_act_section"
-        ),
+        UniqueConstraint("act_short_name", "section_number", name="uq_statutes_act_section"),
         Index("ix_statutes_act", "act_short_name"),
         Index("ix_statutes_section", "act_short_name", "section_number"),
         Index("ix_statutes_fts", "searchable_text", postgresql_using="gin"),
@@ -45,4 +41,6 @@ class Statute(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Statute(id={self.id}, act='{self.act_short_name}', section='{self.section_number}')>"
+        return (
+            f"<Statute(id={self.id}, act='{self.act_short_name}', section='{self.section_number}')>"
+        )

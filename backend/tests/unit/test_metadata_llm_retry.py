@@ -6,6 +6,7 @@ Verifies that the LLM extraction function:
 - Returns empty CaseMetadata on non-transient errors (ValueError, KeyError)
 - Propagates transient errors for pipeline-level retry
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock

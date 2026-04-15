@@ -29,15 +29,31 @@ logger = logging.getLogger("benchmark")
 
 # Fields to evaluate — must exist on CaseMetadata
 _SCALAR_FIELDS = [
-    "title", "citation", "court", "year", "decision_date",
-    "case_type", "jurisdiction", "bench_type", "petitioner",
-    "respondent", "author_judge", "disposal_nature",
-    "case_number", "outcome_summary", "coram_size",
-    "opinion_type", "is_reportable", "is_pil",
+    "title",
+    "citation",
+    "court",
+    "year",
+    "decision_date",
+    "case_type",
+    "jurisdiction",
+    "bench_type",
+    "petitioner",
+    "respondent",
+    "author_judge",
+    "disposal_nature",
+    "case_number",
+    "outcome_summary",
+    "coram_size",
+    "opinion_type",
+    "is_reportable",
+    "is_pil",
 ]
 
 _LIST_FIELDS = [
-    "judge", "acts_cited", "cases_cited", "keywords",
+    "judge",
+    "acts_cited",
+    "cases_cited",
+    "keywords",
 ]
 
 
@@ -257,6 +273,7 @@ def main() -> None:
     # Create a mock LLM for dry-run or use real one
     try:
         from app.core.dependencies import create_llm_provider
+
         llm = create_llm_provider()
     except Exception:
         sys.exit(1)

@@ -10,6 +10,7 @@ Usage:
     python scripts/purge_bad_cases.py --dry-run   # preview only
     python scripts/purge_bad_cases.py              # execute purge
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,7 +39,9 @@ async def purge(dry_run: bool) -> None:
     delete_path = Path("trial_reports/delete_ids.json")
     keep_path = Path("trial_reports/keep_ids.json")
     if not delete_path.exists() or not keep_path.exists():
-        logger.error("Run the identification step first — delete_ids.json / keep_ids.json not found")
+        logger.error(
+            "Run the identification step first — delete_ids.json / keep_ids.json not found"
+        )
         return
 
     delete_ids: list[str] = json.loads(delete_path.read_text(encoding="utf-8"))
@@ -59,6 +62,7 @@ async def purge(dry_run: bool) -> None:
     import asyncpg
 
     from app.core.config import settings
+
     dsn = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
     conn = await asyncpg.connect(dsn)
 
@@ -111,15 +115,20 @@ async def purge(dry_run: bool) -> None:
     batch_size = 500
     deleted_pg = 0
     for i in range(0, len(delete_ids), batch_size):
-        batch = delete_ids[i:i + batch_size]
+        batch = delete_ids[i : i + batch_size]
         result = await conn.execute(
             "DELETE FROM cases WHERE id = ANY($1::uuid[])",
             batch,
         )
         count = int(result.split()[-1])
         deleted_pg += count
-        logger.info("  PG batch %d: deleted %d (total: %d/%d)",
-                     i // batch_size + 1, count, deleted_pg, len(delete_ids))
+        logger.info(
+            "  PG batch %d: deleted %d (total: %d/%d)",
+            i // batch_size + 1,
+            count,
+            deleted_pg,
+            len(delete_ids),
+        )
 
     total_after = await conn.fetchval("SELECT count(*) FROM cases")
     logger.info("PG after: %d cases (deleted %d)", total_after, deleted_pg)
@@ -134,6 +143,7 @@ async def purge(dry_run: bool) -> None:
     logger.info("=" * 60)
 
     from pinecone import Pinecone
+
     pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
     idx = pc.Index(host=os.environ.get("PINECONE_HOST"))
 
@@ -144,7 +154,7 @@ async def purge(dry_run: bool) -> None:
     # Pinecone delete-by-filter: delete all vectors where case_id matches
     pine_deleted = 0
     for i in range(0, len(delete_ids), 100):
-        batch = delete_ids[i:i + 100]
+        batch = delete_ids[i : i + 100]
         for cid in batch:
             try:
                 idx.delete(filter={"case_id": cid})
@@ -152,8 +162,11 @@ async def purge(dry_run: bool) -> None:
             except Exception as exc:
                 logger.warning("Pinecone delete failed for %s: %s", cid[:12], exc)
         if (i + 100) % 500 == 0 or i + 100 >= len(delete_ids):
-            logger.info("  Pinecone: processed %d/%d case IDs",
-                         min(i + 100, len(delete_ids)), len(delete_ids))
+            logger.info(
+                "  Pinecone: processed %d/%d case IDs",
+                min(i + 100, len(delete_ids)),
+                len(delete_ids),
+            )
 
     # Also clean up stale vectors from previously deleted cases
     # Get all keep IDs as a set for checking
@@ -165,9 +178,11 @@ async def purge(dry_run: bool) -> None:
     # listing all vector IDs which is expensive. Skip for now.
 
     stats_after = idx.describe_index_stats()
-    logger.info("Pinecone after: %d vectors (removed ~%d)",
-                stats_after.total_vector_count,
-                stats_before.total_vector_count - stats_after.total_vector_count)
+    logger.info(
+        "Pinecone after: %d vectors (removed ~%d)",
+        stats_after.total_vector_count,
+        stats_before.total_vector_count - stats_after.total_vector_count,
+    )
 
     # ══════════════════════════════════════════════════════════════════
     # STEP 3: Neo4j — delete case nodes not in keep list + stale nodes
@@ -177,6 +192,7 @@ async def purge(dry_run: bool) -> None:
     logger.info("=" * 60)
 
     from neo4j import GraphDatabase
+
     uri = os.environ.get("NEO4J_URI")
     neo_user = os.environ.get("NEO4J_USER")
     pwd = os.environ.get("NEO4J_PASSWORD")
@@ -194,7 +210,7 @@ async def purge(dry_run: bool) -> None:
         # Process in batches to avoid memory issues
         neo_deleted = 0
         for i in range(0, len(delete_ids), 500):
-            batch = delete_ids[i:i + 500]
+            batch = delete_ids[i : i + 500]
             result = session.run(
                 "UNWIND $ids AS cid "
                 "MATCH (c:Case) WHERE c.id = cid "
@@ -204,8 +220,9 @@ async def purge(dry_run: bool) -> None:
             )
             cnt = result.single()["cnt"]
             neo_deleted += cnt
-            logger.info("  Neo4j batch %d: deleted %d nodes (total: %d)",
-                         i // 500 + 1, cnt, neo_deleted)
+            logger.info(
+                "  Neo4j batch %d: deleted %d nodes (total: %d)", i // 500 + 1, cnt, neo_deleted
+            )
 
         # Now delete ALL stale nodes (those with id NOT in keep list)
         # These are orphans from even older ingestion runs
@@ -253,7 +270,11 @@ async def purge(dry_run: bool) -> None:
     logger.info("PURGE COMPLETE")
     logger.info("=" * 60)
     logger.info("PostgreSQL: %d -> %d cases", total_before, total_after)
-    logger.info("Pinecone: %d -> %d vectors", stats_before.total_vector_count, stats_after.total_vector_count)
+    logger.info(
+        "Pinecone: %d -> %d vectors",
+        stats_before.total_vector_count,
+        stats_after.total_vector_count,
+    )
     logger.info("Neo4j: %d -> %d Case nodes", neo_before, neo_after)
     logger.info("Cases kept: %d (verified clean)", len(keep_ids))
 

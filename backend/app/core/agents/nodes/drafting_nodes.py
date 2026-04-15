@@ -5,6 +5,7 @@ injected dependencies, performs a single focused operation, and returns
 a partial state dict for LangGraph to merge.  Dependencies (llm, db, etc.)
 are passed via closures when the graph is built.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -125,6 +126,7 @@ async def parse_opposing_document_node(
 
     return result
 
+
 # Mapping from template prompt_key strings to the actual prompt constants
 _PROMPT_MAP: dict[str, str] = {
     "DRAFT_BAIL_APPLICATION_SYSTEM": DRAFT_BAIL_APPLICATION_SYSTEM,
@@ -191,7 +193,8 @@ async def resolve_template_node(state: DraftingState) -> dict:
 
     # Validate that all required_fields are present in additional_context
     missing = [
-        field for field in template.required_fields
+        field
+        for field in template.required_fields
         if field not in additional_context or not additional_context[field]
     ]
     if missing:
@@ -209,19 +212,24 @@ async def resolve_template_node(state: DraftingState) -> dict:
         try:
             from app.core.analytics.judge_analytics import JudgeAnalyticsService
             from app.db.postgres import async_session_factory
+
             async with async_session_factory() as judge_db:
                 svc = JudgeAnalyticsService(judge_db)
                 profiles = []
                 for judge_name in bench[:3]:  # Limit to 3 judges
                     profile = await svc.get_judge_profile(judge_name)
                     if profile:
-                        profiles.append({
-                            "name": judge_name,
-                            "total_cases": profile.get("total_cases", 0),
-                            "disposal_patterns": profile.get("disposal_patterns", {}),
-                            "top_cited_judgments": profile.get("top_cited_judgments", [])[:5],
-                            "acts_frequency": dict(list(profile.get("acts_frequency", {}).items())[:10]),
-                        })
+                        profiles.append(
+                            {
+                                "name": judge_name,
+                                "total_cases": profile.get("total_cases", 0),
+                                "disposal_patterns": profile.get("disposal_patterns", {}),
+                                "top_cited_judgments": profile.get("top_cited_judgments", [])[:5],
+                                "acts_frequency": dict(
+                                    list(profile.get("acts_frequency", {}).items())[:10]
+                                ),
+                            }
+                        )
                 judge_context = {"profiles": profiles}
         except Exception:
             logger.warning("Failed to fetch judge analytics", exc_info=True)
@@ -278,7 +286,8 @@ async def gather_provisions_node(
 
     # Build prompt for LLM to identify all relevant provisions
     related_acts_text = (
-        "\n".join(f"- {act}" for act in related_acts) if related_acts
+        "\n".join(f"- {act}" for act in related_acts)
+        if related_acts
         else "No related acts found in database."
     )
 
@@ -311,12 +320,14 @@ async def gather_provisions_node(
     validated: list[dict] = []
     for prov in provisions:
         if isinstance(prov, dict):
-            validated.append({
-                "act": prov.get("act", ""),
-                "section": prov.get("section", ""),
-                "description": prov.get("description", ""),
-                "current": prov.get("current", True),
-            })
+            validated.append(
+                {
+                    "act": prov.get("act", ""),
+                    "section": prov.get("section", ""),
+                    "description": prov.get("description", ""),
+                    "current": prov.get("current", True),
+                }
+            )
 
     # Post-process: attach old↔new code mappings
     from app.core.legal.amendment_service import build_lookup_from_constants
@@ -356,12 +367,14 @@ async def gather_provisions_node(
                     graph_store, top_results, seen_ids, max_results=5
                 )
                 for n in neighbors:
-                    suggested_precedents.append({
-                        "case_id": n.get("case_id", ""),
-                        "title": n.get("title", ""),
-                        "citation": n.get("citation", ""),
-                        "source": "citation_graph",
-                    })
+                    suggested_precedents.append(
+                        {
+                            "case_id": n.get("case_id", ""),
+                            "title": n.get("title", ""),
+                            "citation": n.get("citation", ""),
+                            "source": "citation_graph",
+                        }
+                    )
             except Exception:
                 logger.warning("Failed to get citation graph suggestions", exc_info=True)
 
@@ -399,9 +412,7 @@ async def verify_precedents_node(
     verified_set: set[str] = set()
     if citation_strings:
         try:
-            verified_list, _unverified = await verify_citations_against_db(
-                citation_strings, db
-            )
+            verified_list, _unverified = await verify_citations_against_db(citation_strings, db)
             verified_set = set(verified_list)
         except Exception:
             logger.warning(
@@ -482,12 +493,16 @@ async def draft_sections_node(
         )
 
     # Build shared context for all sections
-    precedents_text = json.dumps(
-        verified_precedents[:MAX_RESULTS_FOR_LLM], indent=2
-    ) if verified_precedents else "None provided."
-    provisions_text = json.dumps(
-        statutory_provisions[:MAX_RESULTS_FOR_LLM], indent=2
-    ) if statutory_provisions else "None identified."
+    precedents_text = (
+        json.dumps(verified_precedents[:MAX_RESULTS_FOR_LLM], indent=2)
+        if verified_precedents
+        else "None provided."
+    )
+    provisions_text = (
+        json.dumps(statutory_provisions[:MAX_RESULTS_FOR_LLM], indent=2)
+        if statutory_provisions
+        else "None identified."
+    )
     context_text = json.dumps(additional_context, indent=2)
 
     # Inject user feedback from sources checkpoint if re-running after HITL
@@ -518,7 +533,9 @@ async def draft_sections_node(
     judge_ctx = state.get("judge_context", {})
     judge_text = ""
     if judge_ctx.get("profiles"):
-        parts = ["Judge Context (calibrate argument emphasis, do NOT mention this context in the draft):"]
+        parts = [
+            "Judge Context (calibrate argument emphasis, do NOT mention this context in the draft):"
+        ]
         for jp in judge_ctx["profiles"]:
             top_cited = ", ".join(c.get("title", "") for c in jp.get("top_cited_judgments", [])[:3])
             parts.append(
@@ -575,10 +592,15 @@ async def draft_sections_node(
 
                 # V2: Inject actual statute text for substantive sections
                 substantive_sections = {
-                    "legal_provisions", "grounds", "grounds_for_bail",
-                    "grounds_for_anticipatory_bail", "grounds_for_quashing",
-                    "grounds_for_leave", "grounds_for_divorce",
-                    "grounds_for_maintenance", "legal_grounds",
+                    "legal_provisions",
+                    "grounds",
+                    "grounds_for_bail",
+                    "grounds_for_anticipatory_bail",
+                    "grounds_for_quashing",
+                    "grounds_for_leave",
+                    "grounds_for_divorce",
+                    "grounds_for_maintenance",
+                    "legal_grounds",
                 }
                 if vector_store and embedder and section_name in substantive_sections:
                     try:
@@ -600,7 +622,9 @@ async def draft_sections_node(
                                 if results:
                                     statute_text = results[0].get("text", "")
                                     if statute_text and len(statute_text) < 2000:
-                                        draft = draft + f"\n\n> **{act_ref.raw_text}**: {statute_text}"
+                                        draft = (
+                                            draft + f"\n\n> **{act_ref.raw_text}**: {statute_text}"
+                                        )
                     except Exception:
                         logger.warning(
                             "Statute text injection failed for %s",
@@ -727,11 +751,11 @@ async def revise_section_node(
         lower_section = section_name.lower().replace("_", " ")
         if lower_feedback.startswith(section_name.lower() + ":"):
             target_section = section_name
-            feedback_text = sanitized_feedback[len(section_name) + 1:].strip()
+            feedback_text = sanitized_feedback[len(section_name) + 1 :].strip()
             break
         if lower_feedback.startswith(lower_section + ":"):
             target_section = section_name
-            feedback_text = sanitized_feedback[len(lower_section) + 1:].strip()
+            feedback_text = sanitized_feedback[len(lower_section) + 1 :].strip()
             break
         if section_name.lower() in lower_feedback:
             target_section = section_name
@@ -770,6 +794,7 @@ async def revise_section_node(
 
         # V3: Store revision snapshot
         import time
+
         snapshot = {
             "version": len(state.get("revision_history", []) or []) + 1,
             "timestamp": time.time(),
@@ -783,9 +808,7 @@ async def revise_section_node(
 
         section_drafts = {**section_drafts, target_section: revised_text}
     except Exception:
-        logger.warning(
-            "Failed to revise section '%s'", target_section, exc_info=True
-        )
+        logger.warning("Failed to revise section '%s'", target_section, exc_info=True)
         return {"section_drafts": section_drafts}
 
     return {"section_drafts": section_drafts, "revision_history": history}
@@ -873,9 +896,7 @@ async def verify_final_node(
     if not memo:
         return {"full_draft": memo}
 
-    grounding_citations = collect_grounding_citations(
-        state.get("verified_precedents", [])
-    )
+    grounding_citations = collect_grounding_citations(state.get("verified_precedents", []))
     memo = await verify_memo_citations(memo, db, grounding_citations)
 
     # V3: Cross-document consistency check

@@ -105,7 +105,9 @@ async def check_treatment_from_graph(
         )
         return {r["case_id"]: r["overruled_by"] for r in results}
     except Exception:
-        logger.warning("Failed to check treatment from graph, falling back to heuristic", exc_info=True)
+        logger.warning(
+            "Failed to check treatment from graph, falling back to heuristic", exc_info=True
+        )
         return {}
 
 
@@ -263,10 +265,7 @@ async def rag_respond(
                         "This case may have been overruled or distinguished. "
                         "Verify its current status before relying on it."
                     )
-                elif (
-                    check_text.strip()
-                    and settings.enable_treatment_llm_fallback
-                ):
+                elif check_text.strip() and settings.enable_treatment_llm_fallback:
                     # Stage 3: LLM fallback — try regex first, if low confidence,
                     # escalate to LLM for more accurate classification.
                     regex_results = detect_treatment_in_text(check_text)
@@ -277,7 +276,10 @@ async def rag_respond(
                     if regex_results and low_confidence:
                         llm_result = await classify_treatment_llm(check_text, llm)
                         if llm_result and llm_result.treatment.value in (
-                            "overruled", "distinguished", "not_followed", "doubted",
+                            "overruled",
+                            "distinguished",
+                            "not_followed",
+                            "doubted",
                         ):
                             source_data["treatment_warning"] = (
                                 f"AI analysis suggests this case may have been "
@@ -340,14 +342,12 @@ async def _reformulate_query(
     """Reformulate a follow-up question using conversation context."""
     # Take last few messages for context
     recent = chat_history[-4:]
-    history_summary = "\n".join(
-        f"{m['role'].title()}: {m['content'][:200]}" for m in recent
-    )
+    history_summary = "\n".join(f"{m['role'].title()}: {m['content'][:200]}" for m in recent)
 
     prompt = (
         "You are reformulating a legal research query. Given this conversation context:\n"
         f"{history_summary}\n\n"
-        f"The user now asks: \"{question}\"\n\n"
+        f'The user now asks: "{question}"\n\n'
         "Rewrite the user's question as a self-contained legal search query that:\n"
         "1. Preserves ALL legal terminology (section numbers, act names, case names, legal concepts)\n"
         "2. Resolves pronouns and references to specific legal entities from the conversation\n"
@@ -380,23 +380,16 @@ def _generate_title(question: str) -> str:
     return title
 
 
-async def _create_session(
-    db: AsyncSession, session_id: str, user_id: str, title: str
-) -> None:
+async def _create_session(db: AsyncSession, session_id: str, user_id: str, title: str) -> None:
     """Insert a new chat session row."""
     await db.execute(
-        text(
-            "INSERT INTO chat_sessions (id, user_id, title) "
-            "VALUES (:id, :user_id, :title)"
-        ),
+        text("INSERT INTO chat_sessions (id, user_id, title) " "VALUES (:id, :user_id, :title)"),
         {"id": session_id, "user_id": user_id, "title": title},
     )
     await db.commit()
 
 
-async def _verify_session_ownership(
-    db: AsyncSession, session_id: str, user_id: str
-) -> None:
+async def _verify_session_ownership(db: AsyncSession, session_id: str, user_id: str) -> None:
     """Verify that the session belongs to the user."""
     from fastapi import HTTPException
 
@@ -411,9 +404,7 @@ async def _verify_session_ownership(
         raise HTTPException(status_code=403, detail="Access denied to this chat session")
 
 
-async def _load_chat_history(
-    db: AsyncSession, session_id: str
-) -> list[dict]:
+async def _load_chat_history(db: AsyncSession, session_id: str) -> list[dict]:
     """Load recent chat messages for context."""
     result = await db.execute(
         text(
@@ -530,7 +521,7 @@ def _format_context(sources: list[ChatSource]) -> str:
             chunk = s.chunk_text[:MAX_CHUNK_CHARS]
             if len(s.chunk_text) > MAX_CHUNK_CHARS:
                 chunk += "..."
-            lines.append(f"\n    Relevant Passage:\n    \"{chunk}\"")
+            lines.append(f'\n    Relevant Passage:\n    "{chunk}"')
 
         # Check for overruling language and add treatment warning
         check_text = (s.ratio or "") + " " + (s.chunk_text or "")
@@ -562,9 +553,7 @@ def _format_history(messages: list[dict]) -> str:
     return "Previous conversation:\n" + "\n\n".join(parts) + "\n\n"
 
 
-async def _save_user_message(
-    db: AsyncSession, session_id: str, content: str
-) -> None:
+async def _save_user_message(db: AsyncSession, session_id: str, content: str) -> None:
     """Save the user's message to the database (encrypted)."""
     msg_id = str(uuid.uuid4())
     await db.execute(

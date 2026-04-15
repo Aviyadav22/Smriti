@@ -8,6 +8,7 @@ Usage:
     python scripts/backfill_contextual_embeddings.py --batch-size 50 --dry-run
     python scripts/backfill_contextual_embeddings.py --batch-size 100
 """
+
 from __future__ import annotations
 
 import argparse
@@ -57,9 +58,7 @@ async def backfill_case(
     # Load existing chunks from vector store metadata
     # We query Pinecone by case_id filter to get existing chunk texts
     try:
-        existing = await vector_store.query_by_metadata(
-            {"case_id": case_id}, top_k=500
-        )
+        existing = await vector_store.query_by_metadata({"case_id": case_id}, top_k=500)
     except Exception:
         # Fallback: load from case_sections table
         sections_result = await db.execute(
@@ -78,7 +77,11 @@ async def backfill_case(
 
     chunk_dicts = []
     for item in existing:
-        text_content = item.get("metadata", {}).get("text", "") if isinstance(item, dict) and "metadata" in item else item.get("text", "")
+        text_content = (
+            item.get("metadata", {}).get("text", "")
+            if isinstance(item, dict) and "metadata" in item
+            else item.get("text", "")
+        )
         if text_content:
             chunk_dicts.append({"text": text_content})
 
@@ -99,18 +102,20 @@ async def backfill_case(
         embeddings = await embedder.embed_batch(texts)
         vectors = []
         for i, (chunk, emb) in enumerate(zip(contextualized, embeddings, strict=False)):
-            vectors.append({
-                "id": f"{case_id}_{i}",
-                "values": emb,
-                "metadata": {
-                    "case_id": case_id,
-                    "chunk_index": i,
-                    "document_type": "case_law",
-                    "text": chunk["text"][:2000],
-                },
-            })
+            vectors.append(
+                {
+                    "id": f"{case_id}_{i}",
+                    "values": emb,
+                    "metadata": {
+                        "case_id": case_id,
+                        "chunk_index": i,
+                        "document_type": "case_law",
+                        "text": chunk["text"][:2000],
+                    },
+                }
+            )
         for j in range(0, len(vectors), 100):
-            await vector_store.upsert(vectors[j:j + 100])
+            await vector_store.upsert(vectors[j : j + 100])
         stats["embedded"] = len(vectors)
     except Exception as exc:
         logger.error("Backfill embedding failed for case_id=%s: %s", case_id, exc)
@@ -146,6 +151,7 @@ async def main(args: argparse.Namespace) -> None:
     if not args.dry_run:
         try:
             from app.core.dependencies import get_embedder, get_flash_llm, get_vector_store
+
             embedder = get_embedder()
             vector_store = get_vector_store()
             flash_llm = get_flash_llm()
@@ -158,10 +164,14 @@ async def main(args: argparse.Namespace) -> None:
 
     async with async_session_factory() as db:
         for i in range(0, len(case_ids), batch_size):
-            batch = case_ids[i:i + batch_size]
+            batch = case_ids[i : i + batch_size]
             for cid in batch:
                 stats = await backfill_case(
-                    cid, db, embedder, vector_store, flash_llm,
+                    cid,
+                    db,
+                    embedder,
+                    vector_store,
+                    flash_llm,
                     dry_run=args.dry_run,
                 )
                 for k in total:
@@ -170,12 +180,18 @@ async def main(args: argparse.Namespace) -> None:
             logger.info(
                 "Progress: %d/%d cases, %d chunks embedded, %d errors",
                 min(i + batch_size, len(case_ids)),
-                len(case_ids), total["embedded"], total["errors"],
+                len(case_ids),
+                total["embedded"],
+                total["errors"],
             )
 
     logger.info("=== BACKFILL COMPLETE ===")
-    logger.info("Total: %d chunks, %d embedded, %d errors",
-                total["chunks"], total["embedded"], total["errors"])
+    logger.info(
+        "Total: %d chunks, %d embedded, %d errors",
+        total["chunks"],
+        total["embedded"],
+        total["errors"],
+    )
 
 
 if __name__ == "__main__":

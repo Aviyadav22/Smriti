@@ -63,9 +63,7 @@ class AgentMessage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     sources: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    message_type: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="query"
-    )
+    message_type: Mapped[str] = mapped_column(String(20), nullable=False, server_default="query")
     tokens_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     session: Mapped["AgentSession"] = relationship(back_populates="messages")
@@ -87,7 +85,4 @@ class AgentMessage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<AgentMessage(id={self.id}, role='{self.role}', "
-            f"type='{self.message_type}')>"
-        )
+        return f"<AgentMessage(id={self.id}, role='{self.role}', " f"type='{self.message_type}')>"

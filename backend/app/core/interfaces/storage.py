@@ -18,9 +18,7 @@ class FileStorage(Protocol):
 
     async def retrieve(self, storage_path: str) -> bytes: ...
 
-    def retrieve_chunked(
-        self, storage_path: str, chunk_size: int = 8192
-    ) -> AsyncIterator[bytes]:
+    def retrieve_chunked(self, storage_path: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
         """Yield file contents in chunks to avoid loading entire file into memory."""
         ...
 

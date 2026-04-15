@@ -1,4 +1,5 @@
 """Tests for Drafting Agent V2 features."""
+
 from __future__ import annotations
 
 import io
@@ -35,9 +36,7 @@ class TestExportWithCourtProfile:
         profile = COURT_PROFILES["supreme_court"]
         content = "## FACTS\n\nTest content."
         affidavit = "## AFFIDAVIT\n\nI solemnly affirm..."
-        result = await export_to_docx(
-            content, template, court_profile=profile, affidavit=affidavit
-        )
+        result = await export_to_docx(content, template, court_profile=profile, affidavit=affidavit)
         assert isinstance(result, bytes)
         assert len(result) > 100
 
@@ -86,6 +85,7 @@ class TestFilingPackage:
         import zipfile
 
         from app.core.drafting.export import export_filing_package
+
         template = get_template("bail_application")
         content = "## FACTS\n\nTest content."
         result = await export_filing_package(content, template)
@@ -102,6 +102,7 @@ class TestFilingPackage:
         import zipfile
 
         from app.core.drafting.export import export_filing_package
+
         template = get_template("bail_application")
         content = "## FACTS\n\nTest."
         affidavit = "## AFFIDAVIT\n\nI affirm..."
@@ -116,9 +117,13 @@ class TestFilingPackage:
         import zipfile
 
         from app.core.drafting.export import export_filing_package
+
         template = get_template("bail_application")
         content = "## FACTS\n\nTest."
-        annexures = [{"description": "Copy of FIR", "page": "1"}, {"description": "ID Proof", "page": "5"}]
+        annexures = [
+            {"description": "Copy of FIR", "page": "1"},
+            {"description": "ID Proof", "page": "5"},
+        ]
         result = await export_filing_package(content, template, annexure_index=annexures)
         buf = io.BytesIO(result)
         with zipfile.ZipFile(buf, "r") as zf:

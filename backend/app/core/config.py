@@ -167,66 +167,40 @@ class Settings(BaseSettings):
             # Enforce non-empty and minimum length for JWT secrets
             for name, value in secret_fields.items():
                 if not value:
-                    raise ValueError(
-                        f"{name} must not be empty in production"
-                    )
+                    raise ValueError(f"{name} must not be empty in production")
                 if len(value) < 32:
-                    raise ValueError(
-                        f"{name} must be at least 32 characters in production"
-                    )
+                    raise ValueError(f"{name} must be at least 32 characters in production")
             # Enforce non-empty encryption key
             if not self.encryption_key:
-                raise ValueError(
-                    "encryption_key must not be empty in production"
-                )
+                raise ValueError("encryption_key must not be empty in production")
             # Enforce encryption key minimum length
             if len(self.encryption_key) < 32:
-                raise ValueError(
-                    "encryption_key must be at least 32 characters in production"
-                )
+                raise ValueError("encryption_key must be at least 32 characters in production")
             # Enforce CORS is not wildcard
             if "*" in self.cors_origins:
-                raise ValueError(
-                    "CORS origins must not contain '*' in production"
-                )
+                raise ValueError("CORS origins must not contain '*' in production")
             # Enforce external service API keys are set (unless using Vertex AI)
             if not self.gemini_api_key and not self.gemini_use_vertexai:
                 raise ValueError(
                     "gemini_api_key must not be empty in production (or set GEMINI_USE_VERTEXAI=true)"
                 )
             if not self.pinecone_api_key:
-                raise ValueError(
-                    "pinecone_api_key must not be empty in production"
-                )
+                raise ValueError("pinecone_api_key must not be empty in production")
             if not self.pinecone_host:
-                raise ValueError(
-                    "pinecone_host must not be empty in production"
-                )
+                raise ValueError("pinecone_host must not be empty in production")
             if not self.cohere_api_key:
-                raise ValueError(
-                    "cohere_api_key must not be empty in production"
-                )
+                raise ValueError("cohere_api_key must not be empty in production")
             # Enforce no dev defaults in production
             if self.neo4j_password == "smriti_dev":
-                raise ValueError(
-                    "neo4j_password must not use default 'smriti_dev' in production"
-                )
+                raise ValueError("neo4j_password must not use default 'smriti_dev' in production")
             if "localhost" in self.database_url:
-                raise ValueError(
-                    "database_url must not contain 'localhost' in production"
-                )
+                raise ValueError("database_url must not contain 'localhost' in production")
             if self.storage_provider == "local":
-                raise ValueError(
-                    "storage_provider must not be 'local' in production"
-                )
+                raise ValueError("storage_provider must not be 'local' in production")
             if self.tts_provider == "mock":
-                raise ValueError(
-                    "tts_provider must not be 'mock' in production"
-                )
+                raise ValueError("tts_provider must not be 'mock' in production")
             if self.app_debug:
-                raise ValueError(
-                    "app_debug must be False in production"
-                )
+                raise ValueError("app_debug must be False in production")
         else:
             # Development: warn but allow empty
             import warnings

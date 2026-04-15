@@ -94,9 +94,7 @@ class TestMapPrecedents:
         )
 
         issues = [{"title": "Tax Evasion", "description": "Under Income Tax Act"}]
-        results = await service.map_precedents(
-            issues, acts_referenced=["Income Tax Act, 1961"]
-        )
+        results = await service.map_precedents(issues, acts_referenced=["Income Tax Act, 1961"])
 
         assert results[0].statutes == ["Income Tax Act, 1961"]
 

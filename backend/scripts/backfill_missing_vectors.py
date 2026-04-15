@@ -9,6 +9,7 @@ Usage:
     python scripts/backfill_missing_vectors.py --input trial_reports/missing_vectors.json
     python scripts/backfill_missing_vectors.py --concurrency 2 --rpm-limit 30
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,6 +49,7 @@ async def main(
 
     # Connect to PG (use pool for concurrent access)
     from app.core.config import settings
+
     dsn = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
     pool = await asyncpg.create_pool(dsn, min_size=2, max_size=concurrency + 1)
 
@@ -61,6 +63,7 @@ async def main(
 
     # Rate limiter
     from scripts.batch_ingest_vertex import AsyncRateLimiter
+
     embed_limiter = AsyncRateLimiter(max_per_minute=rpm_limit)
 
     sem = asyncio.Semaphore(concurrency)
@@ -117,20 +120,25 @@ async def main(
                 # Embed
                 texts = [c.text for c in chunks]
                 embeddings = await _embed_chunks(
-                    chunks, embedder, rate_limiter=embed_limiter,
+                    chunks,
+                    embedder,
+                    rate_limiter=embed_limiter,
                     texts_override=texts,
                 )
 
                 if len(embeddings) != len(chunks):
                     logger.error(
                         "Case %s: embedding count mismatch (%d vs %d)",
-                        case_id[:12], len(embeddings), len(chunks),
+                        case_id[:12],
+                        len(embeddings),
+                        len(chunks),
                     )
                     failed += 1
                     return
 
                 # Build metadata for vectors
                 from app.core.ingestion.metadata import CaseMetadata
+
                 metadata = CaseMetadata(
                     title=row["title"],
                     citation=row["citation"],
@@ -144,7 +152,11 @@ async def main(
 
                 # Upsert to Pinecone
                 await _upsert_vectors(
-                    case_id, chunks, embeddings, metadata, vector_store,
+                    case_id,
+                    chunks,
+                    embeddings,
+                    metadata,
+                    vector_store,
                     full_text=full_text,
                 )
 
@@ -152,7 +164,10 @@ async def main(
                 if success % 20 == 0:
                     logger.info(
                         "Progress: %d success, %d failed, %d skipped (of %d)",
-                        success, failed, skipped, len(missing_ids),
+                        success,
+                        failed,
+                        skipped,
+                        len(missing_ids),
                     )
 
             except Exception as exc:
@@ -167,14 +182,18 @@ async def main(
 
     logger.info(
         "COMPLETE: %d success, %d failed, %d skipped (of %d total)",
-        success, failed, skipped, len(missing_ids),
+        success,
+        failed,
+        skipped,
+        len(missing_ids),
     )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Re-embed cases missing Pinecone vectors")
     parser.add_argument(
-        "--input", default="trial_reports/missing_vectors.json",
+        "--input",
+        default="trial_reports/missing_vectors.json",
         help="JSON file with case ID list",
     )
     parser.add_argument("--concurrency", type=int, default=2)

@@ -32,9 +32,17 @@ class TestDocumentAnalysisModel:
     def test_has_required_columns(self) -> None:
         cols = {c.name for c in DocumentAnalysis.__table__.columns}
         expected = {
-            "id", "document_id", "extracted_text", "issues", "parties",
-            "key_facts", "relief_sought", "counter_arguments", "research_memo",
-            "created_at", "updated_at",
+            "id",
+            "document_id",
+            "extracted_text",
+            "issues",
+            "parties",
+            "key_facts",
+            "relief_sought",
+            "counter_arguments",
+            "research_memo",
+            "created_at",
+            "updated_at",
         }
         assert expected.issubset(cols)
 
@@ -55,9 +63,16 @@ class TestAudioDigestModel:
     def test_has_required_columns(self) -> None:
         cols = {c.name for c in AudioDigest.__table__.columns}
         expected = {
-            "id", "case_id", "language", "summary_text",
-            "audio_storage_path", "duration_seconds", "status",
-            "error_message", "created_at", "updated_at",
+            "id",
+            "case_id",
+            "language",
+            "summary_text",
+            "audio_storage_path",
+            "duration_seconds",
+            "status",
+            "error_message",
+            "created_at",
+            "updated_at",
         }
         assert expected.issubset(cols)
 

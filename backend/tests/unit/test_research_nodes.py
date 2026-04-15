@@ -1,4 +1,5 @@
 """Tests for Research Agent node functions."""
+
 from __future__ import annotations
 
 import json
@@ -82,13 +83,20 @@ class TestClassifyQueryNode:
     @pytest.mark.asyncio
     async def test_passes_query_as_prompt(self) -> None:
         llm = _make_llm()
-        llm.generate_structured.return_value = {"topic": "civil", "complexity": "simple", "key_entities": [], "search_hints": []}
+        llm.generate_structured.return_value = {
+            "topic": "civil",
+            "complexity": "simple",
+            "key_entities": [],
+            "search_hints": [],
+        }
 
         state = _make_state(query="limitation period for civil suits")
         await classify_query_node(state, llm)
 
         call_kwargs = llm.generate_structured.call_args
-        assert "limitation period for civil suits" in call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        assert "limitation period for civil suits" in call_kwargs.kwargs.get(
+            "prompt", call_kwargs.args[0] if call_kwargs.args else ""
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -102,13 +110,23 @@ class TestDecomposeQueryNode:
         llm = _make_llm()
         llm.generate_structured.return_value = {
             "sub_queries": [
-                {"query": "Section 498A IPC provisions", "aspect": "statutory", "rationale": "Need the statute text"},
-                {"query": "498A constitutional validity Supreme Court", "aspect": "precedent", "rationale": "Key rulings"},
+                {
+                    "query": "Section 498A IPC provisions",
+                    "aspect": "statutory",
+                    "rationale": "Need the statute text",
+                },
+                {
+                    "query": "498A constitutional validity Supreme Court",
+                    "aspect": "precedent",
+                    "rationale": "Key rulings",
+                },
             ]
         }
 
         state = _make_state(
-            messages=[{"type": "classification", "data": {"topic": "criminal", "complexity": "moderate"}}]
+            messages=[
+                {"type": "classification", "data": {"topic": "criminal", "complexity": "moderate"}}
+            ]
         )
         result = await decompose_query_node(state, llm)
 
@@ -143,7 +161,9 @@ class TestDecomposeQueryNode:
 
         # Verify the LLM received the feedback in the prompt
         call_kwargs = llm.generate_structured.call_args
-        prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        prompt_sent = call_kwargs.kwargs.get(
+            "prompt", call_kwargs.args[0] if call_kwargs.args else ""
+        )
         assert "Focus on criminal law only" in prompt_sent
 
     @pytest.mark.asyncio
@@ -154,13 +174,13 @@ class TestDecomposeQueryNode:
             "sub_queries": [{"query": "test", "aspect": "general", "rationale": "r"}]
         }
 
-        state = _make_state(
-            messages=[{"type": "classification", "data": {"topic": "criminal"}}]
-        )
+        state = _make_state(messages=[{"type": "classification", "data": {"topic": "criminal"}}])
         await decompose_query_node(state, llm)
 
         call_kwargs = llm.generate_structured.call_args
-        prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        prompt_sent = call_kwargs.kwargs.get(
+            "prompt", call_kwargs.args[0] if call_kwargs.args else ""
+        )
         assert "user has reviewed" not in prompt_sent
 
     @pytest.mark.asyncio
@@ -180,7 +200,9 @@ class TestDecomposeQueryNode:
         await decompose_query_node(state, llm)
 
         call_kwargs = llm.generate_structured.call_args
-        prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        prompt_sent = call_kwargs.kwargs.get(
+            "prompt", call_kwargs.args[0] if call_kwargs.args else ""
+        )
         assert "This should be ignored" not in prompt_sent
 
     @pytest.mark.asyncio
@@ -222,8 +244,15 @@ class TestParallelSearchNode:
             FakeItem(case_id="c1", score=0.9, title="Case One", snippet="snippet one"),
         ]
 
-        with patch("app.core.agents.nodes.common.hybrid_search", new_callable=AsyncMock) as mock_search, \
-             patch("app.core.agents.nodes.research_nodes.enrich_results_with_ratio", new_callable=AsyncMock) as mock_enrich:
+        with (
+            patch(
+                "app.core.agents.nodes.common.hybrid_search", new_callable=AsyncMock
+            ) as mock_search,
+            patch(
+                "app.core.agents.nodes.research_nodes.enrich_results_with_ratio",
+                new_callable=AsyncMock,
+            ) as mock_enrich,
+        ):
             mock_search.return_value = mock_response
             mock_enrich.side_effect = lambda results, db: results
 
@@ -246,16 +275,22 @@ class TestParallelSearchNode:
     @pytest.mark.asyncio
     async def test_empty_sub_queries_returns_empty(self) -> None:
         state = _make_state(sub_queries=[])
-        result = await parallel_search_node(state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
+        result = await parallel_search_node(
+            state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock()
+        )
         assert result == {"search_results": []}
 
     @pytest.mark.asyncio
     async def test_handles_search_failure_gracefully(self) -> None:
-        with patch("app.core.agents.nodes.common.hybrid_search", new_callable=AsyncMock) as mock_search:
+        with patch(
+            "app.core.agents.nodes.common.hybrid_search", new_callable=AsyncMock
+        ) as mock_search:
             mock_search.side_effect = RuntimeError("search down")
 
             state = _make_state(sub_queries=["q1"])
-            result = await parallel_search_node(state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
+            result = await parallel_search_node(
+                state, _make_llm(), AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock()
+            )
             assert result["search_results"] == []
 
 
@@ -268,9 +303,27 @@ class TestGatherResultsNode:
     @pytest.mark.asyncio
     async def test_identifies_cross_references(self) -> None:
         results = [
-            {"case_id": "c1", "score": 0.9, "title": "Case 1", "citation": "SCC 1", "source_query": "q1"},
-            {"case_id": "c1", "score": 0.8, "title": "Case 1", "citation": "SCC 1", "source_query": "q2"},
-            {"case_id": "c2", "score": 0.7, "title": "Case 2", "citation": "SCC 2", "source_query": "q1"},
+            {
+                "case_id": "c1",
+                "score": 0.9,
+                "title": "Case 1",
+                "citation": "SCC 1",
+                "source_query": "q1",
+            },
+            {
+                "case_id": "c1",
+                "score": 0.8,
+                "title": "Case 1",
+                "citation": "SCC 1",
+                "source_query": "q2",
+            },
+            {
+                "case_id": "c2",
+                "score": 0.7,
+                "title": "Case 2",
+                "citation": "SCC 2",
+                "source_query": "q1",
+            },
         ]
         state = _make_state(search_results=results)
         result = await gather_results_node(state)
@@ -330,10 +383,24 @@ class TestDetectContradictionsNode:
         llm = _make_llm()
         llm.generate.return_value = json.dumps(contradictions)
 
-        state = _make_state(search_results=[
-            {"title": "Case Alpha", "citation": "SCC 1", "court": "SC", "year": 2020, "snippet": "bail granted"},
-            {"title": "Case Beta", "citation": "SCC 2", "court": "SC", "year": 2021, "snippet": "bail denied"},
-        ])
+        state = _make_state(
+            search_results=[
+                {
+                    "title": "Case Alpha",
+                    "citation": "SCC 1",
+                    "court": "SC",
+                    "year": 2020,
+                    "snippet": "bail granted",
+                },
+                {
+                    "title": "Case Beta",
+                    "citation": "SCC 2",
+                    "court": "SC",
+                    "year": 2021,
+                    "snippet": "bail denied",
+                },
+            ]
+        )
         result = await detect_contradictions_node(state, llm)
 
         assert len(result["contradictions"]) == 1
@@ -367,7 +434,9 @@ class TestSynthesizeMemoNode:
         llm.generate.return_value = "# Research Memo\n\nThis is the synthesized memo."
 
         state = _make_state(
-            search_results=[{"title": f"C{i}", "snippet": "s", "case_id": f"id{i}"} for i in range(5)],
+            search_results=[
+                {"title": f"C{i}", "snippet": "s", "case_id": f"id{i}"} for i in range(5)
+            ],
             cross_references=[{"case_id": "id1", "title": "C1", "citation": "X", "match_count": 2}],
             contradictions=[],
         )
@@ -441,18 +510,26 @@ class TestSynthesizeMemoNode:
             contradictions=[],
         )
 
-        with patch("app.core.agents.nodes.research_nodes.calculate_confidence", wraps=calculate_confidence) as spy:
+        with patch(
+            "app.core.agents.nodes.research_nodes.calculate_confidence", wraps=calculate_confidence
+        ) as spy:
             await synthesize_memo_node(state, llm)
 
             spy.assert_called_once()
             call_kwargs = spy.call_args
-            strengths = call_kwargs.kwargs.get("precedent_strengths") or call_kwargs[1].get("precedent_strengths", [])
+            strengths = call_kwargs.kwargs.get("precedent_strengths") or call_kwargs[1].get(
+                "precedent_strengths", []
+            )
             # If called positionally:
             if not strengths and call_kwargs.args:
                 strengths = call_kwargs.args[2]  # 3rd positional arg
 
-            assert len(strengths) == 2, f"Expected 2 strengths (skipping result with no bench_type), got {strengths}"
-            assert all(s in ("BINDING", "PERSUASIVE", "DISTINGUISHABLE", "OVERRULED") for s in strengths)
+            assert (
+                len(strengths) == 2
+            ), f"Expected 2 strengths (skipping result with no bench_type), got {strengths}"
+            assert all(
+                s in ("BINDING", "PERSUASIVE", "DISTINGUISHABLE", "OVERRULED") for s in strengths
+            )
 
     @pytest.mark.asyncio
     async def test_sc_constitutional_bench_yields_binding(self) -> None:
@@ -475,11 +552,15 @@ class TestSynthesizeMemoNode:
             contradictions=[],
         )
 
-        with patch("app.core.agents.nodes.research_nodes.calculate_confidence", wraps=calculate_confidence) as spy:
+        with patch(
+            "app.core.agents.nodes.research_nodes.calculate_confidence", wraps=calculate_confidence
+        ) as spy:
             await synthesize_memo_node(state, llm)
 
             call_kwargs = spy.call_args
-            strengths = call_kwargs.kwargs.get("precedent_strengths") or call_kwargs[1].get("precedent_strengths", [])
+            strengths = call_kwargs.kwargs.get("precedent_strengths") or call_kwargs[1].get(
+                "precedent_strengths", []
+            )
             if not strengths and call_kwargs.args:
                 strengths = call_kwargs.args[2]
 
@@ -518,7 +599,9 @@ class TestSynthesizeMemoNode:
 
         # Verify the LLM received treatment warnings in the prompt
         call_kwargs = llm.generate.call_args
-        prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        prompt_sent = call_kwargs.kwargs.get(
+            "prompt", call_kwargs.args[0] if call_kwargs.args else ""
+        )
         assert "TREATMENT WARNINGS" in prompt_sent
         assert "Overruled Case" in prompt_sent
         assert "(2010) 5 SCC 100" in prompt_sent
@@ -544,8 +627,11 @@ class TestSynthesizeMemoNode:
             contradictions=[],
         )
 
-        with patch("app.core.agents.nodes.research_nodes.classify_precedent_strength") as mock_classify:
+        with patch(
+            "app.core.agents.nodes.research_nodes.classify_precedent_strength"
+        ) as mock_classify:
             from app.core.legal.precedent_strength import PrecedentStrength
+
             mock_classify.return_value = PrecedentStrength.OVERRULED
 
             await synthesize_memo_node(state, llm)
@@ -577,7 +663,9 @@ class TestSynthesizeMemoNode:
         await synthesize_memo_node(state, llm)
 
         call_kwargs = llm.generate.call_args
-        prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        prompt_sent = call_kwargs.kwargs.get(
+            "prompt", call_kwargs.args[0] if call_kwargs.args else ""
+        )
         assert "TREATMENT WARNINGS" not in prompt_sent
 
     @pytest.mark.asyncio
@@ -588,8 +676,14 @@ class TestSynthesizeMemoNode:
 
         # Results with bench_type for real precedent strengths
         results_with_bench = [
-            {"title": f"C{i}", "snippet": "s", "score": 0.85, "case_id": f"id{i}",
-             "court": "Supreme Court of India", "bench_type": "constitutional"}
+            {
+                "title": f"C{i}",
+                "snippet": "s",
+                "score": 0.85,
+                "case_id": f"id{i}",
+                "court": "Supreme Court of India",
+                "bench_type": "constitutional",
+            }
             for i in range(5)
         ]
         state_with = _make_state(
@@ -601,8 +695,7 @@ class TestSynthesizeMemoNode:
 
         # Results without bench_type (falls back to authority=0.3)
         results_without_bench = [
-            {"title": f"C{i}", "snippet": "s", "score": 0.85, "case_id": f"id{i}"}
-            for i in range(5)
+            {"title": f"C{i}", "snippet": "s", "score": 0.85, "case_id": f"id{i}"} for i in range(5)
         ]
         state_without = _make_state(
             search_results=results_without_bench,
@@ -665,9 +758,7 @@ class TestVerifyCitationsNode:
     @pytest.mark.asyncio
     async def test_human_citation_unverified_appends_warning(self) -> None:
         """A human-readable citation not in the DB should trigger a warning."""
-        state = _make_state(
-            draft_memo="The court relied on (2099) 1 SCC 999 in this matter."
-        )
+        state = _make_state(draft_memo="The court relied on (2099) 1 SCC 999 in this matter.")
 
         # All DB queries return no match
         no_match = MagicMock()
@@ -769,7 +860,7 @@ class TestSafeJsonParse:
         assert safe_json_parse('{"a": 1}') == {"a": 1}
 
     def test_valid_json_list(self) -> None:
-        assert safe_json_parse('[1, 2, 3]') == [1, 2, 3]
+        assert safe_json_parse("[1, 2, 3]") == [1, 2, 3]
 
     def test_json_in_code_fence(self) -> None:
         raw = '```json\n{"key": "value"}\n```'

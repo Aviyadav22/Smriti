@@ -4,6 +4,7 @@ Covers: truncation helper, all-null detection, V2 validation, control char
 stripping, extended editorial regex, bulk INSERT patterns, UNWIND mock,
 worker timeout handling, and SQLite lock safety.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -22,8 +23,8 @@ from app.core.ingestion.pdf import _REPORTER_PAGE_MARKER_RE, clean_extracted_tex
 # Truncation helper
 # ---------------------------------------------------------------------------
 
-class TestTruncateForLLM:
 
+class TestTruncateForLLM:
     def test_short_text_passes_through(self):
         text = "Short text"
         assert _truncate_for_llm(text) == text
@@ -52,8 +53,8 @@ class TestTruncateForLLM:
 # All-null detection
 # ---------------------------------------------------------------------------
 
-class TestAllNullDetection:
 
+class TestAllNullDetection:
     @pytest.mark.asyncio
     async def test_all_null_response_raises(self):
         mock_llm = AsyncMock()
@@ -83,8 +84,8 @@ class TestAllNullDetection:
 # V2 field validation
 # ---------------------------------------------------------------------------
 
-class TestV2FieldValidation:
 
+class TestV2FieldValidation:
     def test_invalid_judicial_tone_cleared(self):
         meta = CaseMetadata(judicial_tone="angry")
         result = validate_with_regex(meta)
@@ -142,20 +143,24 @@ class TestV2FieldValidation:
         assert isinstance(result.arguments_raised, list)
 
     def test_citation_treatments_invalid_filtered(self):
-        meta = CaseMetadata(citation_treatments=[
-            {"cited_case": "Test v State", "context": "applied"},
-            {"no_cited_case": True},
-            "not a dict",
-        ])
+        meta = CaseMetadata(
+            citation_treatments=[
+                {"cited_case": "Test v State", "context": "applied"},
+                {"no_cited_case": True},
+                "not a dict",
+            ]
+        )
         result = validate_with_regex(meta)
         assert len(result.citation_treatments) == 1
         assert result.citation_treatments[0]["cited_case"] == "Test v State"
 
     def test_party_counsel_invalid_filtered(self):
-        meta = CaseMetadata(party_counsel=[
-            {"name": "Advocate A", "designation": "Sr. Advocate"},
-            {"no_name": True},
-        ])
+        meta = CaseMetadata(
+            party_counsel=[
+                {"name": "Advocate A", "designation": "Sr. Advocate"},
+                {"no_name": True},
+            ]
+        )
         result = validate_with_regex(meta)
         assert len(result.party_counsel) == 1
 
@@ -164,8 +169,8 @@ class TestV2FieldValidation:
 # Control character stripping
 # ---------------------------------------------------------------------------
 
-class TestControlCharStripping:
 
+class TestControlCharStripping:
     def test_null_bytes_removed(self):
         text = "Hello\x00World"
         result = clean_extracted_text(text)
@@ -196,26 +201,29 @@ class TestControlCharStripping:
 # Extended editorial regex
 # ---------------------------------------------------------------------------
 
-class TestExtendedEditorialRegex:
 
-    @pytest.mark.parametrize("line,should_match", [
-        # SCR (existing)
-        ("[2024] 1 S.C.R. 63", True),
-        ("64 [2024] 1 S.C.R.", True),
-        # SCC
-        ("(2024) 5 SCC 123", True),
-        ("(2024) 5 SCC (Cri) 123", True),
-        # AIR
-        ("AIR 2024 SC 123", True),
-        # SCALE
-        ("(2024) 3 SCALE 456", True),
-        # MANU
-        ("MANU/SC/1234/2024", True),
-        # Non-matches
-        ("The court held that...", False),
-        ("Section 302 IPC", False),
-        ("(2024) SCC Online SC 123", False),  # Not standalone
-    ])
+class TestExtendedEditorialRegex:
+    @pytest.mark.parametrize(
+        "line,should_match",
+        [
+            # SCR (existing)
+            ("[2024] 1 S.C.R. 63", True),
+            ("64 [2024] 1 S.C.R.", True),
+            # SCC
+            ("(2024) 5 SCC 123", True),
+            ("(2024) 5 SCC (Cri) 123", True),
+            # AIR
+            ("AIR 2024 SC 123", True),
+            # SCALE
+            ("(2024) 3 SCALE 456", True),
+            # MANU
+            ("MANU/SC/1234/2024", True),
+            # Non-matches
+            ("The court held that...", False),
+            ("Section 302 IPC", False),
+            ("(2024) SCC Online SC 123", False),  # Not standalone
+        ],
+    )
     def test_reporter_patterns(self, line, should_match):
         match = _REPORTER_PAGE_MARKER_RE.search(line)
         if should_match:

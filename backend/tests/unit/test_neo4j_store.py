@@ -1,4 +1,5 @@
 """Tests for Neo4j store input validation."""
+
 import pytest
 
 from app.core.providers.graph.neo4j_store import _validate_label, _validate_relationship

@@ -149,9 +149,7 @@ class CounselAnalyticsService:
             """
         )
 
-        count_result = await self._session.execute(
-            count_sql, {"name_pattern": name_pattern}
-        )
+        count_result = await self._session.execute(count_sql, {"name_pattern": name_pattern})
         total = count_result.scalar_one_or_none() or 0
 
         if total == 0:
@@ -295,9 +293,7 @@ class CounselAnalyticsService:
                 LIMIT 20
                 """
             )
-            acts_result = await self._session.execute(
-                acts_sql, {"case_ids": list(case_ids)}
-            )
+            acts_result = await self._session.execute(acts_sql, {"case_ids": list(case_ids)})
             acts_frequency = {r.act: r.count for r in acts_result.all()}
 
         # Top matchups
@@ -500,9 +496,9 @@ class CounselAnalyticsService:
                 "total": stats["total"],
                 "wins": stats["wins"],
                 "losses": stats["losses"],
-                "win_rate": round(
-                    (stats["wins"] / stats["total"]) * 100, 2
-                ) if stats["total"] > 0 else 0.0,
+                "win_rate": round((stats["wins"] / stats["total"]) * 100, 2)
+                if stats["total"] > 0
+                else 0.0,
             }
             for opp_name, stats in sorted_opponents
         ]

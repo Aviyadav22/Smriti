@@ -242,10 +242,12 @@ class TestGetCitations:
     ) -> None:
         """Citations endpoint returns outgoing CITES neighbors."""
         # First call: existence check (scalar), second call: enrichment query
-        db = _mock_db_multi_execute([
-            {"scalar": 1},  # existence check
-            [_make_summary_row(_CITED_CASE_ID, "Cited Case Title")],  # enrichment
-        ])
+        db = _mock_db_multi_execute(
+            [
+                {"scalar": 1},  # existence check
+                [_make_summary_row(_CITED_CASE_ID, "Cited Case Title")],  # enrichment
+            ]
+        )
 
         async def _override_db():
             yield db
@@ -306,10 +308,12 @@ class TestGetCitedBy:
         self, mock_get_graph: MagicMock, app: FastAPI, client: TestClient
     ) -> None:
         """Cited-by endpoint returns incoming CITES neighbors."""
-        db = _mock_db_multi_execute([
-            {"scalar": 1},
-            [_make_summary_row(_CITING_CASE_ID, "Citing Case Title")],
-        ])
+        db = _mock_db_multi_execute(
+            [
+                {"scalar": 1},
+                [_make_summary_row(_CITING_CASE_ID, "Citing Case Title")],
+            ]
+        )
 
         async def _override_db():
             yield db
@@ -377,10 +381,12 @@ class TestGetSimilar:
         # First call: fetch ratio_decidendi, second call: enrichment
         similar_row = _make_summary_row(_SIMILAR_CASE_ID, "Similar Case")
         similar_row["ratio_decidendi"] = "Similar ratio text."
-        db = _mock_db_multi_execute([
-            [{"ratio_decidendi": "Personal hearing is mandatory.", "title": "Test Case"}],
-            [similar_row],
-        ])
+        db = _mock_db_multi_execute(
+            [
+                [{"ratio_decidendi": "Personal hearing is mandatory.", "title": "Test Case"}],
+                [similar_row],
+            ]
+        )
 
         async def _override_db():
             yield db
@@ -441,9 +447,7 @@ class TestGetSimilar:
         client: TestClient,
     ) -> None:
         """Case with no ratio_decidendi and no title returns empty similar list."""
-        db = _mock_db_execute(
-            [{"ratio_decidendi": None, "title": None}]
-        )
+        db = _mock_db_execute([{"ratio_decidendi": None, "title": None}])
 
         async def _override_db():
             yield db
@@ -474,10 +478,14 @@ class TestGetPdf:
         self, mock_get_storage: MagicMock, app: FastAPI, client: TestClient
     ) -> None:
         """PDF endpoint returns PDF content with correct headers."""
-        db = _mock_db_execute([{
-            "pdf_storage_path": f"pdfs/{_CASE_ID}.pdf",
-            "title": "Test Case Title",
-        }])
+        db = _mock_db_execute(
+            [
+                {
+                    "pdf_storage_path": f"pdfs/{_CASE_ID}.pdf",
+                    "title": "Test Case Title",
+                }
+            ]
+        )
 
         async def _override_db():
             yield db
@@ -516,10 +524,14 @@ class TestGetPdf:
 
     def test_get_pdf_no_pdf_path_returns_404(self, app: FastAPI, client: TestClient) -> None:
         """Case with no pdf_storage_path returns 404."""
-        db = _mock_db_execute([{
-            "pdf_storage_path": None,
-            "title": "Test Case",
-        }])
+        db = _mock_db_execute(
+            [
+                {
+                    "pdf_storage_path": None,
+                    "title": "Test Case",
+                }
+            ]
+        )
 
         async def _override_db():
             yield db
@@ -537,10 +549,14 @@ class TestGetPdf:
         self, mock_get_storage: MagicMock, app: FastAPI, client: TestClient
     ) -> None:
         """PDF storage download failure returns 404."""
-        db = _mock_db_execute([{
-            "pdf_storage_path": f"pdfs/{_CASE_ID}.pdf",
-            "title": "Test Case",
-        }])
+        db = _mock_db_execute(
+            [
+                {
+                    "pdf_storage_path": f"pdfs/{_CASE_ID}.pdf",
+                    "title": "Test Case",
+                }
+            ]
+        )
 
         async def _override_db():
             yield db

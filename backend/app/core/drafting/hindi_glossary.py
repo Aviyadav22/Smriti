@@ -4,6 +4,7 @@ Maps English legal terms to their standard Hindi (Devanagari) equivalents
 used in Indian courts. These canonical translations ensure consistency
 when translating legal documents.
 """
+
 from __future__ import annotations
 
 from typing import Final
@@ -23,7 +24,6 @@ LEGAL_GLOSSARY: Final[dict[str, str]] = {
     "Bench": "\u092a\u0940\u0920",
     "Division Bench": "\u0916\u0902\u0921\u092a\u0940\u0920",
     "Full Bench": "\u092a\u0942\u0930\u094d\u0923\u092a\u0940\u0920",
-
     # --- Party Designations ---
     "Petitioner": "\u092f\u093e\u091a\u093f\u0915\u093e\u0915\u0930\u094d\u0924\u093e",
     "Respondent": "\u092a\u094d\u0930\u0924\u094d\u092f\u0930\u094d\u0925\u0940",
@@ -42,7 +42,6 @@ LEGAL_GLOSSARY: Final[dict[str, str]] = {
     "Intervenor": "\u0939\u0938\u094d\u0924\u0915\u094d\u0937\u0947\u092a\u0915\u0930\u094d\u0924\u093e",
     "Surety": "\u091c\u093e\u092e\u093f\u0928\u0926\u093e\u0930",
     "Guardian": "\u0938\u0902\u0930\u0915\u094d\u0937\u0915",
-
     # --- Document Types ---
     "Petition": "\u092f\u093e\u091a\u093f\u0915\u093e",
     "Writ Petition": "\u0930\u093f\u091f \u092f\u093e\u091a\u093f\u0915\u093e",
@@ -65,7 +64,6 @@ LEGAL_GLOSSARY: Final[dict[str, str]] = {
     "Vakalatnama": "\u0935\u0915\u093e\u0932\u0924\u0928\u093e\u092e\u093e",
     "Power of Attorney": "\u092e\u0941\u0916\u094d\u0924\u093e\u0930\u0928\u093e\u092e\u093e",
     "Memorandum of Appeal": "\u0905\u092a\u0940\u0932 \u0915\u093e \u091c\u094d\u091e\u093e\u092a\u0928",
-
     # --- Section Headings ---
     "Facts of the Case": "\u092e\u093e\u092e\u0932\u0947 \u0915\u0947 \u0924\u0925\u094d\u092f",
     "Grounds": "\u0906\u0927\u093e\u0930",
@@ -81,7 +79,6 @@ LEGAL_GLOSSARY: Final[dict[str, str]] = {
     "Issues": "\u0935\u093f\u0935\u093e\u0926\u094d\u092f \u092a\u094d\u0930\u0936\u094d\u0928",
     "Relief Claimed": "\u092e\u093e\u0901\u0917\u093e \u0917\u092f\u093e \u0905\u0928\u0941\u0924\u094b\u0937",
     "Interim Relief": "\u0905\u0902\u0924\u0930\u093f\u092e \u0905\u0928\u0941\u0924\u094b\u0937",
-
     # --- Legal Phrases ---
     "Hon'ble Court": "\u092e\u093e\u0928\u0928\u0940\u092f \u0928\u094d\u092f\u093e\u092f\u093e\u0932\u092f",
     "humble submission": "\u0935\u093f\u0928\u092e\u094d\u0930 \u0928\u093f\u0935\u0947\u0926\u0928",
@@ -111,7 +108,6 @@ LEGAL_GLOSSARY: Final[dict[str, str]] = {
     "ex parte": "\u090f\u0915\u092a\u0915\u094d\u0937\u0940\u092f",
     "ad interim": "\u0905\u0902\u0924\u0930\u093f\u092e",
     "status quo": "\u092f\u0925\u093e\u0938\u094d\u0925\u093f\u0924\u093f",
-
     # --- Legal Actions ---
     "bail": "\u091c\u092e\u093e\u0928\u0924",
     "arrest": "\u0917\u093f\u0930\u092b\u094d\u0924\u093e\u0930\u0940",
@@ -144,7 +140,6 @@ LEGAL_GLOSSARY: Final[dict[str, str]] = {
     "compromise": "\u0938\u092e\u091d\u094c\u0924\u093e",
     "mediation": "\u092e\u0927\u094d\u092f\u0938\u094d\u0925\u0924\u093e",
     "arbitration": "\u092e\u093e\u0927\u094d\u092f\u0938\u094d\u0925\u092e\u094d",
-
     # --- Statutes ---
     "Constitution of India": "\u092d\u093e\u0930\u0924 \u0915\u093e \u0938\u0902\u0935\u093f\u0927\u093e\u0928",
     "Code of Civil Procedure": "\u0938\u093f\u0935\u093f\u0932 \u092a\u094d\u0930\u0915\u094d\u0930\u093f\u092f\u093e \u0938\u0902\u0939\u093f\u0924\u093e",
@@ -170,7 +165,6 @@ LEGAL_GLOSSARY: Final[dict[str, str]] = {
     "Companies Act": "\u0915\u0902\u092a\u0928\u0940 \u0905\u0927\u093f\u0928\u093f\u092f\u092e",
     "Registration Act": "\u092a\u0902\u091c\u0940\u0915\u0930\u0923 \u0905\u0927\u093f\u0928\u093f\u092f\u092e",
     "Stamp Act": "\u0938\u094d\u091f\u093e\u092e\u094d\u092a \u0905\u0927\u093f\u0928\u093f\u092f\u092e",
-
     # --- Affidavit Phrases ---
     "I solemnly affirm and state on oath": "\u092e\u0948\u0902 \u0938\u0924\u094d\u092f\u0928\u093f\u0937\u094d\u0920\u093e \u0938\u0947 \u092a\u094d\u0930\u0924\u093f\u091c\u094d\u091e\u093e\u0928 \u0915\u0930\u0924\u093e/\u0915\u0930\u0924\u0940 \u0939\u0942\u0901 \u0914\u0930 \u0936\u092a\u0925 \u092a\u0930 \u0915\u0939\u0924\u093e/\u0915\u0939\u0924\u0940 \u0939\u0942\u0901",
     "true to my knowledge": "\u092e\u0947\u0930\u0940 \u091c\u093e\u0928\u0915\u093e\u0930\u0940 \u092e\u0947\u0902 \u0938\u0924\u094d\u092f \u0939\u0948",
@@ -179,14 +173,12 @@ LEGAL_GLOSSARY: Final[dict[str, str]] = {
     "Notary Public": "\u0928\u094b\u091f\u0930\u0940 \u092a\u092c\u094d\u0932\u093f\u0915",
     "Oath Commissioner": "\u0936\u092a\u0925 \u0906\u092f\u0941\u0915\u094d\u0924",
     "Identified by me": "\u092e\u0947\u0930\u0947 \u0926\u094d\u0935\u093e\u0930\u093e \u092a\u0939\u091a\u093e\u0928\u093e \u0917\u092f\u093e",
-
     # --- Writ Types ---
     "Habeas Corpus": "\u092c\u0902\u0926\u0940 \u092a\u094d\u0930\u0924\u094d\u092f\u0915\u094d\u0937\u0940\u0915\u0930\u0923",
     "Mandamus": "\u092a\u0930\u092e\u093e\u0926\u0947\u0936",
     "Certiorari": "\u0909\u0924\u094d\u092a\u094d\u0930\u0947\u0937\u0923",
     "Prohibition": "\u092a\u094d\u0930\u0924\u093f\u0937\u0947\u0927",
     "Quo Warranto": "\u0905\u0927\u093f\u0915\u093e\u0930 \u092a\u0943\u091a\u094d\u091b\u093e",
-
     # --- Court Procedures ---
     "filing": "\u0926\u093e\u0916\u093f\u0932 \u0915\u0930\u0928\u093e",
     "hearing": "\u0938\u0941\u0928\u0935\u093e\u0908",
@@ -204,7 +196,6 @@ LEGAL_GLOSSARY: Final[dict[str, str]] = {
     "territorial jurisdiction": "\u092a\u094d\u0930\u093e\u0926\u0947\u0936\u093f\u0915 \u0905\u0927\u093f\u0915\u093e\u0930 \u0915\u094d\u0937\u0947\u0924\u094d\u0930",
     "pecuniary jurisdiction": "\u0906\u0930\u094d\u0925\u093f\u0915 \u0905\u0927\u093f\u0915\u093e\u0930 \u0915\u094d\u0937\u0947\u0924\u094d\u0930",
     "subject matter jurisdiction": "\u0935\u093f\u0937\u092f\u0935\u0938\u094d\u0924\u0941 \u0905\u0927\u093f\u0915\u093e\u0930 \u0915\u094d\u0937\u0947\u0924\u094d\u0930",
-
     # --- Constitutional Terms ---
     "Article": "\u0905\u0928\u0941\u091a\u094d\u091b\u0947\u0926",
     "Section": "\u0927\u093e\u0930\u093e",
@@ -217,7 +208,6 @@ LEGAL_GLOSSARY: Final[dict[str, str]] = {
     "Directive Principles": "\u0928\u0940\u0924\u093f \u0928\u093f\u0930\u094d\u0926\u0947\u0936\u0915 \u0924\u0924\u094d\u0935",
     "Fundamental Duties": "\u092e\u0942\u0932 \u0915\u0930\u094d\u0924\u0935\u094d\u092f",
     "Preamble": "\u0909\u0926\u094d\u0926\u0947\u0936\u093f\u0915\u093e",
-
     # --- Property / Civil Terms ---
     "title": "\u0939\u0915\u094d\u0915",
     "possession": "\u0915\u092c\u094d\u091c\u093e",
@@ -233,7 +223,6 @@ LEGAL_GLOSSARY: Final[dict[str, str]] = {
     "will": "\u0935\u0938\u0940\u092f\u0924",
     "gift": "\u0926\u093e\u0928",
     "sale deed": "\u0935\u093f\u0915\u094d\u0930\u092f \u0935\u093f\u0932\u0947\u0916",
-
     # --- Criminal Law Terms ---
     "cognizable offence": "\u0938\u0902\u091c\u094d\u091e\u0947\u092f \u0905\u092a\u0930\u093e\u0927",
     "non-cognizable offence": "\u0905\u0938\u0902\u091c\u094d\u091e\u0947\u092f \u0905\u092a\u0930\u093e\u0927",
@@ -271,9 +260,7 @@ def apply_hindi_terms(text: str) -> str:
 
     result = text
     # Sort by length descending to replace longer phrases first
-    sorted_terms = sorted(
-        LEGAL_GLOSSARY.items(), key=lambda x: len(x[0]), reverse=True
-    )
+    sorted_terms = sorted(LEGAL_GLOSSARY.items(), key=lambda x: len(x[0]), reverse=True)
     for english, hindi in sorted_terms:
         # Word-boundary replacement (case-insensitive)
         pattern = re.compile(re.escape(english), re.IGNORECASE)
@@ -304,4 +291,7 @@ def get_court_header_hindi(court_id: str) -> str:
         "calcutta_hc": "\u092e\u093e\u0928\u0928\u0940\u092f \u0915\u0932\u0915\u0924\u094d\u0924\u093e \u0909\u091a\u094d\u091a \u0928\u094d\u092f\u093e\u092f\u093e\u0932\u092f \u092e\u0947\u0902",
         "nclt": "\u0930\u093e\u0937\u094d\u091f\u094d\u0930\u0940\u092f \u0915\u0902\u092a\u0928\u0940 \u0935\u093f\u0927\u093f \u0905\u0927\u093f\u0915\u0930\u0923 \u0915\u0947 \u0938\u092e\u0915\u094d\u0937",
     }
-    return _HINDI_HEADERS.get(court_id, "\u092e\u093e\u0928\u0928\u0940\u092f \u0928\u094d\u092f\u093e\u092f\u093e\u0932\u092f \u092e\u0947\u0902")
+    return _HINDI_HEADERS.get(
+        court_id,
+        "\u092e\u093e\u0928\u0928\u0940\u092f \u0928\u094d\u092f\u093e\u092f\u093e\u0932\u092f \u092e\u0947\u0902",
+    )

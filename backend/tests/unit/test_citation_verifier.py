@@ -1,4 +1,5 @@
 """Tests for human-readable citation verification."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -58,18 +59,12 @@ class TestExtractCitationsFromText:
         assert result == []
 
     def test_multiple_citations(self) -> None:
-        text = (
-            "The court in (2017) 10 SCC 1 and AIR 1978 SC 597 "
-            "established the principle."
-        )
+        text = "The court in (2017) 10 SCC 1 and AIR 1978 SC 597 " "established the principle."
         result = extract_citations_from_text(text)
         assert len(result) == 2
 
     def test_deduplicates_repeated_citations(self) -> None:
-        text = (
-            "First mention (2017) 10 SCC 1. "
-            "Second mention (2017) 10 SCC 1."
-        )
+        text = "First mention (2017) 10 SCC 1. " "Second mention (2017) 10 SCC 1."
         result = extract_citations_from_text(text)
         assert len(result) == 1
 
@@ -96,9 +91,7 @@ class TestVerifyCitationsAgainstDb:
         mock_result.first.return_value = (1,)
         db.execute.return_value = mock_result
 
-        verified, unverified = await verify_citations_against_db(
-            ["(2017) 10 SCC 1"], db
-        )
+        verified, unverified = await verify_citations_against_db(["(2017) 10 SCC 1"], db)
         assert "(2017) 10 SCC 1" in verified
         assert unverified == []
 
@@ -114,9 +107,7 @@ class TestVerifyCitationsAgainstDb:
         match.first.return_value = (1,)
         db.execute.side_effect = [no_match, match]
 
-        verified, unverified = await verify_citations_against_db(
-            ["AIR 1978 SC 597"], db
-        )
+        verified, unverified = await verify_citations_against_db(["AIR 1978 SC 597"], db)
         assert "AIR 1978 SC 597" in verified
         assert unverified == []
 
@@ -128,9 +119,7 @@ class TestVerifyCitationsAgainstDb:
         no_match.first.return_value = None
         db.execute.return_value = no_match
 
-        verified, unverified = await verify_citations_against_db(
-            ["(2099) 1 SCC 999"], db
-        )
+        verified, unverified = await verify_citations_against_db(["(2099) 1 SCC 999"], db)
         assert verified == []
         assert "(2099) 1 SCC 999" in unverified
 
@@ -140,9 +129,7 @@ class TestVerifyCitationsAgainstDb:
         db = AsyncMock()
         db.execute.side_effect = ConnectionError("connection lost")
 
-        verified, unverified = await verify_citations_against_db(
-            ["(2017) 10 SCC 1"], db
-        )
+        verified, unverified = await verify_citations_against_db(["(2017) 10 SCC 1"], db)
         assert verified == []
         assert "(2017) 10 SCC 1" in unverified
 

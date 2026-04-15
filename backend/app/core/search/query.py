@@ -111,7 +111,9 @@ class SearchFilters:
     act: str | None = None
     judgment_section: str | None = None  # FACTS, RATIO, ANALYSIS, etc.
     disposal_nature: str | None = None
-    vector_types: list[str] | None = None  # ["chunk", "proposition", "ratio", "headnote", "statute"]
+    vector_types: list[str] | None = (
+        None  # ["chunk", "proposition", "ratio", "headnote", "statute"]
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,9 +150,7 @@ class QueryUnderstanding:
 _CENTRALIZED_OLD_TO_NEW, _CENTRALIZED_NEW_TO_OLD = build_lookup_from_constants()
 
 # Maps: (pattern_keywords, full_name, old_map, new_abbreviation, reverse_abbreviation)
-_STATUTE_EXPANSION_RULES: list[
-    tuple[list[str], str, dict[str, str], str, str]
-] = [
+_STATUTE_EXPANSION_RULES: list[tuple[list[str], str, dict[str, str], str, str]] = [
     (
         ["IPC", "Indian Penal Code"],
         "Indian Penal Code",

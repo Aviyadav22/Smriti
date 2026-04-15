@@ -31,7 +31,9 @@ def _make_metadata() -> CaseMetadata:
 
 
 @pytest.mark.asyncio
-async def test_truncation_warning_logged_when_chunk_exceeds_2000(caplog: pytest.LogCaptureFixture) -> None:
+async def test_truncation_warning_logged_when_chunk_exceeds_2000(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """A WARNING log should be emitted when chunk text exceeds 2000 chars."""
     long_text = "x" * 2500
     chunk = _make_chunk(long_text)
@@ -41,9 +43,9 @@ async def test_truncation_warning_logged_when_chunk_exceeds_2000(caplog: pytest.
     with caplog.at_level(logging.WARNING, logger="app.core.ingestion.pipeline"):
         await _upsert_vectors("test_case", [chunk], [embedding], _make_metadata(), vector_store)
 
-    assert any("truncated" in record.message for record in caplog.records), (
-        f"Expected a 'truncated' warning, got: {[r.message for r in caplog.records]}"
-    )
+    assert any(
+        "truncated" in record.message for record in caplog.records
+    ), f"Expected a 'truncated' warning, got: {[r.message for r in caplog.records]}"
 
 
 @pytest.mark.asyncio

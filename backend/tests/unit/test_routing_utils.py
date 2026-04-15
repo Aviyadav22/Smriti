@@ -1,4 +1,5 @@
 """Tests for shared routing utilities."""
+
 from __future__ import annotations
 
 from langgraph.graph import END
@@ -41,11 +42,14 @@ class TestIsProceed:
     def test_json_string_from_frontend(self) -> None:
         """Frontend sends JSON.stringify({action: 'approve', ...}) as a string."""
         import json
-        payload = json.dumps({
-            "action": "approve",
-            "include_adversarial": False,
-            "removed_tasks": 0,
-        })
+
+        payload = json.dumps(
+            {
+                "action": "approve",
+                "include_adversarial": False,
+                "removed_tasks": 0,
+            }
+        )
         assert is_proceed(payload) is True
 
         payload2 = json.dumps({"action": "revise", "reason": "need more cases"})
@@ -129,6 +133,7 @@ class TestMakeFeedbackRouter:
     def test_json_string_approval_proceeds(self) -> None:
         """Frontend sends JSON string approval — should proceed, not loop."""
         import json
+
         router = make_feedback_router("plan", "decompose", "search")
         state = {
             "messages": [

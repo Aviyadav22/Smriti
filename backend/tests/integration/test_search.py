@@ -222,17 +222,36 @@ class TestSearchEndpoint:
         ]
         facets_result = MagicMock()
         facets_result.mappings.return_value.all.return_value = [
-            {"court": "Supreme Court of India", "case_type": "Civil Appeal", "year": 2023, "bench_type": "Division Bench"},
+            {
+                "court": "Supreme Court of India",
+                "case_type": "Civil Appeal",
+                "year": 2023,
+                "bench_type": "Division Bench",
+            },
         ]
         # FTS query returns rows too
         fts_result = MagicMock()
         fts_result.mappings.return_value.all.return_value = [
-            {"id": CASE_ID_1, "title": "Kesavananda v. State of Kerala", "citation": "(1973) 4 SCC 225", "rank": 5.0, "snippet": "basic structure doctrine"},
-            {"id": CASE_ID_2, "title": "Maneka Gandhi v. Union of India", "citation": "(1978) 1 SCC 248", "rank": 4.0, "snippet": "right to travel abroad"},
+            {
+                "id": CASE_ID_1,
+                "title": "Kesavananda v. State of Kerala",
+                "citation": "(1973) 4 SCC 225",
+                "rank": 5.0,
+                "snippet": "basic structure doctrine",
+            },
+            {
+                "id": CASE_ID_2,
+                "title": "Maneka Gandhi v. Union of India",
+                "citation": "(1978) 1 SCC 248",
+                "rank": 4.0,
+                "snippet": "right to travel abroad",
+            },
         ]
         equiv_result = MagicMock()
         equiv_result.mappings.return_value.all.return_value = []
-        mock_db.execute = AsyncMock(side_effect=[fts_result, enrich_result, equiv_result, facets_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[fts_result, enrich_result, equiv_result, facets_result]
+        )
 
         from app.db.postgres import get_db
 
@@ -272,19 +291,34 @@ class TestSearchEndpoint:
 
         enrich_result = MagicMock()
         enrich_result.mappings.return_value.all.return_value = [
-            _make_case_row(CASE_ID_1, court="Supreme Court of India", year=2020, case_type="Criminal Appeal"),
+            _make_case_row(
+                CASE_ID_1, court="Supreme Court of India", year=2020, case_type="Criminal Appeal"
+            ),
         ]
         facets_result = MagicMock()
         facets_result.mappings.return_value.all.return_value = [
-            {"court": "Supreme Court of India", "case_type": "Criminal Appeal", "year": 2020, "bench_type": "Division Bench"},
+            {
+                "court": "Supreme Court of India",
+                "case_type": "Criminal Appeal",
+                "year": 2020,
+                "bench_type": "Division Bench",
+            },
         ]
         fts_result = MagicMock()
         fts_result.mappings.return_value.all.return_value = [
-            {"id": CASE_ID_1, "title": "Test Case", "citation": "(2020) 1 SCC 1", "rank": 3.0, "snippet": "murder conviction"},
+            {
+                "id": CASE_ID_1,
+                "title": "Test Case",
+                "citation": "(2020) 1 SCC 1",
+                "rank": 3.0,
+                "snippet": "murder conviction",
+            },
         ]
         equiv_result = MagicMock()
         equiv_result.mappings.return_value.all.return_value = []
-        mock_db.execute = AsyncMock(side_effect=[fts_result, enrich_result, equiv_result, facets_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[fts_result, enrich_result, equiv_result, facets_result]
+        )
 
         from app.db.postgres import get_db
 
@@ -301,7 +335,9 @@ class TestSearchEndpoint:
             patch("app.api.routes.search.get_llm", return_value=_mock_llm()),
             patch("app.api.routes.search.get_embedder", return_value=_mock_embedder()),
             patch("app.api.routes.search.get_vector_store", return_value=mock_vs),
-            patch("app.api.routes.search.get_reranker", return_value=_mock_reranker(top_ids_count=1)),
+            patch(
+                "app.api.routes.search.get_reranker", return_value=_mock_reranker(top_ids_count=1)
+            ),
             patch("app.api.routes.search.get_redis", return_value=_mock_redis_none()),
         ):
             transport = ASGITransport(app=app_client)
@@ -346,15 +382,28 @@ class TestSearchEndpoint:
         ]
         facets_result = MagicMock()
         facets_result.mappings.return_value.all.return_value = [
-            {"court": "Supreme Court of India", "case_type": "Civil Appeal", "year": 2023, "bench_type": "Division Bench"},
+            {
+                "court": "Supreme Court of India",
+                "case_type": "Civil Appeal",
+                "year": 2023,
+                "bench_type": "Division Bench",
+            },
         ]
         fts_result = MagicMock()
         fts_result.mappings.return_value.all.return_value = [
-            {"id": CASE_ID_1, "title": "Test v. State", "citation": "(2023) 1 SCC 100", "rank": 5.0, "snippet": "snippet text"},
+            {
+                "id": CASE_ID_1,
+                "title": "Test v. State",
+                "citation": "(2023) 1 SCC 100",
+                "rank": 5.0,
+                "snippet": "snippet text",
+            },
         ]
         equiv_result = MagicMock()
         equiv_result.mappings.return_value.all.return_value = []
-        mock_db.execute = AsyncMock(side_effect=[fts_result, enrich_result, equiv_result, facets_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[fts_result, enrich_result, equiv_result, facets_result]
+        )
 
         from app.db.postgres import get_db
 
@@ -366,10 +415,15 @@ class TestSearchEndpoint:
         with (
             patch("app.api.routes.search.get_llm", return_value=_mock_llm()),
             patch("app.api.routes.search.get_embedder", return_value=_mock_embedder()),
-            patch("app.api.routes.search.get_vector_store", return_value=_mock_vector_store(
-                results=[SearchResult(id="c1", score=0.9, metadata={"case_id": CASE_ID_1})]
-            )),
-            patch("app.api.routes.search.get_reranker", return_value=_mock_reranker(top_ids_count=1)),
+            patch(
+                "app.api.routes.search.get_vector_store",
+                return_value=_mock_vector_store(
+                    results=[SearchResult(id="c1", score=0.9, metadata={"case_id": CASE_ID_1})]
+                ),
+            ),
+            patch(
+                "app.api.routes.search.get_reranker", return_value=_mock_reranker(top_ids_count=1)
+            ),
             patch("app.api.routes.search.get_redis", return_value=_mock_redis_none()),
         ):
             transport = ASGITransport(app=app_client)
@@ -640,9 +694,7 @@ class TestHybridSearch:
         from app.core.search.query import understand_query
 
         failing_llm = AsyncMock()
-        failing_llm.generate_structured = AsyncMock(
-            side_effect=ConnectionError("Cannot reach LLM")
-        )
+        failing_llm.generate_structured = AsyncMock(side_effect=ConnectionError("Cannot reach LLM"))
 
         qu = await understand_query("section 302 IPC cases", failing_llm)
 
@@ -687,7 +739,13 @@ class TestHybridSearch:
         # FTS result
         fts_result = MagicMock()
         fts_result.mappings.return_value.all.return_value = [
-            {"id": CASE_ID_1, "title": "Test Case", "citation": "(2023) 1 SCC 1", "rank": 5.0, "snippet": "test snippet"},
+            {
+                "id": CASE_ID_1,
+                "title": "Test Case",
+                "citation": "(2023) 1 SCC 1",
+                "rank": 5.0,
+                "snippet": "test snippet",
+            },
         ]
         # Enrich result
         enrich_result = MagicMock()
@@ -697,11 +755,18 @@ class TestHybridSearch:
         # Facets result
         facets_result = MagicMock()
         facets_result.mappings.return_value.all.return_value = [
-            {"court": "Supreme Court of India", "case_type": "Civil Appeal", "year": 2023, "bench_type": "Division Bench"},
+            {
+                "court": "Supreme Court of India",
+                "case_type": "Civil Appeal",
+                "year": 2023,
+                "bench_type": "Division Bench",
+            },
         ]
         equiv_result = MagicMock()
         equiv_result.mappings.return_value.all.return_value = []
-        mock_db.execute = AsyncMock(side_effect=[fts_result, enrich_result, equiv_result, facets_result])
+        mock_db.execute = AsyncMock(
+            side_effect=[fts_result, enrich_result, equiv_result, facets_result]
+        )
 
         mock_llm = _mock_llm()
         mock_emb = _mock_embedder()

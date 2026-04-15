@@ -47,12 +47,22 @@ class Chunk:
 # ---------------------------------------------------------------------------
 
 _LEGAL_SIGNAL_PHRASES: tuple[str, ...] = (
-    "held that", "we hold", "in our opinion", "it is well settled",
-    "the ratio", "we are of the view", "the principle",
-    "we approve", "we overrule", "we distinguish",
-    "the question is answered", "the appeal is allowed",
-    "the appeal is dismissed", "we are of the considered view",
-    "in our considered opinion", "we accordingly hold",
+    "held that",
+    "we hold",
+    "in our opinion",
+    "it is well settled",
+    "the ratio",
+    "we are of the view",
+    "the principle",
+    "we approve",
+    "we overrule",
+    "we distinguish",
+    "the question is answered",
+    "the appeal is allowed",
+    "the appeal is dismissed",
+    "we are of the considered view",
+    "in our considered opinion",
+    "we accordingly hold",
 )
 
 
@@ -79,10 +89,10 @@ def _compute_legal_signal(text: str) -> float:
 # ---------------------------------------------------------------------------
 
 _OPINION_AUTHOR_RE = re.compile(
-    r'^[ \t]*(?:\[?\(?Per[ \t]+)?'              # optional "Per" with optional bracket/paren
-    r'([A-Z][A-Za-z.]+(?:[ \t]+[A-Za-z.]+)*)'  # judge name (initials + surname, single line)
-    r',?[ \t]*(?:C\.?J\.?I\.?|J\.?)[ \t]*'     # J. or CJI
-    r'(?:\)?\]?)[ \t]*$',                       # optional closing bracket/paren
+    r"^[ \t]*(?:\[?\(?Per[ \t]+)?"  # optional "Per" with optional bracket/paren
+    r"([A-Z][A-Za-z.]+(?:[ \t]+[A-Za-z.]+)*)"  # judge name (initials + surname, single line)
+    r",?[ \t]*(?:C\.?J\.?I\.?|J\.?)[ \t]*"  # J. or CJI
+    r"(?:\)?\]?)[ \t]*$",  # optional closing bracket/paren
     re.MULTILINE,
 )
 
@@ -100,7 +110,7 @@ def _detect_opinion_authors(text: str) -> list[tuple[int, str]]:
     for match in _OPINION_AUTHOR_RE.finditer(text):
         name = match.group(1).strip()
         # Clean up: collapse whitespace, remove trailing comma
-        name = re.sub(r'\s+', ' ', name).strip().rstrip(',')
+        name = re.sub(r"\s+", " ", name).strip().rstrip(",")
         if name and len(name) > 2:  # Skip very short matches
             authors.append((match.start(), name))
     return sorted(authors, key=lambda x: x[0])
@@ -148,10 +158,7 @@ SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
     # JUDGMENT marker starts the judgment body — separate from HEADER
     # so it doesn't create a second bloated HEADER mid-document.
     "JUDGMENT_START": re.compile(
-        r"(?:"
-        r"JUDGMENT"
-        r"|J\s*U\s*D\s*G\s*M\s*E\s*N\s*T"
-        r")",
+        r"(?:" r"JUDGMENT" r"|J\s*U\s*D\s*G\s*M\s*E\s*N\s*T" r")",
         re.IGNORECASE,
     ),
     "FACTS": re.compile(
@@ -297,18 +304,37 @@ SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
 CHUNK_SIZE: int = 2000
 CHUNK_OVERLAP: int = 200
 # Dense legal sections get smaller, more focused chunks
-_DENSE_SECTIONS: frozenset[str] = frozenset({"ANALYSIS", "RATIO", "ORDER", "DISSENT", "CONCURRENCE"})
+_DENSE_SECTIONS: frozenset[str] = frozenset(
+    {"ANALYSIS", "RATIO", "ORDER", "DISSENT", "CONCURRENCE"}
+)
 _DENSE_CHUNK_SIZE: int = 1200
 _DENSE_CHUNK_OVERLAP: int = 300
 
 # All valid section types produced by the chunker.  Used to validate
 # section labels and prevent typos from creating unfilterable chunks.
-VALID_SECTION_TYPES: frozenset[str] = frozenset({
-    "HEADER", "JUDGMENT_START", "FACTS", "ARGUMENTS", "ISSUES",
-    "ANALYSIS", "RATIO", "ORDER", "DISSENT", "CONCURRENCE",
-    "PRELIMINARY", "EVIDENCE", "STATUTORY", "TOC", "EDITORIAL",
-    "DIRECTIONS", "PER_CURIAM", "PROCEDURAL", "FULL",
-})
+VALID_SECTION_TYPES: frozenset[str] = frozenset(
+    {
+        "HEADER",
+        "JUDGMENT_START",
+        "FACTS",
+        "ARGUMENTS",
+        "ISSUES",
+        "ANALYSIS",
+        "RATIO",
+        "ORDER",
+        "DISSENT",
+        "CONCURRENCE",
+        "PRELIMINARY",
+        "EVIDENCE",
+        "STATUTORY",
+        "TOC",
+        "EDITORIAL",
+        "DIRECTIONS",
+        "PER_CURIAM",
+        "PROCEDURAL",
+        "FULL",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -319,11 +345,11 @@ VALID_SECTION_TYPES: frozenset[str] = frozenset({
 def _is_heading_position(text: str, match_start: int) -> bool:
     """Check if a match is at a line-start heading position, not mid-sentence."""
     # Find the start of the line containing this match
-    line_start = text.rfind('\n', 0, match_start)
+    line_start = text.rfind("\n", 0, match_start)
     line_start = line_start + 1 if line_start != -1 else 0
 
     # Find the end of the line
-    line_end = text.find('\n', match_start)
+    line_end = text.find("\n", match_start)
     if line_end == -1:
         line_end = len(text)
     line_length = line_end - line_start
@@ -337,7 +363,11 @@ def _is_heading_position(text: str, match_start: int) -> bool:
     if not prefix:
         return True
     # Allow Roman numerals, digits, letters with dots: "I.", "1.", "A)", "(a)"
-    return bool(re.match("^(?:[IVXLC]+[\\.\\):]|[0-9]+[\\.\\):]|[A-Z][\\.\\)]|\\([a-zA-Z0-9]+\\))\\s*$", prefix))
+    return bool(
+        re.match(
+            "^(?:[IVXLC]+[\\.\\):]|[0-9]+[\\.\\):]|[A-Z][\\.\\)]|\\([a-zA-Z0-9]+\\))\\s*$", prefix
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -345,17 +375,17 @@ def _is_heading_position(text: str, match_start: int) -> bool:
 # ---------------------------------------------------------------------------
 
 _LEGAL_ABBREVS_RE = re.compile(
-    r'\b(?:vs?|Dr|Mr|Mrs|Smt|Hon|Ld|Sr|Jr|No|Art|Sec|Vol|Ch|'
-    r'Ltd|Pvt|Govt|Ors|Anr|St|viz|'
-    r'I\.?P\.?C|Cr\.?P\.?C|C\.?P\.?C|B\.?N\.?S|S\.?C\.?C|'
-    r'A\.?I\.?R|N\.?C\.?L\.?T|I\.?B\.?C|[A-Z])\.$'
+    r"\b(?:vs?|Dr|Mr|Mrs|Smt|Hon|Ld|Sr|Jr|No|Art|Sec|Vol|Ch|"
+    r"Ltd|Pvt|Govt|Ors|Anr|St|viz|"
+    r"I\.?P\.?C|Cr\.?P\.?C|C\.?P\.?C|B\.?N\.?S|S\.?C\.?C|"
+    r"A\.?I\.?R|N\.?C\.?L\.?T|I\.?B\.?C|[A-Z])\.$"
 )
 
 
 def _is_abbreviation(text: str, period_pos: int) -> bool:
     """Check if the period at *period_pos* belongs to a legal abbreviation."""
     # Look at the preceding text (up to 10 chars before the period)
-    preceding = text[max(0, period_pos - 10):period_pos + 1]
+    preceding = text[max(0, period_pos - 10) : period_pos + 1]
     return _LEGAL_ABBREVS_RE.search(preceding) is not None
 
 
@@ -365,23 +395,23 @@ def _find_break_point(text: str, start: int, end: int, min_chunk: int = 500) -> 
         return end
     search_start = max(start + min_chunk, end - 400)
     # Try paragraph break
-    para = text.rfind('\n\n', search_start, end)
+    para = text.rfind("\n\n", search_start, end)
     if para != -1:
         return para + 2
     # Try sentence break (abbreviation-aware)
-    for sep in ['. ', '.\n', ';\n', '?\n', '!\n']:
+    for sep in [". ", ".\n", ";\n", "?\n", "!\n"]:
         search_pos = end
         while True:
             sent = text.rfind(sep, search_start, search_pos)
             if sent == -1:
                 break
             # For period-based separators, check abbreviation
-            if sep.startswith('.') and _is_abbreviation(text, sent):
+            if sep.startswith(".") and _is_abbreviation(text, sent):
                 search_pos = sent  # skip this one, keep searching earlier
                 continue
             return sent + len(sep)
     # Try word break
-    word = text.rfind(' ', search_start, end)
+    word = text.rfind(" ", search_start, end)
     if word != -1:
         return word + 1
     return end
@@ -475,15 +505,19 @@ _BENCH_RE = re.compile(r"\[.*?JJ?\.?\s*\]")
 
 # Testimony indicators for section mislabeling check
 _TESTIMONY_KEYWORDS = {
-    "cross-examination", "cross examination", "pw-", "dw-",
-    "witness stated", "witness deposed", "deposed that",
-    "under examination", "it is wrong to suggest",
+    "cross-examination",
+    "cross examination",
+    "pw-",
+    "dw-",
+    "witness stated",
+    "witness deposed",
+    "deposed that",
+    "under examination",
+    "it is wrong to suggest",
 }
 
 
-def _split_bloated_header(
-    sections: list[Section], text: str
-) -> list[Section]:
+def _split_bloated_header(sections: list[Section], text: str) -> list[Section]:
     """Split a bloated HEADER section into HEADER + EDITORIAL.
 
     SCR-formatted cases have reporter editorial content (headnotes with
@@ -586,9 +620,11 @@ def _fix_mislabeled_sections(sections: list[Section]) -> list[Section]:
         if sec.type == "ORDER":
             stripped = sec.text.lstrip()
             upper_start = stripped[:60].upper()
-            if ("ORDER AND APPEARANCES" in upper_start
-                    or "APPELLATE JURISDICTION" in upper_start
-                    or "ORIGINAL JURISDICTION" in upper_start):
+            if (
+                "ORDER AND APPEARANCES" in upper_start
+                or "APPELLATE JURISDICTION" in upper_start
+                or "ORIGINAL JURISDICTION" in upper_start
+            ):
                 sec = Section(
                     type="PROCEDURAL",
                     start=sec.start,
@@ -599,9 +635,7 @@ def _fix_mislabeled_sections(sections: list[Section]) -> list[Section]:
         # ARGUMENTS containing witness testimony → EVIDENCE
         if sec.type == "ARGUMENTS":
             sample = sec.text[:3000].lower()
-            testimony_hits = sum(
-                1 for kw in _TESTIMONY_KEYWORDS if kw in sample
-            )
+            testimony_hits = sum(1 for kw in _TESTIMONY_KEYWORDS if kw in sample)
             if testimony_hits >= 2:
                 sec = Section(
                     type="EVIDENCE",
@@ -611,11 +645,22 @@ def _fix_mislabeled_sections(sections: list[Section]) -> list[Section]:
                 )
 
         # Merge tiny sections into previous (only for non-primary types)
-        _PRIMARY_TYPES = {"HEADER", "FACTS", "ARGUMENTS", "ANALYSIS", "RATIO", "ORDER",
-                          "DISSENT", "CONCURRENCE", "EVIDENCE", "ISSUES", "EDITORIAL",
-                          "PROCEDURAL", "JUDGMENT_START"}
-        if (fixed and len(sec.text.strip()) < 100
-                and sec.type not in _PRIMARY_TYPES):
+        _PRIMARY_TYPES = {
+            "HEADER",
+            "FACTS",
+            "ARGUMENTS",
+            "ANALYSIS",
+            "RATIO",
+            "ORDER",
+            "DISSENT",
+            "CONCURRENCE",
+            "EVIDENCE",
+            "ISSUES",
+            "EDITORIAL",
+            "PROCEDURAL",
+            "JUDGMENT_START",
+        }
+        if fixed and len(sec.text.strip()) < 100 and sec.type not in _PRIMARY_TYPES:
             prev = fixed[-1]
             merged = Section(
                 type=prev.type,
@@ -691,15 +736,21 @@ def chunk_judgment(
         if section.type not in VALID_SECTION_TYPES:
             logger.warning(
                 "Unknown section type %r in case %s — normalizing to FULL",
-                section.type, case_id,
+                section.type,
+                case_id,
             )
             section = Section(
-                type="FULL", start=section.start, end=section.end, text=section.text,
+                type="FULL",
+                start=section.start,
+                end=section.end,
+                text=section.text,
             )
 
         # Section-aware chunk sizing
         effective_chunk_size = _DENSE_CHUNK_SIZE if section.type in _DENSE_SECTIONS else CHUNK_SIZE
-        effective_overlap = _DENSE_CHUNK_OVERLAP if section.type in _DENSE_SECTIONS else CHUNK_OVERLAP
+        effective_overlap = (
+            _DENSE_CHUNK_OVERLAP if section.type in _DENSE_SECTIONS else CHUNK_OVERLAP
+        )
 
         pos = 0
         while pos < section_len:
@@ -743,7 +794,7 @@ def chunk_judgment(
             # Search forward for a period-space that isn't an abbreviation
             search_pos = next_pos
             while search_pos < next_pos + 100:
-                snap = section_text.find('. ', search_pos)
+                snap = section_text.find(". ", search_pos)
                 if snap == -1 or snap >= next_pos + 100:
                     break
                 if not _is_abbreviation(section_text, snap):

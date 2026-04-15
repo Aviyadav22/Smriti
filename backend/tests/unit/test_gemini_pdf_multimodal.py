@@ -1,4 +1,5 @@
 """Tests for Gemini PDF multimodal metadata extraction."""
+
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,7 +17,9 @@ class TestGenerateStructuredFromPdf:
         from app.core.providers.llm.gemini import GeminiLLM
 
         mock_response = MagicMock()
-        mock_response.text = json.dumps({"title": "Test v. State", "court": "Supreme Court of India"})
+        mock_response.text = json.dumps(
+            {"title": "Test v. State", "court": "Supreme Court of India"}
+        )
 
         mock_client = MagicMock()
         mock_client.aio.models.generate_content = AsyncMock(return_value=mock_response)
@@ -71,15 +74,15 @@ class TestExtractMetadataLlmPdfPath:
     async def test_uses_pdf_when_path_provided(self):
         """When pdf_path is given and LLM has generate_structured_from_pdf, use it."""
         mock_llm = AsyncMock()
-        mock_llm.generate_structured_from_pdf = AsyncMock(return_value={
-            "title": "PDF Test v. State",
-            "court": "Supreme Court of India",
-        })
+        mock_llm.generate_structured_from_pdf = AsyncMock(
+            return_value={
+                "title": "PDF Test v. State",
+                "court": "Supreme Court of India",
+            }
+        )
         mock_llm.generate_structured = AsyncMock()
 
-        result = await extract_metadata_llm(
-            "some text", mock_llm, pdf_path="/fake/test.pdf"
-        )
+        result = await extract_metadata_llm("some text", mock_llm, pdf_path="/fake/test.pdf")
 
         mock_llm.generate_structured_from_pdf.assert_called_once()
         mock_llm.generate_structured.assert_not_called()
@@ -89,10 +92,12 @@ class TestExtractMetadataLlmPdfPath:
     async def test_falls_back_to_text_when_no_pdf_path(self):
         """When pdf_path is None, should use text-based generate_structured."""
         mock_llm = AsyncMock()
-        mock_llm.generate_structured = AsyncMock(return_value={
-            "title": "Text Test v. State",
-            "court": "Supreme Court of India",
-        })
+        mock_llm.generate_structured = AsyncMock(
+            return_value={
+                "title": "Text Test v. State",
+                "court": "Supreme Court of India",
+            }
+        )
 
         result = await extract_metadata_llm("some text", mock_llm, pdf_path=None)
 
@@ -103,13 +108,13 @@ class TestExtractMetadataLlmPdfPath:
     async def test_falls_back_when_llm_lacks_pdf_method(self):
         """When LLM doesn't have generate_structured_from_pdf, use text."""
         mock_llm = AsyncMock(spec=["generate_structured", "generate", "stream"])
-        mock_llm.generate_structured = AsyncMock(return_value={
-            "title": "Fallback v. State",
-        })
-
-        result = await extract_metadata_llm(
-            "some text", mock_llm, pdf_path="/fake/test.pdf"
+        mock_llm.generate_structured = AsyncMock(
+            return_value={
+                "title": "Fallback v. State",
+            }
         )
+
+        result = await extract_metadata_llm("some text", mock_llm, pdf_path="/fake/test.pdf")
 
         mock_llm.generate_structured.assert_called_once()
         assert result.title == "Fallback v. State"
@@ -120,4 +125,5 @@ class TestLLMProviderProtocol:
 
     def test_protocol_has_pdf_method(self):
         from app.core.interfaces.llm import LLMProvider
+
         assert hasattr(LLMProvider, "generate_structured_from_pdf")

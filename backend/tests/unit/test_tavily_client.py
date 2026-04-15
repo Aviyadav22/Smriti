@@ -1,4 +1,5 @@
 """Tests for Tavily web search client."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -37,7 +38,9 @@ class TestTavilyEnhancements:
         """country param must be passed to Tavily API."""
         resp = _mock_response({"results": []})
 
-        with patch.object(tavily_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            tavily_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             await tavily_client.search("test", country="IN")
             payload = mock_post.call_args[1]["json"]
             assert payload["country"] == "india"  # ISO "IN" mapped to full name
@@ -47,7 +50,9 @@ class TestTavilyEnhancements:
         """time_range param must be passed to Tavily API."""
         resp = _mock_response({"results": []})
 
-        with patch.object(tavily_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            tavily_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             await tavily_client.search("test", time_range="year")
             payload = mock_post.call_args[1]["json"]
             assert payload["time_range"] == "year"
@@ -55,11 +60,23 @@ class TestTavilyEnhancements:
     @pytest.mark.asyncio
     async def test_search_requests_raw_content(self, tavily_client) -> None:
         """include_raw_content=True should send 'markdown' and return raw_content."""
-        resp = _mock_response({"results": [
-            {"title": "T", "url": "u", "content": "c", "raw_content": "# Full MD", "score": 0.9}
-        ]})
+        resp = _mock_response(
+            {
+                "results": [
+                    {
+                        "title": "T",
+                        "url": "u",
+                        "content": "c",
+                        "raw_content": "# Full MD",
+                        "score": 0.9,
+                    }
+                ]
+            }
+        )
 
-        with patch.object(tavily_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            tavily_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             results = await tavily_client.search("test", include_raw_content=True)
             payload = mock_post.call_args[1]["json"]
             assert payload["include_raw_content"] == "markdown"
@@ -68,9 +85,9 @@ class TestTavilyEnhancements:
     @pytest.mark.asyncio
     async def test_search_omits_raw_content_when_not_requested(self, tavily_client) -> None:
         """Without include_raw_content, results should not have raw_content key."""
-        resp = _mock_response({"results": [
-            {"title": "T", "url": "u", "content": "c", "score": 0.9}
-        ]})
+        resp = _mock_response(
+            {"results": [{"title": "T", "url": "u", "content": "c", "score": 0.9}]}
+        )
 
         with patch.object(tavily_client._client, "post", new_callable=AsyncMock, return_value=resp):
             results = await tavily_client.search("test")
@@ -81,7 +98,9 @@ class TestTavilyEnhancements:
         """Optional params should not appear in payload when not provided."""
         resp = _mock_response({"results": []})
 
-        with patch.object(tavily_client._client, "post", new_callable=AsyncMock, return_value=resp) as mock_post:
+        with patch.object(
+            tavily_client._client, "post", new_callable=AsyncMock, return_value=resp
+        ) as mock_post:
             await tavily_client.search("test")
             payload = mock_post.call_args[1]["json"]
             assert "country" not in payload

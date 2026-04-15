@@ -10,6 +10,7 @@ Usage:
     cd backend
     python -m scripts.test_resume_flow
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -44,7 +45,6 @@ async def test_resume_flow() -> None:
         get_vector_store,
         get_web_search,
     )
-
 
     checkpointer = MemorySaver()
 
@@ -104,20 +104,20 @@ async def test_resume_flow() -> None:
 
     # ---- STEP 2: Resume with EXACT frontend approve payload ----
     # This is exactly what plan-review.tsx handleApprove() sends:
-    approve_payload = json.dumps({
-        "action": "approve",
-        "include_adversarial": True,
-        "removed_tasks": 0,
-    })
+    approve_payload = json.dumps(
+        {
+            "action": "approve",
+            "include_adversarial": True,
+            "removed_tasks": 0,
+        }
+    )
 
     # This is exactly what the backend does:
     resume_input = Command(resume=approve_payload)
 
     nodes_after_resume = []
     try:
-        async for event in graph.astream(
-            resume_input, config=config, stream_mode="updates"
-        ):
+        async for event in graph.astream(resume_input, config=config, stream_mode="updates"):
             for node_name in event:
                 nodes_after_resume.append(node_name)
                 # Stop after a few nodes to avoid running the whole pipeline
@@ -132,18 +132,22 @@ async def test_resume_flow() -> None:
     len(state2.values.get("research_plan", []))
     len(state2.values.get("messages", []))
 
-
     # Check the critical feedback message
     messages = state2.values.get("messages", [])
     plan_feedbacks = [
-        m for m in messages
+        m
+        for m in messages
         if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "plan"
     ]
     for pf in plan_feedbacks:
         pf.get("content")
 
     # Did it loop back to plan_research or proceed?
-    if "plan_research" in nodes_after_resume or ("checkpoint_plan" in nodes_after_resume and len(nodes_after_resume) == 1) or any(n in nodes_after_resume for n in ["pre_warm_embeddings", "dispatch_workers"]):
+    if (
+        "plan_research" in nodes_after_resume
+        or ("checkpoint_plan" in nodes_after_resume and len(nodes_after_resume) == 1)
+        or any(n in nodes_after_resume for n in ["pre_warm_embeddings", "dispatch_workers"])
+    ):
         pass
     else:
         pass

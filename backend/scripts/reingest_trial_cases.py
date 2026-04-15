@@ -43,7 +43,9 @@ async def find_trial_cases(db_url: str) -> list[str]:
             {"min_year": min(TRIAL_YEARS), "max_year": max(TRIAL_YEARS)},
         )
         rows = result.fetchall()
-        logger.info("Found %d cases in year range %d-%d", len(rows), min(TRIAL_YEARS), max(TRIAL_YEARS))
+        logger.info(
+            "Found %d cases in year range %d-%d", len(rows), min(TRIAL_YEARS), max(TRIAL_YEARS)
+        )
         return [str(row[0]) for row in rows]
 
 
@@ -74,7 +76,7 @@ async def delete_from_pinecone(case_ids: list[str]) -> int:
 
     deleted = 0
     for i in range(0, len(case_ids), 10):
-        batch = case_ids[i:i + 10]
+        batch = case_ids[i : i + 10]
         for cid in batch:
             index.delete(filter={"case_id": cid})
             deleted += 1
@@ -109,7 +111,9 @@ async def delete_from_neo4j(case_ids: list[str]) -> int:
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="Re-ingest trial cases after pipeline quality fixes")
+    parser = argparse.ArgumentParser(
+        description="Re-ingest trial cases after pipeline quality fixes"
+    )
     parser.add_argument("--dry-run", action="store_true", help="Show what would be deleted")
     parser.add_argument("--delete", action="store_true", help="Delete corrupted trial data")
     parser.add_argument("--reingest", action="store_true", help="Show re-ingestion instructions")
@@ -121,6 +125,7 @@ async def main() -> None:
         return
 
     from app.core.config import settings
+
     db_url = args.db_url or settings.database_url
 
     case_ids = await find_trial_cases(db_url)

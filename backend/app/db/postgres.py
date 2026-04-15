@@ -17,6 +17,7 @@ _connect_args: dict = {}
 _use_nullpool = False
 if settings.app_env == "production" or "supabase" in settings.database_url:
     import os
+
     _ssl_ctx = ssl.create_default_context()
     _insecure = os.environ.get("DATABASE_SSL_INSECURE", "").lower() in ("1", "true", "yes")
     if settings.app_env not in ("production", "staging") or _insecure:
@@ -64,7 +65,9 @@ if not _use_nullpool:
         pool = engine.pool
         _logger.debug(
             "DB pool checkout: size=%s, checked_in=%s, overflow=%s",
-            pool.size(), pool.checkedin(), pool.overflow(),
+            pool.size(),
+            pool.checkedin(),
+            pool.overflow(),
         )
 
     @sa_event.listens_for(engine.sync_engine, "checkin")
@@ -73,8 +76,10 @@ if not _use_nullpool:
         if pool.overflow() > pool.size() // 2:
             _logger.warning(
                 "DB pool pressure: overflow=%s exceeds half of pool_size=%s",
-                pool.overflow(), pool.size(),
+                pool.overflow(),
+                pool.size(),
             )
+
 
 async_session_factory = async_sessionmaker(
     engine,

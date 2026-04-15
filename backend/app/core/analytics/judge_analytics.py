@@ -95,31 +95,30 @@ class JudgeAnalyticsService:
         Unnests the judge[] array to get unique judge names with counts.
         """
         # Unnest the judge array to get individual judge names
-        unnested = select(
-            func.unnest(Case.judge).label("judge_name"),
-            Case.author_judge,
-        ).where(Case.judge.isnot(None)).subquery()
+        unnested = (
+            select(
+                func.unnest(Case.judge).label("judge_name"),
+                Case.author_judge,
+            )
+            .where(Case.judge.isnot(None))
+            .subquery()
+        )
 
         # Base query for judge names with counts
-        base_query = (
-            select(
-                unnested.c.judge_name,
-                func.count().label("total_cases"),
-                func.count(
-                    sa_case(
-                        (unnested.c.author_judge == unnested.c.judge_name, literal_column("1")),
-                        else_=None,
-                    )
-                ).label("cases_authored"),
-            )
-            .group_by(unnested.c.judge_name)
-        )
+        base_query = select(
+            unnested.c.judge_name,
+            func.count().label("total_cases"),
+            func.count(
+                sa_case(
+                    (unnested.c.author_judge == unnested.c.judge_name, literal_column("1")),
+                    else_=None,
+                )
+            ).label("cases_authored"),
+        ).group_by(unnested.c.judge_name)
 
         if search:
             search = search.replace("%", "\\%").replace("_", "\\_")
-            base_query = base_query.where(
-                unnested.c.judge_name.ilike(f"%{search}%")
-            )
+            base_query = base_query.where(unnested.c.judge_name.ilike(f"%{search}%"))
 
         # Count total distinct judges
         count_query = select(func.count()).select_from(base_query.subquery())
@@ -129,8 +128,7 @@ class JudgeAnalyticsService:
         # Paginated results ordered by total_cases desc
         offset = (page - 1) * page_size
         paginated_query = (
-            base_query
-            .order_by(func.count().desc(), unnested.c.judge_name)
+            base_query.order_by(func.count().desc(), unnested.c.judge_name)
             .offset(offset)
             .limit(page_size)
         )
@@ -163,9 +161,7 @@ class JudgeAnalyticsService:
         Returns None if no cases found for the judge.
         """
         # Total cases where judge participated
-        total_query = select(func.count()).where(
-            Case.judge.any(judge_name)
-        )
+        total_query = select(func.count()).where(Case.judge.any(judge_name))
         total_result = await self._session.execute(total_query)
         total_cases = total_result.scalar_one_or_none() or 0
 
@@ -173,9 +169,7 @@ class JudgeAnalyticsService:
             return None
 
         # Cases authored
-        authored_query = select(func.count()).where(
-            Case.author_judge == judge_name
-        )
+        authored_query = select(func.count()).where(Case.author_judge == judge_name)
         authored_result = await self._session.execute(authored_query)
         cases_authored = authored_result.scalar_one_or_none() or 0
 
@@ -199,16 +193,12 @@ class JudgeAnalyticsService:
             .order_by(func.count().desc())
         )
         disposal_result = await self._session.execute(disposal_query)
-        disposal_patterns = {
-            row.disposal_nature: row.count for row in disposal_result.all()
-        }
+        disposal_patterns = {row.disposal_nature: row.count for row in disposal_result.all()}
 
         # Bench combinations — other judges who sat with this judge
         # Use the Python-based fallback directly since the SQL approach with
         # UNNEST in HAVING is not supported and leaves the transaction aborted.
-        bench_combinations = await self._get_bench_combinations_fallback(
-            judge_name
-        )
+        bench_combinations = await self._get_bench_combinations_fallback(judge_name)
 
         # Top cited judgments (cases with most citations in cases_cited)
         cited_query = (
@@ -274,15 +264,9 @@ class JudgeAnalyticsService:
             case_types=case_types,
         )
 
-    async def _get_bench_combinations_fallback(
-        self, judge_name: str
-    ) -> list[dict[str, Any]]:
+    async def _get_bench_combinations_fallback(self, judge_name: str) -> list[dict[str, Any]]:
         """Fallback method for bench combinations using a simpler query."""
-        cases_query = (
-            select(Case.judge)
-            .where(Case.judge.any(judge_name))
-            .limit(5000)
-        )
+        cases_query = select(Case.judge).where(Case.judge.any(judge_name)).limit(5000)
         cases_result = await self._session.execute(cases_query)
         rows = cases_result.all()
 
@@ -293,14 +277,9 @@ class JudgeAnalyticsService:
                 if j != judge_name:
                     co_judge_counts[j] = co_judge_counts.get(j, 0) + 1
 
-        sorted_judges = sorted(
-            co_judge_counts.items(), key=lambda x: x[1], reverse=True
-        )[:10]
+        sorted_judges = sorted(co_judge_counts.items(), key=lambda x: x[1], reverse=True)[:10]
 
-        return [
-            {"judge": name, "cases_together": count}
-            for name, count in sorted_judges
-        ]
+        return [{"judge": name, "cases_together": count} for name, count in sorted_judges]
 
     async def get_judge_cases(
         self,
@@ -371,9 +350,7 @@ class JudgeAnalyticsService:
             total_pages=total_pages,
         )
 
-    async def compare_judges(
-        self, judge_names: list[str]
-    ) -> list[JudgeProfile | None]:
+    async def compare_judges(self, judge_names: list[str]) -> list[JudgeProfile | None]:
         """Compare 2-3 judges by fetching profiles for each.
 
         Raises ValueError if fewer than 2 or more than 3 names provided.
@@ -394,9 +371,7 @@ class JudgeAnalyticsService:
     # Enhanced analytics: disposal rates, temporal trends, sentencing stats
     # ------------------------------------------------------------------
 
-    async def calculate_disposal_rates(
-        self, judge_name: str
-    ) -> dict[str, Any]:
+    async def calculate_disposal_rates(self, judge_name: str) -> dict[str, Any]:
         """Calculate disposal (conviction/acquittal) rates for a judge.
 
         Groups all cases authored by this judge by disposal_nature and
@@ -414,9 +389,7 @@ class JudgeAnalyticsService:
             Returns {"total": 0, "breakdown": {}} if no cases found.
         """
         # Total authored cases
-        total_query = select(func.count()).where(
-            Case.author_judge == judge_name
-        )
+        total_query = select(func.count()).where(Case.author_judge == judge_name)
         total_result = await self._session.execute(total_query)
         total = total_result.scalar_one_or_none() or 0
 
@@ -444,9 +417,7 @@ class JudgeAnalyticsService:
 
         return {"total": total, "breakdown": breakdown}
 
-    async def calculate_temporal_trends(
-        self, judge_name: str
-    ) -> list[dict[str, Any]]:
+    async def calculate_temporal_trends(self, judge_name: str) -> list[dict[str, Any]]:
         """Calculate year-over-year trends for a judge's authored cases.
 
         Groups cases by year (from decision_date, falling back to year column)
@@ -507,19 +478,19 @@ class JudgeAnalyticsService:
             if row.yr is None:
                 continue
             allowed_pct = round((row.allowed / row.total) * 100, 2) if row.total > 0 else 0.0
-            trends.append({
-                "year": int(row.yr),
-                "total": row.total,
-                "allowed": row.allowed,
-                "dismissed": row.dismissed,
-                "allowed_pct": allowed_pct,
-            })
+            trends.append(
+                {
+                    "year": int(row.yr),
+                    "total": row.total,
+                    "allowed": row.allowed,
+                    "dismissed": row.dismissed,
+                    "allowed_pct": allowed_pct,
+                }
+            )
 
         return trends
 
-    async def calculate_sentencing_stats(
-        self, judge_name: str
-    ) -> dict[str, Any]:
+    async def calculate_sentencing_stats(self, judge_name: str) -> dict[str, Any]:
         """Calculate case type distribution for a judge's authored cases.
 
         Groups by case_type and returns counts and percentages, giving
@@ -536,9 +507,7 @@ class JudgeAnalyticsService:
             }
             Returns {"total": 0, "case_types": {}} if no cases found.
         """
-        total_query = select(func.count()).where(
-            Case.author_judge == judge_name
-        )
+        total_query = select(func.count()).where(Case.author_judge == judge_name)
         total_result = await self._session.execute(total_query)
         total = total_result.scalar_one_or_none() or 0
 
@@ -608,9 +577,7 @@ class JudgeAnalyticsService:
             .order_by(func.count().desc())
         )
         disposal_result = await self._session.execute(disposal_query)
-        disposal_patterns = {
-            row.disposal_nature: row.count for row in disposal_result.all()
-        }
+        disposal_patterns = {row.disposal_nature: row.count for row in disposal_result.all()}
 
         # Top judges
         judge_query = (
@@ -625,10 +592,7 @@ class JudgeAnalyticsService:
             .limit(20)
         )
         judge_result = await self._session.execute(judge_query)
-        top_judges = [
-            {"judge": row.judge_name, "cases": row.count}
-            for row in judge_result.all()
-        ]
+        top_judges = [{"judge": row.judge_name, "cases": row.count} for row in judge_result.all()]
 
         return CourtStats(
             court=court,
@@ -645,9 +609,7 @@ class JudgeAnalyticsService:
 # ---------------------------------------------------------------------------
 
 
-async def calculate_disposal_rates(
-    judge_name: str, db: AsyncSession
-) -> dict[str, Any]:
+async def calculate_disposal_rates(judge_name: str, db: AsyncSession) -> dict[str, Any]:
     """Calculate disposal (conviction/acquittal) rates for a judge.
 
     Convenience wrapper around JudgeAnalyticsService.calculate_disposal_rates.
@@ -656,9 +618,7 @@ async def calculate_disposal_rates(
     return await service.calculate_disposal_rates(judge_name)
 
 
-async def calculate_temporal_trends(
-    judge_name: str, db: AsyncSession
-) -> list[dict[str, Any]]:
+async def calculate_temporal_trends(judge_name: str, db: AsyncSession) -> list[dict[str, Any]]:
     """Calculate year-over-year trends for a judge's authored cases.
 
     Convenience wrapper around JudgeAnalyticsService.calculate_temporal_trends.
@@ -667,9 +627,7 @@ async def calculate_temporal_trends(
     return await service.calculate_temporal_trends(judge_name)
 
 
-async def calculate_sentencing_stats(
-    judge_name: str, db: AsyncSession
-) -> dict[str, Any]:
+async def calculate_sentencing_stats(judge_name: str, db: AsyncSession) -> dict[str, Any]:
     """Calculate case type distribution for a judge's authored cases.
 
     Convenience wrapper around JudgeAnalyticsService.calculate_sentencing_stats.

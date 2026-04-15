@@ -47,7 +47,9 @@ router = APIRouter()
 async def search(
     response: Response,
     q: str = Query(..., min_length=1, max_length=2000, description="Search query"),
-    court: str | None = Query(None, max_length=200, description="Filter by court name (comma-separated for multiple)"),
+    court: str | None = Query(
+        None, max_length=200, description="Filter by court name (comma-separated for multiple)"
+    ),
     year_from: int | None = Query(None, ge=1947, le=2100, description="Filter from year"),
     year_to: int | None = Query(None, ge=1947, le=2100, description="Filter to year"),
     case_type: str | None = Query(None, max_length=100, description="Filter by case type"),
@@ -81,9 +83,7 @@ async def search(
             detected_language = "hi"
 
     # Split comma-separated court string into list, stripping whitespace
-    court_list = (
-        [c.strip() for c in court.split(",") if c.strip()] if court else None
-    )
+    court_list = [c.strip() for c in court.split(",") if c.strip()] if court else None
 
     # Normalize act name to canonical short code (e.g. "Indian Penal Code" → "IPC")
     normalized_act = normalize_act_name(act) if act else None
@@ -154,18 +154,14 @@ async def search(
         results_list = serialized.get("results", [])
         # Collect indices and snippets that need translation
         translate_items = [
-            (i, r["snippet"])
-            for i, r in enumerate(results_list)
-            if r.get("snippet")
+            (i, r["snippet"]) for i, r in enumerate(results_list) if r.get("snippet")
         ]
         if translate_items:
             sem = asyncio.Semaphore(5)
 
             async def _translate_snippet(snippet: str) -> str:
                 async with sem:
-                    return await translator.translate(
-                        snippet, source="en", target="hi"
-                    )
+                    return await translator.translate(snippet, source="en", target="hi")
 
             tasks = [_translate_snippet(snippet) for _, snippet in translate_items]
             translated = await asyncio.gather(*tasks, return_exceptions=True)
@@ -396,7 +392,9 @@ async def search_history(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/history/{history_id}/bookmark", dependencies=[Depends(rate_limit_dependency("30/minute"))])
+@router.post(
+    "/history/{history_id}/bookmark", dependencies=[Depends(rate_limit_dependency("30/minute"))]
+)
 async def toggle_search_bookmark(
     history_id: str,
     user: TokenPayload = Depends(get_current_user),
@@ -409,6 +407,7 @@ async def toggle_search_bookmark(
         hist_uuid = _uuid.UUID(history_id)
     except ValueError:
         from fastapi import HTTPException as _HTTPException
+
         raise _HTTPException(status_code=422, detail="Invalid history_id format.")
 
     row = await db.execute(

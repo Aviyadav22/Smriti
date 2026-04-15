@@ -4,6 +4,7 @@ Verifies that the initial ingestion_status = 'processing' UPDATE is wrapped
 in an explicit transaction (async with db.begin()) so it commits atomically
 and independently from the bulk pipeline commit.
 """
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -201,6 +202,6 @@ class TestIngestionStatusTransaction:
         begin_idx = call_order.index("begin_enter")
         update_idx = call_order.index("status_update")
         exit_idx = call_order.index("begin_exit")
-        assert begin_idx < update_idx < exit_idx, (
-            f"Status update must be inside begin() block; call_order={call_order}"
-        )
+        assert (
+            begin_idx < update_idx < exit_idx
+        ), f"Status update must be inside begin() block; call_order={call_order}"

@@ -252,27 +252,122 @@ def _validate_judge_tenure(
         else:
             logger.warning(
                 "Temporal judge mismatch: %s (tenure %d-%d) on %d case — rejected",
-                judge, tenure[0], tenure[1], year,
+                judge,
+                tenure[0],
+                tenure[1],
+                year,
             )
 
     return valid
 
 
 # Common English stopwords to exclude from token matching
-_STOPWORDS = frozenset({
-    "the", "a", "an", "is", "was", "are", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "shall",
-    "should", "may", "might", "can", "could", "must", "and", "but", "or",
-    "nor", "not", "no", "so", "if", "then", "than", "that", "this",
-    "which", "who", "whom", "what", "where", "when", "how", "all", "each",
-    "every", "both", "few", "more", "most", "other", "some", "such", "only",
-    "own", "same", "too", "very", "of", "in", "on", "at", "to", "for",
-    "with", "by", "from", "as", "into", "through", "during", "before",
-    "after", "above", "below", "between", "under", "upon", "about",
-    "it", "its", "he", "she", "they", "them", "his", "her", "their",
-    "case", "court", "judgment", "order", "act", "section", "india",
-    "supreme", "high", "appeal", "petition", "respondent", "appellant",
-})
+_STOPWORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "is",
+        "was",
+        "are",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "shall",
+        "should",
+        "may",
+        "might",
+        "can",
+        "could",
+        "must",
+        "and",
+        "but",
+        "or",
+        "nor",
+        "not",
+        "no",
+        "so",
+        "if",
+        "then",
+        "than",
+        "that",
+        "this",
+        "which",
+        "who",
+        "whom",
+        "what",
+        "where",
+        "when",
+        "how",
+        "all",
+        "each",
+        "every",
+        "both",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "only",
+        "own",
+        "same",
+        "too",
+        "very",
+        "of",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "with",
+        "by",
+        "from",
+        "as",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "between",
+        "under",
+        "upon",
+        "about",
+        "it",
+        "its",
+        "he",
+        "she",
+        "they",
+        "them",
+        "his",
+        "her",
+        "their",
+        "case",
+        "court",
+        "judgment",
+        "order",
+        "act",
+        "section",
+        "india",
+        "supreme",
+        "high",
+        "appeal",
+        "petition",
+        "respondent",
+        "appellant",
+    }
+)
 
 
 def _validate_metadata_against_text(
@@ -304,7 +399,9 @@ def _validate_metadata_against_text(
         validated_kw: list[str] = []
         for kw in metadata.keywords:
             # Check if any non-stopword token (4+ chars) from the keyword appears in text
-            tokens = [t for t in re.split(r"\W+", kw.lower()) if len(t) >= 3 and t not in _STOPWORDS]
+            tokens = [
+                t for t in re.split(r"\W+", kw.lower()) if len(t) >= 3 and t not in _STOPWORDS
+            ]
             if not tokens:
                 # Short keyword — keep it (e.g., "PIL", "bail")
                 validated_kw.append(kw)
@@ -317,14 +414,16 @@ def _validate_metadata_against_text(
     # --- Validate ratio_decidendi ---
     if metadata.ratio_decidendi:
         ratio_tokens = [
-            t for t in re.split(r"\W+", metadata.ratio_decidendi.lower())
+            t
+            for t in re.split(r"\W+", metadata.ratio_decidendi.lower())
             if len(t) >= 4 and t not in _STOPWORDS
         ]
         matching = sum(1 for t in ratio_tokens if t in text_lower)
         if ratio_tokens and matching < 2:
             logger.warning(
                 "Ratio decidendi shares only %d/%d tokens with text — nulling",
-                matching, len(ratio_tokens),
+                matching,
+                len(ratio_tokens),
             )
             metadata.ratio_decidendi = None
 
@@ -333,11 +432,21 @@ def _validate_metadata_against_text(
 
 # Fields to null out when confidence is very low
 _UNRELIABLE_LLM_FIELDS = (
-    "ratio_decidendi", "keywords", "case_type", "jurisdiction",
-    "bench_type", "headnotes", "outcome_summary",
-    "legal_principles_applied", "issue_classification", "fact_pattern_tags",
-    "opinion_type", "judicial_tone", "key_observations",
-    "arguments_raised", "fact_pattern_summary",
+    "ratio_decidendi",
+    "keywords",
+    "case_type",
+    "jurisdiction",
+    "bench_type",
+    "headnotes",
+    "outcome_summary",
+    "legal_principles_applied",
+    "issue_classification",
+    "fact_pattern_tags",
+    "opinion_type",
+    "judicial_tone",
+    "key_observations",
+    "arguments_raised",
+    "fact_pattern_summary",
 )
 
 
@@ -412,7 +521,8 @@ _OUTCOME_RE = re.compile(
 
 
 def synthesize_outcome_summary(
-    metadata: CaseMetadata, full_text: str,
+    metadata: CaseMetadata,
+    full_text: str,
 ) -> str | None:
     """Build an outcome summary from disposal_nature or regex on the operative order.
 
@@ -490,7 +600,11 @@ async def reextract_missing_fields(
         text_slice = full_text[:5000] if len(full_text) > 5000 else full_text
     else:
         # Both needed: head + tail
-        text_slice = full_text[:3000] + "\n\n[...]\n\n" + full_text[-3000:] if len(full_text) > 6000 else full_text
+        text_slice = (
+            full_text[:3000] + "\n\n[...]\n\n" + full_text[-3000:]
+            if len(full_text) > 6000
+            else full_text
+        )
 
     prompt = f"Extract the following fields from this Indian court judgment:\n\n{text_slice}"
 
@@ -507,7 +621,11 @@ async def reextract_missing_fields(
                 setattr(metadata, field, value)
                 logger.info("Re-extracted %s successfully", field)
     except Exception:
-        logger.warning("Targeted re-extraction failed for %s — proceeding without", fields_needed, exc_info=True)
+        logger.warning(
+            "Targeted re-extraction failed for %s — proceeding without",
+            fields_needed,
+            exc_info=True,
+        )
 
     return metadata
 
@@ -543,12 +661,24 @@ def _parse_judge_names(raw: str | list | None) -> list[str] | None:
         if not name:
             continue
         # Strip common honorific prefixes (order matters: most specific first)
-        for prefix in ["Hon'ble Mr. Justice", "Hon'ble Justice", "Hon'ble",
-                       "Dr. Justice", "Mr. Justice", "Mrs. Justice",
-                       "Ms. Justice", "Justice",
-                       "Dr.", "Smt.", "Shri", "Mrs.", "Ms.", "J."]:
+        for prefix in [
+            "Hon'ble Mr. Justice",
+            "Hon'ble Justice",
+            "Hon'ble",
+            "Dr. Justice",
+            "Mr. Justice",
+            "Mrs. Justice",
+            "Ms. Justice",
+            "Justice",
+            "Dr.",
+            "Smt.",
+            "Shri",
+            "Mrs.",
+            "Ms.",
+            "J.",
+        ]:
             if name.startswith(prefix):
-                name = name[len(prefix):].strip()
+                name = name[len(prefix) :].strip()
                 break
         # Strip trailing ", JJ." / " JJ." (plural judges) — must check before ", J."
         if name.endswith(", JJ.") or name.endswith(" JJ."):
@@ -655,14 +785,19 @@ class CaseMetadata:
 
     # --- Ingestion V3 fields ---
     source_dataset: str = "aws_open_data_sc"
-    legal_propositions: list[dict] | None = None  # [{proposition_text, paragraph_number, is_novel, related_section}]
-    statute_sections_interpreted: list[dict] | None = None  # [{section, act, interpretation_summary}]
+    legal_propositions: list[dict] | None = (
+        None  # [{proposition_text, paragraph_number, is_novel, related_section}]
+    )
+    statute_sections_interpreted: list[dict] | None = (
+        None  # [{section, act, interpretation_summary}]
+    )
     fact_pattern_summary: str | None = None
 
 
 # ---------------------------------------------------------------------------
 # LLM extraction
 # ---------------------------------------------------------------------------
+
 
 async def extract_metadata_llm(
     text: str,
@@ -748,6 +883,7 @@ async def extract_metadata_llm(
 # Regex / heuristic validation
 # ---------------------------------------------------------------------------
 
+
 def compute_extraction_confidence(metadata: CaseMetadata) -> float:
     """Compute a confidence score (0.0-1.0) for the LLM extraction quality.
 
@@ -832,7 +968,9 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
                 logger.warning("Future decision_date %s, clearing field", metadata.decision_date)
                 metadata.decision_date = None
         except (ValueError, TypeError):
-            logger.warning("Invalid decision_date format '%s', clearing field", metadata.decision_date)
+            logger.warning(
+                "Invalid decision_date format '%s', clearing field", metadata.decision_date
+            )
             metadata.decision_date = None
 
     # -- Normalize court name via courts.py --
@@ -851,9 +989,20 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
 
     # -- Validate jurisdiction --
     valid_jurisdictions = {
-        "civil", "criminal", "constitutional", "tax", "labor", "company",
-        "family", "environmental", "arbitration", "consumer", "election",
-        "service", "ip/commercial", "other",
+        "civil",
+        "criminal",
+        "constitutional",
+        "tax",
+        "labor",
+        "company",
+        "family",
+        "environmental",
+        "arbitration",
+        "consumer",
+        "election",
+        "service",
+        "ip/commercial",
+        "other",
     }
     # Alias normalization
     _jurisdiction_aliases = {
@@ -870,9 +1019,19 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
 
     # -- Validate disposal_nature --
     valid_disposals = {
-        "Allowed", "Dismissed", "Partly Allowed", "Withdrawn", "Remanded",
-        "Disposed Of", "Settled", "Transferred", "Modified", "Other",
-        "Referred to Larger Bench", "Abated", "Not Pressed",
+        "Allowed",
+        "Dismissed",
+        "Partly Allowed",
+        "Withdrawn",
+        "Remanded",
+        "Disposed Of",
+        "Settled",
+        "Transferred",
+        "Modified",
+        "Other",
+        "Referred to Larger Bench",
+        "Abated",
+        "Not Pressed",
     }
     if metadata.disposal_nature and metadata.disposal_nature not in valid_disposals:
         # Try title-casing in case LLM returned lowercase
@@ -891,8 +1050,13 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
 
     # -- Ensure list fields are actually lists --
     _ALL_LIST_FIELDS = (
-        "judge", "acts_cited", "cases_cited", "keywords",
-        "dissenting_judges", "concurring_judges", "companion_cases",
+        "judge",
+        "acts_cited",
+        "cases_cited",
+        "keywords",
+        "dissenting_judges",
+        "concurring_judges",
+        "companion_cases",
     )
     for list_field in _ALL_LIST_FIELDS:
         val = getattr(metadata, list_field, None)
@@ -902,8 +1066,13 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
 
     # -- List content quality: deduplicate, strip, cap count --
     _MAX_LIST_ITEMS = {
-        "judge": 20, "acts_cited": 50, "cases_cited": 100, "keywords": 15,
-        "dissenting_judges": 10, "concurring_judges": 10, "companion_cases": 50,
+        "judge": 20,
+        "acts_cited": 50,
+        "cases_cited": 100,
+        "keywords": 15,
+        "dissenting_judges": 10,
+        "concurring_judges": 10,
+        "companion_cases": 50,
     }
     for list_field, max_items in _MAX_LIST_ITEMS.items():
         val = getattr(metadata, list_field, None)
@@ -913,10 +1082,11 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
                 item = item.replace("\n", " ").replace("\r", " ")
                 return re.sub(r"\s{2,}", " ", item).strip()
 
-            cleaned = list(dict.fromkeys(
-                _clean_item(item) for item in val
-                if isinstance(item, str) and item.strip()
-            ))
+            cleaned = list(
+                dict.fromkeys(
+                    _clean_item(item) for item in val if isinstance(item, str) and item.strip()
+                )
+            )
             if len(cleaned) > max_items:
                 cleaned = cleaned[:max_items]
             setattr(metadata, list_field, cleaned if cleaned else None)
@@ -931,8 +1101,14 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
 
     # -- Validate party types --
     valid_party_types = {
-        "individual", "government_central", "government_state", "PSU",
-        "company", "NGO", "statutory_body", "other",
+        "individual",
+        "government_central",
+        "government_state",
+        "PSU",
+        "company",
+        "NGO",
+        "statutory_body",
+        "other",
     }
     for party_field in ("petitioner_type", "respondent_type"):
         val = getattr(metadata, party_field, None)
@@ -948,22 +1124,35 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
 
     # -- Validate coram_size --
     if metadata.coram_size is not None:
-        if not isinstance(metadata.coram_size, int) or metadata.coram_size < 1 or metadata.coram_size > 15:
+        if (
+            not isinstance(metadata.coram_size, int)
+            or metadata.coram_size < 1
+            or metadata.coram_size > 15
+        ):
             logger.warning("Invalid coram_size %s, clearing field", metadata.coram_size)
             metadata.coram_size = None
 
     # -- Validate split_ratio format (e.g., "3:2", "4:1") --
-    if metadata.split_ratio is not None and not re.match(r'^\d+:\d+$', metadata.split_ratio):
+    if metadata.split_ratio is not None and not re.match(r"^\d+:\d+$", metadata.split_ratio):
         logger.warning("Invalid split_ratio '%s', clearing field", metadata.split_ratio)
         metadata.split_ratio = None
 
     # -- String length validation --
     _MAX_LENGTHS = {
-        "title": 500, "citation": 200, "court": 200, "petitioner": 500,
-        "respondent": 500, "ratio_decidendi": 1500,
-        "outcome_summary": 500, "author_judge": 200, "case_type": 100,
-        "disposal_nature": 50, "case_number": 200,
-        "lower_court": 200, "lower_court_case_number": 200, "appeal_from": 200,
+        "title": 500,
+        "citation": 200,
+        "court": 200,
+        "petitioner": 500,
+        "respondent": 500,
+        "ratio_decidendi": 1500,
+        "outcome_summary": 500,
+        "author_judge": 200,
+        "case_type": 100,
+        "disposal_nature": 50,
+        "case_number": 200,
+        "lower_court": 200,
+        "lower_court_case_number": 200,
+        "appeal_from": 200,
         "split_ratio": 20,
     }
     for field_name, max_len in _MAX_LENGTHS.items():
@@ -971,7 +1160,9 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
         if isinstance(val, str) and len(val) > max_len:
             logger.warning(
                 "Field '%s' exceeds max length %d (has %d), truncating",
-                field_name, max_len, len(val),
+                field_name,
+                max_len,
+                len(val),
             )
             setattr(metadata, field_name, val[:max_len])
 
@@ -991,20 +1182,24 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
     # These are editorial framing phrases, not judicial holdings.
     _REPORTER_PREFIX_RE = re.compile(
         r"^\s*(?:"
-        r"Held\s*[-–—:,]\s*|"                          # "Held - ", "Held:"
+        r"Held\s*[-–—:,]\s*|"  # "Held - ", "Held:"
         r"Held\s+that\s+the\s+Court\s+(?:reiterated|observed|held|noted)\s+(?:that\s+)?|"
         r"Per\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s*,?\s*(?:J\.?\s*)?[-–—:,]\s*|"  # "Per Misra, J. -"
         r"It\s+was\s+(?:contended|submitted|argued|urged)\s+(?:by\s+(?:the\s+)?(?:appellant|respondent|petitioner|counsel)\s+)?that\s+|"
         r"The\s+(?:Supreme\s+)?Court\s+(?:reiterated|observed|held|noted|stated)\s+that\s+|"
-        r"(?:†\s*)|"                                    # Dagger symbol prefix
-        r"\[Ed\.\s*:?\s*\]?\s*"                         # [Ed.:] or [Ed.]
+        r"(?:†\s*)|"  # Dagger symbol prefix
+        r"\[Ed\.\s*:?\s*\]?\s*"  # [Ed.:] or [Ed.]
         r")",
         re.IGNORECASE,
     )
 
     if metadata.headnotes:
         try:
-            hn_list = json.loads(metadata.headnotes) if isinstance(metadata.headnotes, str) else metadata.headnotes
+            hn_list = (
+                json.loads(metadata.headnotes)
+                if isinstance(metadata.headnotes, str)
+                else metadata.headnotes
+            )
             if isinstance(hn_list, list):
                 cleaned_hn: list[dict] = []
                 total_prop_len = 0
@@ -1029,13 +1224,18 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
                         if cleaned_prop and cleaned_prop != prop:
                             logger.info(
                                 "Stripped reporter prefix from headnote proposition "
-                                "(%d -> %d chars)", len(prop), len(cleaned_prop),
+                                "(%d -> %d chars)",
+                                len(prop),
+                                len(cleaned_prop),
                             )
                             prop = cleaned_prop
                         # Cap individual proposition length
                         if len(prop) > 500:
                             prop = prop[:500]
-                            logger.warning("Headnote proposition truncated from %d chars", len(item["proposition"]))
+                            logger.warning(
+                                "Headnote proposition truncated from %d chars",
+                                len(item["proposition"]),
+                            )
                         total_prop_len += len(prop)
                         cleaned_hn.append({**item, "proposition": prop})
                     elif isinstance(item, str) and item.strip():
@@ -1068,7 +1268,9 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
     # Sentence count check: ratio should be 2-5 sentences per prompt guidance.
     # If it has >8 sentences, truncate to 5 at sentence boundaries first.
     if metadata.ratio_decidendi:
-        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', metadata.ratio_decidendi) if s.strip()]
+        sentences = [
+            s.strip() for s in re.split(r"(?<=[.!?])\s+", metadata.ratio_decidendi) if s.strip()
+        ]
         if len(sentences) > 8:
             logger.warning(
                 "ratio_decidendi has %d sentences (>8), truncating to first 5",
@@ -1085,7 +1287,7 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
         truncated = metadata.ratio_decidendi[:1500]
         last_period = truncated.rfind(". ")
         if last_period > 800:
-            metadata.ratio_decidendi = truncated[:last_period + 1]
+            metadata.ratio_decidendi = truncated[: last_period + 1]
         else:
             metadata.ratio_decidendi = truncated
 
@@ -1094,7 +1296,7 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
         truncated = metadata.fact_pattern_summary[:1000]
         last_period = truncated.rfind(". ")
         if last_period > 500:
-            metadata.fact_pattern_summary = truncated[:last_period + 1]
+            metadata.fact_pattern_summary = truncated[: last_period + 1]
         else:
             metadata.fact_pattern_summary = truncated
 
@@ -1113,7 +1315,9 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
             metadata.filing_date = None
 
     # hearing_count — sanity range
-    if metadata.hearing_count is not None and (metadata.hearing_count < 0 or metadata.hearing_count > 500):
+    if metadata.hearing_count is not None and (
+        metadata.hearing_count < 0 or metadata.hearing_count > 500
+    ):
         metadata.hearing_count = None
 
     # operative_order length cap
@@ -1122,10 +1326,18 @@ def validate_with_regex(metadata: CaseMetadata) -> CaseMetadata:
 
     # V2 list fields — ensure lists, dedup, cap length
     _V2_LIST_FIELDS = {
-        "arguments_raised": 50, "key_observations": 30, "citation_treatments": 100,
-        "distinguished_cases": 50, "overruled_cases": 50, "legal_principles_applied": 30,
-        "procedural_history": 30, "interim_orders": 20, "urgency_indicators": 10,
-        "party_counsel": 30, "issue_classification": 20, "fact_pattern_tags": 20,
+        "arguments_raised": 50,
+        "key_observations": 30,
+        "citation_treatments": 100,
+        "distinguished_cases": 50,
+        "overruled_cases": 50,
+        "legal_principles_applied": 30,
+        "procedural_history": 30,
+        "interim_orders": 20,
+        "urgency_indicators": 10,
+        "party_counsel": 30,
+        "issue_classification": 20,
+        "fact_pattern_tags": 20,
         "conditions_imposed": 20,
     }
     for field_name, max_items in _V2_LIST_FIELDS.items():
@@ -1173,23 +1385,29 @@ def cross_validate_propositions(metadata: CaseMetadata) -> CaseMetadata:
 
     if ratio.strip() and not props:
         # Create a single proposition from ratio
-        metadata.legal_propositions = [{
-            "proposition_text": ratio.strip(),
-            "paragraph_number": None,
-            "is_novel": False,
-            "related_section": None,
-        }]
+        metadata.legal_propositions = [
+            {
+                "proposition_text": ratio.strip(),
+                "paragraph_number": None,
+                "is_novel": False,
+                "related_section": None,
+            }
+        ]
 
     # If still no propositions, try to derive from headnotes
     if not metadata.legal_propositions:
         headnotes_raw = metadata.headnotes or ""
         if headnotes_raw.strip():
             try:
-                headnotes = json.loads(headnotes_raw) if isinstance(headnotes_raw, str) else headnotes_raw
+                headnotes = (
+                    json.loads(headnotes_raw) if isinstance(headnotes_raw, str) else headnotes_raw
+                )
                 if isinstance(headnotes, list):
                     metadata.legal_propositions = [
                         {
-                            "proposition_text": (h.get("text", "") or h.get("proposition", "")).strip(),
+                            "proposition_text": (
+                                h.get("text", "") or h.get("proposition", "")
+                            ).strip(),
                             "paragraph_number": None,
                             "is_novel": False,
                             "related_section": None,
@@ -1212,7 +1430,8 @@ def validate_cross_fields(metadata: CaseMetadata) -> CaseMetadata:
             if metadata.year != date_year:
                 logger.warning(
                     "Year %d doesn't match decision_date year %d, using decision_date",
-                    metadata.year, date_year,
+                    metadata.year,
+                    date_year,
                 )
                 metadata.year = date_year
         except (ValueError, TypeError):
@@ -1242,7 +1461,9 @@ def validate_cross_fields(metadata: CaseMetadata) -> CaseMetadata:
             if metadata.bench_type is not None:
                 logger.warning(
                     "bench_type '%s' conflicts with coram_size %d (expected '%s'), overriding",
-                    metadata.bench_type, metadata.coram_size, inferred_bench,
+                    metadata.bench_type,
+                    metadata.coram_size,
+                    inferred_bench,
                 )
             metadata.bench_type = inferred_bench
 
@@ -1254,9 +1475,13 @@ def validate_cross_fields(metadata: CaseMetadata) -> CaseMetadata:
             metadata.author_judge = normalized
 
     # Judge array completion: if author_judge exists but not in judge list, append
-    if (metadata.coram_size and metadata.judge and metadata.author_judge
-            and isinstance(metadata.coram_size, int)
-            and metadata.coram_size > len(metadata.judge)):
+    if (
+        metadata.coram_size
+        and metadata.judge
+        and metadata.author_judge
+        and isinstance(metadata.coram_size, int)
+        and metadata.coram_size > len(metadata.judge)
+    ):
         author_lower = metadata.author_judge.lower()
         if author_lower not in [j.lower() for j in metadata.judge]:
             metadata.judge.append(metadata.author_judge)
@@ -1268,7 +1493,8 @@ def validate_cross_fields(metadata: CaseMetadata) -> CaseMetadata:
         if author_lower not in judge_names_lower:
             logger.warning(
                 "author_judge '%s' not found in judge list %s",
-                metadata.author_judge, metadata.judge,
+                metadata.author_judge,
+                metadata.judge,
             )
 
     # petitioner != respondent
@@ -1282,9 +1508,7 @@ def validate_cross_fields(metadata: CaseMetadata) -> CaseMetadata:
 
     # case_type vs jurisdiction consistency
     if metadata.case_type == "Writ Petition" and metadata.jurisdiction == "criminal":
-        logger.warning(
-            "case_type 'Writ Petition' with jurisdiction 'criminal' is unusual"
-        )
+        logger.warning("case_type 'Writ Petition' with jurisdiction 'criminal' is unusual")
 
     # case_type vs case_number: the case number is authoritative for civil/criminal
     if metadata.case_number and metadata.case_type:
@@ -1320,12 +1544,14 @@ def validate_cross_fields(metadata: CaseMetadata) -> CaseMetadata:
     if metadata.cases_cited and metadata.citation:
         own_normalized = re.sub(r"\s+", " ", metadata.citation.strip().lower())
         metadata.cases_cited = [
-            c for c in metadata.cases_cited
+            c
+            for c in metadata.cases_cited
             if re.sub(r"\s+", " ", c.strip().lower()) != own_normalized
         ]
     if metadata.cases_cited:
         # GAN Discriminator: classify into named citations vs bare refs
         from app.core.legal.extractor import classify_case_citations
+
         named, bare_refs = classify_case_citations(metadata.cases_cited)
         metadata.cases_cited = named if named else None
         # Preserve bare refs for later graph linking
@@ -1336,7 +1562,7 @@ def validate_cross_fields(metadata: CaseMetadata) -> CaseMetadata:
 
     # -- is_reportable: infer from SCR citation --
     if metadata.is_reportable is None and metadata.citation:
-        if re.search(r'\[\d{4}\]\s+\d+\s+S\.?C\.?R\.?\s+\d+', metadata.citation):
+        if re.search(r"\[\d{4}\]\s+\d+\s+S\.?C\.?R\.?\s+\d+", metadata.citation):
             metadata.is_reportable = True
 
     return metadata
@@ -1401,6 +1627,7 @@ def normalize_case_type(raw: str) -> str:
 # ---------------------------------------------------------------------------
 # Merge Parquet ground truth with LLM extraction
 # ---------------------------------------------------------------------------
+
 
 def validate_parquet_data(parquet_meta: dict) -> dict:
     """Validate and sanitize Parquet metadata before merge.
@@ -1522,15 +1749,20 @@ def merge_metadata(
 
     # -- Parquet-priority fields --
     parquet_priority = (
-        "title", "citation", "court", "year", "decision_date",
-        "petitioner", "respondent",
+        "title",
+        "citation",
+        "court",
+        "year",
+        "decision_date",
+        "petitioner",
+        "respondent",
     )
     for field in parquet_priority:
         parquet_val = parquet_meta.get(field)
         llm_val = getattr(llm_meta, field, None)
         # Convert date objects to ISO string before merging
         if field == "decision_date" and parquet_val is not None:
-            if hasattr(parquet_val, 'isoformat'):
+            if hasattr(parquet_val, "isoformat"):
                 parquet_val = parquet_val.isoformat()
             elif not isinstance(parquet_val, str):
                 parquet_val = str(parquet_val)
@@ -1549,9 +1781,19 @@ def merge_metadata(
     # -- disposal_nature: LLM priority (Parquet has 67-81% NULLs; LLM reads
     # the operative portion which always states disposal explicitly) --
     _valid_disposals = {
-        "Allowed", "Dismissed", "Partly Allowed", "Withdrawn", "Remanded",
-        "Disposed Of", "Settled", "Transferred", "Modified", "Other",
-        "Referred to Larger Bench", "Abated", "Not Pressed",
+        "Allowed",
+        "Dismissed",
+        "Partly Allowed",
+        "Withdrawn",
+        "Remanded",
+        "Disposed Of",
+        "Settled",
+        "Transferred",
+        "Modified",
+        "Other",
+        "Referred to Larger Bench",
+        "Abated",
+        "Not Pressed",
     }
     llm_disposal = getattr(llm_meta, "disposal_nature", None)
     parquet_disposal = parquet_meta.get("disposal_nature")
@@ -1584,7 +1826,9 @@ def merge_metadata(
     # But LLM can hallucinate judges, so we validate against the judgment text.
     judge_raw = parquet_meta.get("judge", "")
     parquet_judges: list[str] | None = None
-    if (isinstance(judge_raw, str) and judge_raw.strip()) or (isinstance(judge_raw, list) and judge_raw):
+    if (isinstance(judge_raw, str) and judge_raw.strip()) or (
+        isinstance(judge_raw, list) and judge_raw
+    ):
         parquet_judges = _parse_judge_names(judge_raw)
 
     llm_judges: list[str] | None = None
@@ -1597,20 +1841,20 @@ def merge_metadata(
     if llm_judges and full_text:
         # Validate LLM judges against judgment header text
         validated_llm, rejected_llm = _validate_judges_against_text(
-            llm_judges, full_text,
+            llm_judges,
+            full_text,
         )
         # Also apply temporal validation if year is known
-        case_year = (
-            parquet_meta.get("year")
-            or getattr(llm_meta, "year", None)
-        )
+        case_year = parquet_meta.get("year") or getattr(llm_meta, "year", None)
         if case_year and validated_llm:
             validated_llm = _validate_judge_tenure(validated_llm, case_year)
 
         if rejected_llm:
             logger.warning(
                 "Judge text validation rejected %d/%d LLM judges: %s",
-                len(rejected_llm), len(llm_judges), rejected_llm,
+                len(rejected_llm),
+                len(llm_judges),
+                rejected_llm,
             )
 
         if validated_llm and not rejected_llm:
@@ -1634,7 +1878,9 @@ def merge_metadata(
             _needs_review = True
     elif llm_judges and parquet_judges:
         # No full_text for validation — fall back to count-based logic
-        if len(llm_judges) > len(parquet_judges) or (llm_coram and isinstance(llm_coram, int) and llm_coram > len(parquet_judges)):
+        if len(llm_judges) > len(parquet_judges) or (
+            llm_coram and isinstance(llm_coram, int) and llm_coram > len(parquet_judges)
+        ):
             result.judge = llm_judges
             provenance["judge"] = "llm_unvalidated"
         else:
@@ -1661,8 +1907,12 @@ def merge_metadata(
 
     # -- LLM-priority fields --
     llm_priority = (
-        "ratio_decidendi", "acts_cited", "cases_cited",
-        "keywords", "bench_type", "jurisdiction",
+        "ratio_decidendi",
+        "acts_cited",
+        "cases_cited",
+        "keywords",
+        "bench_type",
+        "jurisdiction",
     )
     for field in llm_priority:
         val = getattr(llm_meta, field, None)
@@ -1672,20 +1922,50 @@ def merge_metadata(
 
     # -- LLM-only fields (added in March 2026 ingestion overhaul) --
     llm_only_fields = (
-        "case_number", "is_reportable", "headnotes", "outcome_summary",
+        "case_number",
+        "is_reportable",
+        "headnotes",
+        "outcome_summary",
         # Phase C: legal completeness fields
-        "coram_size", "lower_court", "lower_court_case_number", "appeal_from",
-        "opinion_type", "dissenting_judges", "concurring_judges", "split_ratio",
-        "petitioner_type", "respondent_type", "is_pil", "companion_cases",
+        "coram_size",
+        "lower_court",
+        "lower_court_case_number",
+        "appeal_from",
+        "opinion_type",
+        "dissenting_judges",
+        "concurring_judges",
+        "split_ratio",
+        "petitioner_type",
+        "respondent_type",
+        "is_pil",
+        "companion_cases",
         # V2 fields
-        "arguments_raised", "relief_granted", "relief_sought", "sentence_details",
-        "damages_awarded", "judicial_tone", "key_observations", "hearing_count",
-        "citation_treatments", "distinguished_cases", "overruled_cases",
-        "legal_principles_applied", "procedural_history", "interim_orders",
-        "filing_date", "urgency_indicators", "party_counsel", "issue_classification",
-        "fact_pattern_tags", "operative_order", "conditions_imposed", "costs_awarded",
+        "arguments_raised",
+        "relief_granted",
+        "relief_sought",
+        "sentence_details",
+        "damages_awarded",
+        "judicial_tone",
+        "key_observations",
+        "hearing_count",
+        "citation_treatments",
+        "distinguished_cases",
+        "overruled_cases",
+        "legal_principles_applied",
+        "procedural_history",
+        "interim_orders",
+        "filing_date",
+        "urgency_indicators",
+        "party_counsel",
+        "issue_classification",
+        "fact_pattern_tags",
+        "operative_order",
+        "conditions_imposed",
+        "costs_awarded",
         # V3 fields
-        "legal_propositions", "statute_sections_interpreted", "fact_pattern_summary",
+        "legal_propositions",
+        "statute_sections_interpreted",
+        "fact_pattern_summary",
         "primary_legal_issue",
     )
     for field in llm_only_fields:

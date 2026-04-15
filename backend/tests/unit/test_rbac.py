@@ -41,17 +41,13 @@ class TestRequireRole:
         assert result == admin_payload
 
     @pytest.mark.asyncio
-    async def test_denies_non_matching_role(
-        self, researcher_payload: TokenPayload
-    ) -> None:
+    async def test_denies_non_matching_role(self, researcher_payload: TokenPayload) -> None:
         dep = require_role("admin")
         with pytest.raises(AuthorizationError):
             await dep(current_user=researcher_payload)
 
     @pytest.mark.asyncio
-    async def test_allows_any_of_multiple_roles(
-        self, researcher_payload: TokenPayload
-    ) -> None:
+    async def test_allows_any_of_multiple_roles(self, researcher_payload: TokenPayload) -> None:
         dep = require_role("admin", "researcher")
         result = await dep(current_user=researcher_payload)
         assert result == researcher_payload

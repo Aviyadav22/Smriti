@@ -32,6 +32,7 @@ def _make_text_quality(text: str, *, ocr_used: bool = False) -> TextQuality:
 # Helpers for building mocks
 # ---------------------------------------------------------------------------
 
+
 def _make_db_mock(*, existing_citation_id: str | None = None) -> AsyncMock:
     """Build an AsyncMock that behaves like an async SQLAlchemy session.
 
@@ -67,6 +68,7 @@ def _make_db_mock(*, existing_citation_id: str | None = None) -> AsyncMock:
     class _FakeBegin:
         async def __aenter__(self):
             return db
+
         async def __aexit__(self, *exc):
             pass
 
@@ -77,33 +79,33 @@ def _make_db_mock(*, existing_citation_id: str | None = None) -> AsyncMock:
 def _make_llm_mock() -> AsyncMock:
     """Build an AsyncMock LLMProvider that returns realistic metadata."""
     llm = AsyncMock()
-    llm.generate_structured = AsyncMock(return_value={
-        "title": "State of Maharashtra v. Rajesh Kumar",
-        "citation": "(2023) 7 SCC 456",
-        "court": "Supreme Court of India",
-        "judge": ["A.B. Sharma", "C.D. Patel"],
-        "year": 2023,
-        "decision_date": "2023-03-15",
-        "case_type": "Civil Appeal",
-        "bench_type": "division",
-        "jurisdiction": "civil",
-        "petitioner": "State of Maharashtra",
-        "respondent": "Rajesh Kumar & Ors.",
-        "ratio_decidendi": "Personal hearing under Section 26 is mandatory.",
-        "acts_cited": ["Land Acquisition Act, 2013"],
-        "cases_cited": ["(2019) 5 SCC 234", "AIR 2020 SC 1567"],
-        "keywords": ["land acquisition", "personal hearing", "Section 26"],
-        "disposal_nature": "Dismissed",
-    })
+    llm.generate_structured = AsyncMock(
+        return_value={
+            "title": "State of Maharashtra v. Rajesh Kumar",
+            "citation": "(2023) 7 SCC 456",
+            "court": "Supreme Court of India",
+            "judge": ["A.B. Sharma", "C.D. Patel"],
+            "year": 2023,
+            "decision_date": "2023-03-15",
+            "case_type": "Civil Appeal",
+            "bench_type": "division",
+            "jurisdiction": "civil",
+            "petitioner": "State of Maharashtra",
+            "respondent": "Rajesh Kumar & Ors.",
+            "ratio_decidendi": "Personal hearing under Section 26 is mandatory.",
+            "acts_cited": ["Land Acquisition Act, 2013"],
+            "cases_cited": ["(2019) 5 SCC 234", "AIR 2020 SC 1567"],
+            "keywords": ["land acquisition", "personal hearing", "Section 26"],
+            "disposal_nature": "Dismissed",
+        }
+    )
     return llm
 
 
 def _make_embedder_mock(dimension: int = 768) -> AsyncMock:
     """Build an AsyncMock EmbeddingProvider."""
     embedder = AsyncMock()
-    embedder.embed_batch = AsyncMock(
-        side_effect=lambda texts: [[0.1] * dimension for _ in texts]
-    )
+    embedder.embed_batch = AsyncMock(side_effect=lambda texts: [[0.1] * dimension for _ in texts])
     embedder.embed_text = AsyncMock(return_value=[0.1] * dimension)
     embedder.dimension = dimension
     return embedder
@@ -132,6 +134,7 @@ def _make_storage_mock(case_id: str = "test-case-id") -> AsyncMock:
 # Test classes
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.integration
 class TestIngestJudgment:
     """Integration tests for the ingest_judgment pipeline."""
@@ -155,14 +158,16 @@ class TestIngestJudgment:
             ),
             patch(
                 "app.core.ingestion.pipeline.extract_metadata_llm",
-                new=AsyncMock(return_value=CaseMetadata(
-                    ratio_decidendi="Personal hearing is mandatory.",
-                    acts_cited=["Land Acquisition Act, 2013"],
-                    cases_cited=["(2019) 5 SCC 234"],
-                    keywords=["land acquisition"],
-                    bench_type="division",
-                    jurisdiction="civil",
-                )),
+                new=AsyncMock(
+                    return_value=CaseMetadata(
+                        ratio_decidendi="Personal hearing is mandatory.",
+                        acts_cited=["Land Acquisition Act, 2013"],
+                        cases_cited=["(2019) 5 SCC 234"],
+                        keywords=["land acquisition"],
+                        bench_type="division",
+                        jurisdiction="civil",
+                    )
+                ),
             ),
         ):
             case_id = await ingest_judgment(
@@ -251,9 +256,7 @@ class TestIngestJudgment:
         storage.store.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_pipeline_records_failure_on_no_text(
-        self, sample_parquet_metadata: dict
-    ):
+    async def test_pipeline_records_failure_on_no_text(self, sample_parquet_metadata: dict):
         """Verify failure recording when no text can be extracted."""
         db = _make_db_mock()
         llm = _make_llm_mock()
@@ -268,12 +271,15 @@ class TestIngestJudgment:
         mock_session_ctx.__aenter__ = AsyncMock(return_value=fresh_db)
         mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "app.core.ingestion.pipeline.extract_and_score",
-            new=AsyncMock(return_value=_make_text_quality("")),
-        ), patch(
-            "app.core.ingestion.pipeline.async_session_factory",
-            return_value=mock_session_ctx,
+        with (
+            patch(
+                "app.core.ingestion.pipeline.extract_and_score",
+                new=AsyncMock(return_value=_make_text_quality("")),
+            ),
+            patch(
+                "app.core.ingestion.pipeline.async_session_factory",
+                return_value=mock_session_ctx,
+            ),
         ):
             case_id = await ingest_judgment(
                 pdf_path="/tmp/empty.pdf",
@@ -350,9 +356,9 @@ class TestIngestJudgment:
         # The INSERT INTO cases should NOT have been executed (only SELECT).
         for call in db.execute.call_args_list:
             sql_arg = str(call[0][0])
-            assert "INSERT INTO cases" not in sql_arg or "audit_logs" in sql_arg, (
-                "Expected no INSERT INTO cases for duplicate citation"
-            )
+            assert (
+                "INSERT INTO cases" not in sql_arg or "audit_logs" in sql_arg
+            ), "Expected no INSERT INTO cases for duplicate citation"
 
     @pytest.mark.asyncio
     async def test_pipeline_stores_pdf(
@@ -509,9 +515,9 @@ class TestIngestJudgment:
         # (2018) 3 SCC 789, [2020] 4 SCR 123
         # Each citation triggers a MERGE + CITES edge query pair.
         # graph_store.query is called twice per citation (MERGE placeholder + CITES edge).
-        assert graph_store.query.await_count >= 2, (
-            f"Expected at least 2 graph queries for citations, got {graph_store.query.await_count}"
-        )
+        assert (
+            graph_store.query.await_count >= 2
+        ), f"Expected at least 2 graph queries for citations, got {graph_store.query.await_count}"
 
         # Check that at least one CITES edge was created.
         cites_edge_found = False
@@ -542,11 +548,11 @@ class TestHelperFunctions:
 
     def test_safe_filename_special_characters(self):
         """Test that unsafe characters are stripped from filename."""
-        meta = {"title": "A/B\\C:D*E?F\"G<H>I|J"}
+        meta = {"title": 'A/B\\C:D*E?F"G<H>I|J'}
         result = _safe_filename(meta)
         assert result.endswith(".pdf")
         # None of the unsafe characters should remain.
-        for ch in "/\\:*?\"<>|":
+        for ch in '/\\:*?"<>|':
             assert ch not in result
 
     def test_safe_filename_empty(self):

@@ -51,34 +51,68 @@ async def run_component_e2e() -> bool:
     checks: dict[str, bool] = {}
 
     task = {
-        "task_id": "e2e-1", "task_type": "case_law",
+        "task_id": "e2e-1",
+        "task_type": "case_law",
         "nl_query": "What are the grounds for anticipatory bail under Section 438 CrPC",
         "boolean_query": 'anticipatory ANDD bail ANDD "Section 438"',
-        "named_cases": [], "rationale": "test",
-        "filters": {"court": "supreme_court"}, "priority": 1,
+        "named_cases": [],
+        "rationale": "test",
+        "filters": {"court": "supreme_court"},
+        "priority": 1,
     }
     state = {"task": task, "precomputed_embeddings": {}}
-
 
     # --- Worker Tests ---
     workers = [
         ("case_law_worker", lambda: case_law_worker(state, llm, embedder, vector_store, reranker)),
         ("ik_search_worker", lambda: ik_search_worker(state, ik_client)),
-        ("web_search_worker", lambda: web_search_worker(
-            {"task": {**task, "task_type": "web", "filters": {"country": "IN"}}},
-            web_search,
-        )),
-        ("statute_worker", lambda: statute_worker(
-            {"task": {**task, "task_type": "statute", "nl_query": "Section 498A IPC cruelty dowry", "boolean_query": ""}, "precomputed_embeddings": {}},
-            embedder, vector_store,
-        )),
+        (
+            "web_search_worker",
+            lambda: web_search_worker(
+                {"task": {**task, "task_type": "web", "filters": {"country": "IN"}}},
+                web_search,
+            ),
+        ),
+        (
+            "statute_worker",
+            lambda: statute_worker(
+                {
+                    "task": {
+                        **task,
+                        "task_type": "statute",
+                        "nl_query": "Section 498A IPC cruelty dowry",
+                        "boolean_query": "",
+                    },
+                    "precomputed_embeddings": {},
+                },
+                embedder,
+                vector_store,
+            ),
+        ),
         ("graph_worker", lambda: graph_worker(state, graph_store)),
-        ("named_case_worker", lambda: named_case_worker(
-            {"task": {**task, "task_type": "named_case", "named_cases": [
-                {"name": "Gurbaksh Singh Sibbia v. State of Punjab", "citation": "AIR 1980 SC 1632", "relevance": "landmark"}
-            ]}, "precomputed_embeddings": {}},
-            llm, embedder, vector_store, reranker,
-        )),
+        (
+            "named_case_worker",
+            lambda: named_case_worker(
+                {
+                    "task": {
+                        **task,
+                        "task_type": "named_case",
+                        "named_cases": [
+                            {
+                                "name": "Gurbaksh Singh Sibbia v. State of Punjab",
+                                "citation": "AIR 1980 SC 1632",
+                                "relevance": "landmark",
+                            }
+                        ],
+                    },
+                    "precomputed_embeddings": {},
+                },
+                llm,
+                embedder,
+                vector_store,
+                reranker,
+            ),
+        ),
     ]
 
     for name, fn in workers:
@@ -129,10 +163,15 @@ async def run_component_e2e() -> bool:
         from app.core.agents.research import build_research_graph
 
         graph = build_research_graph(
-            llm=get_llm(), flash_llm=flash_llm, embedder=embedder,
-            vector_store=vector_store, reranker=reranker,
-            graph_store=graph_store, web_search=web_search,
-            ik_client=ik_client, checkpointer=MemorySaver(),
+            llm=get_llm(),
+            flash_llm=flash_llm,
+            embedder=embedder,
+            vector_store=vector_store,
+            reranker=reranker,
+            graph_store=graph_store,
+            web_search=web_search,
+            ik_client=ik_client,
+            checkpointer=MemorySaver(),
         )
 
         config = {"configurable": {"thread_id": "e2e-cpc-1"}}
@@ -185,6 +224,7 @@ async def run_component_e2e() -> bool:
     # --- E2E.5: Code Mapping (IPC → BNS) ---
     try:
         from app.core.search.query import expand_statute_references
+
         expanded_query, expansions = expand_statute_references("Section 498A IPC")
         has_bns = any("BNS" in e for e in expansions) or "BNS" in expanded_query
         checks["code_mapping"] = has_bns
@@ -196,6 +236,7 @@ async def run_component_e2e() -> bool:
         from app.core.agents.research_cache import (
             get_memo_cache_hash,
         )
+
         # Verify cache modules are importable and functional
         get_memo_cache_hash("test query")
         checks["semantic_cache"] = True

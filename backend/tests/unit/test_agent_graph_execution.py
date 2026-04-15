@@ -58,9 +58,7 @@ class TestResearchRouters:
             "contradictions": [],
             "draft_memo": "",
             "confidence": 0.0,
-            "messages": [
-                {"type": "user_feedback", "step": "plan", "content": "refine this"}
-            ],
+            "messages": [{"type": "user_feedback", "step": "plan", "content": "refine this"}],
             "iteration": 1,
         }
         assert route_after_plan(state) == "plan_research"
@@ -128,9 +126,7 @@ class TestResearchRouters:
             "contradictions": [],
             "draft_memo": "",
             "confidence": 0.0,
-            "messages": [
-                {"type": "user_feedback", "step": "memo", "content": "add more"}
-            ],
+            "messages": [{"type": "user_feedback", "step": "memo", "content": "add more"}],
             "iteration": 1,
         }
         assert route_after_memo(state) == "synthesize"
@@ -172,9 +168,7 @@ class TestCasePrepRouters:
 
     def test_route_after_issues_with_feedback_loops(self) -> None:
         state = self._base_state(
-            messages=[
-                {"type": "user_feedback", "step": "issues", "content": "reorder"}
-            ],
+            messages=[{"type": "user_feedback", "step": "issues", "content": "reorder"}],
             iteration=1,
         )
         assert route_after_issues(state) == "prioritize"

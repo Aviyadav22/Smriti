@@ -51,6 +51,7 @@ async def get_current_user_optional(
     if not token:
         return None
     from app.security.exceptions import AuthenticationError as AuthError
+
     try:
         return await verify_access_token(token)
     except AuthError as exc:

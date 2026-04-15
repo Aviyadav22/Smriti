@@ -5,6 +5,7 @@ Runs a real research query through the agent, checks logs for:
 2. expand_passages_from_full_text() producing expanded_text
 3. expanded_text being longer than original snippet
 """
+
 import asyncio
 import logging
 import os
@@ -50,7 +51,6 @@ async def main():
             db=db,
         )
 
-
         # Check char_start/char_end propagation
         has_positions = 0
         for _i, r in enumerate(response.results[:10]):
@@ -59,14 +59,12 @@ async def main():
             if r.char_start and r.char_end:
                 has_positions += 1
 
-
         # Now test passage expansion directly
         from dataclasses import asdict
 
         from app.core.agents.nodes.common import expand_passages_from_full_text
 
         result_dicts = [asdict(r) for r in response.results[:8]]  # Simulate post-CRAG top 8
-
 
         expanded = await expand_passages_from_full_text(result_dicts, db)
 

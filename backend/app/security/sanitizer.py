@@ -13,9 +13,7 @@ from typing import Final
 
 _HTML_TAG_PATTERN: re.Pattern[str] = re.compile(r"<[^>]+>")
 _NULL_BYTE_PATTERN: re.Pattern[str] = re.compile(r"\x00")
-_CONTROL_CHAR_PATTERN: re.Pattern[str] = re.compile(
-    r"[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]"
-)
+_CONTROL_CHAR_PATTERN: re.Pattern[str] = re.compile(r"[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 # ---------------------------------------------------------------------------
 # LLM prompt injection markers
@@ -145,7 +143,5 @@ def detect_prompt_injection(text: str) -> bool:
 
     # Check for excessive special characters that may indicate encoding attacks
     # (e.g., many backticks, pipe characters used in chat-ML formatting)
-    special_char_count = sum(
-        1 for c in text if c in "`|<>{}[]"
-    )
+    special_char_count = sum(1 for c in text if c in "`|<>{}[]")
     return bool(len(text) > 0 and special_char_count / len(text) > 0.15)

@@ -41,16 +41,28 @@ class TestBuildLookup:
         """Multiple sections of same act are mapped independently."""
         entries: list[AmendmentEntry] = [
             AmendmentEntry(
-                old_act="IPC", new_act="BNS", old_section="302", new_section="103",
-                effective_date=None, notes=None,
+                old_act="IPC",
+                new_act="BNS",
+                old_section="302",
+                new_section="103",
+                effective_date=None,
+                notes=None,
             ),
             AmendmentEntry(
-                old_act="IPC", new_act="BNS", old_section="307", new_section="109",
-                effective_date=None, notes=None,
+                old_act="IPC",
+                new_act="BNS",
+                old_section="307",
+                new_section="109",
+                effective_date=None,
+                notes=None,
             ),
             AmendmentEntry(
-                old_act="IPC", new_act="BNS", old_section="420", new_section="318",
-                effective_date=None, notes=None,
+                old_act="IPC",
+                new_act="BNS",
+                old_section="420",
+                new_section="318",
+                effective_date=None,
+                notes=None,
             ),
         ]
         old_to_new, new_to_old = build_lookup(entries)
@@ -65,16 +77,28 @@ class TestBuildLookup:
         """Entries from different act pairs coexist correctly."""
         entries: list[AmendmentEntry] = [
             AmendmentEntry(
-                old_act="IPC", new_act="BNS", old_section="302", new_section="103",
-                effective_date=None, notes=None,
+                old_act="IPC",
+                new_act="BNS",
+                old_section="302",
+                new_section="103",
+                effective_date=None,
+                notes=None,
             ),
             AmendmentEntry(
-                old_act="CrPC", new_act="BNSS", old_section="438", new_section="482",
-                effective_date=None, notes=None,
+                old_act="CrPC",
+                new_act="BNSS",
+                old_section="438",
+                new_section="482",
+                effective_date=None,
+                notes=None,
             ),
             AmendmentEntry(
-                old_act="IEA", new_act="BSA", old_section="3", new_section="3",
-                effective_date=None, notes=None,
+                old_act="IEA",
+                new_act="BSA",
+                old_section="3",
+                new_section="3",
+                effective_date=None,
+                notes=None,
             ),
         ]
         old_to_new, new_to_old = build_lookup(entries)

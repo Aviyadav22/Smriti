@@ -128,7 +128,10 @@ async def migrate(dry_run: bool = False) -> None:
             s = stats[0]
             logger.info(
                 "  Total nodes: %d | Placeholders remaining: %d | Overruled: %d | With citations: %d",
-                s["total_nodes"], s["placeholders"], s["overruled"], s["has_citations"],
+                s["total_nodes"],
+                s["placeholders"],
+                s["overruled"],
+                s["has_citations"],
             )
 
         logger.info("Migration complete!")
@@ -138,7 +141,9 @@ async def migrate(dry_run: bool = False) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Backfill graph node properties (cited_by_count, is_overruled, placeholder resolution)")
+    parser = argparse.ArgumentParser(
+        description="Backfill graph node properties (cited_by_count, is_overruled, placeholder resolution)"
+    )
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without applying")
     args = parser.parse_args()
     asyncio.run(migrate(dry_run=args.dry_run))

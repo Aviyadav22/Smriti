@@ -32,8 +32,7 @@ class LocalStorage:
         # Ensure the resolved path is within the base directory.
         # Append os.sep to avoid prefix false-positives (e.g. /storage-evil matching /storage).
         if not (
-            full_path == base_resolved
-            or str(full_path).startswith(str(base_resolved) + os.sep)
+            full_path == base_resolved or str(full_path).startswith(str(base_resolved) + os.sep)
         ):
             raise ValueError(
                 f"Path traversal detected: '{destination}' resolves outside "

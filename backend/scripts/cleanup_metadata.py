@@ -15,6 +15,7 @@ Usage:
     python scripts/cleanup_metadata.py --since 2026-03-31
     python scripts/cleanup_metadata.py --dry-run          # preview changes
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,6 +44,7 @@ logger = logging.getLogger("cleanup_metadata")
 
 def _get_dsn() -> str:
     from app.core.config import settings
+
     return settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
 
 
@@ -51,6 +53,7 @@ def fix_title_ocr(title: str | None) -> str | None:
     if not title:
         return title
     import re
+
     # "0F" -> "OF" (zero instead of O)
     fixed = re.sub(r"\b0F\b", "OF", title)
     # "1N" -> "IN" (one instead of I)
@@ -69,6 +72,7 @@ def fix_acts_cited(acts: list[str] | None) -> list[str] | None:
     if not acts:
         return acts
     from app.core.legal.extractor import normalize_acts_cited_list
+
     result = normalize_acts_cited_list(acts)
     return result if result else None
 
@@ -81,15 +85,18 @@ def fix_cases_cited(cases: list[str] | None) -> tuple[list[str] | None, list[str
     if not cases:
         return cases, None
     from app.core.legal.extractor import classify_case_citations
+
     named, bare = classify_case_citations(cases)
     return (named if named else None), (bare if bare else None)
 
 
 def fix_case_type_vs_number(
-    case_type: str | None, case_number: str | None,
+    case_type: str | None,
+    case_number: str | None,
 ) -> str | None:
     """Correct case_type based on case_number."""
     import re
+
     if not case_number or not case_type:
         return case_type
     cn_lower = case_number.lower()
@@ -97,7 +104,7 @@ def fix_case_type_vs_number(
         return "Civil Appeal"
     if "criminal appeal" in cn_lower and case_type == "Civil Appeal":
         return "Criminal Appeal"
-    if (re.search(r"slp\s*\(\s*c\s*\)", cn_lower) or "w.p.(c)" in cn_lower):
+    if re.search(r"slp\s*\(\s*c\s*\)", cn_lower) or "w.p.(c)" in cn_lower:
         if case_type == "Criminal Appeal":
             return "Special Leave Petition" if "slp" in cn_lower else "Writ Petition"
     return case_type
@@ -167,10 +174,16 @@ async def cleanup(since: date, dry_run: bool) -> None:
                 if field in ("acts_cited", "cases_cited", "citation_refs"):
                     old_count = len(old_val) if old_val else 0
                     new_count = len(new_val) if new_val else 0
-                    removed = set(old_val or []) - set(new_val or []) if field != "citation_refs" else set()
+                    removed = (
+                        set(old_val or []) - set(new_val or [])
+                        if field != "citation_refs"
+                        else set()
+                    )
                     logger.info(
                         "  %s: %d -> %d%s",
-                        field, old_count, new_count,
+                        field,
+                        old_count,
+                        new_count,
                         f" (removed: {removed})" if removed else "",
                     )
                 else:
@@ -197,12 +210,10 @@ async def cleanup(since: date, dry_run: bool) -> None:
         logger.info("Committed %d case updates", modified)
 
     logger.info(
-        "\n=== SUMMARY ===\n"
-        "Total cases: %d\n"
-        "Modified: %d\n"
-        "Unchanged: %d\n"
-        "Mode: %s",
-        len(rows), modified, len(rows) - modified,
+        "\n=== SUMMARY ===\n" "Total cases: %d\n" "Modified: %d\n" "Unchanged: %d\n" "Mode: %s",
+        len(rows),
+        modified,
+        len(rows) - modified,
         "DRY RUN" if dry_run else "APPLIED",
     )
 
@@ -212,7 +223,9 @@ async def cleanup(since: date, dry_run: bool) -> None:
     report_path = Path("trial_reports") / f"cleanup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     report_path.parent.mkdir(exist_ok=True)
     report_path.write_text(
-        json.dumps({"total": len(rows), "modified": modified, "details": details}, indent=2, default=str),
+        json.dumps(
+            {"total": len(rows), "modified": modified, "details": details}, indent=2, default=str
+        ),
         encoding="utf-8",
     )
     logger.info("Report saved to %s", report_path)
@@ -220,7 +233,9 @@ async def cleanup(since: date, dry_run: bool) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Post-ingestion metadata cleanup")
-    parser.add_argument("--since", type=str, default="2026-03-31", help="Cleanup cases since date (YYYY-MM-DD)")
+    parser.add_argument(
+        "--since", type=str, default="2026-03-31", help="Cleanup cases since date (YYYY-MM-DD)"
+    )
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without applying")
     args = parser.parse_args()
 

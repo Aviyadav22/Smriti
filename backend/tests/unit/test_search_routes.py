@@ -171,9 +171,7 @@ class TestSearchEndpoint:
 
         assert resp.status_code == 200
         call_kwargs = mock_hybrid_search.call_args
-        filters: SearchFilters = call_kwargs.kwargs.get(
-            "filters"
-        ) or call_kwargs[1].get("filters")
+        filters: SearchFilters = call_kwargs.kwargs.get("filters") or call_kwargs[1].get("filters")
         assert filters.court == ["Supreme Court of India", "Delhi High Court"]
         assert filters.year_from == 2020
         assert filters.year_to == 2024
@@ -207,10 +205,7 @@ class TestSearchEndpoint:
         assert resp.status_code == 200
         call_kwargs = mock_hybrid_search.call_args
         assert call_kwargs.kwargs.get("page") == 3 or call_kwargs[1].get("page") == 3
-        assert (
-            call_kwargs.kwargs.get("page_size") == 20
-            or call_kwargs[1].get("page_size") == 20
-        )
+        assert call_kwargs.kwargs.get("page_size") == 20 or call_kwargs[1].get("page_size") == 20
         body = resp.json()
         assert body["page"] == 3
         assert body["page_size"] == 20

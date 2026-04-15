@@ -21,6 +21,7 @@ Usage::
     # Look up category
     get_category_for_tag("criminal_law.bail")  # → "Criminal Law"
 """
+
 from __future__ import annotations
 
 from typing import Final

@@ -45,8 +45,7 @@ def upgrade() -> None:
     # 4. Add trigram extension and indexes for auto-suggest (Task D3 prep)
     op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_cases_title_trgm "
-        "ON cases USING gin (title gin_trgm_ops)"
+        "CREATE INDEX IF NOT EXISTS idx_cases_title_trgm " "ON cases USING gin (title gin_trgm_ops)"
     )
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_cases_citation_trgm "

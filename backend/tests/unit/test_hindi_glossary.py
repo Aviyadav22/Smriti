@@ -1,4 +1,5 @@
 """Tests for Hindi legal glossary."""
+
 from __future__ import annotations
 
 from app.core.drafting.hindi_glossary import (
@@ -35,7 +36,7 @@ class TestLegalGlossary:
     def test_hindi_values_are_devanagari(self) -> None:
         for english, hindi in LEGAL_GLOSSARY.items():
             assert any(
-                "\u0900" <= ch <= "\u097F" for ch in hindi
+                "\u0900" <= ch <= "\u097f" for ch in hindi
             ), f"Hindi for '{english}' does not contain Devanagari: '{hindi}'"
 
 
@@ -55,15 +56,24 @@ class TestApplyHindiTerms:
 
     def test_replaces_longer_phrases_first(self) -> None:
         result = apply_hindi_terms("Supreme Court of India")
-        assert "\u0938\u0930\u094d\u0935\u094b\u091a\u094d\u091a \u0928\u094d\u092f\u093e\u092f\u093e\u0932\u092f" in result
+        assert (
+            "\u0938\u0930\u094d\u0935\u094b\u091a\u094d\u091a \u0928\u094d\u092f\u093e\u092f\u093e\u0932\u092f"
+            in result
+        )
 
 
 class TestGetHindiTerm:
     def test_exact_match(self) -> None:
-        assert get_hindi_term("Petitioner") == "\u092f\u093e\u091a\u093f\u0915\u093e\u0915\u0930\u094d\u0924\u093e"
+        assert (
+            get_hindi_term("Petitioner")
+            == "\u092f\u093e\u091a\u093f\u0915\u093e\u0915\u0930\u094d\u0924\u093e"
+        )
 
     def test_case_insensitive(self) -> None:
-        assert get_hindi_term("petitioner") == "\u092f\u093e\u091a\u093f\u0915\u093e\u0915\u0930\u094d\u0924\u093e"
+        assert (
+            get_hindi_term("petitioner")
+            == "\u092f\u093e\u091a\u093f\u0915\u093e\u0915\u0930\u094d\u0924\u093e"
+        )
 
     def test_unknown_term_returns_none(self) -> None:
         assert get_hindi_term("xyznonexistent") is None

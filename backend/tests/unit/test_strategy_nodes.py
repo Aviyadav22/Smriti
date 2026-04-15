@@ -1,4 +1,5 @@
 """Tests for Strategy Agent node functions."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -92,7 +93,9 @@ class TestAnalyzeFactsNode:
         await analyze_facts_node(state, llm)
 
         call_kwargs = llm.generate_structured.call_args
-        prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        prompt_sent = call_kwargs.kwargs.get(
+            "prompt", call_kwargs.args[0] if call_kwargs.args else ""
+        )
         assert "wrongful termination" in prompt_sent
 
     @pytest.mark.asyncio
@@ -414,9 +417,7 @@ class TestSearchPrecedentsNode:
 
             state = _make_state(
                 fact_analysis={
-                    "causes_of_action": [
-                        {"title": "Tort", "statutory_basis": "Tort Law"}
-                    ]
+                    "causes_of_action": [{"title": "Tort", "statutory_basis": "Tort Law"}]
                 }
             )
             result = await search_precedents_node(
@@ -472,7 +473,9 @@ class TestAssessStrengthNode:
         await assess_strength_node(state, llm)
 
         call_kwargs = llm.generate_structured.call_args
-        prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        prompt_sent = call_kwargs.kwargs.get(
+            "prompt", call_kwargs.args[0] if call_kwargs.args else ""
+        )
         assert "Justice X" in prompt_sent
 
     @pytest.mark.asyncio
@@ -518,7 +521,9 @@ class TestGenerateArgumentsNode:
 
         state = _make_state(
             fact_analysis={"causes_of_action": [{"title": "Breach", "statutory_basis": "ICA"}]},
-            precedent_map=[{"case_id": "c1", "strength": "BINDING", "citation": "(2020) 1 SCC 100"}],
+            precedent_map=[
+                {"case_id": "c1", "strength": "BINDING", "citation": "(2020) 1 SCC 100"}
+            ],
             strength_assessment={"overall_score": 7},
         )
         result = await generate_arguments_node(state, llm)
@@ -535,7 +540,9 @@ class TestGenerateArgumentsNode:
         await generate_arguments_node(state, llm)
 
         call_kwargs = llm.generate_structured.call_args
-        prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        prompt_sent = call_kwargs.kwargs.get(
+            "prompt", call_kwargs.args[0] if call_kwargs.args else ""
+        )
         assert "Injunction" in prompt_sent
 
     @pytest.mark.asyncio
@@ -770,8 +777,7 @@ class TestSynthesizeStrategyNode:
         llm.generate.return_value = "Strong case with binding precedents."
 
         search_results = [
-            {"score": 0.9, "source_query": "breach", "case_id": f"c{i}"}
-            for i in range(10)
+            {"score": 0.9, "source_query": "breach", "case_id": f"c{i}"} for i in range(10)
         ]
         precedent_map = [{"strength": "BINDING"} for _ in range(10)]
 
@@ -799,7 +805,9 @@ class TestSynthesizeStrategyNode:
         await synthesize_strategy_node(state, llm)
 
         call_kwargs = llm.generate.call_args
-        prompt_sent = call_kwargs.kwargs.get("prompt", call_kwargs.args[0] if call_kwargs.args else "")
+        prompt_sent = call_kwargs.kwargs.get(
+            "prompt", call_kwargs.args[0] if call_kwargs.args else ""
+        )
         assert "specific performance" in prompt_sent.lower()
 
     @pytest.mark.asyncio
@@ -901,19 +909,21 @@ class TestVerifyCitationsNode:
 
     @pytest.mark.asyncio
     async def test_unverified_human_citation_appends_warning(self) -> None:
-        state = _make_state(
-            strategy_memo="The court relied on (2099) 1 SCC 999 in this matter."
-        )
+        state = _make_state(strategy_memo="The court relied on (2099) 1 SCC 999 in this matter.")
 
-        with patch(
-            "app.core.agents.nodes.common.extract_citations_from_text",
-            return_value=["(2099) 1 SCC 999"],
-        ), patch(
-            "app.core.agents.nodes.common.verify_citations_against_db",
-            new_callable=AsyncMock,
-        ) as mock_verify_db, patch(
-            "app.core.agents.nodes.common.check_grounding",
-            return_value=[],
+        with (
+            patch(
+                "app.core.agents.nodes.common.extract_citations_from_text",
+                return_value=["(2099) 1 SCC 999"],
+            ),
+            patch(
+                "app.core.agents.nodes.common.verify_citations_against_db",
+                new_callable=AsyncMock,
+            ) as mock_verify_db,
+            patch(
+                "app.core.agents.nodes.common.check_grounding",
+                return_value=[],
+            ),
         ):
             mock_verify_db.return_value = ([], ["(2099) 1 SCC 999"])
 
@@ -930,15 +940,19 @@ class TestVerifyCitationsNode:
             search_results=[{"citation": "(2020) 5 SCC 200", "snippet": "different case"}],
         )
 
-        with patch(
-            "app.core.agents.nodes.common.extract_citations_from_text",
-            return_value=["(2017) 10 SCC 1"],
-        ), patch(
-            "app.core.agents.nodes.common.verify_citations_against_db",
-            new_callable=AsyncMock,
-        ) as mock_verify_db, patch(
-            "app.core.agents.nodes.common.check_grounding",
-            return_value=["(2017) 10 SCC 1"],
+        with (
+            patch(
+                "app.core.agents.nodes.common.extract_citations_from_text",
+                return_value=["(2017) 10 SCC 1"],
+            ),
+            patch(
+                "app.core.agents.nodes.common.verify_citations_against_db",
+                new_callable=AsyncMock,
+            ) as mock_verify_db,
+            patch(
+                "app.core.agents.nodes.common.check_grounding",
+                return_value=["(2017) 10 SCC 1"],
+            ),
         ):
             mock_verify_db.return_value = (["(2017) 10 SCC 1"], [])
 
@@ -955,15 +969,19 @@ class TestVerifyCitationsNode:
             search_results=[{"citation": "(2017) 10 SCC 1", "snippet": ""}],
         )
 
-        with patch(
-            "app.core.agents.nodes.common.extract_citations_from_text",
-            return_value=["(2017) 10 SCC 1"],
-        ), patch(
-            "app.core.agents.nodes.common.verify_citations_against_db",
-            new_callable=AsyncMock,
-        ) as mock_verify_db, patch(
-            "app.core.agents.nodes.common.check_grounding",
-            return_value=[],
+        with (
+            patch(
+                "app.core.agents.nodes.common.extract_citations_from_text",
+                return_value=["(2017) 10 SCC 1"],
+            ),
+            patch(
+                "app.core.agents.nodes.common.verify_citations_against_db",
+                new_callable=AsyncMock,
+            ) as mock_verify_db,
+            patch(
+                "app.core.agents.nodes.common.check_grounding",
+                return_value=[],
+            ),
         ):
             mock_verify_db.return_value = (["(2017) 10 SCC 1"], [])
 

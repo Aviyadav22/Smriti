@@ -5,7 +5,9 @@ from app.core.legal.court_fees import estimate_court_fee
 
 class TestEstimateCourtFee:
     def test_delhi_district_civil(self) -> None:
-        result = estimate_court_fee(suit_valuation=1000000, state="Delhi", court_level="district_civil")
+        result = estimate_court_fee(
+            suit_valuation=1000000, state="Delhi", court_level="district_civil"
+        )
         assert result.fee_amount == 75000.0  # 7.5%
         assert result.fee_type == "ad_valorem"
 
@@ -25,7 +27,9 @@ class TestEstimateCourtFee:
         assert result.fee_type == "fixed"
 
     def test_consumer_complaint_no_fee(self) -> None:
-        result = estimate_court_fee(suit_valuation=500000, state="Delhi", court_level="consumer_district")
+        result = estimate_court_fee(
+            suit_valuation=500000, state="Delhi", court_level="consumer_district"
+        )
         assert result.fee_amount == 0.0
 
     def test_unknown_state(self) -> None:

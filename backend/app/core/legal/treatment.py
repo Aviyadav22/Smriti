@@ -8,6 +8,7 @@ The LLM-based classifier (classify_treatment_llm) provides higher accuracy
 for ambiguous cases. It is gated by the enable_treatment_llm_fallback config
 flag and activated when regex confidence falls below treatment_llm_confidence_threshold.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 class CitationTreatment(str, Enum):
     """How a case treats a cited precedent."""
+
     REFERRED_TO = "referred_to"  # Neutral reference (default when no specific treatment detected)
     OVERRULED = "overruled"
     DISTINGUISHED = "distinguished"
@@ -41,42 +43,64 @@ class CitationTreatment(str, Enum):
 # NOTE: NOT_FOLLOWED is listed before FOLLOWED so that negative treatment
 # is detected first and those match spans are excluded from positive matching.
 TREATMENT_PATTERNS: list[tuple[CitationTreatment, re.Pattern[str]]] = [
-    (CitationTreatment.OVERRULED, re.compile(
-        r"\b(?:overruled|overrule[sd]?\s+(?:by|in)|no\s+longer\s+good\s+law|per\s+incuriam|"
-        r"expressly\s+overruled|impliedly\s+overruled|stood\s+overruled)\b",
-        re.IGNORECASE,
-    )),
-    (CitationTreatment.DISTINGUISHED, re.compile(
-        r"\b(?:distinguished|distinguishable|distinguish(?:ed|ing)\s+(?:from|in|on))\b",
-        re.IGNORECASE,
-    )),
-    (CitationTreatment.AFFIRMED, re.compile(
-        r"\b(?:affirmed|upheld|approved|endorsed|confirmed\s+(?:by|in))\b",
-        re.IGNORECASE,
-    )),
-    (CitationTreatment.NOT_FOLLOWED, re.compile(
-        r"\b(?:(?:not|never|declined\s+to|refused\s+to)\s+follow(?:ed|ing)?|"
-        r"(?:not|never)\s+(?:been\s+)?followed)\b",
-        re.IGNORECASE,
-    )),
-    (CitationTreatment.FOLLOWED, re.compile(
-        r"\b(?:followed|applied|relied\s+upon|reiterated)\b",
-        re.IGNORECASE,
-    )),
-    (CitationTreatment.EXPLAINED, re.compile(
-        r"\b(?:explained|clarified|interpreted)\b",
-        re.IGNORECASE,
-    )),
-    (CitationTreatment.DOUBTED, re.compile(
-        r"\b(?:doubted|questioned|expressed\s+(?:doubt|reservation))\b",
-        re.IGNORECASE,
-    )),
+    (
+        CitationTreatment.OVERRULED,
+        re.compile(
+            r"\b(?:overruled|overrule[sd]?\s+(?:by|in)|no\s+longer\s+good\s+law|per\s+incuriam|"
+            r"expressly\s+overruled|impliedly\s+overruled|stood\s+overruled)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        CitationTreatment.DISTINGUISHED,
+        re.compile(
+            r"\b(?:distinguished|distinguishable|distinguish(?:ed|ing)\s+(?:from|in|on))\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        CitationTreatment.AFFIRMED,
+        re.compile(
+            r"\b(?:affirmed|upheld|approved|endorsed|confirmed\s+(?:by|in))\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        CitationTreatment.NOT_FOLLOWED,
+        re.compile(
+            r"\b(?:(?:not|never|declined\s+to|refused\s+to)\s+follow(?:ed|ing)?|"
+            r"(?:not|never)\s+(?:been\s+)?followed)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        CitationTreatment.FOLLOWED,
+        re.compile(
+            r"\b(?:followed|applied|relied\s+upon|reiterated)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        CitationTreatment.EXPLAINED,
+        re.compile(
+            r"\b(?:explained|clarified|interpreted)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        CitationTreatment.DOUBTED,
+        re.compile(
+            r"\b(?:doubted|questioned|expressed\s+(?:doubt|reservation))\b",
+            re.IGNORECASE,
+        ),
+    ),
 ]
 
 
 @dataclass
 class TreatmentResult:
     """Result of detecting citation treatment in text."""
+
     treatment: CitationTreatment
     cited_text: str  # The text around the treatment mention
     confidence: float  # 0.0 to 1.0
@@ -105,8 +129,7 @@ def detect_treatment_in_text(text: str) -> list[TreatmentResult]:
         for match in pattern.finditer(text):
             # For positive FOLLOWED, skip matches that overlap a negative span
             if treatment == CitationTreatment.FOLLOWED and any(
-                ns <= match.start() < ne or ns < match.end() <= ne
-                for ns, ne in negative_spans
+                ns <= match.start() < ne or ns < match.end() <= ne for ns, ne in negative_spans
             ):
                 continue
 
@@ -120,17 +143,24 @@ def detect_treatment_in_text(text: str) -> list[TreatmentResult]:
             context = text[start:end].strip()
 
             # Higher confidence for more specific patterns
-            confidence = 0.7 if treatment in (
-                CitationTreatment.OVERRULED,
-                CitationTreatment.DISTINGUISHED,
-                CitationTreatment.NOT_FOLLOWED,
-            ) else 0.5
+            confidence = (
+                0.7
+                if treatment
+                in (
+                    CitationTreatment.OVERRULED,
+                    CitationTreatment.DISTINGUISHED,
+                    CitationTreatment.NOT_FOLLOWED,
+                )
+                else 0.5
+            )
 
-            results.append(TreatmentResult(
-                treatment=treatment,
-                cited_text=context,
-                confidence=confidence,
-            ))
+            results.append(
+                TreatmentResult(
+                    treatment=treatment,
+                    cited_text=context,
+                    confidence=confidence,
+                )
+            )
 
     return results
 
@@ -195,6 +225,13 @@ async def classify_treatment_llm(
             cited_text=text_context[:200],
             confidence=confidence,
         )
-    except (json.JSONDecodeError, KeyError, ValueError, ConnectionError, TimeoutError, RuntimeError) as exc:
+    except (
+        json.JSONDecodeError,
+        KeyError,
+        ValueError,
+        ConnectionError,
+        TimeoutError,
+        RuntimeError,
+    ) as exc:
         logger.debug("LLM treatment classification failed: %s", exc)
         return None

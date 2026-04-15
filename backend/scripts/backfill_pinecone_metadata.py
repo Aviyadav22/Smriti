@@ -8,6 +8,7 @@ Usage:
     python scripts/backfill_pinecone_metadata.py --dry-run
     python scripts/backfill_pinecone_metadata.py
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,6 +45,7 @@ async def main(args: argparse.Namespace) -> None:
 
     try:
         from app.core.dependencies import get_vector_store
+
         vector_store = get_vector_store()
     except Exception as exc:
         logger.error("Failed to initialize vector store: %s", exc)

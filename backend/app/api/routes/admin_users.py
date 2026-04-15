@@ -69,9 +69,7 @@ async def list_users(
     params: dict = {"limit": page_size, "offset": offset}
 
     if search:
-        where_clauses.append(
-            "(LOWER(email) LIKE :search OR LOWER(name) LIKE :search)"
-        )
+        where_clauses.append("(LOWER(email) LIKE :search OR LOWER(name) LIKE :search)")
         params["search"] = f"%{search.lower()}%"
 
     if role and role in VALID_ROLES:
@@ -149,7 +147,9 @@ async def update_user(
 
     # Validate role
     if body.role and body.role not in VALID_ROLES:
-        raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(VALID_ROLES)}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid role. Must be one of: {', '.join(VALID_ROLES)}"
+        )
 
     # Check target user exists
     result = await db.execute(

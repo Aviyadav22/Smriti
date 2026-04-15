@@ -10,6 +10,7 @@ Usage:
     python -m scripts.normalize_acts_cited --commit  # Actually write changes
     python -m scripts.normalize_acts_cited --commit --sync-pinecone  # + Pinecone
 """
+
 from __future__ import annotations
 
 import argparse
@@ -107,7 +108,9 @@ async def sync_pinecone_metadata(
                     stats["vectors_updated"] += 1
                 except Exception as vec_exc:
                     logger.warning(
-                        "Failed to update Pinecone vector %s: %s", vid, vec_exc,
+                        "Failed to update Pinecone vector %s: %s",
+                        vid,
+                        vec_exc,
                     )
                     stats["vectors_failed"] += 1
 
@@ -115,7 +118,9 @@ async def sync_pinecone_metadata(
 
         except Exception as exc:
             logger.error(
-                "Pinecone sync failed for case_id=%s: %s", case_id, exc,
+                "Pinecone sync failed for case_id=%s: %s",
+                case_id,
+                exc,
             )
             stats["vectors_failed"] += 1
 
@@ -146,8 +151,8 @@ async def normalize_all_cases(
     total_changed = 0
     total_unchanged = 0
     acts_normalized: Counter[str] = Counter()  # "old -> new" transitions
-    acts_filtered: Counter[str] = Counter()    # garbage removed
-    acts_added: Counter[str] = Counter()       # added by enrichment
+    acts_filtered: Counter[str] = Counter()  # garbage removed
+    acts_added: Counter[str] = Counter()  # added by enrichment
     updated_cases: list[dict] = []
 
     async with async_session_factory() as db:
@@ -172,7 +177,8 @@ async def normalize_all_cases(
             # Enrich with cross-references (IPC <-> BNS, etc.)
             # Temporal guard: pre-2024 cases won't get new codes (BNS/BNSS/BSA)
             enriched = enrich_statute_cross_references(
-                normalized, decision_year=case_year,
+                normalized,
+                decision_year=case_year,
             )
 
             old_set = set(old_acts)
@@ -275,9 +281,7 @@ async def normalize_all_cases(
             logger.info("  %s  (x%d)", act, count)
 
     if not commit and total_changed > 0:
-        logger.info(
-            "Run with --commit to apply these changes to the database."
-        )
+        logger.info("Run with --commit to apply these changes to the database.")
 
 
 def main() -> None:

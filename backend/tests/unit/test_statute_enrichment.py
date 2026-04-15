@@ -4,7 +4,6 @@ Now tests act-level short-code enrichment (post-normalization),
 including the BNS/BNSS/BSA temporal guard for pre-2024 cases.
 """
 
-
 from app.core.legal.statute_enrichment import enrich_statute_cross_references
 
 
@@ -130,7 +129,8 @@ class TestTemporalGuard:
     def test_pre2024_multiple_old_codes_no_new(self):
         """Pre-2024 case with IPC + IEA should keep both old, add no new."""
         result = enrich_statute_cross_references(
-            ["IPC", "IEA"], decision_year=2010,
+            ["IPC", "IEA"],
+            decision_year=2010,
         )
         assert result == ["IEA", "IPC"]
         assert "BNS" not in result
@@ -139,14 +139,16 @@ class TestTemporalGuard:
     def test_pre2024_mixed_old_and_new_replaces_new(self):
         """Pre-2024 case with IPC + BNS should collapse to just IPC."""
         result = enrich_statute_cross_references(
-            ["IPC", "BNS"], decision_year=2020,
+            ["IPC", "BNS"],
+            decision_year=2020,
         )
         assert result == ["IPC"]
 
     def test_pre2024_preserves_non_criminal_acts(self):
         """Pre-2024: non-criminal acts are preserved alongside old codes."""
         result = enrich_statute_cross_references(
-            ["IPC", "ACA", "BNS"], decision_year=2018,
+            ["IPC", "ACA", "BNS"],
+            decision_year=2018,
         )
         assert result == ["ACA", "IPC"]
         assert "BNS" not in result
@@ -154,7 +156,8 @@ class TestTemporalGuard:
     def test_pre2024_all_three_new_codes_replaced(self):
         """Pre-2024: all new codes replaced with old equivalents."""
         result = enrich_statute_cross_references(
-            ["BNS", "BNSS", "BSA"], decision_year=2020,
+            ["BNS", "BNSS", "BSA"],
+            decision_year=2020,
         )
         assert result == ["CRPC", "IEA", "IPC"]
 
@@ -181,7 +184,8 @@ class TestTemporalGuard:
     def test_post2024_full_bidirectional(self):
         """Post-2024 case gets full bidirectional enrichment."""
         result = enrich_statute_cross_references(
-            ["IPC", "CRPC"], decision_year=2024,
+            ["IPC", "CRPC"],
+            decision_year=2024,
         )
         assert "BNS" in result
         assert "BNSS" in result
@@ -211,7 +215,8 @@ class TestTemporalGuard:
     def test_pre2024_only_non_criminal(self):
         """Pre-2024 with only non-criminal acts returns them unchanged."""
         result = enrich_statute_cross_references(
-            ["COI", "ACA"], decision_year=2020,
+            ["COI", "ACA"],
+            decision_year=2020,
         )
         assert result == ["ACA", "COI"]
 

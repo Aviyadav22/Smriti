@@ -21,8 +21,12 @@ def upgrade() -> None:
         ),
         sa.Column("agent_type", sa.String(20), nullable=False),
         sa.Column("title", sa.String(255), nullable=False, server_default="New Research Session"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.CheckConstraint(
             "agent_type IN ('research', 'case_prep', 'strategy', 'drafting')",
             name="ck_agent_sessions_agent_type",
@@ -52,8 +56,12 @@ def upgrade() -> None:
         sa.Column("sources", JSONB, nullable=True),
         sa.Column("message_type", sa.String(20), nullable=False, server_default="query"),
         sa.Column("tokens_used", sa.Integer, nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.CheckConstraint(
             "role IN ('user', 'assistant')",
             name="ck_agent_messages_role",
@@ -96,9 +104,13 @@ def upgrade() -> None:
         sa.Column("filters", JSONB, nullable=True),
         sa.Column("result_count", sa.Integer, nullable=True),
         sa.Column("is_bookmarked", sa.Boolean, nullable=False, server_default="false"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
     )
-    op.create_index("ix_search_history_user_created", "search_history", ["user_id", sa.text("created_at DESC")])
+    op.create_index(
+        "ix_search_history_user_created", "search_history", ["user_id", sa.text("created_at DESC")]
+    )
     op.create_index(
         "ix_search_history_user_bookmarked",
         "search_history",

@@ -186,9 +186,7 @@ class TestMigration011Structure:
 
     @pytest.fixture(autouse=True)
     def _load_migration(self):
-        self.migration = importlib.import_module(
-            "migrations.versions.011_legal_completeness"
-        )
+        self.migration = importlib.import_module("migrations.versions.011_legal_completeness")
 
     def test_revision_id(self):
         assert self.migration.revision == "011"
@@ -210,6 +208,7 @@ class TestMigration011Structure:
         finally:
             # Restore real op module
             from alembic import op
+
             self.migration.op = op
 
         add_column_calls = mock_op.add_column.call_args_list
@@ -239,6 +238,7 @@ class TestMigration011Structure:
             self.migration.upgrade()
         finally:
             from alembic import op
+
             self.migration.op = op
 
         check_calls = mock_op.create_check_constraint.call_args_list
@@ -258,12 +258,11 @@ class TestMigration011Structure:
             self.migration.upgrade()
         finally:
             from alembic import op
+
             self.migration.op = op
 
         check_calls = mock_op.create_check_constraint.call_args_list
-        disposal_call = next(
-            c for c in check_calls if c.args[0] == "ck_cases_disposal_nature"
-        )
+        disposal_call = next(c for c in check_calls if c.args[0] == "ck_cases_disposal_nature")
         constraint_expr = disposal_call.args[2]
 
         assert "Referred to Larger Bench" in constraint_expr
@@ -277,6 +276,7 @@ class TestMigration011Structure:
             self.migration.downgrade()
         finally:
             from alembic import op
+
             self.migration.op = op
 
         drop_column_calls = mock_op.drop_column.call_args_list
@@ -307,12 +307,11 @@ class TestMigration011Structure:
             self.migration.downgrade()
         finally:
             from alembic import op
+
             self.migration.op = op
 
         check_calls = mock_op.create_check_constraint.call_args_list
-        disposal_call = next(
-            c for c in check_calls if c.args[0] == "ck_cases_disposal_nature"
-        )
+        disposal_call = next(c for c in check_calls if c.args[0] == "ck_cases_disposal_nature")
         constraint_expr = disposal_call.args[2]
 
         # Original should NOT have the new values

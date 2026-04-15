@@ -1,12 +1,16 @@
 """Tests for the improved confidence scoring formula."""
+
 from app.core.agents.confidence import calculate_confidence
 
 
 class TestConfidenceScoring:
     def test_zero_results_gives_zero(self):
         result = calculate_confidence(
-            reranker_scores=[], cross_ref_ratio=0.0,
-            precedent_strengths=[], contradiction_count=0, total_results=0,
+            reranker_scores=[],
+            cross_ref_ratio=0.0,
+            precedent_strengths=[],
+            contradiction_count=0,
+            total_results=0,
         )
         assert result == 0.0
 
@@ -54,11 +58,17 @@ class TestConfidenceScoring:
     def test_only_persuasive_lower_than_binding(self):
         """All-persuasive sources should score lower than all-binding."""
         binding = calculate_confidence(
-            reranker_scores=[0.9], cross_ref_ratio=0.3,
-            precedent_strengths=["BINDING"], contradiction_count=0, total_results=5,
+            reranker_scores=[0.9],
+            cross_ref_ratio=0.3,
+            precedent_strengths=["BINDING"],
+            contradiction_count=0,
+            total_results=5,
         )
         persuasive = calculate_confidence(
-            reranker_scores=[0.9], cross_ref_ratio=0.3,
-            precedent_strengths=["PERSUASIVE"], contradiction_count=0, total_results=5,
+            reranker_scores=[0.9],
+            cross_ref_ratio=0.3,
+            precedent_strengths=["PERSUASIVE"],
+            contradiction_count=0,
+            total_results=5,
         )
         assert persuasive < binding

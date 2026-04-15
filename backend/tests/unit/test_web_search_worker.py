@@ -1,4 +1,5 @@
 """Tests for web search worker — filter propagation."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -24,9 +25,16 @@ def _make_task(**overrides) -> dict:
 @pytest.fixture
 def mock_web_search():
     client = AsyncMock()
-    client.search = AsyncMock(return_value=[
-        {"title": "Latest SC Ruling", "url": "https://livelaw.in/test", "content": "Content", "score": 0.9}
-    ])
+    client.search = AsyncMock(
+        return_value=[
+            {
+                "title": "Latest SC Ruling",
+                "url": "https://livelaw.in/test",
+                "content": "Content",
+                "score": 0.9,
+            }
+        ]
+    )
     return client
 
 
@@ -82,9 +90,17 @@ class TestWebWorkerFilterPropagation:
         """Snippet should prefer raw_content over content."""
         from app.core.agents.nodes.worker_nodes import web_search_worker
 
-        mock_web_search.search = AsyncMock(return_value=[
-            {"title": "T", "url": "u", "content": "short", "raw_content": "# Full markdown content", "score": 0.9}
-        ])
+        mock_web_search.search = AsyncMock(
+            return_value=[
+                {
+                    "title": "T",
+                    "url": "u",
+                    "content": "short",
+                    "raw_content": "# Full markdown content",
+                    "score": 0.9,
+                }
+            ]
+        )
         state = {"task": _make_task()}
         result = await web_search_worker(state, mock_web_search)
 

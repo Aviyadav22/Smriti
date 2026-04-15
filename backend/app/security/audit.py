@@ -46,11 +46,7 @@ async def create_audit_log(
     # Hash IP addresses for DPDP compliance — avoid storing raw PII
     # Use encryption key as salt (dedicated to data protection, not JWT signing)
     hashed_ip = (
-        hashlib.sha256(
-            f"{ip_address}:{AUDIT_IP_SALT}".encode()
-        ).hexdigest()
-        if ip_address
-        else None
+        hashlib.sha256(f"{ip_address}:{AUDIT_IP_SALT}".encode()).hexdigest() if ip_address else None
     )
 
     await db.execute(

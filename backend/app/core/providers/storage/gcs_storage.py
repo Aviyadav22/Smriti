@@ -40,6 +40,7 @@ class GCSStorage:
         creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
         if creds_path and Path(creds_path).exists():
             from google.oauth2 import service_account as sa
+
             credentials = sa.Credentials.from_service_account_file(
                 creds_path,
                 scopes=["https://www.googleapis.com/auth/cloud-platform"],
@@ -56,10 +57,10 @@ class GCSStorage:
         """Extract blob name from gs://bucket/path or plain path."""
         prefix = f"gs://{self._bucket.name}/"
         if storage_path.startswith(prefix):
-            return storage_path[len(prefix):]
+            return storage_path[len(prefix) :]
         if storage_path.startswith("gs://"):
             # gs://other-bucket/path — strip gs://bucket/ portion
-            parts = storage_path[len("gs://"):]
+            parts = storage_path[len("gs://") :]
             _, _, blob_name = parts.partition("/")
             return blob_name
         return storage_path

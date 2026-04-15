@@ -152,20 +152,14 @@ class TestBuildSourcesChunkTextPreference:
             snippet="FTS headline",
             chunk_text=None,
         )
-        chunk_text = (
-            getattr(sr, "chunk_text", None)
-            or getattr(sr, "snippet", None)
-            or "fallback"
-        )
+        chunk_text = getattr(sr, "chunk_text", None) or getattr(sr, "snippet", None) or "fallback"
         assert chunk_text == "FTS headline"
 
     def test_description_used_when_both_none(self) -> None:
         """When both chunk_text and snippet are None, description fallback works."""
         sr = SearchResultItem(case_id="c1", score=0.9)
         chunk_text = (
-            getattr(sr, "chunk_text", None)
-            or getattr(sr, "snippet", None)
-            or "DB description text"
+            getattr(sr, "chunk_text", None) or getattr(sr, "snippet", None) or "DB description text"
         )
         assert chunk_text == "DB description text"
 
@@ -204,13 +198,24 @@ class TestVectorSearchChunkText:
     async def test_returns_six_tuples(self) -> None:
         from app.core.search.hybrid import _vector_search
 
-        store = MockVectorStore([
-            MockVectorResult(id="chunk-1", score=0.95, metadata={
-                "case_id": "c1", "text": "passage one", "char_start": 100, "char_end": 500,
-                "legal_signal": 42.5,
-            }),
-        ])
-        results = await _vector_search("test query", embedder=MockEmbedder(), vector_store=store, filters=None)
+        store = MockVectorStore(
+            [
+                MockVectorResult(
+                    id="chunk-1",
+                    score=0.95,
+                    metadata={
+                        "case_id": "c1",
+                        "text": "passage one",
+                        "char_start": 100,
+                        "char_end": 500,
+                        "legal_signal": 42.5,
+                    },
+                ),
+            ]
+        )
+        results = await _vector_search(
+            "test query", embedder=MockEmbedder(), vector_store=store, filters=None
+        )
         assert len(results) == 1
         case_id, score, chunk_text, char_start, char_end, legal_signal = results[0]
         assert case_id == "c1"
@@ -225,12 +230,22 @@ class TestVectorSearchChunkText:
         """When multiple chunks map to the same case, keep highest-scoring chunk text."""
         from app.core.search.hybrid import _vector_search
 
-        store = MockVectorStore([
-            MockVectorResult(id="chunk-1", score=0.80, metadata={"case_id": "c1", "text": "lower passage"}),
-            MockVectorResult(id="chunk-2", score=0.95, metadata={"case_id": "c1", "text": "best passage"}),
-            MockVectorResult(id="chunk-3", score=0.85, metadata={"case_id": "c1", "text": "mid passage"}),
-        ])
-        results = await _vector_search("test", embedder=MockEmbedder(), vector_store=store, filters=None)
+        store = MockVectorStore(
+            [
+                MockVectorResult(
+                    id="chunk-1", score=0.80, metadata={"case_id": "c1", "text": "lower passage"}
+                ),
+                MockVectorResult(
+                    id="chunk-2", score=0.95, metadata={"case_id": "c1", "text": "best passage"}
+                ),
+                MockVectorResult(
+                    id="chunk-3", score=0.85, metadata={"case_id": "c1", "text": "mid passage"}
+                ),
+            ]
+        )
+        results = await _vector_search(
+            "test", embedder=MockEmbedder(), vector_store=store, filters=None
+        )
         assert len(results) == 1
         assert results[0][2] == "best passage"
         assert results[0][1] == 0.95
@@ -240,10 +255,16 @@ class TestVectorSearchChunkText:
         """Chunk text should come from metadata 'text' field."""
         from app.core.search.hybrid import _vector_search
 
-        store = MockVectorStore([
-            MockVectorResult(id="chunk-1", score=0.9, metadata={"case_id": "c1", "text": "from text field"}),
-        ])
-        results = await _vector_search("q", embedder=MockEmbedder(), vector_store=store, filters=None)
+        store = MockVectorStore(
+            [
+                MockVectorResult(
+                    id="chunk-1", score=0.9, metadata={"case_id": "c1", "text": "from text field"}
+                ),
+            ]
+        )
+        results = await _vector_search(
+            "q", embedder=MockEmbedder(), vector_store=store, filters=None
+        )
         assert results[0][2] == "from text field"
 
     @pytest.mark.asyncio
@@ -251,10 +272,18 @@ class TestVectorSearchChunkText:
         """Falls back to metadata 'chunk_text' when 'text' is empty."""
         from app.core.search.hybrid import _vector_search
 
-        store = MockVectorStore([
-            MockVectorResult(id="chunk-1", score=0.9, metadata={"case_id": "c1", "text": "", "chunk_text": "from chunk_text field"}),
-        ])
-        results = await _vector_search("q", embedder=MockEmbedder(), vector_store=store, filters=None)
+        store = MockVectorStore(
+            [
+                MockVectorResult(
+                    id="chunk-1",
+                    score=0.9,
+                    metadata={"case_id": "c1", "text": "", "chunk_text": "from chunk_text field"},
+                ),
+            ]
+        )
+        results = await _vector_search(
+            "q", embedder=MockEmbedder(), vector_store=store, filters=None
+        )
         assert results[0][2] == "from chunk_text field"
 
     @pytest.mark.asyncio
@@ -262,21 +291,35 @@ class TestVectorSearchChunkText:
         """Returns empty string when neither text nor chunk_text in metadata."""
         from app.core.search.hybrid import _vector_search
 
-        store = MockVectorStore([
-            MockVectorResult(id="chunk-1", score=0.9, metadata={"case_id": "c1"}),
-        ])
-        results = await _vector_search("q", embedder=MockEmbedder(), vector_store=store, filters=None)
+        store = MockVectorStore(
+            [
+                MockVectorResult(id="chunk-1", score=0.9, metadata={"case_id": "c1"}),
+            ]
+        )
+        results = await _vector_search(
+            "q", embedder=MockEmbedder(), vector_store=store, filters=None
+        )
         assert results[0][2] == ""
 
     @pytest.mark.asyncio
     async def test_sorted_by_descending_score(self) -> None:
         from app.core.search.hybrid import _vector_search
 
-        store = MockVectorStore([
-            MockVectorResult(id="chunk-1", score=0.70, metadata={"case_id": "c1", "text": "t1"}),
-            MockVectorResult(id="chunk-2", score=0.95, metadata={"case_id": "c2", "text": "t2"}),
-            MockVectorResult(id="chunk-3", score=0.85, metadata={"case_id": "c3", "text": "t3"}),
-        ])
-        results = await _vector_search("q", embedder=MockEmbedder(), vector_store=store, filters=None)
+        store = MockVectorStore(
+            [
+                MockVectorResult(
+                    id="chunk-1", score=0.70, metadata={"case_id": "c1", "text": "t1"}
+                ),
+                MockVectorResult(
+                    id="chunk-2", score=0.95, metadata={"case_id": "c2", "text": "t2"}
+                ),
+                MockVectorResult(
+                    id="chunk-3", score=0.85, metadata={"case_id": "c3", "text": "t3"}
+                ),
+            ]
+        )
+        results = await _vector_search(
+            "q", embedder=MockEmbedder(), vector_store=store, filters=None
+        )
         scores = [r[1] for r in results]
         assert scores == sorted(scores, reverse=True)

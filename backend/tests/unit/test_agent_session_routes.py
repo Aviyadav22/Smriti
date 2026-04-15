@@ -95,6 +95,7 @@ def mock_db() -> AsyncMock:
 @pytest.fixture
 def client_a(app: FastAPI, mock_db: AsyncMock) -> TestClient:
     """Client authenticated as User A."""
+
     async def _override_db():
         yield mock_db
 
@@ -107,6 +108,7 @@ def client_a(app: FastAPI, mock_db: AsyncMock) -> TestClient:
 @pytest.fixture
 def client_b(app: FastAPI, mock_db: AsyncMock) -> TestClient:
     """Client authenticated as User B."""
+
     async def _override_db():
         yield mock_db
 
@@ -138,6 +140,7 @@ _COMMON_PATCHES = [
 @pytest.fixture(autouse=True)
 def _patch_rate_limiter():
     """Disable rate limiting for all tests."""
+
     async def _noop():
         pass
 
@@ -165,8 +168,10 @@ def _patch_providers():
         elif "safe_decrypt" in target:
             m.side_effect = lambda x: x.replace("enc:", "") if x.startswith("enc:") else x
         elif "rate_limit_dependency" in target:
+
             async def _noop():
                 pass
+
             m.return_value = _noop
         else:
             m.return_value = MagicMock()
@@ -225,7 +230,9 @@ class TestCreateSession:
         mock_redis.return_value = AsyncMock()
 
         # get_cached_memo returns None (no cache hit)
-        with patch("app.api.routes.agents.get_cached_memo", new_callable=AsyncMock, return_value=None):
+        with patch(
+            "app.api.routes.agents.get_cached_memo", new_callable=AsyncMock, return_value=None
+        ):
             resp = client_a.post(
                 "/api/v1/agents/research/session",
                 json={"query": "What is the doctrine of basic structure?"},
@@ -322,11 +329,13 @@ class TestFollowUp:
         # 2. Running check (no running executions)
         running_result = _one_or_none_result(None)
         # 3. Last completed execution
-        result_data = json.dumps({
-            "memo": "Prior research memo content",
-            "footnotes": [{"id": 1, "text": "Some case"}],
-            "confidence": 0.8,
-        })
+        result_data = json.dumps(
+            {
+                "memo": "Prior research memo content",
+                "footnotes": [{"id": 1, "text": "Some case"}],
+                "confidence": 0.8,
+            }
+        )
         last_exec_row = {"result_data": result_data}
         # 4. Conversation history
         hist_rows = [
@@ -334,12 +343,14 @@ class TestFollowUp:
             {"role": "assistant", "content": "research memo", "message_type": "memo"},
         ]
 
-        mock_db.execute = AsyncMock(side_effect=[
-            _mock_mapping_result(single=sess_row),       # session lookup
-            running_result,                               # running check
-            _mock_mapping_result(single=last_exec_row),   # last completed
-            _mock_mapping_result(rows=hist_rows),          # history
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _mock_mapping_result(single=sess_row),  # session lookup
+                running_result,  # running check
+                _mock_mapping_result(single=last_exec_row),  # last completed
+                _mock_mapping_result(rows=hist_rows),  # history
+            ]
+        )
         mock_db.flush = AsyncMock()
         mock_db.commit = AsyncMock()
         mock_db.refresh = AsyncMock()
@@ -394,10 +405,12 @@ class TestFollowUp:
         sess_row = {"user_id": uuid.UUID(_USER_A_ID), "agent_type": "research"}
         running_row = (uuid.uuid4(),)  # a running execution exists
 
-        mock_db.execute = AsyncMock(side_effect=[
-            _mock_mapping_result(single=sess_row),  # session lookup
-            _one_or_none_result(running_row),        # running check → found!
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _mock_mapping_result(single=sess_row),  # session lookup
+                _one_or_none_result(running_row),  # running check → found!
+            ]
+        )
 
         resp = client_a.post(
             f"/api/v1/agents/sessions/{_SESSION_ID_STR}/follow-up",
@@ -418,11 +431,13 @@ class TestFollowUp:
         """Follow-up with no completed execution returns 400."""
         sess_row = {"user_id": uuid.UUID(_USER_A_ID), "agent_type": "research"}
 
-        mock_db.execute = AsyncMock(side_effect=[
-            _mock_mapping_result(single=sess_row),    # session lookup
-            _one_or_none_result(None),                 # no running executions
-            _mock_mapping_result(single=None),         # no completed execution
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _mock_mapping_result(single=sess_row),  # session lookup
+                _one_or_none_result(None),  # no running executions
+                _mock_mapping_result(single=None),  # no completed execution
+            ]
+        )
 
         resp = client_a.post(
             f"/api/v1/agents/sessions/{_SESSION_ID_STR}/follow-up",
@@ -451,10 +466,12 @@ class TestFollowUp:
     ) -> None:
         """Prompt injection in follow-up returns 400."""
         sess_row = {"user_id": uuid.UUID(_USER_A_ID), "agent_type": "research"}
-        mock_db.execute = AsyncMock(side_effect=[
-            _mock_mapping_result(single=sess_row),  # session lookup
-            _one_or_none_result(None),               # running check
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _mock_mapping_result(single=sess_row),  # session lookup
+                _one_or_none_result(None),  # running check
+            ]
+        )
 
         resp = client_a.post(
             f"/api/v1/agents/sessions/{_SESSION_ID_STR}/follow-up",
@@ -478,10 +495,12 @@ class TestListSessions:
         mock_db: AsyncMock,
     ) -> None:
         """Listing sessions with no data returns empty list."""
-        mock_db.execute = AsyncMock(side_effect=[
-            _scalar_one_result(0),                      # COUNT(*)
-            _mock_mapping_result(rows=[]),               # session rows
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _scalar_one_result(0),  # COUNT(*)
+                _mock_mapping_result(rows=[]),  # session rows
+            ]
+        )
 
         resp = client_a.get("/api/v1/agents/sessions")
         assert resp.status_code == 200
@@ -509,10 +528,12 @@ class TestListSessions:
             },
         ]
 
-        mock_db.execute = AsyncMock(side_effect=[
-            _scalar_one_result(1),                       # COUNT(*)
-            _mock_mapping_result(rows=session_rows),     # session rows
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _scalar_one_result(1),  # COUNT(*)
+                _mock_mapping_result(rows=session_rows),  # session rows
+            ]
+        )
 
         resp = client_a.get("/api/v1/agents/sessions")
         assert resp.status_code == 200
@@ -529,10 +550,12 @@ class TestListSessions:
         mock_db: AsyncMock,
     ) -> None:
         """Filtering by agent_type works."""
-        mock_db.execute = AsyncMock(side_effect=[
-            _scalar_one_result(0),
-            _mock_mapping_result(rows=[]),
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _scalar_one_result(0),
+                _mock_mapping_result(rows=[]),
+            ]
+        )
 
         resp = client_a.get("/api/v1/agents/sessions?agent_type=research")
         assert resp.status_code == 200
@@ -543,10 +566,12 @@ class TestListSessions:
         mock_db: AsyncMock,
     ) -> None:
         """Pagination parameters are respected."""
-        mock_db.execute = AsyncMock(side_effect=[
-            _scalar_one_result(50),
-            _mock_mapping_result(rows=[]),
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _scalar_one_result(50),
+                _mock_mapping_result(rows=[]),
+            ]
+        )
 
         resp = client_a.get("/api/v1/agents/sessions?page=3&page_size=10")
         assert resp.status_code == 200
@@ -591,10 +616,12 @@ class TestGetSession:
             },
         ]
 
-        mock_db.execute = AsyncMock(side_effect=[
-            _mock_mapping_result(single=sess),
-            _mock_mapping_result(rows=exec_rows),
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _mock_mapping_result(single=sess),
+                _mock_mapping_result(rows=exec_rows),
+            ]
+        )
 
         resp = client_a.get(f"/api/v1/agents/sessions/{_SESSION_ID_STR}")
         assert resp.status_code == 200
@@ -663,10 +690,12 @@ class TestGetSessionMessages:
             },
         ]
 
-        mock_db.execute = AsyncMock(side_effect=[
-            _mock_mapping_result(single=sess),      # ownership check
-            _mock_mapping_result(rows=msg_rows),     # messages
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _mock_mapping_result(single=sess),  # ownership check
+                _mock_mapping_result(rows=msg_rows),  # messages
+            ]
+        )
 
         resp = client_a.get(f"/api/v1/agents/sessions/{_SESSION_ID_STR}/messages")
         assert resp.status_code == 200
@@ -706,11 +735,13 @@ class TestDeleteSession:
         """Deleting a session returns success and audits."""
         sess = {"user_id": uuid.UUID(_USER_A_ID)}
 
-        mock_db.execute = AsyncMock(side_effect=[
-            _mock_mapping_result(single=sess),  # ownership check
-            None,                                # UPDATE executions SET session_id = NULL
-            None,                                # DELETE session
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _mock_mapping_result(single=sess),  # ownership check
+                None,  # UPDATE executions SET session_id = NULL
+                None,  # DELETE session
+            ]
+        )
         mock_db.commit = AsyncMock()
 
         resp = client_a.delete(f"/api/v1/agents/sessions/{_SESSION_ID_STR}")
@@ -823,10 +854,12 @@ class TestIDOR:
         We verify the DB is called with the correct user_id by checking
         that only the current user's data is returned.
         """
-        mock_db.execute = AsyncMock(side_effect=[
-            _scalar_one_result(0),
-            _mock_mapping_result(rows=[]),
-        ])
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _scalar_one_result(0),
+                _mock_mapping_result(rows=[]),
+            ]
+        )
 
         resp = client_a.get("/api/v1/agents/sessions")
         assert resp.status_code == 200

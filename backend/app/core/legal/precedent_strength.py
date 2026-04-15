@@ -7,6 +7,7 @@ as applied in Indian courts:
 - Larger bench overrides smaller bench of same court
 - Constitution Bench > Full Bench > Division Bench > Single Judge
 """
+
 from __future__ import annotations
 
 import logging
@@ -95,7 +96,9 @@ def classify_precedent_strength(
     source_canonical = normalize_court_name(source_court)
     source_level = get_court_level(source_canonical)
     if source_level == "unknown":
-        logger.warning("Unknown court level for: %s (normalized: %s)", source_court, source_canonical)
+        logger.warning(
+            "Unknown court level for: %s (normalized: %s)", source_court, source_canonical
+        )
 
     # Supreme Court binds everything
     if source_level == "supreme":
@@ -105,7 +108,9 @@ def classify_precedent_strength(
         target_canonical = normalize_court_name(target_court)
         target_level = get_court_level(target_canonical)
         if target_level == "unknown":
-            logger.warning("Unknown court level for: %s (normalized: %s)", target_court, target_canonical)
+            logger.warning(
+                "Unknown court level for: %s (normalized: %s)", target_court, target_canonical
+            )
 
         # SC citing SC — check bench strength using _bench_rank
         if target_level == "supreme" and (target_bench or target_coram_size):
@@ -125,7 +130,9 @@ def classify_precedent_strength(
         target_canonical = normalize_court_name(target_court)
         target_level = get_court_level(target_canonical)
         if target_level == "unknown":
-            logger.warning("Unknown court level for: %s (normalized: %s)", target_court, target_canonical)
+            logger.warning(
+                "Unknown court level for: %s (normalized: %s)", target_court, target_canonical
+            )
 
         # Same High Court
         if source_canonical == target_canonical:

@@ -1,4 +1,5 @@
 """Tests for agent node common utilities."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -40,7 +41,13 @@ class TestFormatSearchResultsForLlm:
 
     def test_multiple_results_numbered(self) -> None:
         results = [
-            {"title": f"Case {i}", "citation": f"cite-{i}", "court": "SC", "year": 2020, "snippet": "x"}
+            {
+                "title": f"Case {i}",
+                "citation": f"cite-{i}",
+                "court": "SC",
+                "year": 2020,
+                "snippet": "x",
+            }
             for i in range(3)
         ]
         output = format_search_results_for_llm(results)
@@ -230,9 +237,7 @@ class TestExtractStatuteRefs:
     def test_extracts_multiple(self) -> None:
         from app.core.agents.nodes.common import _extract_statute_refs
 
-        refs = _extract_statute_refs(
-            "Section 302 IPC read with Section 34 IPC and Article 21"
-        )
+        refs = _extract_statute_refs("Section 302 IPC read with Section 34 IPC and Article 21")
         assert ("IPC", "302") in refs
         assert ("IPC", "34") in refs
         assert ("COI", "21") in refs
@@ -313,19 +318,19 @@ class TestStatuteLookupNode:
         with patch(
             "app.core.agents.nodes.common._fetch_statute_from_db",
             new_callable=AsyncMock,
-            return_value=[{
-                "act_short_name": "IPC",
-                "section_number": "302",
-                "section_title": "Punishment for murder",
-                "section_text": "Whoever commits murder...",
-                "is_repealed": True,
-                "replaced_by": "BNS, Section 103",
-                "new_code_text": "Whoever commits murder...",
-            }],
+            return_value=[
+                {
+                    "act_short_name": "IPC",
+                    "section_number": "302",
+                    "section_title": "Punishment for murder",
+                    "section_text": "Whoever commits murder...",
+                    "is_repealed": True,
+                    "replaced_by": "BNS, Section 103",
+                    "new_code_text": "Whoever commits murder...",
+                }
+            ],
         ):
-            result = await statute_lookup_node(
-                state, mock_db, mock_embedder, mock_vector_store
-            )
+            result = await statute_lookup_node(state, mock_db, mock_embedder, mock_vector_store)
 
         assert "statute_context" in result
         assert len(result["statute_context"]) >= 1
@@ -350,9 +355,7 @@ class TestStatuteLookupNode:
             new_callable=AsyncMock,
             return_value=[],
         ):
-            result = await statute_lookup_node(
-                state, mock_db, mock_embedder, mock_vector_store
-            )
+            result = await statute_lookup_node(state, mock_db, mock_embedder, mock_vector_store)
 
         assert "statute_context" in result
         assert isinstance(result["statute_context"], list)
@@ -388,9 +391,7 @@ class TestStatuteLookupNode:
             new_callable=AsyncMock,
             return_value=[],
         ):
-            result = await statute_lookup_node(
-                state, mock_db, mock_embedder, mock_vector_store
-            )
+            result = await statute_lookup_node(state, mock_db, mock_embedder, mock_vector_store)
 
         assert any(
             s["act_short_name"] == "CPC" and s["section_number"] == "9"
@@ -430,15 +431,17 @@ class TestElementDecompositionNode:
 
         state = {
             "rewritten_query": "Is this murder or culpable homicide under Section 302 IPC?",
-            "statute_context": [{
-                "act_short_name": "IPC",
-                "section_number": "300",
-                "section_title": "Murder",
-                "section_text": "Except in the cases hereinafter excepted...",
-                "is_repealed": True,
-                "replaced_by": "BNS, Section 101",
-                "new_code_text": "...",
-            }],
+            "statute_context": [
+                {
+                    "act_short_name": "IPC",
+                    "section_number": "300",
+                    "section_title": "Murder",
+                    "section_text": "Except in the cases hereinafter excepted...",
+                    "is_repealed": True,
+                    "replaced_by": "BNS, Section 101",
+                    "new_code_text": "...",
+                }
+            ],
             "complexity": "complex",
         }
 
@@ -476,15 +479,17 @@ class TestElementDecompositionNode:
 
         state = {
             "rewritten_query": "test query",
-            "statute_context": [{
-                "act_short_name": "IPC",
-                "section_number": "302",
-                "section_title": "Punishment for murder",
-                "section_text": "Whoever commits murder...",
-                "is_repealed": False,
-                "replaced_by": "",
-                "new_code_text": "",
-            }],
+            "statute_context": [
+                {
+                    "act_short_name": "IPC",
+                    "section_number": "302",
+                    "section_title": "Punishment for murder",
+                    "section_text": "Whoever commits murder...",
+                    "is_repealed": False,
+                    "replaced_by": "",
+                    "new_code_text": "",
+                }
+            ],
             "complexity": "complex",
         }
 

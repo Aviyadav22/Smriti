@@ -8,6 +8,7 @@ Supports temporal validation: effective_from/effective_until track when a sectio
 was in force. amendment_history stores a JSONB array of {date, description, gazette_ref}
 records for tracking legislative amendments over time.
 """
+
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB

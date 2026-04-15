@@ -1,4 +1,5 @@
 """Tests for the graph build retry queue module."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -16,6 +17,7 @@ from app.core.ingestion.graph_retry import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_db() -> AsyncMock:
     """Create a mock AsyncSession."""
     db = AsyncMock()
@@ -27,6 +29,7 @@ def _make_db() -> AsyncMock:
 # ---------------------------------------------------------------------------
 # record_graph_failure
 # ---------------------------------------------------------------------------
+
 
 class TestRecordGraphFailure:
     @pytest.mark.asyncio
@@ -72,6 +75,7 @@ class TestRecordGraphFailure:
 # ---------------------------------------------------------------------------
 # get_pending_retries
 # ---------------------------------------------------------------------------
+
 
 class TestGetPendingRetries:
     @pytest.mark.asyncio
@@ -123,6 +127,7 @@ class TestGetPendingRetries:
 # mark_retry_success
 # ---------------------------------------------------------------------------
 
+
 class TestMarkRetrySuccess:
     @pytest.mark.asyncio
     async def test_deletes_row_for_case(self):
@@ -142,6 +147,7 @@ class TestMarkRetrySuccess:
 # ---------------------------------------------------------------------------
 # increment_retry_count
 # ---------------------------------------------------------------------------
+
 
 class TestIncrementRetryCount:
     @pytest.mark.asyncio

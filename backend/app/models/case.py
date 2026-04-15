@@ -37,18 +37,10 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     searchable_text: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
     pdf_storage_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     s3_source_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    source: Mapped[str] = mapped_column(
-        String(30), nullable=False, server_default="aws_open_data"
-    )
-    language: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="english"
-    )
-    chunk_count: Mapped[int] = mapped_column(
-        sa.Integer, nullable=False, server_default="0"
-    )
-    available_languages: Mapped[list[str] | None] = mapped_column(
-        ARRAY(String), nullable=True
-    )
+    source: Mapped[str] = mapped_column(String(30), nullable=False, server_default="aws_open_data")
+    language: Mapped[str] = mapped_column(String(20), nullable=False, server_default="english")
+    chunk_count: Mapped[int] = mapped_column(sa.Integer, nullable=False, server_default="0")
+    available_languages: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
 
     # --- Migration 009 columns (ingestion improvements) ---
     case_number: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -60,9 +52,7 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     # --- Migration 010 columns ---
-    cited_by_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0"
-    )
+    cited_by_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
     # --- Migration 011 columns (legal completeness) ---
     # C1: Coram size — exact number of judges on bench
@@ -70,19 +60,13 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     # C2: Lower court / appellate chain
     lower_court: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    lower_court_case_number: Mapped[str | None] = mapped_column(
-        String(200), nullable=True
-    )
+    lower_court_case_number: Mapped[str | None] = mapped_column(String(200), nullable=True)
     appeal_from: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     # C3: Opinion type and split tracking
     opinion_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
-    dissenting_judges: Mapped[list[str] | None] = mapped_column(
-        ARRAY(String), nullable=True
-    )
-    concurring_judges: Mapped[list[str] | None] = mapped_column(
-        ARRAY(String), nullable=True
-    )
+    dissenting_judges: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    concurring_judges: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     split_ratio: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # C10: Party type classification
@@ -91,9 +75,7 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_pil: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     # C11: Companion cases
-    companion_cases: Mapped[list[str] | None] = mapped_column(
-        ARRAY(String), nullable=True
-    )
+    companion_cases: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
 
     # --- Migration 013 columns (enterprise readiness) ---
     # F1: Provenance tracking — which source provided each field
@@ -105,12 +87,8 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     # --- Migration 015 columns (India audit fixes) ---
     hindi_searchable_text: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
-    is_anonymized: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="false"
-    )
-    anonymization_flags: Mapped[list[str] | None] = mapped_column(
-        ARRAY(String), nullable=True
-    )
+    is_anonymized: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    anonymization_flags: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
 
     # --- Migration 023 columns (Ingestion V2) ---
     # Group A: Judge Behavior Modeling
@@ -149,7 +127,9 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     page_map: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Enrichment Tracking
-    enrichment_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="flash_only")
+    enrichment_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="flash_only"
+    )
 
     # --- Ingestion V3 fields ---
     source_dataset: Mapped[str | None] = mapped_column(
@@ -216,16 +196,21 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_cases_court_decision_date", "court", sa.text("decision_date DESC")),
         # --- Partial indexes ---
         Index(
-            "ix_cases_citation_unique", "citation",
-            unique=True, postgresql_where=sa.text("citation IS NOT NULL"),
+            "ix_cases_citation_unique",
+            "citation",
+            unique=True,
+            postgresql_where=sa.text("citation IS NOT NULL"),
         ),
         Index(
-            "ix_cases_author_judge", "author_judge",
+            "ix_cases_author_judge",
+            "author_judge",
             postgresql_where=sa.text("author_judge IS NOT NULL"),
         ),
         Index(
-            "ix_cases_text_hash_unique", "text_hash",
-            unique=True, postgresql_where=sa.text("text_hash IS NOT NULL"),
+            "ix_cases_text_hash_unique",
+            "text_hash",
+            unique=True,
+            postgresql_where=sa.text("text_hash IS NOT NULL"),
         ),
         # --- GIN indexes on arrays ---
         Index("ix_cases_keywords_gin", "keywords", postgresql_using="gin"),
@@ -238,8 +223,10 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_cases_distinguished", "distinguished_cases", postgresql_using="gin"),
         Index("ix_cases_overruled", "overruled_cases", postgresql_using="gin"),
         Index(
-            "ix_cases_party_counsel", "party_counsel",
-            postgresql_using="gin", postgresql_ops={"party_counsel": "jsonb_path_ops"},
+            "ix_cases_party_counsel",
+            "party_counsel",
+            postgresql_using="gin",
+            postgresql_ops={"party_counsel": "jsonb_path_ops"},
         ),
         # --- GIN index on tsvector ---
         Index("ix_cases_searchable_text_gin", "searchable_text", postgresql_using="gin"),

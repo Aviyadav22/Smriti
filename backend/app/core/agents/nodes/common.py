@@ -1,4 +1,5 @@
 """Shared utilities for agent node functions."""
+
 from __future__ import annotations
 
 import asyncio
@@ -79,6 +80,7 @@ _OLD_TO_NEW: dict[str, tuple[str, dict[str, str]]] = {
     "IEA": ("BSA", EVIDENCE_TO_BSA_MAP),
 }
 
+
 def _extract_statute_refs(text_input: str) -> list[tuple[str, str]]:
     """Extract (act_short_name, section_number) tuples from text.
 
@@ -93,15 +95,19 @@ def _extract_statute_refs(text_input: str) -> list[tuple[str, str]]:
         # Try normalizing as-is first; if it falls through (returns unchanged),
         # strip common suffixes and retry.
         short_name = normalize_act_name(act_name)
-        if short_name == act_name and re.search(r"\s+(?:Act|Code|Sanhita|Adhiniyam)$", act_name, re.IGNORECASE):
-            stripped = re.sub(r"\s+(?:Act|Code|Sanhita|Adhiniyam)$", "", act_name, flags=re.IGNORECASE)
+        if short_name == act_name and re.search(
+            r"\s+(?:Act|Code|Sanhita|Adhiniyam)$", act_name, re.IGNORECASE
+        ):
+            stripped = re.sub(
+                r"\s+(?:Act|Code|Sanhita|Adhiniyam)$", "", act_name, flags=re.IGNORECASE
+            )
             alt = normalize_act_name(stripped)
             if alt != act_name:  # Compare to original, not stripped
                 short_name = alt
         section = ref.section.strip()
         # Handle Article references → (COI, N) — strip "Article " prefix for DB lookup
         if section.startswith("Article "):
-            refs.append(("COI", section[len("Article "):]))
+            refs.append(("COI", section[len("Article ") :]))
         # Handle Order/Rule references → keep as-is
         elif section.startswith("Order "):
             refs.append((short_name, section))
@@ -200,19 +206,19 @@ async def _fetch_statute_from_db(
         if row.replaced_by and row.is_repealed:
             parts = row.replaced_by.split(", Section ")
             if len(parts) == 2:
-                new_code_text = new_code_map.get(
-                    (parts[0].strip(), parts[1].strip()), ""
-                )
+                new_code_text = new_code_map.get((parts[0].strip(), parts[1].strip()), "")
 
-        results.append({
-            "act_short_name": row.act_short_name,
-            "section_number": row.section_number,
-            "section_title": row.section_title or "",
-            "section_text": row.section_text or "",
-            "is_repealed": row.is_repealed or False,
-            "replaced_by": row.replaced_by or "",
-            "new_code_text": new_code_text,
-        })
+        results.append(
+            {
+                "act_short_name": row.act_short_name,
+                "section_number": row.section_number,
+                "section_title": row.section_title or "",
+                "section_text": row.section_text or "",
+                "is_repealed": row.is_repealed or False,
+                "replaced_by": row.replaced_by or "",
+                "new_code_text": new_code_text,
+            }
+        )
     return results
 
 
@@ -248,24 +254,24 @@ async def statute_lookup_node(
             filters={"document_type": {"$in": ["statute", "constitution"]}},
         )
         # Add any semantic results not already in context
-        existing_keys = {
-            (s["act_short_name"], s["section_number"]) for s in statute_context
-        }
+        existing_keys = {(s["act_short_name"], s["section_number"]) for s in statute_context}
         for result in pinecone_results:
             # SearchResult is a dataclass with .metadata, not a dict
             meta = result.metadata if hasattr(result, "metadata") else result.get("metadata", {})
             act = meta.get("act_short_name", "")
             sec = meta.get("section_number", "")
             if act and sec and (act, sec) not in existing_keys:
-                statute_context.append({
-                    "act_short_name": act,
-                    "section_number": sec,
-                    "section_title": meta.get("section_title", ""),
-                    "section_text": meta.get("text", ""),
-                    "is_repealed": meta.get("is_repealed", False),
-                    "replaced_by": meta.get("replaced_by", ""),
-                    "new_code_text": "",
-                })
+                statute_context.append(
+                    {
+                        "act_short_name": act,
+                        "section_number": sec,
+                        "section_title": meta.get("section_title", ""),
+                        "section_text": meta.get("text", ""),
+                        "is_repealed": meta.get("is_repealed", False),
+                        "replaced_by": meta.get("replaced_by", ""),
+                        "new_code_text": "",
+                    }
+                )
                 existing_keys.add((act, sec))
     except Exception:
         logger.warning("Semantic statute search failed", exc_info=True)
@@ -297,7 +303,9 @@ async def element_decomposition_node(
                 entry += f"\nNew code text: {s['new_code_text'][:1000]}"
         statute_text_parts.append(entry)
 
-    statute_text = "\n\n".join(statute_text_parts) if statute_text_parts else "No statute text available."
+    statute_text = (
+        "\n\n".join(statute_text_parts) if statute_text_parts else "No statute text available."
+    )
 
     user_prompt = (
         f"## Research Question\n{query}\n\n"
@@ -315,13 +323,15 @@ async def element_decomposition_node(
         elements = result.get("elements", [])
     except Exception as exc:
         logger.warning("Element decomposition failed: %s — using query as single element", exc)
-        elements = [{
-            "element_id": "primary_issue",
-            "description": query[:200],
-            "statute_basis": "",
-            "search_query": query,
-            "is_contested": True,
-        }]
+        elements = [
+            {
+                "element_id": "primary_issue",
+                "description": query[:200],
+                "statute_basis": "",
+                "search_query": query,
+                "is_contested": True,
+            }
+        ]
 
     return {"legal_elements": elements}
 
@@ -396,9 +406,9 @@ def format_search_results_for_llm_extended(
 def _normalize_title_for_dedup(t: str) -> str:
     """Normalize case title for fuzzy cross-source matching."""
     t = t.lower().strip()
-    t = re.sub(r'\bv\.?\s*', 'v ', t)
-    t = re.sub(r'[^a-z0-9\s]', '', t)
-    return re.sub(r'\s+', ' ', t).strip()
+    t = re.sub(r"\bv\.?\s*", "v ", t)
+    t = re.sub(r"[^a-z0-9\s]", "", t)
+    return re.sub(r"\s+", " ", t).strip()
 
 
 def _normalize_score(result: dict) -> float:
@@ -678,7 +688,8 @@ async def expand_passages_from_full_text(
 
     logger.info(
         "Passage expansion: %d unique case_ids, %d full_texts fetched from PG",
-        len(case_ids), len(full_text_map),
+        len(case_ids),
+        len(full_text_map),
     )
 
     expanded_count = 0
@@ -705,7 +716,8 @@ async def expand_passages_from_full_text(
             if not snippet_text or len(snippet_text) < 50:
                 logger.debug(
                     "Passage expansion skipped for %s: snippet too short (%d chars)",
-                    cid[:8], len(snippet_text),
+                    cid[:8],
+                    len(snippet_text),
                 )
                 continue
 
@@ -718,6 +730,7 @@ async def expand_passages_from_full_text(
                     break
                 # Try with whitespace-normalized matching
                 import re as _re
+
                 norm_anchor = _re.sub(r"\s+", " ", anchor).strip()
                 norm_ft = _re.sub(r"\s+", " ", ft)
                 norm_pos = norm_ft.find(norm_anchor)
@@ -732,7 +745,10 @@ async def expand_passages_from_full_text(
                 logger.info(
                     "Passage expansion: no match for %s (snippet %d chars, "
                     "full_text %d chars) — snippet[:60]=%r",
-                    cid[:8], snippet_len, len(ft), snippet_text[:60],
+                    cid[:8],
+                    snippet_len,
+                    len(ft),
+                    snippet_text[:60],
                 )
                 continue
 
@@ -745,22 +761,27 @@ async def expand_passages_from_full_text(
         if win_start > 0:
             first_period = expanded.find(". ")
             if 0 < first_period < 200:
-                expanded = expanded[first_period + 2:]
+                expanded = expanded[first_period + 2 :]
         if win_end < len(ft):
             last_period = expanded.rfind(". ")
             if last_period > len(expanded) - 200:
-                expanded = expanded[:last_period + 1]
+                expanded = expanded[: last_period + 1]
 
         r["expanded_text"] = expanded
         expanded_count += 1
         logger.info(
             "Passage expanded for %s via %s: %d → %d chars",
-            cid[:8], match_method, snippet_len, len(expanded),
+            cid[:8],
+            match_method,
+            snippet_len,
+            len(expanded),
         )
 
     logger.info(
         "Passage expansion complete: %d/%d results expanded, %d full_texts fetched",
-        expanded_count, len(results), len(full_text_map),
+        expanded_count,
+        len(results),
+        len(full_text_map),
     )
     return results
 
@@ -846,18 +867,20 @@ HINDI_SYSTEM_SUFFIX: Final[str] = (
 # ---------------------------------------------------------------------------
 
 # Sections that should contain substantive legal citations
-_SUBSTANTIVE_SECTIONS: frozenset[str] = frozenset({
-    "grounds",
-    "legal_provisions",
-    "precedents",
-    "analysis",
-    "legal_grounds",
-    "grounds_for_bail",
-    "grounds_for_relief",
-    "arguments",
-    "legal_arguments",
-    "grounds_of_appeal",
-})
+_SUBSTANTIVE_SECTIONS: frozenset[str] = frozenset(
+    {
+        "grounds",
+        "legal_provisions",
+        "precedents",
+        "analysis",
+        "legal_grounds",
+        "grounds_for_bail",
+        "grounds_for_relief",
+        "arguments",
+        "legal_arguments",
+        "grounds_of_appeal",
+    }
+)
 
 _MIN_CITATIONS_FOR_SUBSTANTIVE = 2
 
@@ -1086,9 +1109,7 @@ async def _check_holding_accuracy(
 
                     if sim < 0.75:
                         label = "misrepresented" if sim < 0.5 else "partially_accurate"
-                        warnings.append(
-                            f"{cite} [holding {label}: similarity={sim:.2f}]"
-                        )
+                        warnings.append(f"{cite} [holding {label}: similarity={sim:.2f}]")
         except Exception:
             logger.warning("Semantic holding verification failed", exc_info=True)
 
@@ -1220,17 +1241,19 @@ async def get_citation_neighbors(
                 if isinstance(node, dict):
                     nid = node.get("id", node.get("case_id", ""))
                     if nid:
-                        results.append({
-                            "case_id": nid,
-                            "title": node.get("title"),
-                            "citation": node.get("citation"),
-                            "court": node.get("court"),
-                            "year": node.get("year"),
-                            "bench_type": node.get("bench_type"),
-                            "snippet": node.get("snippet", ""),
-                            "score": 0.0,
-                            "source": "citation_graph",
-                        })
+                        results.append(
+                            {
+                                "case_id": nid,
+                                "title": node.get("title"),
+                                "citation": node.get("citation"),
+                                "court": node.get("court"),
+                                "year": node.get("year"),
+                                "bench_type": node.get("bench_type"),
+                                "snippet": node.get("snippet", ""),
+                                "score": 0.0,
+                                "source": "citation_graph",
+                            }
+                        )
             return results
         except Exception:
             logger.warning("Graph neighbor query failed for case_id=%s", case_id)

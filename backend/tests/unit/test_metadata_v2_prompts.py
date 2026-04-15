@@ -1,4 +1,5 @@
 """Tests for V2 metadata extraction prompts."""
+
 import pytest
 
 from app.core.legal.prompts import (
@@ -11,30 +12,64 @@ from app.core.legal.prompts import (
 class TestV2PromptFields:
     """Verify V2 fields are present in extraction prompts."""
 
-    @pytest.mark.parametrize("field", [
-        "arguments_raised", "relief_granted", "relief_sought",
-        "judicial_tone", "operative_order", "citation_treatments",
-        "party_counsel", "legal_principles_applied", "fact_pattern_tags",
-        "issue_classification", "procedural_history", "filing_date",
-        "sentence_details", "damages_awarded", "key_observations",
-        "hearing_count", "distinguished_cases", "overruled_cases",
-        "interim_orders", "urgency_indicators", "conditions_imposed",
-        "costs_awarded",
-    ])
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "arguments_raised",
+            "relief_granted",
+            "relief_sought",
+            "judicial_tone",
+            "operative_order",
+            "citation_treatments",
+            "party_counsel",
+            "legal_principles_applied",
+            "fact_pattern_tags",
+            "issue_classification",
+            "procedural_history",
+            "filing_date",
+            "sentence_details",
+            "damages_awarded",
+            "key_observations",
+            "hearing_count",
+            "distinguished_cases",
+            "overruled_cases",
+            "interim_orders",
+            "urgency_indicators",
+            "conditions_imposed",
+            "costs_awarded",
+        ],
+    )
     def test_field_in_schema(self, field: str):
         props = METADATA_OUTPUT_SCHEMA["properties"]
         assert field in props, f"Missing schema property: {field}"
 
-    @pytest.mark.parametrize("field", [
-        "arguments_raised", "relief_sought", "relief_granted",
-        "sentence_details", "damages_awarded", "judicial_tone",
-        "key_observations", "hearing_count", "citation_treatments",
-        "distinguished_cases", "overruled_cases", "legal_principles_applied",
-        "procedural_history", "interim_orders", "filing_date",
-        "urgency_indicators", "party_counsel", "issue_classification",
-        "fact_pattern_tags", "operative_order", "conditions_imposed",
-        "costs_awarded",
-    ])
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "arguments_raised",
+            "relief_sought",
+            "relief_granted",
+            "sentence_details",
+            "damages_awarded",
+            "judicial_tone",
+            "key_observations",
+            "hearing_count",
+            "citation_treatments",
+            "distinguished_cases",
+            "overruled_cases",
+            "legal_principles_applied",
+            "procedural_history",
+            "interim_orders",
+            "filing_date",
+            "urgency_indicators",
+            "party_counsel",
+            "issue_classification",
+            "fact_pattern_tags",
+            "operative_order",
+            "conditions_imposed",
+            "costs_awarded",
+        ],
+    )
     def test_field_in_required(self, field: str):
         assert field in METADATA_OUTPUT_SCHEMA["required"], f"Missing from required: {field}"
 

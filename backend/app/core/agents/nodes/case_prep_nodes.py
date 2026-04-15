@@ -4,6 +4,7 @@ Each node function takes the CasePrepState as its first argument plus
 injected dependencies, performs a single focused operation, and returns
 a partial state dict for LangGraph to merge.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -66,7 +67,9 @@ async def load_analysis_node(
     document_id = state["document_id"]
 
     result = await db.execute(
-        text("SELECT issues, parties, key_facts, relief_sought, counter_arguments, research_memo FROM document_analyses WHERE document_id = :doc_id"),
+        text(
+            "SELECT issues, parties, key_facts, relief_sought, counter_arguments, research_memo FROM document_analyses WHERE document_id = :doc_id"
+        ),
         {"doc_id": document_id},
     )
     row = result.mappings().first()
@@ -156,7 +159,9 @@ async def prioritize_issues_node(
 
     # Label scores as AI estimates — they haven't been validated against actual precedents yet
     for issue in prioritized:
-        issue["score_note"] = "AI-estimated scores — will be validated against actual precedents in next step"
+        issue["score_note"] = (
+            "AI-estimated scores — will be validated against actual precedents in next step"
+        )
 
     return {"prioritized_issues": prioritized}
 
@@ -212,7 +217,9 @@ async def deep_precedent_search_node(
 
         # Step 2: Get 2-hop citation neighbors for top results
         seen = {sr.get("case_id", "") for sr in search_results}
-        neighbor_results = await get_citation_neighbors(graph_store, search_results, seen, max_results=3)
+        neighbor_results = await get_citation_neighbors(
+            graph_store, search_results, seen, max_results=3
+        )
 
         # Step 3: Merge search results with citation graph neighbors
         merged = list(search_results)
@@ -236,16 +243,12 @@ async def deep_precedent_search_node(
             failure_count += 1
             continue
         # Enrich each issue's results with ratio_decidendi and bench_type
-        finding["results"] = await enrich_results_with_ratio(
-            finding.get("results", []), db
-        )
+        finding["results"] = await enrich_results_with_ratio(finding.get("results", []), db)
         precedent_findings.append(finding)
 
     # If ALL searches failed, set a warning in the state
     if not precedent_findings and failure_count > 0:
-        logger.error(
-            "All %d deep precedent searches failed", failure_count
-        )
+        logger.error("All %d deep precedent searches failed", failure_count)
         return {
             "messages": [{"type": "deep_precedents", "data": []}],
             "error": (
@@ -268,8 +271,7 @@ async def deep_precedent_search_node(
         result_count = len(matched_results)
         # Count binding precedents (Supreme Court cases)
         binding_count = sum(
-            1 for r in matched_results
-            if "supreme" in (r.get("court", "") or "").lower()
+            1 for r in matched_results if "supreme" in (r.get("court", "") or "").lower()
         )
 
         # Update the score note based on actual findings
@@ -314,7 +316,9 @@ async def build_argument_order_node(
             precedent_findings.extend(msg.get("data", []))
 
     issues_summary = json.dumps(prioritized, indent=2)
-    precedents_summary = json.dumps(precedent_findings, indent=2) if precedent_findings else "None found."
+    precedents_summary = (
+        json.dumps(precedent_findings, indent=2) if precedent_findings else "None found."
+    )
 
     prompt = (
         f"Prioritized Issues:\n{issues_summary}\n\n"
@@ -382,10 +386,14 @@ async def generate_strategy_memo_node(
             precedent_findings.extend(msg.get("data", []))
 
     issues_analysis = json.dumps(prioritized, indent=2) if prioritized else "No issues analyzed."
-    precedent_text = json.dumps(precedent_findings, indent=2) if precedent_findings else "No precedents found."
-    counter_arguments = json.dumps(
-        analysis.get("counter_arguments", []), indent=2
-    ) if analysis.get("counter_arguments") else "None identified."
+    precedent_text = (
+        json.dumps(precedent_findings, indent=2) if precedent_findings else "No precedents found."
+    )
+    counter_arguments = (
+        json.dumps(analysis.get("counter_arguments", []), indent=2)
+        if analysis.get("counter_arguments")
+        else "None identified."
+    )
     parties = json.dumps(analysis.get("parties", {}))
     relief_sought = analysis.get("relief_sought") or "Not specified"
 
@@ -438,11 +446,7 @@ async def verify_citations_node(
     for msg in state.get("messages", []):
         if isinstance(msg, dict) and msg.get("type") == "deep_precedents":
             for finding in msg.get("data", []):
-                grounding_citations.extend(
-                    collect_grounding_citations(finding.get("results", []))
-                )
+                grounding_citations.extend(collect_grounding_citations(finding.get("results", [])))
 
     memo = await verify_memo_citations(memo, db, grounding_citations)
     return {"enhanced_memo": memo}
-
-

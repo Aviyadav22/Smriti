@@ -107,9 +107,15 @@ class TestPgGraphStoreGetNode:
 
         mock_row = MagicMock()
         mock_row._mapping = {
-            "id": "case-1", "title": "Test Case", "citation": "2024 SCC 1",
-            "court": "SC", "year": 2024, "case_type": "CIVIL",
-            "judge": ["Justice A"], "bench_type": "DIVISION", "disposal_nature": "ALLOWED",
+            "id": "case-1",
+            "title": "Test Case",
+            "citation": "2024 SCC 1",
+            "court": "SC",
+            "year": 2024,
+            "case_type": "CIVIL",
+            "judge": ["Justice A"],
+            "bench_type": "DIVISION",
+            "disposal_nature": "ALLOWED",
         }
         mock_result = MagicMock()
         mock_result.fetchone.return_value = mock_row

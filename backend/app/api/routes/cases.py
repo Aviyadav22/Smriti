@@ -83,9 +83,7 @@ async def get_case(
         case_dict["sections"] = {}
 
     # Add human-readable act display names (keeps acts_cited unchanged)
-    case_dict["acts_cited_display"] = get_acts_cited_display(
-        case_dict.get("acts_cited")
-    )
+    case_dict["acts_cited_display"] = get_acts_cited_display(case_dict.get("acts_cited"))
 
     # Serialize datetime objects
     for key in ("created_at", "updated_at", "decision_date"):
@@ -115,8 +113,7 @@ async def get_case_summary(
 
     result = await db.execute(
         text(
-            "SELECT id, title, citation, court, year, ratio_decidendi "
-            "FROM cases WHERE id = :id"
+            "SELECT id, title, citation, court, year, ratio_decidendi " "FROM cases WHERE id = :id"
         ),
         {"id": case_id},
     )
@@ -176,15 +173,14 @@ async def get_case_pdf(
         pdf_bytes = await storage.retrieve(pdf_path)
     except Exception as exc:
         import logging
+
         logging.getLogger(__name__).error(
             "PDF retrieve failed for %s (type=%s): %s", pdf_path, type(exc).__name__, exc
         )
-        raise HTTPException(
-            status_code=404, detail="PDF file not found in storage"
-        ) from exc
+        raise HTTPException(status_code=404, detail="PDF file not found in storage") from exc
 
     raw_title = row.get("title", case_id) or case_id
-    safe_title = re.sub(r'[^\w\s\-.]', '', str(raw_title))[:100]
+    safe_title = re.sub(r"[^\w\s\-.]", "", str(raw_title))[:100]
     filename = f"{safe_title}.pdf"
 
     return Response(
@@ -213,9 +209,7 @@ async def get_citations(
         raise HTTPException(status_code=422, detail="Invalid case_id format")
 
     # Verify case exists
-    exists = await db.execute(
-        text("SELECT 1 FROM cases WHERE id = :id"), {"id": case_id}
-    )
+    exists = await db.execute(text("SELECT 1 FROM cases WHERE id = :id"), {"id": case_id})
     if exists.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Case not found")
 
@@ -253,9 +247,7 @@ async def get_cited_by(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid case_id format")
 
-    exists = await db.execute(
-        text("SELECT 1 FROM cases WHERE id = :id"), {"id": case_id}
-    )
+    exists = await db.execute(text("SELECT 1 FROM cases WHERE id = :id"), {"id": case_id})
     if exists.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Case not found")
 
@@ -295,9 +287,7 @@ async def get_similar(
         raise HTTPException(status_code=422, detail="Invalid case_id format")
 
     result = await db.execute(
-        text(
-            "SELECT ratio_decidendi, title FROM cases WHERE id = :id"
-        ),
+        text("SELECT ratio_decidendi, title FROM cases WHERE id = :id"),
         {"id": case_id},
     )
     row = result.mappings().one_or_none()
@@ -387,15 +377,17 @@ async def _enrich_graph_nodes(
         node = n.get("node", {})
         nid = node.get("id")
         row = rows.get(nid, {})
-        enriched.append({
-            "case_id": nid,
-            "relationship": n.get("relationship"),
-            "title": row.get("title") or node.get("title"),
-            "citation": row.get("citation") or node.get("citation"),
-            "court": row.get("court") or node.get("court"),
-            "year": row.get("year") or node.get("year"),
-            "date": str(row["decision_date"]) if row.get("decision_date") else None,
-        })
+        enriched.append(
+            {
+                "case_id": nid,
+                "relationship": n.get("relationship"),
+                "title": row.get("title") or node.get("title"),
+                "citation": row.get("citation") or node.get("citation"),
+                "court": row.get("court") or node.get("court"),
+                "year": row.get("year") or node.get("year"),
+                "date": str(row["decision_date"]) if row.get("decision_date") else None,
+            }
+        )
 
     return enriched
 
@@ -423,16 +415,18 @@ async def _enrich_similar_results(
         row = rows.get(cid)
         if row is None:
             continue
-        enriched.append({
-            "case_id": cid,
-            "similarity_score": round(scores.get(cid, 0.0), 4),
-            "title": row.get("title"),
-            "citation": row.get("citation"),
-            "court": row.get("court"),
-            "year": row.get("year"),
-            "date": str(row["decision_date"]) if row.get("decision_date") else None,
-            "ratio_decidendi": row.get("ratio_decidendi"),
-        })
+        enriched.append(
+            {
+                "case_id": cid,
+                "similarity_score": round(scores.get(cid, 0.0), 4),
+                "title": row.get("title"),
+                "citation": row.get("citation"),
+                "court": row.get("court"),
+                "year": row.get("year"),
+                "date": str(row["decision_date"]) if row.get("decision_date") else None,
+                "ratio_decidendi": row.get("ratio_decidendi"),
+            }
+        )
 
     return enriched
 
@@ -450,54 +444,64 @@ def _build_timeline_events(case: dict) -> list[dict]:
     # Filing event
     filing_date = case.get("filing_date")
     if filing_date:
-        events.append({
-            "date": str(filing_date),
-            "type": "filing",
-            "court": case.get("lower_court") or main_court,
-            "detail": "Case filed",
-        })
+        events.append(
+            {
+                "date": str(filing_date),
+                "type": "filing",
+                "court": case.get("lower_court") or main_court,
+                "detail": "Case filed",
+            }
+        )
 
     # Procedural history entries
     proc_history = case.get("procedural_history")
     if isinstance(proc_history, list):
         for entry in proc_history:
             if isinstance(entry, dict):
-                events.append({
-                    "date": str(entry.get("date", "")) if entry.get("date") else "",
-                    "type": entry.get("type", "judgment"),
-                    "court": entry.get("court", main_court),
-                    "detail": entry.get("detail", ""),
-                })
+                events.append(
+                    {
+                        "date": str(entry.get("date", "")) if entry.get("date") else "",
+                        "type": entry.get("type", "judgment"),
+                        "court": entry.get("court", main_court),
+                        "detail": entry.get("detail", ""),
+                    }
+                )
 
     # Interim orders
     interim_orders = case.get("interim_orders")
     if isinstance(interim_orders, list):
         for entry in interim_orders:
             if isinstance(entry, dict):
-                events.append({
-                    "date": str(entry.get("date", "")) if entry.get("date") else "",
-                    "type": "interim_order",
-                    "court": entry.get("court", main_court),
-                    "detail": entry.get("detail", ""),
-                })
+                events.append(
+                    {
+                        "date": str(entry.get("date", "")) if entry.get("date") else "",
+                        "type": "interim_order",
+                        "court": entry.get("court", main_court),
+                        "detail": entry.get("detail", ""),
+                    }
+                )
             elif isinstance(entry, str):
-                events.append({
-                    "date": "",
-                    "type": "interim_order",
-                    "court": main_court,
-                    "detail": entry,
-                })
+                events.append(
+                    {
+                        "date": "",
+                        "type": "interim_order",
+                        "court": main_court,
+                        "detail": entry,
+                    }
+                )
 
     # Final decision event
     decision_date = case.get("decision_date")
     if decision_date:
         disposal = case.get("disposal_nature") or "Decided"
-        events.append({
-            "date": str(decision_date),
-            "type": "judgment",
-            "court": main_court,
-            "detail": disposal,
-        })
+        events.append(
+            {
+                "date": str(decision_date),
+                "type": "judgment",
+                "court": main_court,
+                "detail": disposal,
+            }
+        )
 
     # Sort: events with dates first (chronologically), then events without dates
     def _sort_key(evt: dict) -> tuple:

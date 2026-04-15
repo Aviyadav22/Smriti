@@ -33,8 +33,7 @@ from app.core.ingestion.chunker import detect_judgment_sections
 # ── Database ────────────────────────────────────────────────────────────
 
 DATABASE_URL = (
-    "postgresql://smriti:E9tGr2mSXTi1h36LwsmLKbRVooPmlZbYIY5FnYmuzWg="
-    "@76.13.185.172:5432/smriti"
+    "postgresql://smriti:E9tGr2mSXTi1h36LwsmLKbRVooPmlZbYIY5FnYmuzWg=" "@76.13.185.172:5432/smriti"
 )
 
 # ── Patterns for quality checks ─────────────────────────────────────────
@@ -43,9 +42,7 @@ DATABASE_URL = (
 _LETTERED_MARGIN_RE = re.compile(r"^\s*[A-H]\s*$", re.MULTILINE)
 
 # SCR page citation pattern
-_SCR_PAGE_RE = re.compile(
-    r"\[?\d{4}\]?\s+\d+\s+S\.?\s*C\.?\s*R\.?\s+\d+", re.IGNORECASE
-)
+_SCR_PAGE_RE = re.compile(r"\[?\d{4}\]?\s+\d+\s+S\.?\s*C\.?\s*R\.?\s+\d+", re.IGNORECASE)
 
 # Editorial markers in headnotes content
 _EDITORIAL_MARKERS = [
@@ -68,14 +65,23 @@ _JUDGMENT_MARKER_RE = re.compile(
 
 # Testimony indicators (section mislabeling check)
 _TESTIMONY_KEYWORDS = [
-    "cross-examination", "cross examination", "PW-", "DW-",
-    "witness stated", "witness deposed", "deposed that",
-    "under examination", "further stated", "I did not",
-    "It is wrong to suggest", "video-conferencing",
+    "cross-examination",
+    "cross examination",
+    "PW-",
+    "DW-",
+    "witness stated",
+    "witness deposed",
+    "deposed that",
+    "under examination",
+    "further stated",
+    "I did not",
+    "It is wrong to suggest",
+    "video-conferencing",
 ]
 
 
 # ── Per-case audit result ───────────────────────────────────────────────
+
 
 @dataclass
 class CaseAuditResult:
@@ -86,21 +92,21 @@ class CaseAuditResult:
 
     # Section detection checks
     header_section_chars: int = 0
-    header_bloated: bool = False          # >5000 chars
-    header_mid_sentence: bool = False     # starts lowercase
+    header_bloated: bool = False  # >5000 chars
+    header_mid_sentence: bool = False  # starts lowercase
     num_sections_detected: int = 0
 
     # SCR format detection
-    is_scr_format: bool = False           # has lettered margins + SCR citation
+    is_scr_format: bool = False  # has lettered margins + SCR citation
     has_headnote_before_judgment: bool = False
 
     # Editorial contamination
     headnotes_editorial_contaminated: bool = False  # reporter markers in headnotes
-    headnotes_verbose: bool = False       # total >3000 chars
+    headnotes_verbose: bool = False  # total >3000 chars
     headnotes_null: bool = False
 
     # Field quality
-    ratio_verbose: bool = False           # >2000 chars
+    ratio_verbose: bool = False  # >2000 chars
     ratio_null: bool = False
     description_mid_sentence: bool = False
     description_null: bool = False
@@ -114,7 +120,7 @@ class CaseAuditResult:
     missing_critical_fields: list = field(default_factory=list)
 
     # Low confidence
-    low_confidence: bool = False          # <0.6
+    low_confidence: bool = False  # <0.6
 
     @property
     def issue_count(self) -> int:
@@ -130,7 +136,12 @@ class CaseAuditResult:
     def severity(self) -> str:
         if self.header_mid_sentence or self.headnotes_editorial_contaminated or self.low_confidence:
             return "CRITICAL"
-        if self.header_bloated or self.headnotes_verbose or self.ratio_verbose or self.arguments_has_testimony:
+        if (
+            self.header_bloated
+            or self.headnotes_verbose
+            or self.ratio_verbose
+            or self.arguments_has_testimony
+        ):
             return "HIGH"
         if self.issue_count > 0:
             return "MEDIUM"
@@ -138,6 +149,7 @@ class CaseAuditResult:
 
 
 # ── Audit logic ─────────────────────────────────────────────────────────
+
 
 def audit_case(
     case_id: str,
@@ -183,9 +195,7 @@ def audit_case(
         arg_sections = [s for s in sections if s.type == "ARGUMENTS"]
         for sec in arg_sections:
             sec_text_lower = sec.text[:3000].lower()
-            testimony_hits = sum(
-                1 for kw in _TESTIMONY_KEYWORDS if kw.lower() in sec_text_lower
-            )
+            testimony_hits = sum(1 for kw in _TESTIMONY_KEYWORDS if kw.lower() in sec_text_lower)
             if testimony_hits >= 2:
                 r.arguments_has_testimony = True
                 r.mismatched_sections += 1
@@ -272,12 +282,12 @@ def audit_case(
 
 # ── Main ────────────────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(description="Audit ingested case metadata quality")
     parser.add_argument("--csv", default="audit_results.csv", help="Output CSV path")
     parser.add_argument("--limit", type=int, default=0, help="Limit cases to audit (0=all)")
     args = parser.parse_args()
-
 
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
@@ -356,7 +366,6 @@ def main():
         if (i + 1) % 200 == 0:
             pass
 
-
     total = len(results)
 
     # ── Summary ─────────────────────────────────────────────────────
@@ -423,7 +432,6 @@ def main():
         if r.missing_critical_fields:
             flags.append(f"missing:[{','.join(r.missing_critical_fields)}]")
 
-
     # ── Cases with HEADNOTE before JUDGMENT (SCR editorial block) ───
     hn_before_j = [r for r in results if r.has_headnote_before_judgment]
     for r in hn_before_j[:20]:
@@ -434,15 +442,30 @@ def main():
     # ── CSV export ──────────────────────────────────────────────────
     csv_path = args.csv
     csv_fields = [
-        "case_id", "title", "year", "severity", "issue_count", "confidence",
-        "header_section_chars", "header_bloated", "header_mid_sentence",
-        "is_scr_format", "has_headnote_before_judgment",
-        "headnotes_editorial_contaminated", "headnotes_verbose", "headnotes_null",
-        "ratio_verbose", "ratio_null",
-        "description_null", "description_mid_sentence",
+        "case_id",
+        "title",
+        "year",
+        "severity",
+        "issue_count",
+        "confidence",
+        "header_section_chars",
+        "header_bloated",
+        "header_mid_sentence",
+        "is_scr_format",
+        "has_headnote_before_judgment",
+        "headnotes_editorial_contaminated",
+        "headnotes_verbose",
+        "headnotes_null",
+        "ratio_verbose",
+        "ratio_null",
+        "description_null",
+        "description_mid_sentence",
         "outcome_summary_null",
-        "arguments_has_testimony", "mismatched_sections",
-        "low_confidence", "missing_critical_fields", "num_sections_detected",
+        "arguments_has_testimony",
+        "mismatched_sections",
+        "low_confidence",
+        "missing_critical_fields",
+        "num_sections_detected",
     ]
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=csv_fields)
@@ -475,7 +498,6 @@ def main():
                 "num_sections_detected": r.num_sections_detected,
             }
             writer.writerow(row)
-
 
     cur.close()
     conn.close()

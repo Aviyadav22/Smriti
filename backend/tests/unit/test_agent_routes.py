@@ -105,19 +105,14 @@ class TestRouteRegistration:
     def test_list_executions_is_get(self) -> None:
         for route in router.routes:
             if (
-                hasattr(route, "path")
-                and route.path == "/executions"
-                and hasattr(route, "methods")
+                hasattr(route, "path") and route.path == "/executions" and hasattr(route, "methods")
             ) and "GET" in route.methods:
                 return
         pytest.fail("GET /executions route not found")
 
     def test_resume_is_post(self) -> None:
         for route in router.routes:
-            if (
-                hasattr(route, "path")
-                and route.path == "/executions/{execution_id}/resume"
-            ):
+            if hasattr(route, "path") and route.path == "/executions/{execution_id}/resume":
                 assert "POST" in route.methods
 
     def test_cancel_is_delete(self) -> None:
@@ -166,9 +161,7 @@ class TestRunAgentValidation:
 
 
 class TestListExecutions:
-    def test_returns_empty_list_for_new_user(
-        self, authed_client: TestClient
-    ) -> None:
+    def test_returns_empty_list_for_new_user(self, authed_client: TestClient) -> None:
         mock_db = AsyncMock()
         # Mock count query
         mock_count_result = MagicMock()
@@ -177,9 +170,7 @@ class TestListExecutions:
         mock_list_result = MagicMock()
         mock_list_result.scalars.return_value.all.return_value = []
 
-        mock_db.execute = AsyncMock(
-            side_effect=[mock_count_result, mock_list_result]
-        )
+        mock_db.execute = AsyncMock(side_effect=[mock_count_result, mock_list_result])
 
         async def _override_db():
             return mock_db
@@ -231,9 +222,7 @@ class TestGetExecution:
 
         authed_client.app.dependency_overrides[get_db] = _override_db
 
-        resp = authed_client.get(
-            f"/api/v1/agents/executions/{execution.id}"
-        )
+        resp = authed_client.get(f"/api/v1/agents/executions/{execution.id}")
         assert resp.status_code == 403
 
         authed_client.app.dependency_overrides.pop(get_db, None)
@@ -250,9 +239,7 @@ class TestGetExecution:
 
         authed_client.app.dependency_overrides[get_db] = _override_db
 
-        resp = authed_client.get(
-            f"/api/v1/agents/executions/{execution.id}"
-        )
+        resp = authed_client.get(f"/api/v1/agents/executions/{execution.id}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["id"] == str(execution.id)
@@ -269,9 +256,7 @@ class TestGetExecution:
 class TestCancelExecution:
     def test_cancel_updates_status(self, authed_client: TestClient) -> None:
         mock_db = AsyncMock()
-        execution = _make_execution(
-            user_id=_TEST_USER_ID, status=AgentStatus.running.value
-        )
+        execution = _make_execution(user_id=_TEST_USER_ID, status=AgentStatus.running.value)
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = execution
         mock_db.execute = AsyncMock(return_value=mock_result)
@@ -282,22 +267,16 @@ class TestCancelExecution:
 
         authed_client.app.dependency_overrides[get_db] = _override_db
 
-        resp = authed_client.delete(
-            f"/api/v1/agents/executions/{execution.id}"
-        )
+        resp = authed_client.delete(f"/api/v1/agents/executions/{execution.id}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "cancelled"
 
         authed_client.app.dependency_overrides.pop(get_db, None)
 
-    def test_cancel_already_completed_returns_400(
-        self, authed_client: TestClient
-    ) -> None:
+    def test_cancel_already_completed_returns_400(self, authed_client: TestClient) -> None:
         mock_db = AsyncMock()
-        execution = _make_execution(
-            user_id=_TEST_USER_ID, status=AgentStatus.completed.value
-        )
+        execution = _make_execution(user_id=_TEST_USER_ID, status=AgentStatus.completed.value)
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = execution
         mock_db.execute = AsyncMock(return_value=mock_result)
@@ -307,16 +286,12 @@ class TestCancelExecution:
 
         authed_client.app.dependency_overrides[get_db] = _override_db
 
-        resp = authed_client.delete(
-            f"/api/v1/agents/executions/{execution.id}"
-        )
+        resp = authed_client.delete(f"/api/v1/agents/executions/{execution.id}")
         assert resp.status_code == 400
 
         authed_client.app.dependency_overrides.pop(get_db, None)
 
-    def test_cancel_returns_404_for_nonexistent(
-        self, authed_client: TestClient
-    ) -> None:
+    def test_cancel_returns_404_for_nonexistent(self, authed_client: TestClient) -> None:
         mock_db = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
@@ -340,13 +315,9 @@ class TestCancelExecution:
 
 
 class TestResumeExecution:
-    def test_resume_returns_400_when_not_waiting(
-        self, authed_client: TestClient
-    ) -> None:
+    def test_resume_returns_400_when_not_waiting(self, authed_client: TestClient) -> None:
         mock_db = AsyncMock()
-        execution = _make_execution(
-            user_id=_TEST_USER_ID, status=AgentStatus.running.value
-        )
+        execution = _make_execution(user_id=_TEST_USER_ID, status=AgentStatus.running.value)
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = execution
         mock_db.execute = AsyncMock(return_value=mock_result)
@@ -373,9 +344,7 @@ class TestResumeExecution:
         assert cp1 is not None
         assert cp1 is cp2
 
-    def test_resume_returns_404_for_nonexistent(
-        self, authed_client: TestClient
-    ) -> None:
+    def test_resume_returns_404_for_nonexistent(self, authed_client: TestClient) -> None:
         mock_db = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None

@@ -44,7 +44,9 @@ def upgrade() -> None:
     """)
 
     op.execute("CREATE INDEX IF NOT EXISTS ix_statutes_act ON statutes (act_short_name)")
-    op.execute("CREATE INDEX IF NOT EXISTS ix_statutes_section ON statutes (act_short_name, section_number)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_statutes_section ON statutes (act_short_name, section_number)"
+    )
     op.execute("CREATE INDEX IF NOT EXISTS ix_statutes_fts ON statutes USING GIN (searchable_text)")
     op.execute("CREATE INDEX IF NOT EXISTS ix_statutes_doc_type ON statutes (document_type)")
 

@@ -1,4 +1,5 @@
 """Tests for section-aware search filtering."""
+
 from app.core.search.query import SearchFilters
 
 

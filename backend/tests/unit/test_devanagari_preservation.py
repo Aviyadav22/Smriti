@@ -4,6 +4,7 @@ Verifies that ZWNJ (U+200C) and ZWJ (U+200D) are preserved during
 text cleaning, as they are structurally meaningful in Devanagari script.
 Also verifies that Hindi legal text passes through cleaning intact.
 """
+
 from __future__ import annotations
 
 from app.core.ingestion.pdf import clean_extracted_text
@@ -15,28 +16,28 @@ class TestDevanagariZWJPreservation:
     def test_zwnj_preserved(self):
         """Zero-Width Non-Joiner (U+200C) must be preserved for Hindi."""
         # ZWNJ prevents conjunct formation: क + ् + \u200C + ष = क्‌ष (not क्ष)
-        text = "क\u094D\u200Cष"
+        text = "क\u094d\u200cष"
         result = clean_extracted_text(text)
-        assert "\u200C" in result, "ZWNJ should be preserved for Devanagari"
+        assert "\u200c" in result, "ZWNJ should be preserved for Devanagari"
 
     def test_zwj_preserved(self):
         """Zero-Width Joiner (U+200D) must be preserved for Hindi."""
         # ZWJ forces conjunct formation
-        text = "क\u094D\u200Dष"
+        text = "क\u094d\u200dष"
         result = clean_extracted_text(text)
-        assert "\u200D" in result, "ZWJ should be preserved for Devanagari"
+        assert "\u200d" in result, "ZWJ should be preserved for Devanagari"
 
     def test_zwsp_removed(self):
         """Zero-Width Space (U+200B) should still be removed."""
-        text = "Hello\u200BWorld"
+        text = "Hello\u200bWorld"
         result = clean_extracted_text(text)
-        assert "\u200B" not in result
+        assert "\u200b" not in result
 
     def test_bom_removed(self):
         """BOM (U+FEFF) should still be removed."""
-        text = "\uFEFFSome text"
+        text = "\ufeffSome text"
         result = clean_extracted_text(text)
-        assert "\uFEFF" not in result
+        assert "\ufeff" not in result
 
 
 class TestHindiTextPreservation:

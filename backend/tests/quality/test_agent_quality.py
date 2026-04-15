@@ -81,9 +81,7 @@ class TestResearchAgentQuality:
     """Verify Research Agent produces grounded, cited memos."""
 
     @pytest.mark.parametrize("scenario", RESEARCH_SCENARIOS)
-    async def test_research_memo_has_citations(
-        self, scenario: dict, agent_runner
-    ) -> None:
+    async def test_research_memo_has_citations(self, scenario: dict, agent_runner) -> None:
         """Research memo should contain expected citations."""
         result = await agent_runner.run_research(scenario["query"])
         memo = result.get("research_memo", "").lower()
@@ -91,14 +89,12 @@ class TestResearchAgentQuality:
         assert len(memo) > 100, "Research memo is too short"
 
         for citation in scenario["expected_citations"]:
-            assert citation.lower() in memo, (
-                f"Expected '{citation}' in research memo for: {scenario['query']}"
-            )
+            assert (
+                citation.lower() in memo
+            ), f"Expected '{citation}' in research memo for: {scenario['query']}"
 
     @pytest.mark.parametrize("scenario", RESEARCH_SCENARIOS)
-    async def test_research_has_confidence(
-        self, scenario: dict, agent_runner
-    ) -> None:
+    async def test_research_has_confidence(self, scenario: dict, agent_runner) -> None:
         """Research result should include a confidence score."""
         result = await agent_runner.run_research(scenario["query"])
         confidence = result.get("confidence", 0)
@@ -110,9 +106,7 @@ class TestStrategyAgentQuality:
     """Verify Strategy Agent produces actionable strategy memos."""
 
     @pytest.mark.parametrize("scenario", STRATEGY_SCENARIOS)
-    async def test_strategy_memo_content(
-        self, scenario: dict, agent_runner
-    ) -> None:
+    async def test_strategy_memo_content(self, scenario: dict, agent_runner) -> None:
         """Strategy memo should address case facts and relief sought."""
         result = await agent_runner.run_strategy(
             case_facts=scenario["case_facts"],
@@ -123,23 +117,17 @@ class TestStrategyAgentQuality:
         assert len(memo) > 200, "Strategy memo is too short"
 
         for term in scenario["expected_in_memo"]:
-            assert term.lower() in memo, (
-                f"Expected '{term}' in strategy memo"
-            )
+            assert term.lower() in memo, f"Expected '{term}' in strategy memo"
 
     @pytest.mark.parametrize("scenario", STRATEGY_SCENARIOS)
-    async def test_strategy_has_strength_assessment(
-        self, scenario: dict, agent_runner
-    ) -> None:
+    async def test_strategy_has_strength_assessment(self, scenario: dict, agent_runner) -> None:
         """Strategy result should include case strength assessment."""
         result = await agent_runner.run_strategy(
             case_facts=scenario["case_facts"],
             desired_relief=scenario["desired_relief"],
         )
         strength = result.get("strength_assessment", "")
-        assert strength in ("strong", "moderate", "weak"), (
-            f"Unexpected strength: {strength}"
-        )
+        assert strength in ("strong", "moderate", "weak"), f"Unexpected strength: {strength}"
 
 
 @pytest.mark.integration
@@ -147,9 +135,7 @@ class TestDraftingAgentQuality:
     """Verify Drafting Agent generates valid legal documents."""
 
     @pytest.mark.parametrize("scenario", DRAFTING_SCENARIOS)
-    async def test_draft_has_sections(
-        self, scenario: dict, agent_runner
-    ) -> None:
+    async def test_draft_has_sections(self, scenario: dict, agent_runner) -> None:
         """Draft should contain expected document sections."""
         result = await agent_runner.run_drafting(
             doc_type=scenario["doc_type"],
@@ -160,14 +146,12 @@ class TestDraftingAgentQuality:
         assert len(draft) > 300, "Draft document is too short"
 
         for section in scenario["expected_sections"]:
-            assert section.lower() in draft, (
-                f"Expected section '{section}' in {scenario['doc_type']} draft"
-            )
+            assert (
+                section.lower() in draft
+            ), f"Expected section '{section}' in {scenario['doc_type']} draft"
 
     @pytest.mark.parametrize("scenario", DRAFTING_SCENARIOS)
-    async def test_draft_has_no_placeholder(
-        self, scenario: dict, agent_runner
-    ) -> None:
+    async def test_draft_has_no_placeholder(self, scenario: dict, agent_runner) -> None:
         """Draft should not contain unfilled placeholders."""
         result = await agent_runner.run_drafting(
             doc_type=scenario["doc_type"],
@@ -177,6 +161,4 @@ class TestDraftingAgentQuality:
 
         # Check for common placeholder patterns
         for placeholder in ["[INSERT", "[TODO", "[PLACEHOLDER", "{{", "}}"]:
-            assert placeholder not in draft, (
-                f"Found placeholder '{placeholder}' in draft"
-            )
+            assert placeholder not in draft, f"Found placeholder '{placeholder}' in draft"

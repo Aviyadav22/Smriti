@@ -1,6 +1,5 @@
 """Unit tests for input sanitization and prompt injection detection."""
 
-
 from app.security.sanitizer import (
     detect_prompt_injection,
     sanitize_input,
@@ -83,9 +82,7 @@ class TestDetectPromptInjection:
         )
 
     def test_normal_query_safe(self):
-        assert not detect_prompt_injection(
-            "Find cases about right to privacy under Article 21"
-        )
+        assert not detect_prompt_injection("Find cases about right to privacy under Article 21")
 
     def test_detects_excessive_special_chars(self):
         # More than 15% special characters

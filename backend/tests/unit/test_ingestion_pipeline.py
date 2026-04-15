@@ -182,8 +182,12 @@ class TestIngestJudgment:
         embeddings = _make_embeddings()
 
         mock_extract_and_score.return_value = TextQuality(
-            text=_LONG_TEXT, char_count=len(_LONG_TEXT), tier="high",
-            ocr_used=False, legal_keyword_count=5, page_count=10,
+            text=_LONG_TEXT,
+            char_count=len(_LONG_TEXT),
+            tier="high",
+            ocr_used=False,
+            legal_keyword_count=5,
+            page_count=10,
         )
         mock_extract_meta_llm.return_value = metadata
         mock_merge_meta.return_value = (metadata, {"title": "parquet"})
@@ -241,8 +245,12 @@ class TestIngestJudgment:
         from app.core.ingestion.pdf import TextQuality
 
         mock_extract_and_score.return_value = TextQuality(
-            text="", char_count=0, tier="low",
-            ocr_used=True, legal_keyword_count=0, page_count=0,
+            text="",
+            char_count=0,
+            tier="low",
+            ocr_used=True,
+            legal_keyword_count=0,
+            page_count=0,
         )
 
         case_id = await ingest_judgment(
@@ -302,8 +310,12 @@ class TestIngestJudgment:
         metadata = _make_case_metadata()
 
         mock_extract_and_score.return_value = TextQuality(
-            text=_LONG_TEXT, char_count=len(_LONG_TEXT), tier="high",
-            ocr_used=False, legal_keyword_count=5, page_count=10,
+            text=_LONG_TEXT,
+            char_count=len(_LONG_TEXT),
+            tier="high",
+            ocr_used=False,
+            legal_keyword_count=5,
+            page_count=10,
         )
         mock_extract_meta_llm.return_value = metadata
         mock_merge_meta.return_value = (metadata, {"title": "parquet"})
@@ -345,8 +357,12 @@ class TestIngestJudgment:
         from app.core.ingestion.pdf import TextQuality
 
         mock_extract_and_score.return_value = TextQuality(
-            text="Also short", char_count=10, tier="low",
-            ocr_used=True, legal_keyword_count=0, page_count=1,
+            text="Also short",
+            char_count=10,
+            tier="low",
+            ocr_used=True,
+            legal_keyword_count=0,
+            page_count=1,
         )
 
         case_id = await ingest_judgment(
@@ -404,8 +420,12 @@ class TestIngestJudgment:
         chunks = _make_chunks()
 
         mock_extract_and_score.return_value = TextQuality(
-            text=_LONG_TEXT, char_count=len(_LONG_TEXT), tier="high",
-            ocr_used=False, legal_keyword_count=5, page_count=10,
+            text=_LONG_TEXT,
+            char_count=len(_LONG_TEXT),
+            tier="high",
+            ocr_used=False,
+            legal_keyword_count=5,
+            page_count=10,
         )
         mock_extract_meta_llm.return_value = metadata
         mock_merge_meta.return_value = (metadata, {"title": "parquet"})
@@ -501,14 +521,16 @@ class TestPlaceholderResolution:
         # Call sequence: 1) placeholder query (found), 2) ID sync check,
         # 3) placeholder MERGE, 4) CITES edges,
         # 5) cited_by_count targets, 6) cited_by_count self
-        graph_store.query = AsyncMock(side_effect=[
-            [{"id": "ref_abc123"}],  # placeholder found and promoted
-            [{"nid": "real-uuid"}],  # Neo4j-PG ID sync verification
-            [],  # placeholder MERGE for cited nodes
-            [],  # CITES edge creation
-            [],  # cited_by_count for targets
-            [],  # cited_by_count for self
-        ])
+        graph_store.query = AsyncMock(
+            side_effect=[
+                [{"id": "ref_abc123"}],  # placeholder found and promoted
+                [{"nid": "real-uuid"}],  # Neo4j-PG ID sync verification
+                [],  # placeholder MERGE for cited nodes
+                [],  # CITES edge creation
+                [],  # cited_by_count for targets
+                [],  # cited_by_count for self
+            ]
+        )
         graph_store.create_node = AsyncMock()
 
         metadata = _make_case_metadata(
@@ -516,32 +538,44 @@ class TestPlaceholderResolution:
             title="Promoted Case",
         )
         await _build_citation_graph(
-            "real-uuid", metadata, "As held in AIR 2010 SC 200, the law is settled.", graph_store,
+            "real-uuid",
+            metadata,
+            "As held in AIR 2010 SC 200, the law is settled.",
+            graph_store,
         )
 
         # create_node should NOT be called — placeholder was promoted
         graph_store.create_node.assert_not_called()
         # First query should be the placeholder resolution query
-        first_cypher = graph_store.query.call_args_list[0].args[0] if graph_store.query.call_args_list[0].args else graph_store.query.call_args_list[0].kwargs.get("cypher", "")
+        first_cypher = (
+            graph_store.query.call_args_list[0].args[0]
+            if graph_store.query.call_args_list[0].args
+            else graph_store.query.call_args_list[0].kwargs.get("cypher", "")
+        )
         assert "STARTS WITH 'ref_'" in first_cypher
 
     @pytest.mark.asyncio
     async def test_no_placeholder_creates_node_normally(self) -> None:
         """When no placeholder exists, create node via create_node."""
         graph_store = AsyncMock()
-        graph_store.query = AsyncMock(side_effect=[
-            [],  # no placeholder found
-            [{"nid": "real-uuid"}],  # Neo4j-PG ID sync verification
-            [],  # placeholder MERGE for cited nodes
-            [],  # CITES edge creation
-            [],  # cited_by_count for targets
-            [],  # cited_by_count for self
-        ])
+        graph_store.query = AsyncMock(
+            side_effect=[
+                [],  # no placeholder found
+                [{"nid": "real-uuid"}],  # Neo4j-PG ID sync verification
+                [],  # placeholder MERGE for cited nodes
+                [],  # CITES edge creation
+                [],  # cited_by_count for targets
+                [],  # cited_by_count for self
+            ]
+        )
         graph_store.create_node = AsyncMock()
 
         metadata = _make_case_metadata(citation="(2020) 1 SCC 100", title="New Case")
         await _build_citation_graph(
-            "real-uuid", metadata, "As held in AIR 2010 SC 200, the law is settled.", graph_store,
+            "real-uuid",
+            metadata,
+            "As held in AIR 2010 SC 200, the law is settled.",
+            graph_store,
         )
 
         # create_node SHOULD be called
@@ -556,7 +590,10 @@ class TestPlaceholderResolution:
 
         metadata = _make_case_metadata(citation="", title="No Citation Case")
         await _build_citation_graph(
-            "real-uuid", metadata, "Short text with no citations.", graph_store,
+            "real-uuid",
+            metadata,
+            "Short text with no citations.",
+            graph_store,
         )
 
         # create_node should be called (no placeholder check)

@@ -100,11 +100,26 @@ class TestCaseTimeline:
             "filing_date": date(2020, 1, 15),
             "decision_date": date(2023, 3, 10),
             "procedural_history": [
-                {"date": "2021-06-01", "type": "hearing", "court": "High Court", "detail": "Arguments heard"},
-                {"date": "2022-02-15", "type": "judgment", "court": "High Court", "detail": "Appeal dismissed"},
+                {
+                    "date": "2021-06-01",
+                    "type": "hearing",
+                    "court": "High Court",
+                    "detail": "Arguments heard",
+                },
+                {
+                    "date": "2022-02-15",
+                    "type": "judgment",
+                    "court": "High Court",
+                    "detail": "Appeal dismissed",
+                },
             ],
             "interim_orders": [
-                {"date": "2020-05-01", "type": "stay", "court": "Trial Court", "detail": "Stay granted"},
+                {
+                    "date": "2020-05-01",
+                    "type": "stay",
+                    "court": "Trial Court",
+                    "detail": "Stay granted",
+                },
                 "Bail granted to accused",
             ],
             "lower_court": "Trial Court",
@@ -199,9 +214,7 @@ class TestCaseTimeline:
 
         cases_app.dependency_overrides.clear()
 
-    def test_timeline_invalid_uuid_returns_422(
-        self, cases_client: TestClient
-    ) -> None:
+    def test_timeline_invalid_uuid_returns_422(self, cases_client: TestClient) -> None:
         """Invalid case_id format returns 422."""
         resp = cases_client.get("/api/v1/cases/not-a-uuid/timeline")
         assert resp.status_code == 422
@@ -345,9 +358,7 @@ class TestCitationEvolution:
 
         graph_app.dependency_overrides.clear()
 
-    def test_evolution_invalid_direction_returns_422(
-        self, graph_client: TestClient
-    ) -> None:
+    def test_evolution_invalid_direction_returns_422(self, graph_client: TestClient) -> None:
         """Invalid direction parameter returns 422."""
         resp = graph_client.get(f"/api/v1/graph/{_CASE_ID}/evolution?direction=sideways")
         assert resp.status_code == 422

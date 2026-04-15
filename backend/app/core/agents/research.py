@@ -23,6 +23,7 @@ Fast path (simple queries):
     → fast_path_search → fast_path_synthesis → format_footnotes → [verify_v2?]
     → quality_check → checkpoint_memo → END
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -94,10 +95,16 @@ WORKER_TIMEOUTS: dict[str, int] = {
 # -- HITL feedback routers --------------------------------------------------
 
 route_after_plan = make_feedback_router(
-    "plan", "plan_research", "dispatch_workers", check_error=True,
+    "plan",
+    "plan_research",
+    "dispatch_workers",
+    check_error=True,
 )
 route_after_findings = make_feedback_router(
-    "findings", "dispatch_workers", "synthesize", check_error=True,
+    "findings",
+    "dispatch_workers",
+    "synthesize",
+    check_error=True,
 )
 route_after_memo = make_feedback_router("memo", "synthesize", check_error=True)
 
@@ -149,7 +156,10 @@ def build_research_graph(
 
     # [D8] Progress event helper — 5 stages with weighted percentages
     def _progress_event(stage: str, progress: float, detail: str = "") -> dict:
-        return {"type": "progress", "data": {"stage": stage, "progress": progress, "detail": detail}}
+        return {
+            "type": "progress",
+            "data": {"stage": stage, "progress": progress, "detail": detail},
+        }
 
     # [S2] Parallel: rewrite + classify both read original query
     async def rewrite(state: ResearchState) -> dict:
@@ -175,10 +185,9 @@ def build_research_graph(
     async def plan(state: ResearchState) -> dict:
         result = await plan_research_node(state, flash_llm)
         step_feedback_count = sum(
-            1 for m in state.get("messages", [])
-            if isinstance(m, dict)
-            and m.get("type") == "user_feedback"
-            and m.get("step") == "plan"
+            1
+            for m in state.get("messages", [])
+            if isinstance(m, dict) and m.get("type") == "user_feedback" and m.get("step") == "plan"
         )
         result["iteration"] = step_feedback_count
         return result
@@ -187,7 +196,13 @@ def build_research_graph(
     async def fast_path_search(state: ResearchState) -> dict:
         async with async_session_factory() as session:
             return await fast_path_search_node(
-                state, llm, flash_llm, embedder, vector_store, reranker, session,
+                state,
+                llm,
+                flash_llm,
+                embedder,
+                vector_store,
+                reranker,
+                session,
             )
 
     async def fast_path_synthesis(state: ResearchState) -> dict:
@@ -210,7 +225,11 @@ def build_research_graph(
     # [B1] Use flash_llm — adversarial generates simpler queries, Flash is sufficient
     async def adversarial_search(state: ResearchState) -> dict:
         result = await adversarial_search_node(
-            state, flash_llm, embedder, vector_store, reranker,
+            state,
+            flash_llm,
+            embedder,
+            vector_store,
+            reranker,
         )
         result.setdefault("process_events", []).append(
             _progress_event("challenge", 0.80, "Adversarial analysis")
@@ -287,25 +306,31 @@ def build_research_graph(
             sends.sort(key=lambda s: s.value.get("task", {}).get("priority", 99))
             logger.warning(
                 "Dispatch capped at %d workers (plan had %d tasks), keeping highest priority",
-                _MAX_WORKERS_PER_DISPATCH, len(sends),
+                _MAX_WORKERS_PER_DISPATCH,
+                len(sends),
             )
             sends = sends[:_MAX_WORKERS_PER_DISPATCH]
 
         if not sends:
             # Fallback: at least one search with the original query
-            sends.append(Send("case_law_worker", {
-                "task": {
-                    "task_id": "fallback",
-                    "task_type": "case_law",
-                    "nl_query": state.get("rewritten_query") or state["query"],
-                    "boolean_query": "",
-                    "named_cases": [],
-                    "rationale": "Fallback search",
-                    "filters": {},
-                    "priority": 1,
-                },
-                "precomputed_embeddings": {},
-            }))
+            sends.append(
+                Send(
+                    "case_law_worker",
+                    {
+                        "task": {
+                            "task_id": "fallback",
+                            "task_type": "case_law",
+                            "nl_query": state.get("rewritten_query") or state["query"],
+                            "boolean_query": "",
+                            "named_cases": [],
+                            "rationale": "Fallback search",
+                            "filters": {},
+                            "priority": 1,
+                        },
+                        "precomputed_embeddings": {},
+                    },
+                )
+            )
 
         # [T1] Emit a progress event so the frontend knows workers are dispatching
         worker_types = [s.arg.get("task", {}).get("task_type", "unknown") for s in sends]
@@ -333,7 +358,10 @@ def build_research_graph(
     async def evaluate_extract(state: ResearchState) -> dict:
         async with async_session_factory() as session:
             return await evaluate_and_extract_node(
-                state, flash_llm, session, ik_client=ik_client,
+                state,
+                flash_llm,
+                session,
+                ik_client=ik_client,
             )
 
     async def gap_analysis(state: ResearchState) -> dict:
@@ -342,14 +370,18 @@ def build_research_graph(
     # Phase 4 nodes: speculative synthesis → format footnotes → verify v2 → quality check
     async def speculative_synthesis(state: ResearchState) -> dict:
         return await speculative_synthesis_with_contradictions_node(
-            state, llm, flash_llm,
+            state,
+            llm,
+            flash_llm,
             stream_callback=memo_stream_callback,
         )
 
     # [B10] Moderate complexity synthesis — uses Pro for legal reasoning quality
     async def moderate_synthesis(state: ResearchState) -> dict:
         return await speculative_synthesis_with_contradictions_node(
-            state, llm, flash_llm,
+            state,
+            llm,
+            flash_llm,
             stream_callback=memo_stream_callback,
         )
 
@@ -359,7 +391,8 @@ def build_research_graph(
     async def verify_v2(state: ResearchState) -> dict:
         async with async_session_factory() as session:
             return await verify_citations_v2_node(
-                state, session,
+                state,
+                session,
                 graph_store=graph_store,
                 ik_client=ik_client,
             )
@@ -388,22 +421,35 @@ def build_research_graph(
                 result_count += len(wr.get("results", []) if isinstance(wr, dict) else wr.results)
             logger.info(
                 "worker_complete worker_type=%s task_id=%s duration_ms=%.1f result_count=%d",
-                name, task_id, elapsed_ms, result_count,
+                name,
+                task_id,
+                elapsed_ms,
+                result_count,
             )
             return result
         except TimeoutError:
             elapsed_ms = (time.monotonic() - start) * 1000
             logger.warning(
                 "worker_timeout worker_type=%s task_id=%s timeout=%ds duration_ms=%.1f",
-                name, task_id, timeout, elapsed_ms,
+                name,
+                task_id,
+                timeout,
+                elapsed_ms,
             )
-            return {"worker_results": [WorkerResult(
-                task_id=task_data.get("task_id", "unknown"),
-                task_type=task_data.get("task_type", name),
-                query=task_data.get("nl_query", ""),
-                results=[], source_urls=[], metadata={},
-                error=f"Timeout after {timeout}s", reasoning="",
-            )]}
+            return {
+                "worker_results": [
+                    WorkerResult(
+                        task_id=task_data.get("task_id", "unknown"),
+                        task_type=task_data.get("task_type", name),
+                        query=task_data.get("nl_query", ""),
+                        results=[],
+                        source_urls=[],
+                        metadata={},
+                        error=f"Timeout after {timeout}s",
+                        reasoning="",
+                    )
+                ]
+            }
 
     async def _case_law_worker(state: dict) -> dict:
         return await _timed_worker(
@@ -475,45 +521,54 @@ def build_research_graph(
                 "process_events": [{"type": "plan", "data": {"auto_approved": True, **plan_data}}],
             }
 
-        response = interrupt({
-            "question": (
-                "I've created a research plan with "
-                f"{len(research_plan)} tasks. "
-                "Would you like to adjust it?"
-            ),
-            "sub_queries": state.get("sub_queries", []),
-            "research_plan": [
-                {
-                    "task_type": t.get("task_type"),
-                    "nl_query": t.get("nl_query"),
-                    "rationale": t.get("rationale"),
-                    "named_cases": t.get("named_cases", []),
-                    "priority": t.get("priority"),
-                }
-                for t in research_plan
-            ],
-            "classification": next(
-                (
-                    m["data"]
-                    for m in state.get("messages", [])
-                    if isinstance(m, dict) and m.get("type") == "classification"
+        response = interrupt(
+            {
+                "question": (
+                    "I've created a research plan with "
+                    f"{len(research_plan)} tasks. "
+                    "Would you like to adjust it?"
                 ),
-                None,
-            ),
-            # [V3] Show statute context and element breakdown
-            "statute_context": [
-                {"act": s.get("act_short_name"), "section": s.get("section_number"),
-                 "title": s.get("section_title", ""), "repealed": s.get("is_repealed", False)}
-                for s in state.get("statute_context", [])
-            ],
-            "legal_elements": [
-                {"id": e.get("element_id"), "description": e.get("description"),
-                 "contested": e.get("is_contested", False)}
-                for e in state.get("legal_elements", [])
-            ],
-            # [V3] Adversarial research toggle
-            "include_adversarial": state.get("include_adversarial", True),
-        })
+                "sub_queries": state.get("sub_queries", []),
+                "research_plan": [
+                    {
+                        "task_type": t.get("task_type"),
+                        "nl_query": t.get("nl_query"),
+                        "rationale": t.get("rationale"),
+                        "named_cases": t.get("named_cases", []),
+                        "priority": t.get("priority"),
+                    }
+                    for t in research_plan
+                ],
+                "classification": next(
+                    (
+                        m["data"]
+                        for m in state.get("messages", [])
+                        if isinstance(m, dict) and m.get("type") == "classification"
+                    ),
+                    None,
+                ),
+                # [V3] Show statute context and element breakdown
+                "statute_context": [
+                    {
+                        "act": s.get("act_short_name"),
+                        "section": s.get("section_number"),
+                        "title": s.get("section_title", ""),
+                        "repealed": s.get("is_repealed", False),
+                    }
+                    for s in state.get("statute_context", [])
+                ],
+                "legal_elements": [
+                    {
+                        "id": e.get("element_id"),
+                        "description": e.get("description"),
+                        "contested": e.get("is_contested", False),
+                    }
+                    for e in state.get("legal_elements", [])
+                ],
+                # [V3] Adversarial research toggle
+                "include_adversarial": state.get("include_adversarial", True),
+            }
+        )
 
         # Parse response — may be a dict or a JSON string from frontend
         parsed = response
@@ -525,15 +580,17 @@ def build_research_graph(
 
         # [DEBUG] Log interrupt return value to diagnose loop bug
         from app.core.agents.routing_utils import is_proceed
+
         logger.warning(
             "CHECKPOINT_PLAN_DEBUG: interrupt returned type=%s response=%r parsed=%r is_proceed=%s",
-            type(response).__name__, str(response)[:200], str(parsed)[:200], is_proceed(parsed),
+            type(response).__name__,
+            str(response)[:200],
+            str(parsed)[:200],
+            is_proceed(parsed),
         )
 
         result_dict: dict = {
-            "messages": [
-                {"type": "user_feedback", "step": "plan", "content": parsed}
-            ],
+            "messages": [{"type": "user_feedback", "step": "plan", "content": parsed}],
         }
 
         # Extract adversarial toggle from structured response
@@ -548,7 +605,11 @@ def build_research_graph(
         if state.get("auto_approve"):
             return {
                 "messages": [
-                    {"type": "user_feedback", "step": "findings", "content": "Looks good, proceed to synthesis"}
+                    {
+                        "type": "user_feedback",
+                        "step": "findings",
+                        "content": "Looks good, proceed to synthesis",
+                    }
                 ],
                 "process_events": [{"type": "found", "data": {"auto_approved": True}}],
             }
@@ -567,45 +628,51 @@ def build_research_graph(
         top_cases: list[dict] = []
         # Enrich with CRAG scores
         crag_scores = {
-            s.get("case_id", ""): s.get("score", 0)
-            for s in state.get("relevance_scores", [])
+            s.get("case_id", ""): s.get("score", 0) for s in state.get("relevance_scores", [])
         }
-        for r in sorted(filtered_results, key=lambda x: crag_scores.get(x.get("case_id", ""), x.get("relevance_score", 0)), reverse=True):
+        for r in sorted(
+            filtered_results,
+            key=lambda x: crag_scores.get(x.get("case_id", ""), x.get("relevance_score", 0)),
+            reverse=True,
+        ):
             cid = r.get("case_id", "")
             if cid and cid in seen_ids:
                 continue
             if cid:
                 seen_ids.add(cid)
-            top_cases.append({
-                "case_id": cid,
-                "title": r.get("title", ""),
-                "citation": r.get("citation", ""),
-                "court": r.get("court", ""),
-                "year": r.get("year"),
-                "relevance_score": crag_scores.get(cid, r.get("relevance_score", 0)),
-            })
+            top_cases.append(
+                {
+                    "case_id": cid,
+                    "title": r.get("title", ""),
+                    "citation": r.get("citation", ""),
+                    "court": r.get("court", ""),
+                    "year": r.get("year"),
+                    "relevance_score": crag_scores.get(cid, r.get("relevance_score", 0)),
+                }
+            )
             if len(top_cases) >= 10:
                 break
 
-        response = interrupt({
-            "question": (
-                "Here are the search findings. "
-                "Would you like to focus on any specific area?"
-            ),
-            "result_count": result_count,
-            "worker_count": worker_count,
-            "top_cases": top_cases,
-            "contradictions": state.get("contradictions", [])[:5],
-            "evidence_gaps": [
-                {"description": g.get("description"), "priority": g.get("priority")}
-                for g in gaps
-            ],
-            "refinement_round": state.get("refinement_round", 0),
-            "summary": (
-                f"Found {result_count} relevant results from {worker_count} research tasks, "
-                f"{cross_ref_count} cross-references."
-            ),
-        })
+        response = interrupt(
+            {
+                "question": (
+                    "Here are the search findings. " "Would you like to focus on any specific area?"
+                ),
+                "result_count": result_count,
+                "worker_count": worker_count,
+                "top_cases": top_cases,
+                "contradictions": state.get("contradictions", [])[:5],
+                "evidence_gaps": [
+                    {"description": g.get("description"), "priority": g.get("priority")}
+                    for g in gaps
+                ],
+                "refinement_round": state.get("refinement_round", 0),
+                "summary": (
+                    f"Found {result_count} relevant results from {worker_count} research tasks, "
+                    f"{cross_ref_count} cross-references."
+                ),
+            }
+        )
 
         # Parse response — may be a dict or a JSON string from frontend
         parsed = response
@@ -618,9 +685,7 @@ def build_research_graph(
         logger.debug("checkpoint_findings: response=%r parsed=%r", response, parsed)
 
         return {
-            "messages": [
-                {"type": "user_feedback", "step": "findings", "content": parsed}
-            ],
+            "messages": [{"type": "user_feedback", "step": "findings", "content": parsed}],
         }
 
     async def checkpoint_memo(state: ResearchState) -> dict:
@@ -639,13 +704,15 @@ def build_research_graph(
                 "process_events": [{"type": "memo", "data": {"auto_approved": True}}],
             }
 
-        response = interrupt({
-            "question": "Here is the draft research memo. Any revisions?",
-            "draft_memo": memo,
-            "confidence": confidence,
-            "footnotes": footnotes,
-            "research_audit": audit,
-        })
+        response = interrupt(
+            {
+                "question": "Here is the draft research memo. Any revisions?",
+                "draft_memo": memo,
+                "confidence": confidence,
+                "footnotes": footnotes,
+                "research_audit": audit,
+            }
+        )
 
         parsed = response
         if isinstance(response, str) and response.strip().startswith("{"):
@@ -653,9 +720,7 @@ def build_research_graph(
                 parsed = json.loads(response)
 
         return {
-            "messages": [
-                {"type": "user_feedback", "step": "memo", "content": parsed}
-            ],
+            "messages": [{"type": "user_feedback", "step": "memo", "content": parsed}],
         }
 
     # -- Routing functions --------------------------------------------------
@@ -678,10 +743,7 @@ def build_research_graph(
 
     def should_refine(state: ResearchState) -> str:
         """Route after gap analysis: refine or proceed to findings."""
-        if (
-            state.get("evidence_gaps")
-            and state.get("refinement_round", 0) < 2
-        ):
+        if state.get("evidence_gaps") and state.get("refinement_round", 0) < 2:
             return "dispatch_workers"
         return "checkpoint_findings"
 
@@ -841,7 +903,9 @@ def build_research_graph(
 
     # Stage 4: Challenge — adversarial search → temporal validation → synthesis
     graph.add_edge("adversarial_search", "temporal_validation")
-    graph.add_edge("moderate_synthesis", "temporal_validation")  # [B10/H2] Moderate also gets temporal checks
+    graph.add_edge(
+        "moderate_synthesis", "temporal_validation"
+    )  # [B10/H2] Moderate also gets temporal checks
     # [H2] Temporal validation routes based on complexity
     graph.add_conditional_edges(
         "temporal_validation",
