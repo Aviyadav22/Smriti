@@ -8,14 +8,13 @@ All external services mocked. Pipeline logic exercised end-to-end.
 """
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from app.core.ingestion.chunker import Chunk, chunk_judgment
 from app.core.ingestion.metadata import CaseMetadata
 from app.core.ingestion.pipeline import _upsert_vectors
-
 
 # ---------------------------------------------------------------------------
 # Helpers

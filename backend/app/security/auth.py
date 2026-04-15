@@ -8,7 +8,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import jwt
@@ -100,7 +100,7 @@ def create_access_token(
     Returns:
         Encoded JWT string.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expire = now + (
         expires_delta
         if expires_delta is not None
@@ -133,7 +133,7 @@ def create_refresh_token(
     Returns:
         Encoded JWT string.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expire = now + (
         expires_delta
         if expires_delta is not None
@@ -203,8 +203,8 @@ async def _decode_token(token: str, secret: str, expected_type: str) -> TokenPay
     return TokenPayload(
         sub=str(sub),
         role=str(role),
-        exp=datetime.fromtimestamp(float(decoded["exp"]), tz=timezone.utc),
-        iat=datetime.fromtimestamp(float(decoded["iat"]), tz=timezone.utc),
+        exp=datetime.fromtimestamp(float(decoded["exp"]), tz=UTC),
+        iat=datetime.fromtimestamp(float(decoded["iat"]), tz=UTC),
         jti=str(jti),
     )
 

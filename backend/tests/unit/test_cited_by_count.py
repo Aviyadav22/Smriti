@@ -1,7 +1,8 @@
 """Tests for computed cited_by_count."""
 
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 
 class TestComputedCitedByCount:

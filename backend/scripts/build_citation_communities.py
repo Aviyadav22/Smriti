@@ -181,7 +181,7 @@ async def embed_community_summaries(
                 "legal_principles": "; ".join(summary["legal_principles"]),
             },
         }
-        for (comm_id, summary), emb in zip(communities.items(), embeddings)
+        for (comm_id, summary), emb in zip(communities.items(), embeddings, strict=False)
     ]
     await vector_store.upsert(vectors)
     logger.info("Embedded %d community summaries into Pinecone", len(vectors))

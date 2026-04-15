@@ -196,7 +196,7 @@ async def deep_precedent_search_node(
                 db=db,
             )
             search_results = [asdict(item) for item in search_response.results]
-        except (asyncio.TimeoutError, ConnectionError, ValueError):
+        except (TimeoutError, ConnectionError, ValueError):
             logger.exception("Hybrid search failed for issue: %s", title)
             search_results = []
 

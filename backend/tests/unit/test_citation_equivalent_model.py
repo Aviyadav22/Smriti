@@ -1,5 +1,4 @@
 """Tests for the CaseCitationEquivalent model."""
-import pytest
 from app.models.case_citation_equivalent import CaseCitationEquivalent
 
 

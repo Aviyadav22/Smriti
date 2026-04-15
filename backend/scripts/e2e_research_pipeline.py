@@ -16,17 +16,27 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 async def run_component_e2e() -> bool:
+    from app.core.agents.nodes.research_nodes import evaluate_and_extract_node
+    from app.core.agents.nodes.worker_nodes import (
+        case_law_worker,
+        graph_worker,
+        ik_search_worker,
+        named_case_worker,
+        statute_worker,
+        web_search_worker,
+    )
     from app.core.dependencies import (
-        get_llm, get_flash_llm, get_embedder, get_vector_store,
-        get_reranker, get_graph_store, get_ik_client, get_web_search,
         cleanup_providers,
+        get_embedder,
+        get_flash_llm,
+        get_graph_store,
+        get_ik_client,
+        get_llm,
+        get_reranker,
+        get_vector_store,
+        get_web_search,
     )
     from app.db.postgres import async_session_factory
-    from app.core.agents.nodes.worker_nodes import (
-        case_law_worker, ik_search_worker, web_search_worker,
-        statute_worker, graph_worker, named_case_worker,
-    )
-    from app.core.agents.nodes.research_nodes import evaluate_and_extract_node
 
     llm = get_llm()
     embedder = get_embedder()
@@ -125,9 +135,10 @@ async def run_component_e2e() -> bool:
     # --- Research Plan Test (E2E.2: Competitor Parity) ---
     print("\n--- E2E.2: Competitor Parity ---")
     try:
-        from app.core.agents.research import build_research_graph
         from langgraph.checkpoint.memory import MemorySaver
         from langgraph.types import Command
+
+        from app.core.agents.research import build_research_graph
 
         graph = build_research_graph(
             llm=get_llm(), flash_llm=flash_llm, embedder=embedder,
@@ -195,7 +206,7 @@ async def run_component_e2e() -> bool:
         from app.core.search.query import expand_statute_references
         expanded_query, expansions = expand_statute_references("Section 498A IPC")
         has_bns = any("BNS" in e for e in expansions) or "BNS" in expanded_query
-        print(f"  Input:  'Section 498A IPC'")
+        print("  Input:  'Section 498A IPC'")
         print(f"  Expanded: '{expanded_query}'")
         print(f"  Expansions: {expansions}")
         print(f"  BNS mapping: {'PASS' if has_bns else 'FAIL'}")
@@ -207,9 +218,8 @@ async def run_component_e2e() -> bool:
     # --- E2E.8: Semantic Cache ---
     print("\n--- E2E.8: Semantic Cache Structure ---")
     try:
-        from app.core.search.semantic_cache import SemanticCache
         from app.core.agents.research_cache import (
-            get_cached_memo, set_cached_memo, get_memo_cache_hash,
+            get_memo_cache_hash,
         )
         # Verify cache modules are importable and functional
         key = get_memo_cache_hash("test query")

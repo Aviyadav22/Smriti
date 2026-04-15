@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.security.auth import (
-    TokenPayload,
     clear_revoked_tokens,
     create_access_token,
     create_refresh_token,
@@ -18,7 +17,6 @@ from app.security.auth import (
     verify_refresh_token,
 )
 from app.security.exceptions import AuthenticationError
-
 
 # Mock settings for testing
 _TEST_SETTINGS = {

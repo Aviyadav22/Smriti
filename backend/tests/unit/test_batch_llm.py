@@ -1,7 +1,8 @@
 """Tests for BatchCachedLLM mock provider."""
 
+
 import pytest
-from collections.abc import AsyncIterator
+
 from scripts.batch_llm import BatchCachedLLM
 
 

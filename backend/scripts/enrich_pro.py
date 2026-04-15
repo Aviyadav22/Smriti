@@ -18,12 +18,11 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import text as sa_text  # noqa: E402
+from sqlalchemy import text as sa_text
 
-from app.core.config import settings  # noqa: E402
-from app.core.dependencies import get_llm  # noqa: E402
-from app.core.legal.prompts import METADATA_OUTPUT_SCHEMA  # noqa: E402
-from app.db.postgres import async_session_factory  # noqa: E402
+from app.core.dependencies import get_llm
+from app.core.legal.prompts import METADATA_OUTPUT_SCHEMA
+from app.db.postgres import async_session_factory
 
 logger = logging.getLogger(__name__)
 

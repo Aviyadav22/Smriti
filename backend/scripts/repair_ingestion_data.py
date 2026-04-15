@@ -19,11 +19,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import text
 
-from app.core.config import settings  # noqa: E402
-from app.core.legal.extractor import normalize_acts_cited_list  # noqa: E402
-from app.db.postgres import async_session_factory, engine  # noqa: E402
+from app.core.config import settings
+from app.core.legal.extractor import normalize_acts_cited_list
+from app.db.postgres import async_session_factory, engine
 
 logging.basicConfig(
     level=logging.INFO,

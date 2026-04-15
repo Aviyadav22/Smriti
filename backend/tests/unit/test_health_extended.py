@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.routes.health import router
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user_optional
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -34,8 +32,8 @@ def _build_app(user: TokenPayload | None = None) -> FastAPI:
 _AUTH_USER = TokenPayload(
     sub="user-1",
     role="admin",
-    exp=datetime(2099, 1, 1, tzinfo=timezone.utc),
-    iat=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    exp=datetime(2099, 1, 1, tzinfo=UTC),
+    iat=datetime(2024, 1, 1, tzinfo=UTC),
     jti="test-jti-health",
 )
 

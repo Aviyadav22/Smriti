@@ -12,7 +12,6 @@ from app.core.providers.graph.pg_graph_store import (
     _validate_relationship,
 )
 
-
 # ---------------------------------------------------------------------------
 # Input validation tests (mirrors test_neo4j_store.py)
 # ---------------------------------------------------------------------------

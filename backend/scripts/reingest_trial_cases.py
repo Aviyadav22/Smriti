@@ -18,7 +18,6 @@ import argparse
 import asyncio
 import json
 import logging
-import sys
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -30,8 +29,8 @@ TRIAL_YEARS = range(1979, 2019)  # 1979-2018 inclusive
 
 async def find_trial_cases(db_url: str) -> list[str]:
     """Find case IDs from the trial batch run."""
-    from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
 
     engine = create_async_engine(db_url)
     async with engine.connect() as conn:
@@ -50,8 +49,8 @@ async def find_trial_cases(db_url: str) -> list[str]:
 
 async def delete_from_postgres(db_url: str, case_ids: list[str]) -> int:
     """Delete trial cases from PostgreSQL."""
-    from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
 
     engine = create_async_engine(db_url)
     async with engine.begin() as conn:
@@ -66,8 +65,9 @@ async def delete_from_postgres(db_url: str, case_ids: list[str]) -> int:
 
 async def delete_from_pinecone(case_ids: list[str]) -> int:
     """Delete vectors for trial cases from Pinecone."""
-    from app.core.config import settings
     from pinecone import Pinecone
+
+    from app.core.config import settings
 
     pc = Pinecone(api_key=settings.pinecone_api_key)
     index = pc.Index(host=settings.pinecone_host)
@@ -85,8 +85,9 @@ async def delete_from_pinecone(case_ids: list[str]) -> int:
 
 async def delete_from_neo4j(case_ids: list[str]) -> int:
     """Delete case nodes and edges from Neo4j."""
-    from app.core.config import settings
     from neo4j import AsyncGraphDatabase
+
+    from app.core.config import settings
 
     driver = AsyncGraphDatabase.driver(
         settings.neo4j_uri,

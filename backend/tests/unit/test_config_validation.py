@@ -1,7 +1,5 @@
 """Tests for config.py security validation."""
-import os
 import pytest
-from unittest.mock import patch
 
 
 def test_app_debug_defaults_to_false():

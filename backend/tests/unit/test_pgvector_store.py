@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.core.interfaces.vector_store import SearchResult
 from app.core.providers.vector.pgvector_store import PgvectorStore, _build_filter_clause
-
 
 # ---------------------------------------------------------------------------
 # Filter translation tests

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-
 from langgraph.graph import END
 
 from app.core.agents.strategy import (
@@ -11,7 +10,6 @@ from app.core.agents.strategy import (
     route_after_arguments,
     route_after_quality,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -295,7 +293,7 @@ class TestBuildStrategyGraph:
         try:
             graph = self._build(checkpointer=None)
             assert graph is not None
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             pytest.fail(f"build_strategy_graph raised unexpectedly: {exc}")
 
 

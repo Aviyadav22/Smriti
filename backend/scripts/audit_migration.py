@@ -1,9 +1,9 @@
 """Deep audit: compare Supabase and VPS PostgreSQL databases."""
 
 import asyncio
-import os
-import json
 import hashlib
+import os
+
 from dotenv import load_dotenv
 
 load_dotenv(".env")

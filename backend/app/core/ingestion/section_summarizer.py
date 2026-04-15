@@ -71,7 +71,7 @@ async def generate_section_summaries(
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     summaries: list[dict] = []
-    for section, result in zip(eligible, results):
+    for section, result in zip(eligible, results, strict=False):
         if isinstance(result, Exception):
             logger.warning(
                 "Section summary failed for %s/%s: %s",
@@ -115,7 +115,7 @@ def build_pinecone_summary_vectors(
     records: list[dict] = []
     meta_base = base_metadata or {}
 
-    for summary, embedding in zip(summaries, embeddings):
+    for summary, embedding in zip(summaries, embeddings, strict=False):
         vector_id = f"{case_id}_summary_{summary['section_type']}"
         metadata = {
             **meta_base,

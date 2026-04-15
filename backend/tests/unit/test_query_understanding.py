@@ -3,9 +3,6 @@
 import pytest
 
 from app.core.search.query import (
-    QueryEntities,
-    QueryUnderstanding,
-    SearchFilters,
     _parse_llm_result,
     _passthrough,
     understand_query,

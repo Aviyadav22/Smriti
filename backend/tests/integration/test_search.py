@@ -7,15 +7,13 @@ with mocked external services (DB, Redis, LLM, embedder, vector store, reranker)
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.interfaces import RerankResult, SearchResult
-from app.core.search.fulltext import FTSResult
-from app.core.search.hybrid import SearchResponse, SearchResultItem, rrf_merge
+from app.core.search.hybrid import SearchResponse, rrf_merge
 from app.core.search.query import QueryEntities, QueryUnderstanding, SearchFilters
 
 # ---------------------------------------------------------------------------

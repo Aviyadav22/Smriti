@@ -1,6 +1,5 @@
 """Security-focused tests for OWASP-relevant protections."""
 
-from unittest.mock import patch
 
 import pytest
 
@@ -37,7 +36,7 @@ class TestSQLInjectionMarkers:
     def test_single_quotes_preserved_in_legal_text(self):
         """Legal text often has apostrophes; sanitize_input should not strip them."""
         result = sanitize_input("Ram's case")
-        assert "Ram's case" == result
+        assert result == "Ram's case"
 
     def test_semicolons_preserved(self):
         result = sanitize_input("Section 302; Section 304")

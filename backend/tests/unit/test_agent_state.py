@@ -1,9 +1,9 @@
 """Tests for agent state schemas."""
 from app.core.agents.state import (
-    ResearchState,
     CasePrepState,
-    StatuteContext,
     LegalElement,
+    ResearchState,
+    StatuteContext,
     TemporalWarning,
 )
 

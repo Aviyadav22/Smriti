@@ -6,8 +6,6 @@ worker timeout handling, and SQLite lock safety.
 """
 from __future__ import annotations
 
-import re
-from dataclasses import fields
 from unittest.mock import AsyncMock
 
 import pytest
@@ -19,7 +17,6 @@ from app.core.ingestion.metadata import (
     validate_with_regex,
 )
 from app.core.ingestion.pdf import _REPORTER_PAGE_MARKER_RE, clean_extracted_text
-
 
 # ---------------------------------------------------------------------------
 # Truncation helper

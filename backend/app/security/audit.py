@@ -6,7 +6,7 @@ and forensic analysis.
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,7 +40,7 @@ async def create_audit_log(
         user_agent: The client's User-Agent header value.
         metadata: Additional key-value data to store with the log entry.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     metadata_json = json.dumps(metadata) if metadata else None
 
     # Hash IP addresses for DPDP compliance — avoid storing raw PII

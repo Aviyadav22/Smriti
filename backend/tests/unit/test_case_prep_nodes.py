@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.core.agents.case_prep import route_after_load
-from app.core.agents.nodes.common import safe_json_parse_list
 from app.core.agents.nodes.case_prep_nodes import (
     build_argument_order_node,
     deep_precedent_search_node,
@@ -16,7 +15,7 @@ from app.core.agents.nodes.case_prep_nodes import (
     prioritize_issues_node,
     verify_citations_node,
 )
-
+from app.core.agents.nodes.common import safe_json_parse_list
 
 # ---------------------------------------------------------------------------
 # Helpers

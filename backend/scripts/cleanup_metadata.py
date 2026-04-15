@@ -28,10 +28,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+
 import asyncpg  # noqa: E402
-import os  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,

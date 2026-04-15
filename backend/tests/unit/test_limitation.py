@@ -1,8 +1,6 @@
 """Tests for limitation period calculator."""
 from datetime import date
 
-import pytest
-
 from app.core.legal.limitation import (
     LIMITATION_SCHEDULE,
     calculate_deadline,

@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy import text
+
 from app.db.postgres import async_session_factory
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ async def backfill_case(
     try:
         embeddings = await embedder.embed_batch(texts)
         vectors = []
-        for i, (chunk, emb) in enumerate(zip(contextualized, embeddings)):
+        for i, (chunk, emb) in enumerate(zip(contextualized, embeddings, strict=False)):
             vectors.append({
                 "id": f"{case_id}_{i}",
                 "values": emb,
@@ -144,7 +145,7 @@ async def main(args: argparse.Namespace) -> None:
 
     if not args.dry_run:
         try:
-            from app.core.dependencies import get_embedder, get_vector_store, get_flash_llm
+            from app.core.dependencies import get_embedder, get_flash_llm, get_vector_store
             embedder = get_embedder()
             vector_store = get_vector_store()
             flash_llm = get_flash_llm()

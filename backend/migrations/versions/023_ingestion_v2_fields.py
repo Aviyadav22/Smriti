@@ -8,9 +8,9 @@ Future-proofing for Strategy Simulation, Judge Analytics V2, Document Generation
 Two-pass design: Flash extracts all at ingestion, Pro re-extracts 8 complex fields on demand.
 """
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB, ARRAY
+from alembic import op
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 revision = "023"
 down_revision = "022"

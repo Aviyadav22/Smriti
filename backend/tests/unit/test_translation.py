@@ -1,7 +1,8 @@
 """Unit tests for the GeminiTranslator provider."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 @pytest.fixture
@@ -18,6 +19,7 @@ def translator():
 
         # Re-import to pick up mocked settings and genai
         import importlib
+
         import app.core.providers.translation.gemini_translator as mod
         importlib.reload(mod)
 

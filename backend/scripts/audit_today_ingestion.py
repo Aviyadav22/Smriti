@@ -1,8 +1,9 @@
 """Audit all cases ingested today (2026-03-31) for quality issues."""
 import asyncio
-import asyncpg
 import re
 from datetime import date
+
+import asyncpg
 
 DATABASE_URL = "postgresql://smriti:E9tGr2mSXTi1h36LwsmLKbRVooPmlZbYIY5FnYmuzWg=@76.13.185.172:5432/smriti"
 

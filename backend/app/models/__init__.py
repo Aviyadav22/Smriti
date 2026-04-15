@@ -7,8 +7,8 @@ from app.models.audit import AuditLog
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.case import Case
 from app.models.case_citation_equivalent import CaseCitationEquivalent
-from app.models.case_statute_interpretation import CaseStatuteInterpretation
 from app.models.case_section import CaseSection
+from app.models.case_statute_interpretation import CaseStatuteInterpretation
 from app.models.chat import ChatMessage, ChatSession
 from app.models.consent import Consent
 from app.models.document import Document
@@ -27,8 +27,8 @@ __all__ = [
     "Base",
     "Case",
     "CaseCitationEquivalent",
-    "CaseStatuteInterpretation",
     "CaseSection",
+    "CaseStatuteInterpretation",
     "ChatMessage",
     "ChatSession",
     "Consent",

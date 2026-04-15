@@ -9,14 +9,12 @@ from __future__ import annotations
 
 import inspect
 
-import pytest
-
-from app.core.interfaces.llm import LLMProvider
-from app.core.interfaces.vector_store import VectorStore
-from app.core.interfaces.graph_store import GraphStore
-from app.core.interfaces.reranker import Reranker
 from app.core.interfaces.embedder import EmbeddingProvider
+from app.core.interfaces.graph_store import GraphStore
+from app.core.interfaces.llm import LLMProvider
+from app.core.interfaces.reranker import Reranker
 from app.core.interfaces.storage import FileStorage
+from app.core.interfaces.vector_store import VectorStore
 
 
 def _get_protocol_methods(protocol_cls: type) -> dict[str, inspect.Signature]:

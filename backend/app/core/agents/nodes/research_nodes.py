@@ -1098,7 +1098,7 @@ async def evaluate_and_extract_node(
     extracted_passages: list[ExtractedPassage] = []
     ambiguous_ids: list[tuple[str, list[dict]]] = []
 
-    for evaluation, batch in zip(evaluations, batches):
+    for evaluation, batch in zip(evaluations, batches, strict=False):
         if isinstance(evaluation, Exception):
             logger.warning("Batch evaluation failed: %s", evaluation)
             continue
@@ -1135,7 +1135,7 @@ async def evaluate_and_extract_node(
         deep_tasks = [deep_read_sections(cid) for cid, _ in ambiguous_ids[:10]]
         section_texts = await asyncio.gather(*deep_tasks, return_exceptions=True)
 
-        for (case_id, _), section_text in zip(ambiguous_ids[:10], section_texts):
+        for (case_id, _), section_text in zip(ambiguous_ids[:10], section_texts, strict=False):
             if isinstance(section_text, Exception) or not section_text:
                 continue
             try:
@@ -1559,7 +1559,7 @@ async def pre_warm_embeddings_node(
 
     try:
         vectors = await embedder.embed_batch(queries)
-        return {"precomputed_embeddings": dict(zip(queries, vectors))}
+        return {"precomputed_embeddings": dict(zip(queries, vectors, strict=False))}
     except Exception:
         return {"precomputed_embeddings": {}}
 

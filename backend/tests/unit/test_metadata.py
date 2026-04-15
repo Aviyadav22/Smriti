@@ -1,6 +1,5 @@
 """Unit tests for metadata extraction and validation."""
 
-import pytest
 from datetime import datetime
 
 from app.core.ingestion.metadata import (

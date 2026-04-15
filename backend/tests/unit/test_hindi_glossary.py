@@ -1,8 +1,6 @@
 """Tests for Hindi legal glossary."""
 from __future__ import annotations
 
-import pytest
-
 from app.core.drafting.hindi_glossary import (
     LEGAL_GLOSSARY,
     apply_hindi_terms,

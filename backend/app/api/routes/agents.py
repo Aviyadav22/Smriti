@@ -562,7 +562,7 @@ def _launch_graph_task(
             except Exception:
                 logger.exception("Failed to update cancelled execution %s", exec_id)
             raise
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Agent execution %s timed out after %d seconds", exec_id, _GRAPH_TIMEOUT)
             # Update DB status to failed
             try:
@@ -614,7 +614,7 @@ async def _sse_consumer(
         while True:
             try:
                 item = await asyncio.wait_for(queue.get(), timeout=_KEEPALIVE_INTERVAL)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 yield ": keepalive\n\n"
                 continue
 
@@ -2387,7 +2387,7 @@ async def session_follow_up(
         async def _producer_with_timeout() -> None:
             try:
                 await asyncio.wait_for(_producer(), timeout=_GRAPH_TIMEOUT)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.error("Follow-up %s timed out", execution.id)
                 await queue.put(
                     f'data: {json.dumps({"type": "error", "message": "Follow-up timed out", "recoverable": False})}\n\n'
@@ -2401,7 +2401,7 @@ async def session_follow_up(
             while True:
                 try:
                     item = await asyncio.wait_for(queue.get(), timeout=_KEEPALIVE_INTERVAL)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield ": keepalive\n\n"
                     continue
                 if item is _SENTINEL:

@@ -1,6 +1,5 @@
 """Unit tests for legal-aware text chunking."""
 
-import pytest
 
 from app.core.ingestion.chunker import (
     CHUNK_OVERLAP,
@@ -584,7 +583,7 @@ class TestIsHeadingPositionLineLengthHeuristic:
 
 
 def test_dense_sections_get_smaller_chunks():
-    from app.core.ingestion.chunker import chunk_judgment, Section
+    from app.core.ingestion.chunker import Section, chunk_judgment
     # Create a long ANALYSIS section (3000 chars)
     analysis_text = "The court held that " * 150  # ~3000 chars
     sections = [Section(type="ANALYSIS", start=0, end=len(analysis_text), text=analysis_text)]

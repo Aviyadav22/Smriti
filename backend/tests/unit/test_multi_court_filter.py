@@ -5,11 +5,9 @@ Pinecone filter construction, FTS clause building, and API parameter parsing
 all handle single and multiple courts correctly.
 """
 
-import pytest
 
 from app.core.search.fulltext import _build_filter_clauses
 from app.core.search.query import SearchFilters, _parse_llm_result
-
 
 # ---------------------------------------------------------------------------
 # SearchFilters dataclass

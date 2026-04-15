@@ -11,7 +11,6 @@ from app.core.agents.nodes.citation_verifier import (
     verify_citations_against_db,
 )
 
-
 # ---------------------------------------------------------------------------
 # extract_citations_from_text
 # ---------------------------------------------------------------------------

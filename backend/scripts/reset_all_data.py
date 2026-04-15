@@ -5,20 +5,21 @@ Usage: cd backend && .venv/Scripts/python scripts/reset_all_data.py
 
 import asyncio
 import os
-import sys
 import shutil
+import sys
 
 # Add backend to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from dotenv import load_dotenv
+
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 
 async def reset_postgresql():
     """Truncate all tables in PostgreSQL."""
-    from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
 
     print("\n=== RESETTING POSTGRESQL ===")
     db_url = os.environ["DATABASE_URL"]
@@ -118,7 +119,7 @@ def reset_sqlite_tracker():
         os.remove(tracker_path)
         print(f"  + Deleted {tracker_path}")
     else:
-        print(f"  - Not found (already clean)")
+        print("  - Not found (already clean)")
     print("SQLite tracker reset complete.")
 
 
@@ -132,7 +133,7 @@ def reset_local_pdfs():
         os.makedirs(pdf_path, exist_ok=True)
         print(f"  + Deleted {count} items from {pdf_path}")
     else:
-        print(f"  - Not found")
+        print("  - Not found")
     print("Local PDF storage reset complete.")
 
 

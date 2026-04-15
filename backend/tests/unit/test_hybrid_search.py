@@ -7,7 +7,6 @@ PostgreSQL (AsyncSession), Redis, LLM (query understanding), and FTS.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,7 +21,6 @@ from app.core.search.hybrid import (
     rrf_merge,
 )
 from app.core.search.query import QueryEntities, QueryUnderstanding, SearchFilters
-
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures

@@ -1,5 +1,4 @@
 """Tests for CaseMetadata V2 fields."""
-import pytest
 from app.core.ingestion.metadata import CaseMetadata
 
 

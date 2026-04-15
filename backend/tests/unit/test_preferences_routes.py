@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,7 +15,6 @@ from app.db.postgres import get_db
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -26,8 +24,8 @@ _USER_ID = str(uuid.uuid4())
 _TOKEN = TokenPayload(
     sub=_USER_ID,
     role="researcher",
-    exp=datetime(2099, 1, 1, tzinfo=timezone.utc),
-    iat=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    exp=datetime(2099, 1, 1, tzinfo=UTC),
+    iat=datetime(2024, 1, 1, tzinfo=UTC),
     jti="jti-prefs-test",
 )
 

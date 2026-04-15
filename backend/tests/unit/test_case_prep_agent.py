@@ -1,7 +1,7 @@
 """Tests for the Case Prep Agent LangGraph graph."""
 from __future__ import annotations
 
-import pytest
+from langgraph.graph import END
 
 from app.core.agents.case_prep import (
     build_case_prep_graph,
@@ -10,8 +10,6 @@ from app.core.agents.case_prep import (
     route_after_strategy,
 )
 from app.core.agents.state import CasePrepState
-from langgraph.graph import END
-
 
 # ---------------------------------------------------------------------------
 # Helpers

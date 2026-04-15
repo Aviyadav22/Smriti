@@ -8,8 +8,6 @@ assessment, and async interface verification.
 import asyncio
 import inspect
 
-import pytest
-
 from app.core.ingestion.pdf import (
     _remove_repeated_headers_footers_pages,
     _smart_page_join,

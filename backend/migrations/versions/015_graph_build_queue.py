@@ -9,8 +9,8 @@ case is marked complete but its citation graph is missing.  This table records
 those failures so a background worker can retry them later.
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "015"
 down_revision = "014"

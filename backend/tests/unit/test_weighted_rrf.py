@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -11,7 +11,6 @@ from app.core.search.hybrid import (
     _exact_citation_search,
     rrf_merge,
 )
-
 
 # ---------------------------------------------------------------------------
 # rrf_merge tests

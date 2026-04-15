@@ -8,7 +8,7 @@ Tests cover:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, call
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -18,7 +18,6 @@ from scripts.compute_graph_analytics import (
     create_statute_section_nodes,
     enrich_neo4j_from_postgres,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

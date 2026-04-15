@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 
 from app.api.routes.cases import router
 from app.db.postgres import get_db
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -54,8 +53,8 @@ def _make_case_row(case_id: str = _CASE_ID) -> dict:
         "language": "english",
         "chunk_count": 3,
         "available_languages": "english,hindi",
-        "created_at": datetime(2023, 6, 1, tzinfo=timezone.utc),
-        "updated_at": datetime(2023, 6, 2, tzinfo=timezone.utc),
+        "created_at": datetime(2023, 6, 1, tzinfo=UTC),
+        "updated_at": datetime(2023, 6, 2, tzinfo=UTC),
     }
 
 

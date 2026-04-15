@@ -4,7 +4,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from langgraph.graph import END
 
 from app.core.agents.drafting import (
@@ -15,7 +14,6 @@ from app.core.agents.drafting import (
     route_after_start,
     route_after_template,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

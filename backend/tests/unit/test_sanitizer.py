@@ -1,6 +1,5 @@
 """Unit tests for input sanitization and prompt injection detection."""
 
-import pytest
 
 from app.security.sanitizer import (
     detect_prompt_injection,

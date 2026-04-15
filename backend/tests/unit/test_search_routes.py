@@ -13,7 +13,6 @@ from app.core.search.hybrid import SearchResponse, SearchResultItem
 from app.core.search.query import QueryEntities, QueryUnderstanding, SearchFilters
 from app.db.postgres import get_db
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

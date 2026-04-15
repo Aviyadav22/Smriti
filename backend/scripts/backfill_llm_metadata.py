@@ -19,10 +19,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import text
 
-from app.core.config import settings  # noqa: E402
-from app.core.ingestion.metadata import (  # noqa: E402
+from app.core.config import settings
+from app.core.ingestion.metadata import (
     CaseMetadata,
     cross_validate_propositions,
     extract_metadata_llm,
@@ -30,13 +30,13 @@ from app.core.ingestion.metadata import (  # noqa: E402
     validate_cross_fields,
     validate_with_regex,
 )
-from app.core.legal.extractor import (  # noqa: E402
+from app.core.legal.extractor import (
     extract_acts_cited,
     normalize_acts_cited_list,
 )
-from app.core.legal.statute_enrichment import enrich_statute_cross_references  # noqa: E402
-from app.core.providers.llm.gemini import GeminiLLM  # noqa: E402
-from app.db.postgres import async_session_factory, engine  # noqa: E402
+from app.core.legal.statute_enrichment import enrich_statute_cross_references
+from app.core.providers.llm.gemini import GeminiLLM
+from app.db.postgres import async_session_factory, engine
 
 logging.basicConfig(
     level=logging.INFO,
@@ -81,7 +81,7 @@ async def _get_parquet_metadata(session, case_id: str) -> dict:
         return {}
     cols = ["title", "citation", "court", "year", "decision_date",
             "petitioner", "respondent", "author_judge", "disposal_nature", "judge"]
-    return {k: v for k, v in zip(cols, row) if v is not None}
+    return {k: v for k, v in zip(cols, row, strict=False) if v is not None}
 
 
 async def _update_case_metadata(session, case_id: str, metadata: CaseMetadata,
@@ -112,10 +112,7 @@ async def _update_case_metadata(session, case_id: str, metadata: CaseMetadata,
     params = {"cid": case_id}
     for field, value in update_fields.items():
         if value is not None:
-            if isinstance(value, list):
-                params[field] = value
-                set_clauses.append(f"{field} = :{field}")
-            elif isinstance(value, bool):
+            if isinstance(value, list) or isinstance(value, bool):
                 params[field] = value
                 set_clauses.append(f"{field} = :{field}")
             else:

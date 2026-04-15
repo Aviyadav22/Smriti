@@ -77,7 +77,7 @@ class PineconeStore:
                 asyncio.to_thread(self._index.upsert, vectors=vectors),
                 timeout=120,
             )
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             logger.error("Pinecone upsert timed out after 120s (%d vectors)", len(vectors))
             raise RuntimeError(
                 f"Pinecone upsert timed out after 120s ({len(vectors)} vectors)"
@@ -144,7 +144,7 @@ class PineconeStore:
                 SearchResult(id=m.id, score=m.score, metadata=m.metadata or {})
                 for m in results.matches
             ]
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Pinecone search timed out after 10s (top_k=%d)", top_k)
             return []
         except PineconeException as exc:

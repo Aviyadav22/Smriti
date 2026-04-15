@@ -23,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 logging.basicConfig(
@@ -56,6 +57,7 @@ async def purge(dry_run: bool) -> None:
     logger.info("=" * 60)
 
     import asyncpg
+
     from app.core.config import settings
     dsn = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
     conn = await asyncpg.connect(dsn)

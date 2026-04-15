@@ -1,9 +1,10 @@
 """Tests for PrecedentMapperService."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
-from app.core.analysis.precedent_mapper import PrecedentMapperService, PrecedentResult
+import pytest
+
+from app.core.analysis.precedent_mapper import PrecedentMapperService
 from app.core.search.hybrid import SearchResponse, SearchResultItem
 from app.core.search.query import QueryEntities, QueryUnderstanding, SearchFilters
 

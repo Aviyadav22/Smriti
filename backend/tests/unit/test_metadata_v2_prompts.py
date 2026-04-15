@@ -1,5 +1,6 @@
 """Tests for V2 metadata extraction prompts."""
 import pytest
+
 from app.core.legal.prompts import (
     METADATA_EXTRACTION_SYSTEM,
     METADATA_EXTRACTION_USER,

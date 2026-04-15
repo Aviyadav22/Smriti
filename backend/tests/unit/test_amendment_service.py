@@ -4,7 +4,6 @@ Verifies that the bidirectional old↔new statute section mapping works correctl
 for IPC↔BNS, CrPC↔BNSS, IEA↔BSA — critical for Indian legal research where
 lawyers search across pre- and post-July 2024 criminal law statutes.
 """
-import pytest
 
 from app.core.legal.amendment_service import (
     AmendmentEntry,
@@ -123,8 +122,8 @@ class TestBuildLookupFromConstants:
         old_to_new, new_to_old = build_lookup_from_constants()
 
         # Import the centralized lookups wired in GAP-1
-        from app.core.search.query import _CENTRALIZED_OLD_TO_NEW, _CENTRALIZED_NEW_TO_OLD
-        from app.core.agents.nodes.common import _AMENDMENT_OLD_TO_NEW, _AMENDMENT_NEW_TO_OLD
+        from app.core.agents.nodes.common import _AMENDMENT_NEW_TO_OLD, _AMENDMENT_OLD_TO_NEW
+        from app.core.search.query import _CENTRALIZED_NEW_TO_OLD, _CENTRALIZED_OLD_TO_NEW
 
         # All three should have the same data
         assert old_to_new == _CENTRALIZED_OLD_TO_NEW

@@ -10,21 +10,17 @@ Covers Bible Section 13 tests:
 """
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.core.agents.state import (
     ExtractedPassage,
     Footnote,
-    LegalQualityResult,
     RelevanceScore,
     ResearchState,
-    SynthesisDraft,
     WorkerResult,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -485,6 +481,7 @@ class TestDualStageVerification:
     async def test_verify_citations_uses_gather(self) -> None:
         """Citation verification must use asyncio.gather for parallelism."""
         import inspect
+
         from app.core.agents.nodes.research_nodes import _verify_citations_against_sources
 
         source = inspect.getsource(_verify_citations_against_sources)
@@ -1207,7 +1204,6 @@ class TestFootnoteEnrichedFields:
 
     def test_footnote_accepts_all_enriched_fields(self):
         """Footnote TypedDict accepts all enriched fields."""
-        from app.core.agents.state import Footnote
         fn: Footnote = {
             "number": 1,
             "citation": "(2023) 5 SCC 1",
@@ -1234,7 +1230,6 @@ class TestFootnoteEnrichedFields:
 
     def test_footnote_web_source(self):
         """Web source footnote has correct enriched defaults."""
-        from app.core.agents.state import Footnote
         fn: Footnote = {
             "number": 5,
             "citation": "Legal blog article",
@@ -1260,7 +1255,6 @@ class TestFootnoteEnrichedFields:
 
     def test_footnote_ik_source_no_pdf(self):
         """IK sources should have pdf_available=False (IK cases don't have our PDFs)."""
-        from app.core.agents.state import Footnote
         fn: Footnote = {
             "number": 3,
             "citation": "(2020) 10 SCC 1",

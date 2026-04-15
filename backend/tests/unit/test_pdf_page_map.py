@@ -1,5 +1,4 @@
 """Tests for PDF page mapping."""
-import pytest
 from app.core.ingestion.pdf import TextQuality, _build_page_map
 
 

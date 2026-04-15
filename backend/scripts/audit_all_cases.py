@@ -3,11 +3,11 @@ Comprehensive quality audit of ALL cases in the PostgreSQL database.
 Checks CRITICAL, HIGH, and MEDIUM issues for every case.
 """
 
-import psycopg2
 import re
-import json
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 from datetime import datetime
+
+import psycopg2
 
 DATABASE_URL = "postgresql://smriti:E9tGr2mSXTi1h36LwsmLKbRVooPmlZbYIY5FnYmuzWg=@76.13.185.172:5432/smriti"
 
@@ -168,13 +168,13 @@ def main():
 
     # First pass: collect all titles for cross-contamination
     for row in rows:
-        r = dict(zip(columns, row))
+        r = dict(zip(columns, row, strict=False))
         if r['title']:
             all_titles.append((r['id'], r['year'], r['title'][:80]))
 
     # Main audit loop
     for row in rows:
-        r = dict(zip(columns, row))
+        r = dict(zip(columns, row, strict=False))
         cid = r['id']
         issues = []
         year = r['year']
@@ -419,7 +419,7 @@ def main():
     garbage_acts_sorted = sorted(garbage_acts, key=lambda x: len(x[3]) if x[3] else 0, reverse=True)[:10]
     for i, (cid, yr, title, act_entry, reason) in enumerate(garbage_acts_sorted, 1):
         print(f"  {i}. [{yr}] {title}")
-        print(f"     Act entry: {repr(act_entry[:120])}")
+        print(f"     Act entry: {act_entry[:120]!r}")
         print(f"     Reason: {reason}")
         print()
 

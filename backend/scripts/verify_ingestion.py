@@ -10,16 +10,15 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import random
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.core.config import settings  # noqa: E402
-from app.core.dependencies import get_graph_store, get_vector_store  # noqa: E402
-from app.db.postgres import async_session_factory  # noqa: E402
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import text
+
+from app.core.dependencies import get_graph_store, get_vector_store
+from app.db.postgres import async_session_factory
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger("verify_ingestion")

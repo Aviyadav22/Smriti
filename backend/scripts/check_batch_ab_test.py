@@ -1,8 +1,6 @@
 """Poll batch A/B test job and compare results with online baseline."""
 import json
 import os
-import sys
-import time
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = (
     r"C:\Users\yadav\OneDrive - UPES\Desktop"

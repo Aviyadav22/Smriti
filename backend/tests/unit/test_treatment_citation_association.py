@@ -5,12 +5,12 @@ with specific cited cases when building the citation graph.
 """
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
-from app.core.ingestion.pipeline import _build_citation_graph
 from app.core.ingestion.metadata import CaseMetadata
+from app.core.ingestion.pipeline import _build_citation_graph
 from app.core.legal.treatment import CitationTreatment, detect_treatment_in_text
 
 

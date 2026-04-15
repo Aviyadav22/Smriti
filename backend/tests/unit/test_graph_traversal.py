@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.graph.traversal import (
-    MAX_NODES,
     _TREATMENT_TO_DISPLAY,
     get_authorities,
     get_citation_chain,
@@ -17,7 +16,6 @@ from app.core.graph.traversal import (
     get_shortest_path,
     get_treatment_summary,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -517,7 +515,6 @@ class TestGetDashboard:
 
     @pytest.mark.asyncio
     async def test_caches_result(self) -> None:
-        import json
 
         redis = AsyncMock()
         redis.get = AsyncMock(return_value=None)

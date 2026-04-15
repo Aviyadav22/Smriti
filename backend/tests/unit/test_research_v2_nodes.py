@@ -5,9 +5,8 @@ Covers Bible Section 13 tests 1-9 (Core), 10-13 (CRAG), 18-20 (MA-RAG CoT),
 """
 from __future__ import annotations
 
-import json
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -26,14 +25,11 @@ from app.core.agents.nodes.worker_nodes import (
     named_case_worker,
 )
 from app.core.agents.state import (
-    EvidenceGap,
-    ExtractedPassage,
     RelevanceScore,
     ResearchTask,
     StrategyAdjustment,
     WorkerResult,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

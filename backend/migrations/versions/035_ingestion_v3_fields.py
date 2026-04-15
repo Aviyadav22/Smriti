@@ -1,7 +1,7 @@
 """Ingestion V3: source_dataset, legal_propositions, statute_sections_interpreted, fact_pattern_summary, case_statute_interpretations table"""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "035"

@@ -6,7 +6,6 @@ import pytest
 
 from app.security.encryption import decrypt_field, encrypt_field
 
-
 # 32-byte key as 64-char hex string
 _TEST_KEY_HEX = "a" * 64  # 32 bytes of 0xaa
 

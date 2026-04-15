@@ -15,7 +15,6 @@ from app.core.agents.nodes.follow_up_nodes import (
     targeted_search_node,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -482,7 +481,7 @@ class TestSynthesizeFollowUpNode:
     async def test_streaming_with_callback(self) -> None:
         llm = AsyncMock()
 
-        async def fake_stream(**kwargs: object):  # noqa: ANN401
+        async def fake_stream(**kwargs: object):
             for chunk in ["The ", "dissenting ", "opinion ", "was..."]:
                 yield chunk
 
@@ -611,7 +610,7 @@ class TestSynthesizeFollowUpNode:
     async def test_streaming_error_propagates(self) -> None:
         llm = AsyncMock()
 
-        async def failing_stream(**kwargs: object):  # noqa: ANN401
+        async def failing_stream(**kwargs: object):
             yield "partial "
             raise RuntimeError("Stream interrupted")
 

@@ -14,43 +14,39 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
 import shutil
 import signal
 import sqlite3
-import threading
 import subprocess
 import sys
 import tarfile
-import tempfile
+import threading
 import time
 import urllib.request
 from pathlib import Path
 from typing import Any
 
-import pyarrow.parquet as pq
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 # Ensure the backend package is importable when running as a script.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import itertools  # noqa: E402
+import itertools
 
-from app.core.config import settings  # noqa: E402
-from app.core.dependencies import (  # noqa: E402
-    get_embedder,
+from sqlalchemy import text
+
+from app.core.config import settings
+from app.core.dependencies import (
     get_graph_store,
-    get_llm,
     get_storage,
     get_vector_store,
 )
-from app.core.ingestion.pipeline import ingest_judgment  # noqa: E402
-from app.core.ingestion.rate_limiter import RateLimiterPool  # noqa: E402
-from app.core.providers.embeddings.gemini import GeminiEmbedder  # noqa: E402
-from app.core.providers.llm.gemini import GeminiLLM  # noqa: E402
-from app.db.postgres import async_session_factory  # noqa: E402
-from sqlalchemy import text  # noqa: E402
+from app.core.ingestion.pipeline import ingest_judgment
+from app.core.ingestion.rate_limiter import RateLimiterPool
+from app.core.providers.embeddings.gemini import GeminiEmbedder
+from app.core.providers.llm.gemini import GeminiLLM
+from app.db.postgres import async_session_factory
 
 
 async def _disable_fts_trigger() -> None:
@@ -819,7 +815,7 @@ async def ingest_year(
             api_keys.pop(idx)
 
     # Round-robin iterator over (llm, embedder, key) triples
-    provider_cycle = itertools.cycle(zip(llm_pool, embedder_pool, api_keys))
+    provider_cycle = itertools.cycle(zip(llm_pool, embedder_pool, api_keys, strict=False))
 
     vector_store = get_vector_store()
     graph_store = get_graph_store()
@@ -929,7 +925,7 @@ async def ingest_year(
                     total_attempted / max(len(pdfs_to_process), 1) * 100,
                     rate, eta_str, stats["skipped"], stats["failed"],
                 )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Timeout after 900s for %s", doc_key)
             await asyncio.to_thread(tracker.mark_failed, doc_key, "timeout_900s", increment_retry=True)
             stats["failed"] += 1
@@ -1093,11 +1089,11 @@ async def main() -> None:
         print(f"Total documents: {stats['total']}")
         print(f"Completed:       {stats['completed']}")
         print(f"Failed:          {stats['failed']}")
-        print(f"\nStage completion:")
+        print("\nStage completion:")
         for stage, count in stats["stages"].items():
             pct = (count / stats["total"] * 100) if stats["total"] else 0
             print(f"  {stage:12s}: {count:5d} ({pct:.1f}%)")
-        print(f"\nQuality distribution:")
+        print("\nQuality distribution:")
         for tier, count in stats["quality"].items():
             pct = (count / stats["total"] * 100) if stats["total"] else 0
             print(f"  {tier:12s}: {count:5d} ({pct:.1f}%)")

@@ -6,8 +6,6 @@ include new-law equivalents (BNS, BNSS, BSA) and vice versa.
 
 from __future__ import annotations
 
-import pytest
-
 from app.core.search.query import expand_statute_references
 
 

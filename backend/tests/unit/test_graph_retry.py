@@ -1,7 +1,7 @@
 """Tests for the graph build retry queue module."""
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -11,7 +11,6 @@ from app.core.ingestion.graph_retry import (
     mark_retry_success,
     record_graph_failure,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

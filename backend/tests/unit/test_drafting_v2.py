@@ -84,6 +84,7 @@ class TestFilingPackage:
     @pytest.mark.asyncio
     async def test_filing_package_creates_zip(self) -> None:
         import zipfile
+
         from app.core.drafting.export import export_filing_package
         template = get_template("bail_application")
         content = "## FACTS\n\nTest content."
@@ -99,6 +100,7 @@ class TestFilingPackage:
     @pytest.mark.asyncio
     async def test_filing_package_includes_affidavit(self) -> None:
         import zipfile
+
         from app.core.drafting.export import export_filing_package
         template = get_template("bail_application")
         content = "## FACTS\n\nTest."
@@ -112,6 +114,7 @@ class TestFilingPackage:
     @pytest.mark.asyncio
     async def test_filing_package_includes_annexure_index(self) -> None:
         import zipfile
+
         from app.core.drafting.export import export_filing_package
         template = get_template("bail_application")
         content = "## FACTS\n\nTest."

@@ -10,15 +10,15 @@ Compares every table defined in models against the actual DB schema:
 - Indexes
 """
 
-import sys
 import os
+import sys
 
 # Add backend to path so we can import app modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sqlalchemy import create_engine, inspect, text
-from app.models import Base  # triggers all model imports
+from sqlalchemy import create_engine, inspect
 
+from app.models import Base  # triggers all model imports
 
 DB_URL = os.environ["DATABASE_URL"]
 
@@ -65,8 +65,8 @@ def normalize_type(sa_type_str: str) -> str:
 
 def get_sa_type_name(col) -> str:
     """Get a normalized type name from a SQLAlchemy column type."""
-    from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID as PG_UUID
-    from sqlalchemy import types as sa_types
+    from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
+    from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
     col_type = col.type
 
@@ -158,8 +158,16 @@ def get_db_type_name(db_type_obj) -> str:
     """Get a normalized type name from a DB column type object (from inspector)."""
     from sqlalchemy import types as sa_types
     from sqlalchemy.dialects.postgresql import (
-        ARRAY as PG_ARRAY, JSONB as PG_JSONB,
-        TSVECTOR as PG_TSVECTOR, UUID as PG_UUID,
+        ARRAY as PG_ARRAY,
+    )
+    from sqlalchemy.dialects.postgresql import (
+        JSONB as PG_JSONB,
+    )
+    from sqlalchemy.dialects.postgresql import (
+        TSVECTOR as PG_TSVECTOR,
+    )
+    from sqlalchemy.dialects.postgresql import (
+        UUID as PG_UUID,
     )
 
     # Check for TIMESTAMP with timezone attribute
@@ -264,7 +272,7 @@ def audit_table(inspector, table_name: str, model_table) -> list[str]:
     db_fks = inspector.get_foreign_keys(table_name)
     db_fk_set = set()
     for fk in db_fks:
-        for cc, rc in zip(fk["constrained_columns"], fk["referred_columns"]):
+        for cc, rc in zip(fk["constrained_columns"], fk["referred_columns"], strict=False):
             db_fk_set.add((cc, fk["referred_table"], rc))
 
     model_fk_set = set()

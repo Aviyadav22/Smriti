@@ -3,8 +3,8 @@
 Revision ID: 037
 Revises: 036
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
 revision = "037"

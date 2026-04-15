@@ -9,7 +9,6 @@ import os
 from collections.abc import AsyncIterator
 
 import httpx
-
 from google import genai
 from google.api_core.exceptions import GoogleAPIError
 from google.genai import types

@@ -1,7 +1,7 @@
 """Agent conversation history: agent_sessions, agent_messages, search_history tables."""
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 revision = "036"

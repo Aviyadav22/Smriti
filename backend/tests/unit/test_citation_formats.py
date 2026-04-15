@@ -10,7 +10,6 @@ Covers the 5 key citation formats used in Indian legal practice:
 These formats are critical for citation verification and search — lawyers
 cite cases in these formats in court filings and research memos.
 """
-import pytest
 
 from app.core.legal.extractor import extract_citations, normalize_citation
 

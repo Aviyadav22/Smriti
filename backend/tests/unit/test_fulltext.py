@@ -1,6 +1,5 @@
 """Unit tests for PostgreSQL FTS filter construction."""
 
-import pytest
 
 from app.core.search.fulltext import _build_filter_clauses
 from app.core.search.query import SearchFilters

@@ -1,6 +1,5 @@
 """Tests for PDF boundary stripping."""
 
-import pytest
 
 from app.core.ingestion.pdf import _strip_leading_judgment_bleed
 

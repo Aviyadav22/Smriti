@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,7 +15,6 @@ from app.api.routes.agents import router
 from app.db.postgres import get_db
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -32,8 +31,8 @@ def _token(user_id: str = _USER_A_ID, role: str = "researcher") -> TokenPayload:
     return TokenPayload(
         sub=user_id,
         role=role,
-        exp=datetime(2099, 1, 1, tzinfo=timezone.utc),
-        iat=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        exp=datetime(2099, 1, 1, tzinfo=UTC),
+        iat=datetime(2024, 1, 1, tzinfo=UTC),
         jti=f"jti-{user_id[:8]}",
     )
 
@@ -497,7 +496,7 @@ class TestListSessions:
         mock_db: AsyncMock,
     ) -> None:
         """Listing sessions returns paginated results."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         session_rows = [
             {
                 "id": _SESSION_ID,
@@ -571,7 +570,7 @@ class TestGetSession:
         mock_db: AsyncMock,
     ) -> None:
         """Returns session detail with executions list."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         sess = {
             "id": _SESSION_ID,
             "user_id": uuid.UUID(_USER_A_ID),
@@ -641,7 +640,7 @@ class TestGetSessionMessages:
         mock_db: AsyncMock,
     ) -> None:
         """Returns decrypted message history."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         sess = {"user_id": uuid.UUID(_USER_A_ID)}
         msg_rows = [
             {
@@ -760,8 +759,8 @@ class TestIDOR:
             "user_id": uuid.UUID(_USER_A_ID),  # Owned by User A
             "agent_type": "research",
             "title": "Test",
-            "created_at": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
         }
 
         mock_db.execute = AsyncMock(return_value=_mock_mapping_result(single=sess))

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,7 +14,6 @@ from app.api.routes.search import router
 from app.db.postgres import get_db
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -27,16 +26,16 @@ _HISTORY_ID = str(uuid.uuid4())
 _TOKEN_A = TokenPayload(
     sub=_USER_A_ID,
     role="researcher",
-    exp=datetime(2099, 1, 1, tzinfo=timezone.utc),
-    iat=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    exp=datetime(2099, 1, 1, tzinfo=UTC),
+    iat=datetime(2024, 1, 1, tzinfo=UTC),
     jti="jti-user-a",
 )
 
 _TOKEN_B = TokenPayload(
     sub=_USER_B_ID,
     role="researcher",
-    exp=datetime(2099, 1, 1, tzinfo=timezone.utc),
-    iat=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    exp=datetime(2099, 1, 1, tzinfo=UTC),
+    iat=datetime(2024, 1, 1, tzinfo=UTC),
     jti="jti-user-b",
 )
 

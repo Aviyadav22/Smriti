@@ -1,15 +1,13 @@
 """Tests for citation treatment detection and overruled case support."""
-import pytest
 
-from app.core.legal.treatment import (
-    CitationTreatment,
-    TreatmentResult,
-    detect_treatment_in_text,
-    has_overruling_language,
-)
 from app.core.legal.precedent_strength import (
     PrecedentStrength,
     classify_precedent_strength,
+)
+from app.core.legal.treatment import (
+    CitationTreatment,
+    detect_treatment_in_text,
+    has_overruling_language,
 )
 
 

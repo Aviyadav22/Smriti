@@ -4,6 +4,7 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -50,7 +51,7 @@ async def _run_migrations() -> None:
 
 async def _cleanup_expired_uploads() -> None:
     """Delete user-uploaded PDF files older than retention period (DPDP compliance)."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from sqlalchemy import text as sa_text
 
@@ -58,7 +59,7 @@ async def _cleanup_expired_uploads() -> None:
     from app.db.postgres import get_async_session
 
     retention = settings.user_upload_retention_days
-    cutoff = datetime.now(timezone.utc) - timedelta(days=retention)
+    cutoff = datetime.now(UTC) - timedelta(days=retention)
 
     try:
         async with get_async_session() as db:
@@ -270,8 +271,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Mark stale "running" agent executions as failed (e.g., from a server restart)
     try:
-        from app.db.postgres import async_session_factory
         from sqlalchemy import text as _text
+
+        from app.db.postgres import async_session_factory
 
         async with async_session_factory() as _db:
             result = await _db.execute(
@@ -300,14 +302,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         await asyncio.wait_for(engine.dispose(), timeout=10)
         logger.info("SQLAlchemy engine disposed")
-    except (asyncio.TimeoutError, Exception) as exc:
+    except (TimeoutError, Exception) as exc:
         logger.warning("SQLAlchemy engine disposal timeout or error: %s", exc)
 
     from app.db.redis_client import close_redis
 
     try:
         await asyncio.wait_for(close_redis(), timeout=10)
-    except (asyncio.TimeoutError, Exception) as exc:
+    except (TimeoutError, Exception) as exc:
         logger.warning("Redis shutdown timeout or error: %s", exc)
 
     # Close cached provider connections (graph store, reranker, etc.)
@@ -315,7 +317,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     try:
         await asyncio.wait_for(cleanup_providers(), timeout=10)
-    except (asyncio.TimeoutError, Exception) as exc:
+    except (TimeoutError, Exception) as exc:
         logger.warning("Provider cleanup timeout or error: %s", exc)
 
 
@@ -410,8 +412,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
-from app.api.routes.admin_corrections import router as admin_corrections_router
 from app.api.routes.admin_audit import router as admin_audit_router
+from app.api.routes.admin_corrections import router as admin_corrections_router
 from app.api.routes.admin_review import router as admin_review_router
 from app.api.routes.admin_users import router as admin_users_router
 from app.api.routes.agents import router as agents_router
@@ -419,16 +421,16 @@ from app.api.routes.audio import router as audio_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.cases import router as cases_router
 from app.api.routes.chat import router as chat_router
+from app.api.routes.counsel import router as counsel_router
 from app.api.routes.data_quality import router as data_quality_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.dpdp import router as dpdp_router
 from app.api.routes.graph import router as graph_router
 from app.api.routes.health import router as health_router
 from app.api.routes.ingest import router as ingest_router
-from app.api.routes.counsel import router as counsel_router
 from app.api.routes.judges import router as judges_router
-from app.api.routes.search import router as search_router
 from app.api.routes.preferences import router as preferences_router
+from app.api.routes.search import router as search_router
 from app.api.routes.sharing import router as sharing_router
 from app.api.routes.users import router as users_router
 

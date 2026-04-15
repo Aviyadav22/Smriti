@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.core.ingestion.pdf import _extract_pdf_text_sync
 
 

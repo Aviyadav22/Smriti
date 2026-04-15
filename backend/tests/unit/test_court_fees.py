@@ -1,7 +1,6 @@
 """Tests for court fee estimator."""
-import pytest
 
-from app.core.legal.court_fees import CourtFeeResult, estimate_court_fee
+from app.core.legal.court_fees import estimate_court_fee
 
 
 class TestEstimateCourtFee:

@@ -28,7 +28,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.legal.extractor import normalize_acts_cited_list
 from app.core.legal.statute_enrichment import enrich_statute_cross_references
@@ -64,8 +63,9 @@ async def sync_pinecone_metadata(
     stats = {"vectors_updated": 0, "vectors_failed": 0, "cases_synced": 0}
 
     try:
-        from app.core.config import settings
         from pinecone import Pinecone
+
+        from app.core.config import settings
 
         if not settings.pinecone_api_key or not settings.pinecone_api_key.strip():
             logger.error("PINECONE_API_KEY not set — cannot sync Pinecone metadata")

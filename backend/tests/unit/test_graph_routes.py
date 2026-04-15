@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 
 from app.api.routes.graph import router
 
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------

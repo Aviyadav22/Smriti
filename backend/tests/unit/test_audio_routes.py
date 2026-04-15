@@ -1,7 +1,6 @@
 """Tests for audio digest API routes."""
 
 import asyncio
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 

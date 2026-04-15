@@ -11,8 +11,8 @@ import pytest
 
 from app.core.analytics.judge_analytics import (
     CourtStats,
-    JudgeCaseItem,
     JudgeAnalyticsService,
+    JudgeCaseItem,
     JudgeListItem,
     JudgeProfile,
     PaginatedResult,

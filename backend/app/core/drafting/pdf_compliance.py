@@ -32,7 +32,7 @@ class FilingValidationResult:
 
 def validate_filing_pdf(
     pdf_bytes: bytes,
-    court_profile: "CourtProfile",
+    court_profile: CourtProfile,
 ) -> FilingValidationResult:
     """Validate a PDF against court-specific e-filing requirements.
 
@@ -160,7 +160,7 @@ def convert_to_pdf_a(pdf_bytes: bytes) -> bytes:
 
 
 def generate_filing_checklist(
-    court_profile: "CourtProfile",
+    court_profile: CourtProfile,
     doc_type: str,
     has_affidavit: bool,
 ) -> list[dict]:

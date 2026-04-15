@@ -1,7 +1,8 @@
 """Tests for graph-based treatment detection in RAG pipeline."""
 
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 
 class TestCheckTreatmentFromGraph:

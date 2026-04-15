@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import pytest
 import jwt as pyjwt
+import pytest
 
+from app.core.config import settings
 from app.security.auth import (
+    _ALGORITHM,
     create_access_token,
     create_refresh_token,
     verify_access_token,
-    verify_refresh_token,
-    _ALGORITHM,
 )
-from app.core.config import settings
 
 
 @pytest.mark.security

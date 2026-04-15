@@ -1,8 +1,6 @@
 """Tests for the canonical legal taxonomy module."""
 from __future__ import annotations
 
-import pytest
-
 from app.core.legal.taxonomy import (
     LEGAL_TAXONOMY,
     NORMALIZATION_MAP,

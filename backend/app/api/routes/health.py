@@ -26,7 +26,7 @@ async def _timed_check(name: str, coro) -> dict[str, object]:
     """Run a health check with a timeout guard."""
     try:
         return await asyncio.wait_for(coro, timeout=_CHECK_TIMEOUT)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("%s health check timed out after %.0fs", name, _CHECK_TIMEOUT)
         return {"status": "unhealthy", "response_ms": _CHECK_TIMEOUT * 1000, "error": "timeout"}
 

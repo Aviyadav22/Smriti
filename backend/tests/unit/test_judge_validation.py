@@ -1,10 +1,9 @@
 """Tests for judge name validation against judgment text and tenure."""
 
-import pytest
 
 from app.core.ingestion.metadata import (
-    _validate_judges_against_text,
     _validate_judge_tenure,
+    _validate_judges_against_text,
 )
 
 

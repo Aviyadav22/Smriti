@@ -2,8 +2,8 @@
 
 from unittest.mock import patch
 
-from app.tasks.audio_tasks import _get_tts_provider
 from app.core.providers.tts.mock_tts import MockTTS
+from app.tasks.audio_tasks import _get_tts_provider
 
 
 class TestGetTTSProvider:

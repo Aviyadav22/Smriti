@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
 import os
 import re
@@ -39,11 +38,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import asyncpg
-from sqlalchemy import text
 
+from app.core.config import settings
 from app.core.legal.extractor import normalize_acts_cited_list
 from app.core.legal.statute_enrichment import enrich_statute_cross_references
-from app.core.config import settings
 
 logging.basicConfig(
     level=logging.INFO,

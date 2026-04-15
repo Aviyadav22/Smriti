@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -12,10 +12,9 @@ from fastapi.testclient import TestClient
 
 from app.api.routes.agents import router
 from app.db.postgres import get_db
-from app.models.agent_execution import AgentExecution, AgentStatus, AgentType
+from app.models.agent_execution import AgentExecution, AgentStatus
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -26,7 +25,7 @@ _OTHER_USER_ID = str(uuid.uuid4())
 
 
 def _make_token(user_id: str = _TEST_USER_ID) -> TokenPayload:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return TokenPayload(
         sub=user_id,
         role="user",
@@ -54,8 +53,8 @@ def _make_execution(
     exec_obj.steps_completed = 0
     exec_obj.total_steps = None
     exec_obj.error_message = None
-    exec_obj.created_at = datetime.now(timezone.utc)
-    exec_obj.updated_at = datetime.now(timezone.utc)
+    exec_obj.created_at = datetime.now(UTC)
+    exec_obj.updated_at = datetime.now(UTC)
     exec_obj.completed_at = None
     return exec_obj
 

@@ -36,13 +36,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import hashlib
 import json
 import logging
 import sys
 import tempfile
 import time
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from google import genai
 from google.genai import types as genai_types
@@ -134,6 +133,7 @@ def _build_batch_request_entry(doc_key: str, file_uri: str) -> dict:
 async def _load_existing_text_hashes() -> set[str]:
     """Batch-fetch all existing text hashes from PG into a set for O(1) dedup."""
     from sqlalchemy import text
+
     from app.db.postgres import async_session_factory
 
     async with async_session_factory() as db:
@@ -456,13 +456,14 @@ async def process_completed(
 ) -> None:
     """Phase 3: Feed cached batch results into existing pipeline."""
     import itertools
-    from app.db.postgres import async_session_factory
+
     from app.core.ingestion.pipeline import ingest_judgment
     from app.core.ingestion.rate_limiter import RateLimiterPool
     from app.core.providers.embeddings.gemini import GeminiEmbedder
-    from app.core.providers.vector.pinecone_store import PineconeStore
     from app.core.providers.graph.neo4j_store import Neo4jStore
     from app.core.providers.storage.local_store import LocalFileStorage
+    from app.core.providers.vector.pinecone_store import PineconeStore
+    from app.db.postgres import async_session_factory
     from scripts.batch_llm import BatchCachedLLM
     from scripts.ingest_s3 import IngestTracker
 

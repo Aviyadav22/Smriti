@@ -187,7 +187,7 @@ class Neo4jGraph:
                     return [dict(record) async for record in result]
 
             return await asyncio.wait_for(_run(), timeout=_QUERY_TIMEOUT_SECONDS)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Neo4j query timed out after %ds (cypher: %.200s)", _QUERY_TIMEOUT_SECONDS, cypher)
             raise RuntimeError(f"Neo4j query timed out after {_QUERY_TIMEOUT_SECONDS}s")
         except Neo4jError as exc:
@@ -260,7 +260,7 @@ class Neo4jGraph:
                     return {"center": node_id, "neighbors": nodes}
 
             return await asyncio.wait_for(_run(), timeout=_QUERY_TIMEOUT_SECONDS)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Neo4j get_neighbors timed out after %ds (id=%s)", _QUERY_TIMEOUT_SECONDS, node_id)
             raise RuntimeError(f"Neo4j get_neighbors timed out after {_QUERY_TIMEOUT_SECONDS}s")
         except Neo4jError as exc:

@@ -4,6 +4,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from langgraph.graph import END
 
 from app.core.agents.research import (
     build_research_graph,
@@ -12,8 +13,6 @@ from app.core.agents.research import (
     route_after_plan,
 )
 from app.core.agents.state import ResearchState
-from langgraph.graph import END
-
 
 # ---------------------------------------------------------------------------
 # Helpers

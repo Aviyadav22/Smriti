@@ -18,7 +18,6 @@ from app.core.ingestion.metadata import (
     validate_with_regex,
 )
 
-
 _FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 
 
@@ -38,7 +37,7 @@ class TestGoldStandardFixture:
         required = {"title", "citation", "court", "year", "judge", "disposal_nature"}
         for case in _load_gold_standard():
             for field in required:
-                assert field in case and case[field], (
+                assert case.get(field), (
                     f"Gold case {case['id']} missing {field}"
                 )
 

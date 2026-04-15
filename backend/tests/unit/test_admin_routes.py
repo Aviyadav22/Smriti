@@ -4,20 +4,19 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.routes.admin_review import router as review_router
 from app.api.routes.admin_corrections import router as corrections_router
+from app.api.routes.admin_review import router as review_router
 from app.api.routes.data_quality import router as quality_router
 from app.db.postgres import get_db
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -26,8 +25,8 @@ from app.security.rbac import get_current_user
 _ADMIN_PAYLOAD = TokenPayload(
     sub="admin-user-id",
     role="admin",
-    exp=datetime(2099, 1, 1, tzinfo=timezone.utc),
-    iat=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    exp=datetime(2099, 1, 1, tzinfo=UTC),
+    iat=datetime(2024, 1, 1, tzinfo=UTC),
     jti=str(uuid.uuid4()),
 )
 
@@ -80,7 +79,7 @@ class TestAdminReviewRoutes:
             "ingestion_status": "needs_review",
             "extraction_confidence": 0.35,
             "metadata_provenance": {"title": "llm"},
-            "created_at": datetime(2023, 6, 1, tzinfo=timezone.utc),
+            "created_at": datetime(2023, 6, 1, tzinfo=UTC),
         }
         db = _mock_db_for_mappings([row])
         client = self._make_client(db)
@@ -227,7 +226,7 @@ class TestAdminCorrectionRoutes:
                     "reason": "Fix",
                     "corrected_by": "admin-user-id",
                 }),
-                "created_at": datetime(2024, 1, 1, tzinfo=timezone.utc),
+                "created_at": datetime(2024, 1, 1, tzinfo=UTC),
             },
         ]
         mock_result.mappings.return_value = mock_mappings
@@ -403,7 +402,8 @@ class TestBenchmarkExtraction:
         assert fn == 1  # 34 IPC is false negative
 
     def test_evaluate_case_tracks_metrics(self):
-        from benchmark_extraction import evaluate_case, BenchmarkResults
+        from benchmark_extraction import BenchmarkResults, evaluate_case
+
         from app.core.ingestion.metadata import CaseMetadata
 
         results = BenchmarkResults()

@@ -14,7 +14,6 @@ import pytest
 from app.core.search.fulltext import FTSResult
 from app.core.search.hybrid import SearchResultItem, _build_snippets_map
 
-
 # ---------------------------------------------------------------------------
 # SearchResultItem dataclass
 # ---------------------------------------------------------------------------
@@ -129,7 +128,6 @@ class TestBuildSourcesChunkTextPreference:
 
     def test_chunk_text_preferred_over_snippet(self) -> None:
         """When SearchResultItem has both chunk_text and snippet, chunk_text wins."""
-        from app.core.chat.rag import ChatSource
 
         # Simulate what _build_sources does: chunk_text || snippet || description
         sr = SearchResultItem(

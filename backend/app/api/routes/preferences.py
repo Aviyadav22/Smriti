@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -90,7 +90,7 @@ async def _compute_preferences(db: AsyncSession, user_id: str) -> dict:
         "common_case_types": top_n(case_types),
         "preferred_courts": top_n(courts),
         "frequent_acts": top_n(acts, 10),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
 
 

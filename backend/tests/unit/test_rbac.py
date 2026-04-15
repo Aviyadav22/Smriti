@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -15,8 +15,8 @@ def _make_payload(role: str, sub: str = "u1", jti: str = "j1") -> TokenPayload:
     return TokenPayload(
         sub=sub,
         role=role,
-        exp=datetime.fromtimestamp(9999999999, tz=timezone.utc),
-        iat=datetime.fromtimestamp(1000000000, tz=timezone.utc),
+        exp=datetime.fromtimestamp(9999999999, tz=UTC),
+        iat=datetime.fromtimestamp(1000000000, tz=UTC),
         jti=jti,
     )
 

@@ -47,18 +47,18 @@ marked currency. We want to move the High Court for bail.\
 
 
 async def main() -> None:
-    from app.core.config import settings
-    from app.core.providers.llm.gemini import GeminiLLM
-    from app.core.providers.embeddings.gemini import GeminiEmbedder
-    from app.core.providers.vector.pinecone_store import PineconeStore
-    from app.core.providers.rerankers.cohere_reranker import CohereReranker
-    from app.core.providers.graph.neo4j_store import Neo4jGraph
     from app.core.agents.strategy import build_strategy_graph
+    from app.core.config import settings
+    from app.core.providers.embeddings.gemini import GeminiEmbedder
+    from app.core.providers.graph.neo4j_store import Neo4jGraph
+    from app.core.providers.llm.gemini import GeminiLLM
+    from app.core.providers.rerankers.cohere_reranker import CohereReranker
+    from app.core.providers.vector.pinecone_store import PineconeStore
 
     print("=" * 80)
     print("ARGUMENT BUILDER AGENT — QUALITY TEST")
     print("=" * 80)
-    print(f"\nCase: Anti-corruption bail application")
+    print("\nCase: Anti-corruption bail application")
     print(f"Relief sought: {TEST_CASE['desired_relief']}")
     print()
 
@@ -151,7 +151,7 @@ async def main() -> None:
 
     # Fact Analysis
     fa = final_state.get("fact_analysis", {})
-    print(f"\n### Fact Analysis")
+    print("\n### Fact Analysis")
     print(f"  Parties: {fa.get('parties', {}).get('petitioner', {}).get('name', 'N/A')} v. State")
     print(f"  Causes of action: {len(fa.get('causes_of_action', []))}")
     for coa in fa.get("causes_of_action", []):
@@ -167,7 +167,7 @@ async def main() -> None:
     # Search Results
     sr = final_state.get("search_results", [])
     pm = final_state.get("precedent_map", [])
-    print(f"\n### Search & Precedents")
+    print("\n### Search & Precedents")
     print(f"  Search results: {len(sr)}")
     print(f"  Precedent map: {len(pm)}")
     for p in pm[:5]:
@@ -176,7 +176,7 @@ async def main() -> None:
 
     # Strength Assessment
     sa = final_state.get("strength_assessment", {})
-    print(f"\n### Strength Assessment")
+    print("\n### Strength Assessment")
     print(f"  Level: {sa.get('level', 'N/A')}")
     print(f"  Score: {sa.get('score', 'N/A')}")
     print(f"  Key strengths: {sa.get('key_strengths', [])}")
@@ -234,7 +234,7 @@ async def main() -> None:
     print("-" * 80)
 
     # Quality Metrics
-    print(f"\n### Quality Metrics")
+    print("\n### Quality Metrics")
     print(f"  Total execution time: {elapsed_total:.1f}s")
     print(f"  Nodes completed: {len(node_times)}")
     print(f"  Fact analysis fields: {len(fa)}")
@@ -259,9 +259,9 @@ async def main() -> None:
 
     # Verification warnings
     if "Verification Warnings" in memo:
-        print(f"  Verification warnings: PRESENT")
+        print("  Verification warnings: PRESENT")
     else:
-        print(f"  Verification warnings: none")
+        print("  Verification warnings: none")
 
     # Save full output
     output_path = Path(__file__).parent.parent / "trial_reports" / "strategy_agent_test.json"

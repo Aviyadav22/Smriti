@@ -10,7 +10,6 @@ Covers Bible Section 13 tests:
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from pathlib import Path
@@ -29,7 +28,6 @@ from app.core.agents.research_cache import (
     get_cached_ik_fragment,
     get_cached_ik_search,
     get_cached_memo,
-    get_memo_cache_hash,
     normalize_cache_key,
     set_cached_community,
     set_cached_embedding,
@@ -37,7 +35,6 @@ from app.core.agents.research_cache import (
     set_cached_ik_search,
     set_cached_memo,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -508,7 +505,7 @@ class TestS11SemanticCacheHit:
     @pytest.mark.asyncio
     async def test_semantic_cache_put_stores_embedding(self):
         """[S11] put() stores query embedding in Redis hash."""
-        from app.core.search.semantic_cache import SemanticCache, SEMANTIC_CACHE_PREFIX
+        from app.core.search.semantic_cache import SEMANTIC_CACHE_PREFIX, SemanticCache
 
         redis = AsyncMock()
         # FT.INFO succeeds → index exists
@@ -627,7 +624,7 @@ class TestS11IndexCreation:
     @pytest.mark.asyncio
     async def test_creates_index_on_first_use(self):
         """[S11] Index is created via FT.CREATE on first get/put call."""
-        from app.core.search.semantic_cache import SemanticCache, SEMANTIC_CACHE_INDEX
+        from app.core.search.semantic_cache import SEMANTIC_CACHE_INDEX, SemanticCache
 
         redis = AsyncMock()
         # FT.INFO fails (no index), FT.CREATE succeeds, FT.SEARCH returns 0
@@ -846,8 +843,12 @@ class TestConfidenceFormula5E4:
     def test_weights_sum_to_one(self):
         """[5E.4] All component weights sum to 1.0."""
         from app.core.agents.confidence import (
-            _W_RELEVANCE, _W_COVERAGE, _W_AUTHORITY,
-            _W_CONTRADICTION, _W_SOURCE_DIVERSITY, _W_GAP_COVERAGE,
+            _W_AUTHORITY,
+            _W_CONTRADICTION,
+            _W_COVERAGE,
+            _W_GAP_COVERAGE,
+            _W_RELEVANCE,
+            _W_SOURCE_DIVERSITY,
             _W_SYNTHESIS_QUALITY,
         )
         total = _W_RELEVANCE + _W_COVERAGE + _W_AUTHORITY + _W_CONTRADICTION + _W_SOURCE_DIVERSITY + _W_GAP_COVERAGE + _W_SYNTHESIS_QUALITY
@@ -865,8 +866,8 @@ class TestIKCircuitBreaker:
     def test_circuit_breaker_constants(self):
         """[5E.5] Circuit breaker constants are defined."""
         from app.core.providers.external.indiankanoon import (
-            _CIRCUIT_BREAKER_THRESHOLD,
             _CIRCUIT_BREAKER_COOLDOWN,
+            _CIRCUIT_BREAKER_THRESHOLD,
         )
         assert _CIRCUIT_BREAKER_THRESHOLD == 3
         assert _CIRCUIT_BREAKER_COOLDOWN == 60
@@ -874,9 +875,9 @@ class TestIKCircuitBreaker:
     def test_circuit_breaker_trips_on_429s(self):
         """[5E.5] Circuit breaker trips after consecutive 429s."""
         from app.core.providers.external.indiankanoon import (
-            IndianKanoonClient,
-            IKCircuitBreakerOpen,
             _CIRCUIT_BREAKER_THRESHOLD,
+            IKCircuitBreakerOpen,
+            IndianKanoonClient,
         )
 
         client = IndianKanoonClient.__new__(IndianKanoonClient)
@@ -889,8 +890,8 @@ class TestIKCircuitBreaker:
     def test_circuit_breaker_resets_after_cooldown(self):
         """[5E.5] Circuit breaker resets after cooldown expires."""
         from app.core.providers.external.indiankanoon import (
-            IndianKanoonClient,
             _CIRCUIT_BREAKER_THRESHOLD,
+            IndianKanoonClient,
         )
 
         client = IndianKanoonClient.__new__(IndianKanoonClient)

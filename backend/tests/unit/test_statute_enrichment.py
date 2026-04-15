@@ -4,7 +4,6 @@ Now tests act-level short-code enrichment (post-normalization),
 including the BNS/BNSS/BSA temporal guard for pre-2024 cases.
 """
 
-import pytest
 
 from app.core.legal.statute_enrichment import enrich_statute_cross_references
 

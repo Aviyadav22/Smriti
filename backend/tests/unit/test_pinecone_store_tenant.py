@@ -4,8 +4,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.core.interfaces.vector_store import SearchResult
-
 
 class TestPineconeUserScope:
     """Verify user_scope injects user_id into Pinecone filters."""

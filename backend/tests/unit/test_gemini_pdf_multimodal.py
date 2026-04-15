@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.ingestion.metadata import CaseMetadata, extract_metadata_llm
+from app.core.ingestion.metadata import extract_metadata_llm
 
 
 class TestGenerateStructuredFromPdf:

@@ -25,7 +25,6 @@ from app.core.ingestion.pipeline import (
     ingest_judgment,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -33,7 +32,7 @@ from app.core.ingestion.pipeline import (
 _LONG_TEXT = "A" * 200  # text > 100 chars to pass extraction threshold
 
 
-def _make_case_metadata(**overrides) -> CaseMetadata:  # noqa: ANN003
+def _make_case_metadata(**overrides) -> CaseMetadata:
     defaults = {
         "title": "State v. Kumar",
         "citation": "(2023) 5 SCC 123",

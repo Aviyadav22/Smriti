@@ -1,6 +1,7 @@
 """Tests for citation equivalence search integration."""
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from app.core.search.hybrid import _exact_citation_search
 

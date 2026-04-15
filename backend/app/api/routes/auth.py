@@ -3,7 +3,7 @@
 import logging
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -218,7 +218,7 @@ async def login(
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     # Check account lock
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if user["locked_until"] and user["locked_until"] > now:
         remaining = (user["locked_until"] - now).seconds // 60 + 1
         raise HTTPException(
@@ -234,7 +234,7 @@ async def login(
         new_count = (user["failed_login_count"] or 0) + 1
         lock_until = None
         if new_count >= 10:
-            lock_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+            lock_until = datetime.now(UTC) + timedelta(minutes=5)
         await db.execute(
             text(
                 "UPDATE users SET failed_login_count = :count, locked_until = :lock "
@@ -265,7 +265,7 @@ async def login(
             "UPDATE users SET failed_login_count = 0, locked_until = NULL, "
             "last_login_at = :now WHERE id = :id"
         ),
-        {"now": datetime.now(timezone.utc), "id": str(user["id"])},
+        {"now": datetime.now(UTC), "id": str(user["id"])},
     )
     await db.commit()
 
@@ -512,7 +512,7 @@ async def delete_account(
 
     # Best-effort cleanup of external stores (Pinecone vectors, Neo4j nodes, Redis cache)
     try:
-        from app.core.dependencies import get_vector_store, get_graph_store
+        from app.core.dependencies import get_graph_store, get_vector_store
         vector_store = get_vector_store()
         if vector_store and hasattr(vector_store, "delete_by_metadata"):
             await vector_store.delete_by_metadata({"user_id": uid})

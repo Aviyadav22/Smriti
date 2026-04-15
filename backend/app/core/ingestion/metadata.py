@@ -1632,10 +1632,7 @@ def merge_metadata(
             _needs_review = True
     elif llm_judges and parquet_judges:
         # No full_text for validation — fall back to count-based logic
-        if len(llm_judges) > len(parquet_judges):
-            result.judge = llm_judges
-            provenance["judge"] = "llm_unvalidated"
-        elif llm_coram and isinstance(llm_coram, int) and llm_coram > len(parquet_judges):
+        if len(llm_judges) > len(parquet_judges) or (llm_coram and isinstance(llm_coram, int) and llm_coram > len(parquet_judges)):
             result.judge = llm_judges
             provenance["judge"] = "llm_unvalidated"
         else:

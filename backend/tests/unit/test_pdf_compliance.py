@@ -1,15 +1,12 @@
 """Tests for filing-ready PDF compliance."""
 from __future__ import annotations
 
-import pytest
-
 from app.core.drafting.court_profiles import COURT_PROFILES
 from app.core.drafting.pdf_compliance import (
     FilingValidationResult,
     generate_filing_checklist,
     validate_filing_pdf,
 )
-
 
 # Minimal valid PDF bytes for testing
 _MINIMAL_PDF = (

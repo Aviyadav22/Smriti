@@ -1,7 +1,8 @@
 """Test that bulk_upsert_cases executes in batches, not row-by-row."""
 
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 
 class TestBulkUpsertBatching:

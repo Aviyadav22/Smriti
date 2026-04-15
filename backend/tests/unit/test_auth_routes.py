@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,7 +19,6 @@ from app.security.exceptions import (
     RateLimitExceededError,
 )
 from app.security.rbac import get_current_user
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -66,14 +65,14 @@ def app() -> FastAPI:
 
     # Register the same exception handlers as the main app
     @test_app.exception_handler(AuthenticationError)
-    async def _auth_err(request, exc: AuthenticationError) -> JSONResponse:  # noqa: ANN001
+    async def _auth_err(request, exc: AuthenticationError) -> JSONResponse:
         return JSONResponse(
             status_code=401,
             content={"error": exc.detail, "code": "UNAUTHORIZED"},
         )
 
     @test_app.exception_handler(RateLimitExceededError)
-    async def _rate_err(request, exc: RateLimitExceededError) -> JSONResponse:  # noqa: ANN001
+    async def _rate_err(request, exc: RateLimitExceededError) -> JSONResponse:
         return JSONResponse(
             status_code=429,
             content={"error": exc.detail, "code": "RATE_LIMITED"},
@@ -392,8 +391,8 @@ class TestRefresh:
         mock_verify_refresh.return_value = TokenPayload(
             sub=_USER_ID,
             role="refresh",
-            exp=datetime.now(timezone.utc),
-            iat=datetime.now(timezone.utc),
+            exp=datetime.now(UTC),
+            iat=datetime.now(UTC),
             jti="some-jti",
         )
 
@@ -454,8 +453,8 @@ class TestLogout:
         token_payload = TokenPayload(
             sub=_USER_ID,
             role="researcher",
-            exp=datetime.now(timezone.utc),
-            iat=datetime.now(timezone.utc),
+            exp=datetime.now(UTC),
+            iat=datetime.now(UTC),
             jti="test-jti-123",
         )
 
@@ -564,7 +563,7 @@ class TestAccountLock:
 
         from datetime import timedelta
 
-        future = datetime.now(timezone.utc) + timedelta(minutes=15)
+        future = datetime.now(UTC) + timedelta(minutes=15)
 
         select_result = MagicMock()
         select_result.mappings.return_value.one_or_none.return_value = _user_row(
@@ -629,8 +628,8 @@ class TestInactiveUser:
         mock_verify_refresh.return_value = TokenPayload(
             sub=_USER_ID,
             role="refresh",
-            exp=datetime.now(timezone.utc),
-            iat=datetime.now(timezone.utc),
+            exp=datetime.now(UTC),
+            iat=datetime.now(UTC),
             jti="some-jti",
         )
 

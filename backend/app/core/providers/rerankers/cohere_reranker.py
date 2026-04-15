@@ -16,7 +16,6 @@ from tenacity import (
 
 from app.core.config import settings
 from app.core.interfaces.reranker import RerankResult
-from app.core.providers.circuit_breaker import CircuitBreakerOpen
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +104,7 @@ class CohereReranker:
                 )
                 for r in response.results
             ]
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Cohere rerank timed out after %ds, returning original order", _RERANK_TIMEOUT)
             # Return original order as fallback
             return [

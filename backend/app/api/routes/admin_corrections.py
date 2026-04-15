@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid as _uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -168,7 +168,7 @@ async def correct_metadata(
                 "reason": body.reason,
                 "corrected_by": user.sub,
             }),
-            "now": datetime.now(timezone.utc),
+            "now": datetime.now(UTC),
         },
     )
     await db.commit()

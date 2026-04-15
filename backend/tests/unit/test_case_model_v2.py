@@ -1,5 +1,6 @@
 """Tests for Case model V2 columns."""
 import pytest
+
 from app.models.case import Case
 
 

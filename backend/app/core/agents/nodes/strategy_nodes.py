@@ -17,8 +17,6 @@ from typing import Any
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.postgres import async_session_factory
-
 from app.core.agents.confidence import calculate_confidence
 from app.core.agents.nodes.common import (
     MAX_RESULTS_FOR_LLM,
@@ -42,9 +40,12 @@ from app.core.interfaces import (
 )
 from app.core.legal.precedent_strength import classify_precedent_strength
 from app.core.legal.prompts import (
+    EVALUATE_AND_EXTRACT_SCHEMA,
     LEGAL_DISCLAIMER,
     LEGAL_QUALITY_CHECK_SCHEMA,
     LEGAL_QUALITY_CHECK_SYSTEM,
+    RESEARCH_CONTRADICTIONS_SYSTEM,
+    RESEARCH_EVALUATE_AND_EXTRACT_SYSTEM,
     STRATEGY_ADVERSARIAL_SCHEMA,
     STRATEGY_ADVERSARIAL_SYSTEM,
     STRATEGY_ANALYZE_FACTS_SCHEMA,
@@ -63,10 +64,8 @@ from app.core.legal.prompts import (
     STRATEGY_IRAC_ARGUMENTS_SYSTEM,
     STRATEGY_JUDGE_ANALYSIS_SCHEMA,
     STRATEGY_JUDGE_ANALYSIS_SYSTEM,
-    RESEARCH_CONTRADICTIONS_SYSTEM,
-    RESEARCH_EVALUATE_AND_EXTRACT_SYSTEM,
-    EVALUATE_AND_EXTRACT_SCHEMA,
 )
+from app.db.postgres import async_session_factory
 from app.security.sanitizer import sanitize_search_query
 
 logger = logging.getLogger(__name__)

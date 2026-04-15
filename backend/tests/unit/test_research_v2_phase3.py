@@ -7,13 +7,9 @@ Covers Bible Section 13 tests:
 """
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from app.core.agents.state import WorkerResult
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -88,6 +84,7 @@ class TestIndianKanoonClient:
     async def test_search_returns_docs(self) -> None:
         """IK search should parse response and return list of docs."""
         import httpx
+
         from app.core.providers.external.indiankanoon import IndianKanoonClient
 
         mock_response = httpx.Response(
@@ -113,6 +110,7 @@ class TestIndianKanoonClient:
     async def test_get_fragment(self) -> None:
         """IK get_fragment should return fragment dict."""
         import httpx
+
         from app.core.providers.external.indiankanoon import IndianKanoonClient
 
         mock_response = httpx.Response(
@@ -134,6 +132,7 @@ class TestIndianKanoonClient:
     async def test_get_metadata(self) -> None:
         """IK get_metadata should return metadata dict."""
         import httpx
+
         from app.core.providers.external.indiankanoon import IndianKanoonClient
 
         mock_response = httpx.Response(
@@ -155,6 +154,7 @@ class TestIndianKanoonClient:
     async def test_get_document(self) -> None:
         """IK get_document should return full document dict."""
         import httpx
+
         from app.core.providers.external.indiankanoon import IndianKanoonClient
 
         mock_response = httpx.Response(
@@ -175,6 +175,7 @@ class TestIndianKanoonClient:
     async def test_search_with_court_filter(self) -> None:
         """IK search with court filter should append to formInput."""
         import httpx
+
         from app.core.providers.external.indiankanoon import IndianKanoonClient
 
         calls: list[tuple] = []
@@ -215,6 +216,7 @@ class TestTavilySearchClient:
     async def test_search_returns_results(self) -> None:
         """Tavily search should return structured results."""
         import httpx
+
         from app.core.providers.web_search.tavily import TavilySearchClient
 
         mock_response = httpx.Response(
@@ -239,6 +241,7 @@ class TestTavilySearchClient:
     async def test_search_with_custom_domains(self) -> None:
         """Tavily search should pass custom include_domains."""
         import httpx
+
         from app.core.providers.web_search.tavily import TavilySearchClient
 
         calls: list[dict] = []

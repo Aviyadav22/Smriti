@@ -39,7 +39,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.ingestion.contextual_embeddings import generate_contextual_prefix
 from app.core.legal.constants import (
     CRPC_TO_BNSS_MAP,
@@ -358,7 +357,7 @@ async def ingest_statute_file(
             try:
                 embeddings = await embedder.embed_batch(batch_texts)
                 vectors = []
-                for s, emb in zip(batch_statutes, embeddings):
+                for s, emb in zip(batch_statutes, embeddings, strict=False):
                     vid = f"statute:{s['act_short_name']}:{s['section_number']}"
                     vectors.append({
                         "id": vid,

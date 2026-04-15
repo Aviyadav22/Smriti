@@ -6,8 +6,6 @@ Also verifies that Hindi legal text passes through cleaning intact.
 """
 from __future__ import annotations
 
-import pytest
-
 from app.core.ingestion.pdf import clean_extracted_text
 
 

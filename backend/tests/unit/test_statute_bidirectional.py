@@ -8,7 +8,6 @@ Covers all three abstraction levels:
 These ensure Indian lawyers can search across pre- and post-July 2024
 criminal law statutes regardless of which version they cite.
 """
-import pytest
 
 from app.core.agents.nodes.common import _expand_refs
 from app.core.legal.amendment_service import build_lookup_from_constants

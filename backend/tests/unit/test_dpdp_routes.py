@@ -10,7 +10,7 @@ Covers all four endpoints:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -22,7 +22,6 @@ from app.db.postgres import get_db
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -32,7 +31,7 @@ _USER_ID = str(uuid.uuid4())
 
 def _token_payload(user_id: str = _USER_ID) -> TokenPayload:
     """Build a fake TokenPayload for dependency injection."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return TokenPayload(
         sub=user_id,
         role="researcher",
@@ -458,7 +457,7 @@ class TestConsentStatus:
         self, client: TestClient, mock_db: AsyncMock, token: TokenPayload
     ) -> None:
         """Consent status returns list of consent records."""
-        now = datetime(2026, 3, 8, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 3, 8, 12, 0, 0, tzinfo=UTC)
         rows = [
             {
                 "consent_type": "data_processing",
@@ -517,7 +516,7 @@ class TestConsentStatus:
         self, client: TestClient, mock_db: AsyncMock
     ) -> None:
         """Each consent record has the expected keys."""
-        now = datetime(2026, 3, 8, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 3, 8, 12, 0, 0, tzinfo=UTC)
         rows = [
             {
                 "consent_type": "terms",
@@ -556,13 +555,13 @@ class TestConsentStatus:
         self, client: TestClient, mock_db: AsyncMock
     ) -> None:
         """revoked_at is serialized as a string when not None."""
-        revoked = datetime(2026, 3, 7, 10, 0, 0, tzinfo=timezone.utc)
+        revoked = datetime(2026, 3, 7, 10, 0, 0, tzinfo=UTC)
         rows = [
             {
                 "consent_type": "data_processing",
                 "granted": True,
                 "version": "1.0",
-                "created_at": datetime(2026, 3, 1, tzinfo=timezone.utc),
+                "created_at": datetime(2026, 3, 1, tzinfo=UTC),
                 "revoked_at": revoked,
             },
         ]

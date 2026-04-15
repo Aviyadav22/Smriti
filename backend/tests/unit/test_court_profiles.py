@@ -6,7 +6,6 @@ import pytest
 
 from app.core.drafting.court_profiles import (
     COURT_PROFILES,
-    CourtProfile,
     get_court_profile,
 )
 

@@ -131,7 +131,7 @@ async def batch_contextualize_chunks(
         tasks = [_contextualize_one(chunk["text"]) for chunk in batch]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for chunk, result in zip(batch, results):
+        for chunk, result in zip(batch, results, strict=False):
             if isinstance(result, Exception):
                 logger.warning(
                     "Contextualization failed for chunk; using original text",

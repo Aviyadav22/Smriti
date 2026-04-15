@@ -7,13 +7,12 @@ Tests that the pipeline handles concurrent operations safely:
 """
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.core.ingestion.pipeline import _embed_chunks, _compute_text_hash
 from app.core.ingestion.chunker import Chunk
+from app.core.ingestion.pipeline import _compute_text_hash, _embed_chunks
 
 
 def _make_chunk(text: str = "test chunk", index: int = 0) -> Chunk:

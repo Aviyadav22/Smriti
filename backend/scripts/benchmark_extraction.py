@@ -22,8 +22,8 @@ from pathlib import Path
 # Ensure the backend package is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.core.ingestion.metadata import CaseMetadata, extract_metadata_llm  # noqa: E402
-from app.core.ingestion.pdf import extract_and_score  # noqa: E402
+from app.core.ingestion.metadata import CaseMetadata, extract_metadata_llm
+from app.core.ingestion.pdf import extract_and_score
 
 logger = logging.getLogger("benchmark")
 

@@ -1,6 +1,5 @@
 """Tests for PII anonymization in ingested judgment text."""
 
-import pytest
 
 from app.core.ingestion.anonymizer import anonymize_text, detect_sensitive_case
 from app.core.ingestion.metadata import CaseMetadata

@@ -1,13 +1,12 @@
 """Tests for DocumentAnalyzerService."""
 
-import pytest
 from unittest.mock import AsyncMock
 
+import pytest
+
 from app.core.analysis.document_analyzer import (
-    CounterArgument,
     DocumentAnalyzerService,
     DocumentExtractionResult,
-    ExtractedIssue,
 )
 
 

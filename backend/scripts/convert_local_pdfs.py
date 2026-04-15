@@ -168,8 +168,8 @@ def main():
             config = PDF_ACT_CONFIGS.get(targets[stem], {})
             print(f"  {stem}.pdf  ->  {config.get('act_name', '?')}")
     if converted > 0:
-        print(f"\nNext step:")
-        print(f"  cd backend && python scripts/ingest_statutes.py --source data/statutes/ --all")
+        print("\nNext step:")
+        print("  cd backend && python scripts/ingest_statutes.py --source data/statutes/ --all")
 
 
 if __name__ == "__main__":

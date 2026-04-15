@@ -1,7 +1,8 @@
 """Unit tests for Hindi search integration via GeminiTranslator."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 @pytest.fixture
@@ -17,6 +18,7 @@ def translator():
         mock_settings.gemini_flash_model = "gemini-3-flash-preview"
 
         import importlib
+
         import app.core.providers.translation.gemini_translator as mod
         importlib.reload(mod)
 

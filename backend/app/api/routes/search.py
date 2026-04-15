@@ -22,9 +22,8 @@ from app.core.dependencies import (
 from app.core.legal.extractor import normalize_act_name
 from app.core.search.hybrid import SearchResponse, hybrid_search
 from app.core.search.query import SearchFilters
-from app.db.postgres import get_db
+from app.db.postgres import async_session_factory, get_db
 from app.db.redis_client import get_redis
-from app.db.postgres import async_session_factory
 from app.security.auth import TokenPayload
 from app.security.rate_limiter import rate_limit_dependency
 from app.security.rbac import get_current_user, get_current_user_optional
@@ -127,7 +126,7 @@ async def search(
             ),
             timeout=15.0,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         elapsed = time.monotonic() - t0
         logger.error("Search timed out after %.2fs query=%r", elapsed, q)
         raise HTTPException(status_code=504, detail="Search timed out")
@@ -166,7 +165,7 @@ async def search(
 
             tasks = [_translate_snippet(snippet) for _, snippet in translate_items]
             translated = await asyncio.gather(*tasks, return_exceptions=True)
-            for (idx, _), result in zip(translate_items, translated):
+            for (idx, _), result in zip(translate_items, translated, strict=False):
                 if isinstance(result, Exception):
                     continue  # keep original snippet on failure
                 results_list[idx]["snippet"] = result

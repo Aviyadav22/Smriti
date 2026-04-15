@@ -8,7 +8,7 @@ Covers Bible Section 13 tests:
 """
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -22,7 +22,6 @@ from app.core.ingestion.section_summarizer import (
 )
 from app.core.search.query import expand_statute_references
 from app.models.statute import Statute
-
 
 # ---------------------------------------------------------------------------
 # Helpers

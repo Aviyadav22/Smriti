@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import pytest
 
-
 RESEARCH_SCENARIOS = [
     {
         "query": "What is the current legal position on right to privacy as a fundamental right?",

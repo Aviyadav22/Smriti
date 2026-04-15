@@ -13,7 +13,6 @@ import pytest
 
 from app.core.ingestion.rate_limiter import AsyncRateLimiter, RateLimiterPool
 
-
 # ---------------------------------------------------------------------------
 # AsyncRateLimiter
 # ---------------------------------------------------------------------------

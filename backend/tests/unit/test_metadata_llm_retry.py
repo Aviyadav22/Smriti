@@ -12,8 +12,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.core.ingestion.metadata import CaseMetadata, extract_metadata_llm
-
+from app.core.ingestion.metadata import extract_metadata_llm
 
 _SAMPLE_TEXT = (
     "IN THE SUPREME COURT OF INDIA\n"

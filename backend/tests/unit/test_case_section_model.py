@@ -1,5 +1,4 @@
 """Tests for the CaseSection model."""
-import pytest
 from app.models.case_section import CaseSection
 
 

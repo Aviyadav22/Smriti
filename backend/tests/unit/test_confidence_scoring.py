@@ -1,5 +1,4 @@
 """Tests for the improved confidence scoring formula."""
-import pytest
 from app.core.agents.confidence import calculate_confidence
 
 

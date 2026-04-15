@@ -7,7 +7,7 @@ citation, stores the treatment property on CITES edges, and defaults to
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -15,7 +15,6 @@ from app.core.ingestion.metadata import CaseMetadata
 from app.core.ingestion.pipeline import _build_citation_graph
 from app.core.legal.extractor import Citation
 from app.core.legal.treatment import CitationTreatment, TreatmentResult
-
 
 # ---------------------------------------------------------------------------
 # Helpers

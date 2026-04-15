@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -14,7 +14,6 @@ from app.api.routes.sharing import router
 from app.db.postgres import get_db
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -32,8 +31,8 @@ def _token(user_id: str = _USER_ID, role: str = "researcher") -> TokenPayload:
     return TokenPayload(
         sub=user_id,
         role=role,
-        exp=datetime(2099, 1, 1, tzinfo=timezone.utc),
-        iat=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        exp=datetime(2099, 1, 1, tzinfo=UTC),
+        iat=datetime(2024, 1, 1, tzinfo=UTC),
         jti=f"jti-{user_id[:8]}",
     )
 
@@ -77,7 +76,7 @@ def _mock_share(
     share.is_active = is_active
     share.expires_at = expires_at
     share.view_count = view_count
-    share.created_at = datetime(2026, 4, 1, tzinfo=timezone.utc)
+    share.created_at = datetime(2026, 4, 1, tzinfo=UTC)
     return share
 
 
@@ -298,7 +297,7 @@ class TestGetSharedMemo:
 
     def test_get_shared_memo_expired(self, anon_client: TestClient, mock_db: AsyncMock):
         """Expired share returns 404."""
-        share = _mock_share(expires_at=datetime(2020, 1, 1, tzinfo=timezone.utc))
+        share = _mock_share(expires_at=datetime(2020, 1, 1, tzinfo=UTC))
         mock_db.execute = AsyncMock(return_value=_scalar_result(share))
 
         resp = anon_client.get(f"/api/shared/{_SHARE_TOKEN}")

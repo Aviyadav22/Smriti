@@ -1,7 +1,6 @@
 """Tests for text-hash dedup early-exit logic in ingest_single_case."""
 
 import inspect
-import pytest
 
 
 class TestTextHashDedupRaceSafety:

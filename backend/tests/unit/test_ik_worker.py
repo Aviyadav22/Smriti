@@ -193,7 +193,7 @@ class TestIKWorkerCostControl:
     @pytest.mark.asyncio
     async def test_limits_fragment_calls(self) -> None:
         """Fragment API calls should be limited to _MAX_IK_FRAGMENT_CALLS."""
-        from app.core.agents.nodes.worker_nodes import ik_search_worker, _MAX_IK_FRAGMENT_CALLS
+        from app.core.agents.nodes.worker_nodes import _MAX_IK_FRAGMENT_CALLS, ik_search_worker
 
         mock_ik = AsyncMock()
         mock_ik.search = AsyncMock(return_value=[
@@ -246,7 +246,7 @@ class TestIKWorkerCostControl:
 
         # Top 3 get fragment calls, 4th uses headline
         assert mock_ik.get_fragment.call_count == 3
-        assert "D" * 60 == result["worker_results"][0]["results"][3]["snippet"]
+        assert result["worker_results"][0]["results"][3]["snippet"] == "D" * 60
 
     @pytest.mark.asyncio
     async def test_falls_back_to_fragment_when_headline_short(self) -> None:

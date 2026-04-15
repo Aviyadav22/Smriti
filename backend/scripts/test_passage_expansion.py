@@ -23,7 +23,10 @@ logging.getLogger("app.core.agents.nodes.common").setLevel(logging.DEBUG)
 
 async def main():
     from app.core.dependencies import (
-        get_llm, get_embedder, get_vector_store, get_reranker,
+        get_embedder,
+        get_llm,
+        get_reranker,
+        get_vector_store,
     )
     from app.db.postgres import async_session_factory
 
@@ -72,6 +75,7 @@ async def main():
 
         # Now test passage expansion directly
         from dataclasses import asdict
+
         from app.core.agents.nodes.common import expand_passages_from_full_text
 
         result_dicts = [asdict(r) for r in response.results[:8]]  # Simulate post-CRAG top 8

@@ -11,7 +11,6 @@ Targets:
 
 from __future__ import annotations
 
-import json
 import random
 
 from locust import HttpUser, between, task

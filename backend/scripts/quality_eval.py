@@ -15,13 +15,20 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 async def run() -> None:
-    from app.core.dependencies import (
-        get_llm, get_flash_llm, get_embedder, get_vector_store,
-        get_reranker, get_graph_store, get_ik_client, get_web_search,
-    )
-    from app.core.agents.research import build_research_graph
     from langgraph.checkpoint.memory import MemorySaver
     from langgraph.types import Command
+
+    from app.core.agents.research import build_research_graph
+    from app.core.dependencies import (
+        get_embedder,
+        get_flash_llm,
+        get_graph_store,
+        get_ik_client,
+        get_llm,
+        get_reranker,
+        get_vector_store,
+        get_web_search,
+    )
 
     llm = get_llm()
     flash_llm = get_flash_llm()

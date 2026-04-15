@@ -1076,7 +1076,7 @@ async def _check_holding_accuracy(
                     claim_vec = all_vectors[i]
                     ratio_vec = all_vectors[n + i]
                     # Cosine similarity
-                    dot = sum(a * b for a, b in zip(claim_vec, ratio_vec))
+                    dot = sum(a * b for a, b in zip(claim_vec, ratio_vec, strict=False))
                     mag_a = sum(a * a for a in claim_vec) ** 0.5
                     mag_b = sum(b * b for b in ratio_vec) ** 0.5
                     if mag_a > 0 and mag_b > 0:

@@ -31,9 +31,9 @@ from app.core.ingestion.chunker import Chunk, chunk_judgment, detect_judgment_se
 from app.core.ingestion.graph_retry import record_graph_failure
 from app.core.ingestion.metadata import (
     CaseMetadata,
-    compute_extraction_confidence,
     _strip_unreliable_llm_fields,
     _validate_metadata_against_text,
+    compute_extraction_confidence,
     cross_validate_propositions,
     extract_metadata_llm,
     merge_metadata,
@@ -58,7 +58,6 @@ from app.core.legal.extractor import (
     classify_case_citations,
     extract_acts_cited,
     extract_citations,
-    is_bare_citation_ref,
     normalize_acts_cited_list,
 )
 from app.core.legal.statute_enrichment import enrich_statute_cross_references
@@ -640,9 +639,7 @@ async def ingest_judgment(
         # Update chunk_count and mark ingestion status
         # Low confidence extractions or proposition failures are flagged for review
         _REVIEW_THRESHOLD = 0.5
-        if extraction_confidence < _REVIEW_THRESHOLD:
-            final_status = "needs_review"
-        elif proposition_vectors_failed:
+        if extraction_confidence < _REVIEW_THRESHOLD or proposition_vectors_failed:
             final_status = "needs_review"
         else:
             final_status = "complete"
@@ -677,7 +674,7 @@ async def ingest_judgment(
                 await _link_citation_equivalents(
                     case_id, metadata.citation, citation_equivalents, graph_store,
                 )
-        except (Exception, asyncio.TimeoutError) as graph_exc:
+        except (TimeoutError, Exception) as graph_exc:
             # Graph build is non-critical; log but don't fail the pipeline
             logger.error(
                 "Citation graph build failed for case_id=%s: %s",
@@ -1147,7 +1144,7 @@ async def _upsert_vectors(
 ) -> None:
     """Upsert chunk vectors to the vector store with metadata."""
     vectors: list[dict] = []
-    for chunk, embedding in zip(chunks, embeddings):
+    for chunk, embedding in zip(chunks, embeddings, strict=False):
         vector_id = f"{case_id}_{chunk.chunk_index}"
         if len(chunk.text) > 2000:
             logger.warning(
@@ -1330,7 +1327,7 @@ async def _upsert_proposition_vectors(
     )
 
     # Attach embeddings to vectors
-    for vec, emb in zip(vectors, embeddings):
+    for vec, emb in zip(vectors, embeddings, strict=False):
         vec["values"] = emb
 
     # Upsert in batches (use same configurable batch size as chunk vectors)

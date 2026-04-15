@@ -390,7 +390,7 @@ def build_research_graph(
                 name, task_id, elapsed_ms, result_count,
             )
             return result
-        except asyncio.TimeoutError:
+        except TimeoutError:
             elapsed_ms = (time.monotonic() - start) * 1000
             logger.warning(
                 "worker_timeout worker_type=%s task_id=%s timeout=%ds duration_ms=%.1f",

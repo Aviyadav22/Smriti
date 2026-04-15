@@ -1,5 +1,6 @@
 """Audit quality of cases ingested in a trial run."""
 import asyncio
+
 import asyncpg
 
 DATABASE_URL = "postgresql://smriti:E9tGr2mSXTi1h36LwsmLKbRVooPmlZbYIY5FnYmuzWg=@76.13.185.172:5432/smriti"

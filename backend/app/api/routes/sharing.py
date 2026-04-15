@@ -5,12 +5,11 @@ from __future__ import annotations
 import logging
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, text, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.postgres import get_db
@@ -31,7 +30,7 @@ router = APIRouter()
 
 
 class CreateShareRequest(BaseModel):
-    expires_in_days: Optional[int] = Field(default=None, ge=1, le=365)
+    expires_in_days: int | None = Field(default=None, ge=1, le=365)
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +88,7 @@ async def create_share(
     token = secrets.token_urlsafe(16)
     expires_at = None
     if body and body.expires_in_days:
-        expires_at = datetime.now(timezone.utc) + timedelta(days=body.expires_in_days)
+        expires_at = datetime.now(UTC) + timedelta(days=body.expires_in_days)
 
     new_share = SharedMemo(
         execution_id=exec_uuid,
@@ -218,7 +217,7 @@ async def get_shared_memo(
         raise HTTPException(status_code=404, detail="Shared memo not found.")
 
     # Check expiry
-    if share.expires_at and share.expires_at < datetime.now(timezone.utc):
+    if share.expires_at and share.expires_at < datetime.now(UTC):
         raise HTTPException(status_code=404, detail="Shared memo has expired.")
 
     # Increment view count

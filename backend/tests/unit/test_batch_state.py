@@ -1,8 +1,9 @@
 """Tests for BatchStateDB — SQLite state tracking for batch ingestion."""
 
 import json
-import pytest
 from pathlib import Path
+
+import pytest
 
 from scripts.batch_state import BatchStateDB
 

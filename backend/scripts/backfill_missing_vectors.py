@@ -15,14 +15,13 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import asyncpg  # noqa: E402
@@ -54,9 +53,8 @@ async def main(
 
     # Initialize providers
     from app.core.dependencies import get_embedder, get_vector_store
-    from app.core.ingestion.chunker import chunk_judgment
-    from app.core.ingestion.pipeline import _upsert_vectors, _embed_chunks
-    from app.core.ingestion.chunker import Section
+    from app.core.ingestion.chunker import Section, chunk_judgment
+    from app.core.ingestion.pipeline import _embed_chunks, _upsert_vectors
 
     embedder = get_embedder()
     vector_store = get_vector_store()

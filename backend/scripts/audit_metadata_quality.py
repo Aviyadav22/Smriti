@@ -20,8 +20,9 @@ import csv
 import json
 import re
 import sys
-from collections import Counter, defaultdict
-from dataclasses import dataclass, field, fields as dc_fields
+from collections import Counter
+from dataclasses import dataclass, field
+from dataclasses import fields as dc_fields
 from datetime import datetime
 
 import psycopg2
@@ -315,7 +316,7 @@ def main():
     flag_counts = Counter()
 
     for i, row in enumerate(rows):
-        r = dict(zip(columns, row))
+        r = dict(zip(columns, row, strict=False))
         result = audit_case(
             case_id=str(r["id"]),
             title=r["title"],

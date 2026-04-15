@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,7 +17,6 @@ from app.db.redis_client import get_redis
 from app.security.auth import TokenPayload
 from app.security.rbac import get_current_user
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -28,7 +27,7 @@ _SESSION_ID = str(uuid.uuid4())
 
 
 def _make_token(user_id: str = _TEST_USER_ID) -> TokenPayload:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return TokenPayload(
         sub=user_id,
         role="user",
@@ -43,7 +42,7 @@ def _make_session_row(
     session_id: str = _SESSION_ID,
     title: str = "Test session",
 ) -> dict:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return {
         "id": session_id,
         "user_id": user_id,
@@ -64,7 +63,7 @@ def _make_message_row(
         "role": role,
         "content": content,
         "sources": sources,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
 
 

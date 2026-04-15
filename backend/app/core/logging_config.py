@@ -6,7 +6,7 @@ import json
 import logging
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.core.config import settings
 
@@ -50,7 +50,7 @@ class JSONFormatter(logging.Formatter):
             "module": record.module,
             "function": record.funcName,
             "timestamp": datetime.fromtimestamp(
-                record.created, tz=timezone.utc
+                record.created, tz=UTC
             ).isoformat(),
         }
         # Add request_id from context if available

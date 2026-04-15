@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -14,10 +13,9 @@ from app.core.analytics.counsel_analytics import (
     CounselCaseItem,
     CounselListItem,
     CounselProfile,
-    normalize_counsel_name,
     _is_win,
+    normalize_counsel_name,
 )
-
 
 # ---------------------------------------------------------------------------
 # Name normalization tests

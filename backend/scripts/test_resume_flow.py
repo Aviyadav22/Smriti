@@ -32,12 +32,18 @@ async def test_resume_flow() -> None:
     from langgraph.checkpoint.memory import MemorySaver
     from langgraph.types import Command
 
-    from app.core.dependencies import (
-        get_llm, get_flash_llm, get_embedder, get_vector_store,
-        get_reranker, get_graph_store, get_ik_client, get_web_search,
-        cleanup_providers,
-    )
     from app.core.agents.research import build_research_graph
+    from app.core.dependencies import (
+        cleanup_providers,
+        get_embedder,
+        get_flash_llm,
+        get_graph_store,
+        get_ik_client,
+        get_llm,
+        get_reranker,
+        get_vector_store,
+        get_web_search,
+    )
 
     print("=" * 70)
     print("TEST: Resume flow — does approve actually proceed?")
@@ -140,7 +146,7 @@ async def test_resume_flow() -> None:
     plan_len_after = len(state2.values.get("research_plan", []))
     msg_count_after = len(state2.values.get("messages", []))
 
-    print(f"\n[RESULT]")
+    print("\n[RESULT]")
     print(f"  Nodes after resume: {nodes_after_resume}")
     print(f"  Plan: {plan_len_before} → {plan_len_after}")
     print(f"  Messages: {msg_count_before} → {msg_count_after}")

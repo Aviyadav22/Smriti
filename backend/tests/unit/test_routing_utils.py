@@ -1,15 +1,12 @@
 """Tests for shared routing utilities."""
 from __future__ import annotations
 
-import pytest
-
 from langgraph.graph import END
 
 from app.core.agents.routing_utils import (
     is_proceed,
     make_feedback_router,
 )
-
 
 # ---------------------------------------------------------------------------
 # is_proceed

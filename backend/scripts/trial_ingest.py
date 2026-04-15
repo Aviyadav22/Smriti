@@ -28,7 +28,6 @@ import random
 import re
 import signal
 import sys
-import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -39,11 +38,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # Load .env so GOOGLE_APPLICATION_CREDENTIALS is available via os.environ
 # (pydantic-settings only populates its own fields, not os.environ)
-from dotenv import load_dotenv  # noqa: E402
+from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import asyncpg  # noqa: E402
-from google.cloud import storage as gcs_storage  # noqa: E402
 
 from app.core.config import settings  # noqa: E402
 from app.core.ingestion.anonymizer import anonymize_text  # noqa: E402
@@ -203,8 +202,9 @@ async def trial_phase1_with_sampling(
         text_hash = _compute_text_hash(full_text)
 
         # Dedup: skip if already fully ingested
-        from app.db.postgres import async_session_factory  # noqa: E402
-        from sqlalchemy import text as sa_text  # noqa: E402
+        from sqlalchemy import text as sa_text
+
+        from app.db.postgres import async_session_factory
 
         async with async_session_factory() as db:
             existing = await db.execute(

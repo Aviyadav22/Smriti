@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -14,7 +14,6 @@ from app.api.routes.cases import router as cases_router
 from app.api.routes.graph import router as graph_router
 from app.core.dependencies import get_graph_store
 from app.db.postgres import get_db
-
 
 # ---------------------------------------------------------------------------
 # Constants

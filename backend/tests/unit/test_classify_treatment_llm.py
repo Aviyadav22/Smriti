@@ -10,7 +10,6 @@ import pytest
 
 from app.core.legal.treatment import (
     CitationTreatment,
-    TreatmentResult,
     classify_treatment_llm,
 )
 

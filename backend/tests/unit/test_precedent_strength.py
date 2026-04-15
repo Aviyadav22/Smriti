@@ -1,9 +1,10 @@
 """Tests for precedent strength classification based on Indian court hierarchy."""
 import pytest
+
 from app.core.legal.precedent_strength import (
+    PrecedentStrength,
     classify_precedent_strength,
     compute_effective_strength,
-    PrecedentStrength,
     recency_weight,
 )
 

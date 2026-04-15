@@ -3,10 +3,8 @@
 import pytest
 
 from app.core.legal.extractor import (
-    Citation,
-    ActReference,
-    extract_citations,
     extract_acts_cited,
+    extract_citations,
     normalize_citation,
 )
 

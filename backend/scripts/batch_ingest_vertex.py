@@ -28,7 +28,6 @@ import os
 import random
 import signal
 import sys
-import time
 import uuid
 from dataclasses import dataclass, fields
 from datetime import datetime
@@ -38,33 +37,32 @@ from typing import Any
 # Ensure the backend package is importable when running as a script.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import google.auth  # noqa: E402
-import httpx  # noqa: E402
-from google.api_core import exceptions as gapi_exceptions  # noqa: E402
-from google.cloud import storage as gcs_storage  # noqa: E402
-from google.genai import errors as genai_errors  # noqa: E402
-from google.oauth2 import service_account as gcp_service_account  # noqa: E402
-from sqlalchemy import text as sa_text  # noqa: E402
+import httpx
+from google.api_core import exceptions as gapi_exceptions
+from google.cloud import storage as gcs_storage
+from google.genai import errors as genai_errors
+from google.oauth2 import service_account as gcp_service_account
+from sqlalchemy import text as sa_text
 
-from app.core.config import settings  # noqa: E402
-from app.core.ingestion.anonymizer import anonymize_text, detect_sensitive_case  # noqa: E402
-from app.core.ingestion.chunker import (  # noqa: E402
+from app.core.config import settings
+from app.core.ingestion.anonymizer import anonymize_text, detect_sensitive_case
+from app.core.ingestion.chunker import (
     chunk_judgment,
     detect_judgment_sections,
 )
-from app.core.ingestion.contextual_embeddings import batch_contextualize_chunks  # noqa: E402
-from app.core.ingestion.metadata import (  # noqa: E402
+from app.core.ingestion.contextual_embeddings import batch_contextualize_chunks
+from app.core.ingestion.metadata import (
     CaseMetadata,
+    _parse_judge_names,
     compute_extraction_confidence,
     cross_validate_propositions,
     merge_metadata,
     validate_cross_fields,
     validate_parquet_data,
     validate_with_regex,
-    _parse_judge_names,
 )
-from app.core.ingestion.pdf import extract_and_score  # noqa: E402
-from app.core.ingestion.pipeline import (  # noqa: E402
+from app.core.ingestion.pdf import extract_and_score
+from app.core.ingestion.pipeline import (
     _build_citation_graph,
     _compute_text_hash,
     _embed_chunks,
@@ -77,25 +75,25 @@ from app.core.ingestion.pipeline import (  # noqa: E402
     _upsert_proposition_vectors,
     _upsert_vectors,
 )
-from app.core.ingestion.rate_limiter import AsyncRateLimiter  # noqa: E402
-from app.core.ingestion.section_summarizer import (  # noqa: E402
+from app.core.ingestion.rate_limiter import AsyncRateLimiter
+from app.core.ingestion.section_summarizer import (
     build_pinecone_summary_vectors,
     generate_section_summaries,
 )
-from app.core.legal.extractor import (  # noqa: E402
+from app.core.legal.extractor import (
     extract_acts_cited,
     extract_citations,
     normalize_acts_cited_list,
 )
-from app.core.legal.prompts import (  # noqa: E402
+from app.core.legal.prompts import (
     METADATA_EXTRACTION_SYSTEM,
     METADATA_EXTRACTION_USER,
     METADATA_OUTPUT_SCHEMA,
     get_era_preamble,
 )
-from app.core.legal.statute_enrichment import enrich_statute_cross_references  # noqa: E402
-from app.db.postgres import async_session_factory  # noqa: E402
-from scripts.ingest_s3 import (  # noqa: E402
+from app.core.legal.statute_enrichment import enrich_statute_cross_references
+from app.db.postgres import async_session_factory
+from scripts.ingest_s3 import (
     _disable_fts_trigger,
     _enable_fts_trigger,
     _match_pdf_to_metadata,
@@ -494,7 +492,7 @@ async def phase2_batch_metadata(
     logger.info("Uploaded JSONL to %s (%d requests)", gcs_input_uri, len(jsonl_lines))
 
     # Submit batch job via google.genai SDK
-    from google import genai  # noqa: E402
+    from google import genai
 
     client = genai.Client(
         vertexai=True,
@@ -704,13 +702,13 @@ async def phase3_process_cases(
             pass
 
     # Initialize providers
-    from app.core.dependencies import (  # noqa: E402
+    from app.core.dependencies import (
         get_embedder,
         get_graph_store,
         get_storage,
         get_vector_store,
     )
-    from app.core.providers.llm.gemini import GeminiLLM  # noqa: E402
+    from app.core.providers.llm.gemini import GeminiLLM
 
     # Use gemini-2.5-flash for online LLM calls (preview models unavailable on Vertex AI)
     llm = GeminiLLM(model=BATCH_MODEL)
@@ -1046,7 +1044,7 @@ async def _process_single_case(
                     timeout=300.0,  # 5 min max for contextual prefixes
                 )
                 contextualized_texts = [c["contextualized_text"] for c in contextualized]
-            except (RuntimeError, TimeoutError, ConnectionError, asyncio.TimeoutError) as ctx_exc:
+            except (RuntimeError, TimeoutError, ConnectionError) as ctx_exc:
                 logger.warning("Contextual embedding failed for %s: %s", case_id, ctx_exc)
                 contextualized_texts = None
 
@@ -1136,9 +1134,7 @@ async def _process_single_case(
 
             # K. Update chunk_count, set ingestion_status
             _REVIEW_THRESHOLD = 0.5
-            if extraction_confidence < _REVIEW_THRESHOLD:
-                final_status = "needs_review"
-            elif proposition_vectors_failed:
+            if extraction_confidence < _REVIEW_THRESHOLD or proposition_vectors_failed:
                 final_status = "needs_review"
             else:
                 final_status = "complete"
@@ -1168,7 +1164,7 @@ async def _process_single_case(
                     await _link_citation_equivalents(
                         case_id, metadata.citation, citation_equivalents, graph_store,
                     )
-            except (OSError, ConnectionError, RuntimeError, asyncio.TimeoutError) as graph_exc:
+            except (TimeoutError, OSError, ConnectionError, RuntimeError) as graph_exc:
                 logger.warning("Citation graph build failed for %s: %s", case_id, graph_exc)
 
         except (RuntimeError, ConnectionError, TimeoutError, OSError, ValueError) as pipeline_exc:
@@ -1241,7 +1237,7 @@ async def phase4_quality_check(run_id: str) -> dict[str, Any]:
     sample_ids = random.sample(completed, sample_size)
     logger.info("Sampling %d cases for quality check", sample_size)
 
-    from app.core.dependencies import get_vector_store  # noqa: E402
+    from app.core.dependencies import get_vector_store
     vector_store = get_vector_store()
 
     report: dict[str, Any] = {

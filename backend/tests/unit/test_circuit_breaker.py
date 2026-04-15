@@ -6,14 +6,12 @@ Verifies thread safety, cooldown, and probe mechanics.
 from __future__ import annotations
 
 import asyncio
-import time
-from unittest.mock import patch
-
-import pytest
 
 # The CircuitBreaker is in scripts/ingest_s3.py — we need to import carefully
 import sys
 from pathlib import Path
+
+import pytest
 
 # Ensure scripts directory is importable
 _SCRIPTS_DIR = str(Path(__file__).resolve().parent.parent.parent / "scripts")

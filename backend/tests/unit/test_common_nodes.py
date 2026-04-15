@@ -1,12 +1,13 @@
 """Tests for shared agent node utilities in app.core.agents.nodes.common."""
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.core.agents.nodes.common import (
-    MAX_RESULTS_FOR_LLM,
     HINDI_SYSTEM_SUFFIX,
+    MAX_RESULTS_FOR_LLM,
     apply_language_suffix,
     collect_grounding_citations,
     deduplicate_by_case_id,
@@ -18,7 +19,6 @@ from app.core.agents.nodes.common import (
     safe_json_parse_list,
     verify_memo_citations,
 )
-
 
 # ---------------------------------------------------------------------------
 # Constants

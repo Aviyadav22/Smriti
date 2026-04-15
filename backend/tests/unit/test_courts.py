@@ -1,6 +1,5 @@
 """Unit tests for court name normalization and hierarchy classification."""
 
-import pytest
 
 from app.core.legal.courts import (
     AIR_COURT_CODES,

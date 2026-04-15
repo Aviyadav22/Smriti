@@ -15,13 +15,7 @@ import pytest
 from app.core.interfaces.reranker import RerankResult
 from app.core.interfaces.vector_store import SearchResult
 from app.core.search.fulltext import FTSResult
-from app.core.search.hybrid import hybrid_search, SearchResponse
-from app.core.search.query import (
-    QueryEntities,
-    QueryUnderstanding,
-    SearchFilters,
-)
-
+from app.core.search.hybrid import SearchResponse, hybrid_search
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -74,16 +68,12 @@ def _mock_db_execute(rows: list[dict]):
         mock_result = MagicMock()
         sql_text = str(sql.text) if hasattr(sql, "text") else str(sql)
 
-        if "case_citation_equivalents" in sql_text:
-            mock_result.mappings.return_value.all.return_value = []
-        elif "disposal_nature" in sql_text:
+        if "case_citation_equivalents" in sql_text or "disposal_nature" in sql_text:
             mock_result.mappings.return_value.all.return_value = []
         elif "searchable_text" in sql_text or "websearch_to_tsquery" in sql_text:
             # FTS query — return empty (vector results will carry)
             mock_result.mappings.return_value.all.return_value = []
-        elif "ratio_decidendi" in sql_text:
-            mock_result.mappings.return_value.all.return_value = []
-        elif "case_sections" in sql_text:
+        elif "ratio_decidendi" in sql_text or "case_sections" in sql_text:
             mock_result.mappings.return_value.all.return_value = []
         elif "COUNT" in sql_text.upper():
             mock_result.scalar.return_value = len(rows)

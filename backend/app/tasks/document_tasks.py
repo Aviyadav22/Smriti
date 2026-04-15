@@ -119,7 +119,7 @@ async def _analyze_document_async(document_id: str) -> dict:
                     ],
                     "statutes": pr.statutes,
                 }
-                for issue, pr in zip(extraction.issues, precedent_results)
+                for issue, pr in zip(extraction.issues, precedent_results, strict=False)
             ]
             counter_args_json = [
                 {"issue_title": ca.issue_title, "argument": ca.argument, "response": ca.response}
@@ -251,7 +251,7 @@ async def _chunk_embed_and_index(
 
     # Build vector records and upsert to Pinecone
     vectors: list[dict] = []
-    for chunk, embedding in zip(chunks, all_embeddings):
+    for chunk, embedding in zip(chunks, all_embeddings, strict=False):
         vector_id = f"doc_{document_id}_{chunk.chunk_index}"
         vectors.append({
             "id": vector_id,
@@ -283,7 +283,7 @@ async def _chunk_embed_and_index(
 def _format_issues_with_precedents(issues: list, precedent_results: list) -> str:
     """Format issues and their precedents as text for LLM consumption."""
     sections = []
-    for issue, pr in zip(issues, precedent_results):
+    for issue, pr in zip(issues, precedent_results, strict=False):
         section = f"## {issue.title}\n{issue.description}\n\n"
         if pr.supporting:
             section += "### Supporting Precedents:\n"

@@ -1,6 +1,5 @@
 """Tests for post-extraction content validation."""
 
-import pytest
 
 from app.core.ingestion.metadata import (
     CaseMetadata,

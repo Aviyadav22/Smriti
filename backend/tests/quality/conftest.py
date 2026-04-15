@@ -15,7 +15,6 @@ from typing import Any
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.dependencies import (
     get_embedder,
     get_flash_llm,
@@ -26,7 +25,6 @@ from app.core.dependencies import (
 )
 from app.core.search.hybrid import SearchResponse, hybrid_search
 from app.db.postgres import async_session_factory
-
 
 # ---------------------------------------------------------------------------
 # Database session

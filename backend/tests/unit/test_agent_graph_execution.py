@@ -2,23 +2,22 @@
 
 from __future__ import annotations
 
-import pytest
-
+from app.core.agents.case_prep import (
+    build_case_prep_graph,
+    route_after_issues,
+    route_after_load,
+    route_after_strategy,
+)
+from app.core.agents.case_prep import (
+    route_after_memo as cp_route_after_memo,
+)
 from app.core.agents.research import (
     build_research_graph,
     route_after_findings,
     route_after_memo,
     route_after_plan,
 )
-from app.core.agents.case_prep import (
-    build_case_prep_graph,
-    route_after_issues,
-    route_after_load,
-    route_after_memo as cp_route_after_memo,
-    route_after_strategy,
-)
 from app.core.agents.state import CasePrepState, ResearchState
-
 
 # ---------------------------------------------------------------------------
 # Research Agent — Router tests
