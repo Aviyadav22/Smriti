@@ -138,8 +138,11 @@ class TestEnrichResultsWithRatio:
     async def test_enriches_results_with_ratio(self) -> None:
         _UUID1 = "00000000-0000-0000-0000-000000000001"
         mock_result = MagicMock()
+        # Row schema: (id, ratio, bench_type, coram_size,
+        #              opinion_type, split_ratio, disposal_nature, year)
         mock_result.fetchall.return_value = [
-            (_UUID1, "Natural justice applies to all tribunals.", "division", 3),
+            (_UUID1, "Natural justice applies to all tribunals.", "division", 3,
+             "majority", "", "allowed", 2022),
         ]
         db = AsyncMock()
         db.execute.return_value = mock_result
@@ -155,8 +158,10 @@ class TestEnrichResultsWithRatio:
     async def test_enriches_bench_type(self) -> None:
         _UUID2 = "00000000-0000-0000-0000-000000000002"
         mock_result = MagicMock()
+        # Row schema: (id, ratio, bench_type, coram_size,
+        #              opinion_type, split_ratio, disposal_nature, year)
         mock_result.fetchall.return_value = [
-            (_UUID2, "", "constitutional", 5),
+            (_UUID2, "", "constitutional", 5, "unanimous", "", "", 2023),
         ]
         db = AsyncMock()
         db.execute.return_value = mock_result

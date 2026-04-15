@@ -186,10 +186,12 @@ class TestEnrichStatuteCrossReferences:
         assert "IPC" in result
 
     def test_enrich_bidirectional_crpc(self):
+        # Canonical form is "CRPC" (uppercase). Input "CrPC" is accepted;
+        # the equivalent mapping stores uppercase.
         result = enrich_statute_cross_references(["CrPC"])
         assert "BNSS" in result
         result2 = enrich_statute_cross_references(["BNSS"])
-        assert "CrPC" in result2
+        assert "CRPC" in result2
 
     def test_enrich_bidirectional_iea(self):
         result = enrich_statute_cross_references(["IEA"])

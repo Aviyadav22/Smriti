@@ -97,6 +97,15 @@ def _common_patches(fake_case_id: str):
             return_value=meta,
         ),
         patch("app.core.ingestion.pipeline.validate_cross_fields", return_value=meta),
+        patch("app.core.ingestion.pipeline.cross_validate_propositions", return_value=meta),
+        patch(
+            "app.core.ingestion.pipeline._validate_metadata_against_text",
+            return_value=meta,
+        ),
+        patch(
+            "app.core.ingestion.pipeline.synthesize_case_description",
+            return_value="test description",
+        ),
         patch(
             "app.core.ingestion.pipeline.extract_acts_cited",
             return_value=[],
@@ -153,7 +162,7 @@ class TestIngestionStatusTransaction:
         fake_case_id = "case-tx-test"
 
         p = _common_patches(fake_case_id)
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13], p[14]:
             with pytest.raises(RuntimeError, match="stop-after-status-update"):
                 await _run_pipeline(db)
 
@@ -192,7 +201,7 @@ class TestIngestionStatusTransaction:
         fake_case_id = "case-tx-order"
 
         p = _common_patches(fake_case_id)
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13], p[14]:
             with pytest.raises(RuntimeError, match="stop-after-status-update"):
                 await _run_pipeline(db)
 

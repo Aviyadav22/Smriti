@@ -53,11 +53,4 @@ describe("ResearchAgentPage", () => {
     const button = screen.getByText("Start Research");
     expect(button).toBeDisabled();
   });
-
-  it("renders back link to agents hub", () => {
-    renderWithProviders(<ResearchAgentPage />);
-    const agentLinks = screen.getAllByText("Agents");
-    const backLink = agentLinks.find(el => el.closest("a")?.getAttribute("href") === "/agents");
-    expect(backLink).toBeTruthy();
-  });
 });

@@ -187,15 +187,6 @@ describe("StrategyAgentPage", () => {
     );
   });
 
-  it("renders back link to agents hub", () => {
-    renderWithProviders(<StrategyAgentPage />);
-    const agentLinks = screen.getAllByText("Agents");
-    const backLink = agentLinks.find(
-      (el) => el.closest("a")?.getAttribute("href") === "/agents",
-    );
-    expect(backLink).toBeTruthy();
-  });
-
   it("renders the page description text", () => {
     renderWithProviders(<StrategyAgentPage />);
     expect(

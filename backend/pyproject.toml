@@ -55,6 +55,7 @@ dependencies = [
     # Graph algorithms
     "networkx>=3.0",
     "python-louvain>=0.16",
+    "scipy>=1.11",  # required by networkx.pagerank()
 
     # Data
     "pyarrow==18.1.0",
