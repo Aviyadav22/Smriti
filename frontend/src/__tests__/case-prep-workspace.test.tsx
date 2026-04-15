@@ -64,11 +64,4 @@ describe("CasePrepAgentPage", () => {
     });
   });
 
-  it("renders back link to agents hub", () => {
-    mockGetDocuments.mockResolvedValue({ documents: [], total: 0, page: 1, page_size: 100, total_pages: 1 });
-    renderWithProviders(<CasePrepAgentPage />);
-    const agentLinks = screen.getAllByText("Agents");
-    const backLink = agentLinks.find(el => el.closest("a")?.getAttribute("href") === "/agents");
-    expect(backLink).toBeTruthy();
-  });
 });

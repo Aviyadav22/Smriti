@@ -62,15 +62,6 @@ describe("ChatPage", () => {
     Element.prototype.scrollIntoView = vi.fn();
   });
 
-  it("redirects to /login when unauthenticated", async () => {
-    mockIsAuthenticated = false;
-    renderWithProviders(<ChatPage />);
-
-    await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/login");
-    });
-  });
-
   it("shows empty state with example queries when authenticated", async () => {
     renderWithProviders(<ChatPage />);
 

@@ -39,18 +39,20 @@ describe("ResearchAgentPage", () => {
   it("renders input form with textarea", () => {
     renderWithProviders(<ResearchAgentPage />);
     expect(
-      screen.getByPlaceholderText("Enter your legal research question..."),
+      screen.getByPlaceholderText("Ask a legal research question..."),
     ).toBeInTheDocument();
   });
 
-  it("renders Start Research button", () => {
+  it("renders submit button", () => {
     renderWithProviders(<ResearchAgentPage />);
-    expect(screen.getByText("Start Research")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /start legal research/i }),
+    ).toBeInTheDocument();
   });
 
   it("has disabled submit button when query is empty", () => {
     renderWithProviders(<ResearchAgentPage />);
-    const button = screen.getByText("Start Research");
+    const button = screen.getByRole("button", { name: /start legal research/i });
     expect(button).toBeDisabled();
   });
 });

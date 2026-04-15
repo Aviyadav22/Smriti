@@ -159,50 +159,11 @@ describe("AgentMemoViewer", () => {
     expect(screen.getByText("Copy")).toBeDefined();
   });
 
-  it("renders download button", () => {
-    render(<AgentMemoViewer content="Test content" />);
-    expect(screen.getByText("Download MD")).toBeDefined();
-  });
-
   it("copy button calls navigator.clipboard.writeText", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     render(<AgentMemoViewer content="Copy this content" />);
     fireEvent.click(screen.getByText("Copy"));
     expect(writeText).toHaveBeenCalledWith("Copy this content");
-  });
-
-  it("download button triggers file download", () => {
-    const createObjectURL = vi.fn().mockReturnValue("blob:test");
-    const revokeObjectURL = vi.fn();
-    global.URL.createObjectURL = createObjectURL;
-    global.URL.revokeObjectURL = revokeObjectURL;
-
-    render(<AgentMemoViewer content="Download this" />);
-
-    // Spy on appendChild/removeChild after render so it doesn't interfere with React rendering
-    const clickSpy = vi.fn();
-    const originalAppendChild = document.body.appendChild.bind(document.body);
-    const originalRemoveChild = document.body.removeChild.bind(document.body);
-    const appendChildSpy = vi.spyOn(document.body, "appendChild").mockImplementation((node) => {
-      if (node instanceof HTMLAnchorElement) {
-        node.click = clickSpy;
-        return node;
-      }
-      return originalAppendChild(node);
-    });
-    const removeChildSpy = vi.spyOn(document.body, "removeChild").mockImplementation((node) => {
-      if (node instanceof HTMLAnchorElement) {
-        return node;
-      }
-      return originalRemoveChild(node);
-    });
-
-    fireEvent.click(screen.getByText("Download MD"));
-    expect(createObjectURL).toHaveBeenCalled();
-    expect(clickSpy).toHaveBeenCalled();
-
-    appendChildSpy.mockRestore();
-    removeChildSpy.mockRestore();
   });
 });

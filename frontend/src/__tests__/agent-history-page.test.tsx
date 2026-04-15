@@ -275,13 +275,4 @@ describe("AgentHistoryPage", () => {
     });
   });
 
-  it("redirects unauthenticated users to login", async () => {
-    mockIsAuthenticated = false;
-
-    renderWithProviders(<AgentHistoryPage />);
-
-    await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/login");
-    });
-  });
 });

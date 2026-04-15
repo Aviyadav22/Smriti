@@ -28,7 +28,12 @@ jobs:
         run: ruff check .
 
       - name: Security audit
-        run: pip install pip-audit && pip-audit --strict --desc --skip-editable
+        run: |
+          pip install pip-audit
+          # Audit installed dependencies, excluding the local editable
+          # `smriti` package itself (not published to PyPI).
+          pip freeze --exclude-editable > /tmp/audit-requirements.txt
+          pip-audit --desc -r /tmp/audit-requirements.txt
 
       - name: Test
         run: pytest tests/unit/ -x

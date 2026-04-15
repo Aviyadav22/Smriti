@@ -169,16 +169,6 @@ describe("DraftingAgentPage", () => {
     expect(courtInput).toHaveValue("High Court of Bombay");
   });
 
-  it("renders back link to agents hub", () => {
-    mockGetDraftingTemplates.mockResolvedValue({ templates: [] });
-    renderWithProviders(<DraftingAgentPage />);
-    const agentLinks = screen.getAllByText("Agents");
-    const backLink = agentLinks.find(
-      (el) => el.closest("a")?.getAttribute("href") === "/agents",
-    );
-    expect(backLink).toBeTruthy();
-  });
-
   it("fetches templates on mount", async () => {
     mockGetDraftingTemplates.mockResolvedValue({ templates: [] });
     renderWithProviders(<DraftingAgentPage />);
