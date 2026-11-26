@@ -23,6 +23,14 @@ class GeminiTranslator:
         self._client = genai.Client(api_key=settings.gemini_api_key)
         self._model = model or settings.gemini_flash_model
 
+    async def _complete(self, prompt: str) -> str | None:
+        """Run one prompt; subclasses swap in another model backend."""
+        response = await self._client.aio.models.generate_content(
+            model=self._model,
+            contents=prompt,
+        )
+        return response.text
+
     async def translate(
         self,
         text: str,
@@ -55,16 +63,13 @@ class GeminiTranslator:
         )
 
         try:
-            response = await self._client.aio.models.generate_content(
-                model=self._model,
-                contents=prompt,
-            )
-            if response.text is None:
+            reply = await self._complete(prompt)
+            if reply is None:
                 logger.warning(
                     "Gemini returned None response in translate(), returning original text"
                 )
                 return text
-            return response.text.strip()
+            return reply.strip()
         except Exception:
             logger.warning("Gemini translation failed, returning original text", exc_info=True)
             return text
@@ -99,16 +104,13 @@ class GeminiTranslator:
         )
 
         try:
-            response = await self._client.aio.models.generate_content(
-                model=self._model,
-                contents=prompt,
-            )
-            if response.text is None:
+            reply = await self._complete(prompt)
+            if reply is None:
                 logger.warning(
                     "Gemini returned None response in detect_language(), defaulting to 'en'"
                 )
                 return "en"
-            code = response.text.strip().lower()[:2]
+            code = reply.strip().lower()[:2]
             return code if code in ("en", "hi") else "en"
         except Exception:
             logger.warning("Gemini language detection failed, defaulting to 'en'", exc_info=True)

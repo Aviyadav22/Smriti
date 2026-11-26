@@ -26,7 +26,7 @@ def generate_audio(self, case_id: str, language: str = "en") -> dict:
 async def _generate_audio_async(case_id: str, language: str) -> dict:
     """Async implementation of audio generation."""
     from app.core.legal.prompts import AUDIO_SUMMARY_SYSTEM, AUDIO_SUMMARY_USER
-    from app.core.providers.llm.gemini import GeminiLLM
+    from app.core.dependencies import get_llm
     from app.core.providers.storage.local_storage import LocalStorage
     from app.db.postgres import get_async_session
 
@@ -73,7 +73,7 @@ async def _generate_audio_async(case_id: str, language: str) -> dict:
             await db.commit()
 
             # Step 1: Generate summary text
-            llm = GeminiLLM()
+            llm = get_llm()
             judges = case["judge"] or []
             judges_str = ", ".join(judges) if isinstance(judges, list) else str(judges)
 

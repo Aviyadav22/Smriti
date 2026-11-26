@@ -38,16 +38,24 @@ def get_llm() -> LLMProvider:
         from app.core.providers.llm.gemini import GeminiLLM
 
         return GeminiLLM()
+    if settings.llm_provider == "openrouter":
+        from app.core.providers.llm.openrouter import OpenRouterLLM
+
+        return OpenRouterLLM()
     raise ValueError(f"Unknown LLM provider: {settings.llm_provider}")
 
 
 @lru_cache
 def get_flash_llm() -> LLMProvider:
-    """Return the configured fast/cheap LLM provider instance (Gemini Flash)."""
+    """Return the configured fast/cheap LLM provider instance."""
     if settings.llm_provider == "gemini":
         from app.core.providers.llm.gemini import GeminiLLM
 
         return GeminiLLM(model=settings.gemini_flash_model)
+    if settings.llm_provider == "openrouter":
+        from app.core.providers.llm.openrouter import OpenRouterLLM
+
+        return OpenRouterLLM(model=settings.openrouter_flash_model)
     raise ValueError(f"Unknown LLM provider: {settings.llm_provider}")
 
 
@@ -58,6 +66,10 @@ def get_embedder() -> EmbeddingProvider:
         from app.core.providers.embeddings.gemini import GeminiEmbedder
 
         return GeminiEmbedder()
+    if settings.llm_provider == "openrouter":
+        from app.core.providers.embeddings.openrouter import OpenRouterEmbedder
+
+        return OpenRouterEmbedder()
     raise ValueError(f"Unknown embedding provider: {settings.llm_provider}")
 
 
@@ -110,6 +122,10 @@ def get_translator() -> TranslationProvider:
         from app.core.providers.translation.gemini_translator import GeminiTranslator
 
         return GeminiTranslator()
+    if settings.llm_provider == "openrouter":
+        from app.core.providers.translation.openrouter_translator import OpenRouterTranslator
+
+        return OpenRouterTranslator()
     raise ValueError(f"Unknown translation provider for: {settings.llm_provider}")
 
 

@@ -59,6 +59,16 @@ class Settings(BaseSettings):
     gemini_vertexai_location: str = "us-central1"
     google_application_credentials: str = ""
 
+    # OpenRouter (llm_provider="openrouter"). Model settings take a
+    # comma-separated fallback list; free models are often busy or retired.
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = "google/gemma-4-31b-it:free,nvidia/nemotron-3.5-super-vl:free,openrouter/free"
+    openrouter_flash_model: str = "google/gemma-4-26b-a4b-it:free,google/gemma-4-31b-it:free,openrouter/free"
+    openrouter_embedding_model: str = "nvidia/nemotron-3.5-embed-8b:free"
+    # "allow" is needed for most free models; "deny" skips providers that store prompts.
+    openrouter_data_collection: str = "allow"
+
     # Pinecone
     vector_provider: str = "pinecone"
     pinecone_api_key: str = ""
@@ -182,11 +192,17 @@ class Settings(BaseSettings):
             # Enforce external service API keys are set (unless using Vertex AI)
             # A missing LLM key only disables AI features (chat, agents, semantic
             # search); browsing, keyword search and auth still work, so warn instead.
-            if not self.gemini_api_key and not self.gemini_use_vertexai:
+            missing_llm_key = (
+                not self.openrouter_api_key
+                if self.llm_provider == "openrouter"
+                else not self.gemini_api_key and not self.gemini_use_vertexai
+            )
+            if missing_llm_key:
                 import warnings
 
                 warnings.warn(
-                    "gemini_api_key is empty in production — AI features will be unavailable",
+                    f"No API key for llm_provider={self.llm_provider} in production — "
+                    "AI features will be unavailable",
                     stacklevel=2,
                 )
             # Provider keys are only required for the providers actually selected,

@@ -25,11 +25,8 @@ async def _analyze_document_async(document_id: str) -> dict:
     """Async implementation of the document analysis pipeline."""
     from app.core.analysis.document_analyzer import DocumentAnalyzerService
     from app.core.analysis.precedent_mapper import PrecedentMapperService
+    from app.core.dependencies import get_embedder, get_llm, get_reranker, get_vector_store
     from app.core.providers.document_parsers.pdf_parser import PDFParser
-    from app.core.providers.embeddings.gemini import GeminiEmbedder
-    from app.core.providers.llm.gemini import GeminiLLM
-    from app.core.providers.rerankers.cohere_reranker import CohereReranker
-    from app.core.providers.vector.pinecone_store import PineconeStore
     from app.db.postgres import get_async_session
 
     async with get_async_session() as db:
@@ -52,15 +49,15 @@ async def _analyze_document_async(document_id: str) -> dict:
 
             # Step 2: Extract issues
             await _update_doc_status(db, document_id, "analyzing", "Identifying legal issues")
-            llm = GeminiLLM()
+            llm = get_llm()
             analyzer = DocumentAnalyzerService(llm)
             extraction = await analyzer.extract_issues(extracted_text)
 
             # Step 3: Search for precedents
             await _update_doc_status(db, document_id, "searching", "Finding relevant precedents")
-            embedder = GeminiEmbedder()
-            vector_store = PineconeStore()
-            reranker = CohereReranker()
+            embedder = get_embedder()
+            vector_store = get_vector_store()
+            reranker = get_reranker()
 
             mapper = PrecedentMapperService(
                 llm=llm,

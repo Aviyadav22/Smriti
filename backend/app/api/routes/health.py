@@ -141,8 +141,11 @@ async def _check_gemini() -> dict[str, object]:
         from app.core.dependencies import get_llm
 
         llm = get_llm()
-        # Use the cached client to list models (sync call, run in thread)
-        await asyncio.to_thread(llm._client.models.list, config={"page_size": 1})
+        if settings.llm_provider == "openrouter":
+            await llm._client.check_key()
+        else:
+            # Use the cached client to list models (sync call, run in thread)
+            await asyncio.to_thread(llm._client.models.list, config={"page_size": 1})
         return {
             "status": "healthy",
             "response_ms": round((time.perf_counter() - start) * 1000, 1),

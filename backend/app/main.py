@@ -177,17 +177,23 @@ async def _validate_startup() -> None:
             failures.append("pgvector")
             logger.warning("Startup check: pgvector unavailable — %s", exc)
 
-    # 4. Gemini API key validation
+    # 4. LLM API key validation
+    llm_name = "OpenRouter" if settings.llm_provider == "openrouter" else "Gemini"
     try:
-        from google import genai
+        if settings.llm_provider == "openrouter":
+            from app.core.providers.llm.openrouter import OpenRouterClient
 
-        client = genai.Client(api_key=settings.gemini_api_key)
-        client.models.list(config={"page_size": 1})
+            await OpenRouterClient().check_key()
+        else:
+            from google import genai
+
+            client = genai.Client(api_key=settings.gemini_api_key)
+            client.models.list(config={"page_size": 1})
         checks_passed += 1
-        logger.info("Startup check: Gemini OK")
+        logger.info("Startup check: %s OK", llm_name)
     except Exception as exc:
-        failures.append("Gemini")
-        logger.warning("Startup check: Gemini unavailable — %s", exc)
+        failures.append(llm_name)
+        logger.warning("Startup check: %s unavailable — %s", llm_name, exc)
 
     # Summary
     if checks_passed == checks_total:
