@@ -6,11 +6,13 @@ structured search components: intent, entities, filters, and an expanded query.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from app.core.config import settings
 from app.core.legal.amendment_service import build_lookup_from_constants
 from app.core.legal.constants import (
     CRPC_TO_BNSS_MAP,
@@ -236,14 +238,19 @@ async def understand_query(
     search continues to work (with lower quality) even on LLM errors.
     """
     try:
-        result = await llm.generate_structured(
-            prompt=f"Parse this legal search query:\n\n{raw_query}",
-            system=QUERY_UNDERSTANDING_SYSTEM,
-            output_schema=QUERY_UNDERSTANDING_SCHEMA,
+        # Bounded so a slow model can't eat the whole search budget; a timeout
+        # falls through to the passthrough like any other LLM failure.
+        result = await asyncio.wait_for(
+            llm.generate_structured(
+                prompt=f"Parse this legal search query:\n\n{raw_query}",
+                system=QUERY_UNDERSTANDING_SYSTEM,
+                output_schema=QUERY_UNDERSTANDING_SCHEMA,
+            ),
+            timeout=settings.search_understanding_timeout,
         )
         return _parse_llm_result(raw_query, result)
     except Exception as exc:
-        logger.warning("LLM query understanding failed, using passthrough: %s", exc)
+        logger.warning("LLM query understanding failed, using passthrough: %r", exc)
         return _passthrough(raw_query)
 
 

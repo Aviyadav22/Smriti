@@ -269,7 +269,13 @@ async def hybrid_search(
                 language=language,
             )
 
-            gather_results = await asyncio.gather(vector_task, fts_task, return_exceptions=True)
+            # A slow embedding call falls back to FTS-only rather than timing
+            # out the whole search.
+            gather_results = await asyncio.gather(
+                asyncio.wait_for(vector_task, timeout=settings.search_vector_timeout),
+                fts_task,
+                return_exceptions=True,
+            )
             vector_results = (
                 gather_results[0] if not isinstance(gather_results[0], Exception) else []
             )

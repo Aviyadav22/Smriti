@@ -170,3 +170,20 @@ async def test_daily_limit_fails_fast_without_retrying():
     with pytest.raises(httpx.HTTPStatusError):
         await llm.generate("hi")
     assert len(seen) == 1
+
+
+async def test_slow_query_understanding_falls_back_to_passthrough(monkeypatch):
+    import asyncio
+
+    from app.core.search.query import understand_query
+
+    monkeypatch.setattr("app.core.config.settings.search_understanding_timeout", 0.05)
+
+    class SlowLLM:
+        async def generate_structured(self, **_):
+            await asyncio.sleep(1)
+            return {"intent": "never"}
+
+    qu = await understand_query("bail in NDPS cases", SlowLLM())
+    assert qu.expanded_query == "bail in NDPS cases"
+    assert qu.intent != "never"

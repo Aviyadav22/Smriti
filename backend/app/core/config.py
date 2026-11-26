@@ -109,6 +109,10 @@ class Settings(BaseSettings):
     search_rrf_k_vector_heavy: int = 60
     search_vector_top_k: int = 20
     search_fts_top_k: int = 20
+    # The whole search must finish in 15s (routes/search.py); these keep one slow
+    # model call from using all of it.
+    search_understanding_timeout: float = 6.0
+    search_vector_timeout: float = 5.0
     search_rerank_top_n: int = 10
     search_default_page_size: int = 10
     search_max_page_size: int = 50
