@@ -63,11 +63,15 @@ class Settings(BaseSettings):
     # comma-separated fallback list; free models are often busy or retired.
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_model: str = "google/gemma-4-31b-it:free,nvidia/nemotron-3.5-super-vl:free,openrouter/free"
-    openrouter_flash_model: str = "google/gemma-4-26b-a4b-it:free,google/gemma-4-31b-it:free,openrouter/free"
+    # Not "openrouter/free": it can route to slow thinking models.
+    openrouter_model: str = "google/gemma-4-31b-it:free,nvidia/nemotron-3.5-super-vl:free,google/gemma-4-26b-a4b-it:free"
+    openrouter_flash_model: str = "google/gemma-4-26b-a4b-it:free,google/gemma-4-31b-it:free,nvidia/nemotron-3.5-super-vl:free"
     openrouter_embedding_model: str = "nvidia/nemotron-3.5-embed-8b:free"
     # "allow" is needed for most free models; "deny" skips providers that store prompts.
     openrouter_data_collection: str = "allow"
+    # Thinking is off by default: on free models it made single calls take minutes.
+    openrouter_reasoning: bool = False
+    openrouter_call_timeout: float = 90.0
 
     # Pinecone
     vector_provider: str = "pinecone"

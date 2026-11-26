@@ -187,3 +187,35 @@ async def test_slow_query_understanding_falls_back_to_passthrough(monkeypatch):
     qu = await understand_query("bail in NDPS cases", SlowLLM())
     assert qu.expanded_query == "bail in NDPS cases"
     assert qu.intent != "never"
+
+
+async def test_reasoning_is_disabled_by_default():
+    llm = OpenRouterLLM(api_key="k", model="m:free")
+    seen = _attach(llm, lambda r: _chat("ok"))
+    await llm.generate("hi")
+    assert seen[0]["reasoning"] == {"enabled": False}
+
+
+async def test_empty_reply_is_retried():
+    llm = OpenRouterLLM(api_key="k", model="m:free")
+    replies = iter([_chat(""), _chat('{"intent": "bail"}')])
+    seen = _attach(llm, lambda r: next(replies))
+
+    assert await llm.generate_structured("q", output_schema={"type": "object"}) == {"intent": "bail"}
+    assert len(seen) == 2
+
+
+async def test_call_deadline_fails_fast_without_retry(monkeypatch):
+    import asyncio
+
+    monkeypatch.setattr("app.core.config.settings.openrouter_call_timeout", 0.05)
+    llm = OpenRouterLLM(api_key="k", model="m:free")
+
+    async def slow(request):
+        await asyncio.sleep(1)
+        return _chat("too late")
+
+    seen = _attach(llm, slow)
+    with pytest.raises(TimeoutError):
+        await llm.generate("hi")
+    assert len(seen) == 1

@@ -41,17 +41,25 @@ def limit_resets_later(response: httpx.Response, *, within_seconds: float = 60) 
     return int(reset_ms) / 1000 - time.time() > within_seconds
 
 
+class EmptyResponseError(RuntimeError):
+    """The model returned no content (e.g. a thinking model ran out of tokens)."""
+
+
 def _is_retryable(exc: BaseException) -> bool:
-    """Retry network errors, short rate limits (429) and upstream 5xx.
+    """Retry network errors, empty replies, short rate limits (429) and 5xx.
 
     The free daily cap also answers 429, but it only resets at midnight UTC, so
     retrying would just stall the request; fail fast and let callers fall back.
+    A call that hit the overall deadline isn't retried either: it would most
+    likely land on the same slow model and double the wait.
     """
     if isinstance(exc, httpx.HTTPStatusError):
         if limit_resets_later(exc.response):
             return False
         return exc.response.status_code == 429 or exc.response.status_code >= 500
-    return isinstance(exc, (httpx.TransportError, asyncio.TimeoutError, ConnectionError, OSError))
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+        return False
+    return isinstance(exc, (EmptyResponseError, httpx.TransportError, ConnectionError, OSError))
 
 
 # Free models allow 20 requests/minute, so back off for up to a minute.
@@ -108,14 +116,22 @@ class OpenRouterClient:
         )
 
     def routing(self, models: list[str]) -> dict:
-        """Model fallback list plus the data-collection preference."""
+        """Model fallback list, data-collection preference and reasoning switch."""
         body: dict = {"model": models[0]}
         if len(models) > 1:
             body["models"] = models
         body["provider"] = {"data_collection": settings.openrouter_data_collection}
+        if not settings.openrouter_reasoning:
+            # Free "thinking" models can spend minutes reasoning before answering.
+            body["reasoning"] = {"enabled": False}
         return body
 
     async def post(self, path: str, body: dict) -> dict:
+        # httpx's timeout only bounds the gap between bytes, and OpenRouter sends
+        # keep-alives while a model works, so enforce an overall deadline too.
+        return await asyncio.wait_for(self._post(path, body), timeout=settings.openrouter_call_timeout)
+
+    async def _post(self, path: str, body: dict) -> dict:
         response = await self._http.post(path, json=body)
         response.raise_for_status()
         data = response.json()
@@ -158,9 +174,10 @@ class OpenRouterLLM:
     @staticmethod
     def _content(data: dict) -> str:
         choices = data.get("choices") or []
-        if not choices:
-            return ""
-        return (choices[0].get("message") or {}).get("content") or ""
+        content = (choices[0].get("message") or {}).get("content") if choices else None
+        if not content or not content.strip():
+            raise EmptyResponseError(f"OpenRouter returned no content (model {data.get('model', '?')})")
+        return content
 
     @openrouter_retry
     async def generate(

@@ -47,6 +47,9 @@ _ALLOWED_FILTER_KEYS = frozenset(
         # chunk / proposition / ratio / headnote / statute; used by similar
         # cases, agent proposition search and section-type search filters.
         "vector_type",
+        # Statute vectors (document_type="statute") were Pinecone-only; the filter
+        # must still parse so statute search degrades to no results, not an error.
+        "document_type",
     }
 )
 
