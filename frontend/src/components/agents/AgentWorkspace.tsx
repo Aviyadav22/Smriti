@@ -569,8 +569,16 @@ export function AgentWorkspace({
                             </div>
                         )}
 
+                        {/* Loading a past session from history */}
+                        {showWorkspace && session.isLoadingSession && (
+                            <div className="flex flex-col items-center justify-center gap-3 py-24 max-w-4xl mx-auto" role="status" aria-live="polite">
+                                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                                <p className="text-sm text-muted-foreground">Loading session&hellip;</p>
+                            </div>
+                        )}
+
                         {/* Workspace (running / completed) */}
-                        {showWorkspace && (
+                        {showWorkspace && !session.isLoadingSession && (
                             <div className="space-y-4 max-w-4xl mx-auto">
                                 {/* Query display */}
                                 {queryDisplay && (

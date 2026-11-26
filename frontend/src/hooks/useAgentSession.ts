@@ -37,6 +37,8 @@ export interface AgentSessionState {
     footnotes: ResearchFootnote[];
     error: string | null;
     isFollowUp: boolean;
+    /** True while a past session's messages and executions are being fetched. */
+    isLoadingSession: boolean;
 
     // Checkpoint
     checkpoint: { question: string; context: Record<string, unknown> } | null;
@@ -98,7 +100,11 @@ export function useAgentSession(agentType: string): AgentSessionState & AgentSes
     const [error, setError] = useState<string | null>(null);
     const [isFollowUp, setIsFollowUp] = useState(false);
     const [isBackgroundRunning, setIsBackgroundRunning] = useState(false);
+    const [isLoadingSession, setIsLoadingSession] = useState(false);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // Bumped on every load/new/start so a slow response for a session the user
+    // already navigated away from can't overwrite the current one.
+    const loadTokenRef = useRef(0);
 
     // Checkpoint
     const [checkpoint, setCheckpoint] = useState<{
@@ -139,6 +145,8 @@ export function useAgentSession(agentType: string): AgentSessionState & AgentSes
 
     const startSession = useCallback(
         (body: Record<string, unknown>, onEvent: (e: AgentStreamEvent) => void) => {
+            loadTokenRef.current += 1;
+            setIsLoadingSession(false);
             setIsRunning(true);
             setError(null);
             setMemo("");
@@ -240,7 +248,12 @@ export function useAgentSession(agentType: string): AgentSessionState & AgentSes
     // ---------------------------------------------------------------------------
 
     const loadSession = useCallback(async (sid: string) => {
-        // Clear ALL state immediately
+        const token = ++loadTokenRef.current;
+        const isStale = () => token !== loadTokenRef.current;
+
+        // Clear ALL state immediately; isLoadingSession keeps the UI on a
+        // spinner instead of the "did not complete" state until data arrives.
+        setIsLoadingSession(true);
         setSessionId(sid);
         setIsFollowUp(true);
         setError(null);
@@ -260,6 +273,7 @@ export function useAgentSession(agentType: string): AgentSessionState & AgentSes
                 getAgentSessionMessages(sid),
                 getAgentSessionDetail(sid),
             ]);
+            if (isStale()) return;
 
             const messages = messagesResult.status === "fulfilled" ? messagesResult.value : [];
             const detail = detailResult.status === "fulfilled" ? detailResult.value : null;
@@ -363,7 +377,9 @@ export function useAgentSession(agentType: string): AgentSessionState & AgentSes
                 }
             }
         } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : "Failed to load session");
+            if (!isStale()) setError(err instanceof Error ? err.message : "Failed to load session");
+        } finally {
+            if (!isStale()) setIsLoadingSession(false);
         }
     }, []);
 
@@ -393,6 +409,8 @@ export function useAgentSession(agentType: string): AgentSessionState & AgentSes
     // ---------------------------------------------------------------------------
 
     const newSession = useCallback(() => {
+        loadTokenRef.current += 1;
+        setIsLoadingSession(false);
         abortRef.current?.abort();
         if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
         setSessionId(null);
@@ -422,7 +440,7 @@ export function useAgentSession(agentType: string): AgentSessionState & AgentSes
         // State
         sessions, sessionsLoading, sessionId, sessionMessages,
         executionId, isRunning, isBackgroundRunning, memo, confidence, footnotes, error,
-        isFollowUp, checkpoint, checkpointError,
+        isFollowUp, isLoadingSession, checkpoint, checkpointError,
         // Actions
         startSession, resume, loadSession, deleteSession, newSession,
         cancel, refreshSessions, setError, setMemo, setConfidence,
