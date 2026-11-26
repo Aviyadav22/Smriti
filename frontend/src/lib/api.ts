@@ -156,10 +156,12 @@ function extractErrorMessage(err: Record<string, unknown>, fallback: string): st
     if (typeof err.detail === "string") return err.detail;
     // Format: { detail: [{msg: "..."}] } — Pydantic validation (422)
     if (Array.isArray(err.detail)) {
+        // Routes that accept several body shapes report every shape's errors;
+        // repeating "Field required" for each one helps nobody, so dedupe.
         const msgs = (err.detail as Record<string, unknown>[])
             .map((e) => (typeof e.msg === "string" ? e.msg : ""))
             .filter(Boolean);
-        return msgs.length > 0 ? msgs.join("; ") : fallback;
+        return msgs.length > 0 ? Array.from(new Set(msgs)).join("; ") : fallback;
     }
     // Fallback: { message: "..." }
     if (typeof err.message === "string") return err.message;

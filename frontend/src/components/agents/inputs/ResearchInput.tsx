@@ -18,13 +18,16 @@ interface ResearchInputProps {
     disabled: boolean;
 }
 
+// The API rejects shorter queries (422), so check before sending.
+const MIN_QUERY_LENGTH = 5;
+
 export function ResearchInput({ onSubmit, disabled }: ResearchInputProps) {
     const [query, setQuery] = useState("");
     const [steerResearch, setSteerResearch] = useState(false);
     const [verifyCitations, setVerifyCitations] = useState(false);
 
     const handleSubmit = () => {
-        if (!query.trim() || disabled) return;
+        if (query.trim().length < MIN_QUERY_LENGTH || disabled) return;
         onSubmit({
             query: query.trim(),
             steer_research: steerResearch,
@@ -33,7 +36,8 @@ export function ResearchInput({ onSubmit, disabled }: ResearchInputProps) {
         });
     };
 
-    const canSubmit = query.trim().length > 0 && !disabled;
+    const tooShort = query.trim().length > 0 && query.trim().length < MIN_QUERY_LENGTH;
+    const canSubmit = query.trim().length >= MIN_QUERY_LENGTH && !disabled;
 
     return (
         <div className="max-w-2xl mx-auto w-full">
@@ -96,6 +100,12 @@ export function ResearchInput({ onSubmit, disabled }: ResearchInputProps) {
                     </button>
                 </div>
             </div>
+
+            {tooShort && (
+                <p className="mt-2 text-center text-[12px] text-muted-foreground">
+                    Add a few more words — questions need at least {MIN_QUERY_LENGTH} characters.
+                </p>
+            )}
 
             {/* Prompt starters */}
             {!query && (

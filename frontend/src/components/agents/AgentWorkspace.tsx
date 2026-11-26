@@ -140,6 +140,8 @@ export function AgentWorkspace({
     const [completedNodes, setCompletedNodes] = useState<Set<string>>(new Set());
     const [startTime, setStartTime] = useState<number | null>(null);
     const [queryDisplay, setQueryDisplay] = useState("");
+    // Bumped on "new session" to remount the input form with empty fields.
+    const [inputKey, setInputKey] = useState(0);
     const [cancelled, setCancelled] = useState(false);
 
     // Follow-up state
@@ -456,6 +458,7 @@ export function AgentWorkspace({
         setStreamingMemo("");
         streamQueueRef.current = "";
         setQueryDisplay("");
+        setInputKey((k) => k + 1);
         setCancelled(false);
         setFollowUpStreaming(false);
         setFollowUpStreamContent("");
@@ -554,20 +557,25 @@ export function AgentWorkspace({
                         showInputForm ? "flex flex-col items-center justify-center h-full" : "py-16",
                     )}>
 
-                        {/* Input form with title */}
-                        {showInputForm && (
-                            <div className="w-full">
-                                <div className="text-center mb-8">
-                                    <h1 className="text-2xl font-semibold font-[family-name:var(--font-lora)] mb-1">
-                                        {title}
-                                    </h1>
-                                    <p className="text-sm text-muted-foreground">
-                                        {description}
-                                    </p>
-                                </div>
-                                {renderInput({ onSubmit: handleSubmit, disabled: session.isRunning })}
+                        {/* Input form with title. Kept mounted (hidden) while a run is
+                            in flight so a request that fails before any event, e.g. a 422
+                            or rate limit, returns to the form with the user's text intact. */}
+                        <div className="w-full" hidden={!showInputForm} key={inputKey}>
+                            <div className="text-center mb-8">
+                                <h1 className="text-2xl font-semibold font-[family-name:var(--font-lora)] mb-1">
+                                    {title}
+                                </h1>
+                                <p className="text-sm text-muted-foreground">
+                                    {description}
+                                </p>
                             </div>
-                        )}
+                            {renderInput({ onSubmit: handleSubmit, disabled: session.isRunning })}
+                            {session.error && !showWorkspace && (
+                                <div className="max-w-2xl mx-auto mt-3 text-sm text-red-500 p-3 rounded-md bg-red-50 dark:bg-red-950/20" role="alert">
+                                    {session.error}
+                                </div>
+                            )}
+                        </div>
 
                         {/* Loading a past session from history */}
                         {showWorkspace && session.isLoadingSession && (
