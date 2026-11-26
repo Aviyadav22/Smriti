@@ -29,6 +29,8 @@ dependencies = [
 
     # Task queue
     "celery[redis]==5.4.0",
+    # kombu 5.6+ needs redis-py>=6.1; keep it on the line celery 5.4 shipped with
+    "kombu>=5.4.0,<5.6",
 
     # Auth & Security
     "pyjwt>=2.12.0",              # CVE-2026-32597 crit header bypass

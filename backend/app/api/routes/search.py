@@ -103,8 +103,15 @@ async def search(
         judgment_section=judgment_section,
     )
 
-    llm = get_llm()
-    embedder = get_embedder()
+    # Without an LLM key, keep keyword search working: understand_query() falls
+    # back to the raw query and the vector branch fails into FTS-only mode.
+    try:
+        llm = get_llm()
+        embedder = get_embedder()
+    except ValueError as exc:
+        logger.warning("LLM/embedder unavailable, searching keyword-only: %s", exc)
+        llm = None
+        embedder = None
     vector_store = get_vector_store()
     reranker = get_reranker()
 

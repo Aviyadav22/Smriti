@@ -180,25 +180,29 @@ class Settings(BaseSettings):
             if "*" in self.cors_origins:
                 raise ValueError("CORS origins must not contain '*' in production")
             # Enforce external service API keys are set (unless using Vertex AI)
+            # A missing LLM key only disables AI features (chat, agents, semantic
+            # search); browsing, keyword search and auth still work, so warn instead.
             if not self.gemini_api_key and not self.gemini_use_vertexai:
-                raise ValueError(
-                    "gemini_api_key must not be empty in production (or set GEMINI_USE_VERTEXAI=true)"
+                import warnings
+
+                warnings.warn(
+                    "gemini_api_key is empty in production — AI features will be unavailable",
+                    stacklevel=2,
                 )
-            if not self.pinecone_api_key:
-                raise ValueError("pinecone_api_key must not be empty in production")
-            if not self.pinecone_host:
-                raise ValueError("pinecone_host must not be empty in production")
-            if not self.cohere_api_key:
+            # Provider keys are only required for the providers actually selected,
+            # so a self-hosted deploy (pgvector, local storage) can run in production.
+            if self.vector_provider == "pinecone":
+                if not self.pinecone_api_key:
+                    raise ValueError("pinecone_api_key must not be empty in production")
+                if not self.pinecone_host:
+                    raise ValueError("pinecone_host must not be empty in production")
+            if self.reranker_provider == "cohere" and not self.cohere_api_key:
                 raise ValueError("cohere_api_key must not be empty in production")
             # Enforce no dev defaults in production
-            if self.neo4j_password == "smriti_dev":  # noqa: S105
+            if self.graph_provider == "neo4j" and self.neo4j_password == "smriti_dev":  # noqa: S105
                 raise ValueError("neo4j_password must not use default 'smriti_dev' in production")
-            if "localhost" in self.database_url:
-                raise ValueError("database_url must not contain 'localhost' in production")
-            if self.storage_provider == "local":
-                raise ValueError("storage_provider must not be 'local' in production")
-            if self.tts_provider == "mock":
-                raise ValueError("tts_provider must not be 'mock' in production")
+            if self.storage_provider == "gcs" and not self.gcs_bucket_name:
+                raise ValueError("gcs_bucket_name must not be empty when storage_provider is 'gcs'")
             if self.app_debug:
                 raise ValueError("app_debug must be False in production")
         else:

@@ -96,6 +96,10 @@ def get_reranker() -> Reranker:
         from app.core.providers.rerankers.cohere_reranker import CohereReranker
 
         return CohereReranker()
+    if settings.reranker_provider == "none":
+        from app.core.providers.rerankers.passthrough_reranker import PassthroughReranker
+
+        return PassthroughReranker()
     raise ValueError(f"Unknown reranker provider: {settings.reranker_provider}")
 
 

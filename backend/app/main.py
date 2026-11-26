@@ -140,28 +140,42 @@ async def _validate_startup() -> None:
         failures.append("Redis")
         logger.warning("Startup check: Redis unavailable — %s", exc)
 
-    # 3. Pinecone dimension validation
-    try:
-        from pinecone import Pinecone
+    # 3. Vector store validation (Pinecone dimension check only applies to Pinecone)
+    if settings.vector_provider == "pinecone":
+        try:
+            from pinecone import Pinecone
 
-        pc = Pinecone(api_key=settings.pinecone_api_key)
-        index = pc.Index(host=settings.pinecone_host)
-        stats = index.describe_index_stats()
-        dimension = stats.get("dimension") or getattr(stats, "dimension", None)
-        expected_dim = 1536
-        if dimension and int(dimension) != expected_dim:
+            pc = Pinecone(api_key=settings.pinecone_api_key)
+            index = pc.Index(host=settings.pinecone_host)
+            stats = index.describe_index_stats()
+            dimension = stats.get("dimension") or getattr(stats, "dimension", None)
+            expected_dim = 1536
+            if dimension and int(dimension) != expected_dim:
+                failures.append("Pinecone")
+                logger.warning(
+                    "Startup check: Pinecone dimension mismatch — got %s, expected %d",
+                    dimension,
+                    expected_dim,
+                )
+            else:
+                checks_passed += 1
+                logger.info("Startup check: Pinecone OK (dimension=%s)", dimension)
+        except Exception as exc:
             failures.append("Pinecone")
-            logger.warning(
-                "Startup check: Pinecone dimension mismatch — got %s, expected %d",
-                dimension,
-                expected_dim,
-            )
-        else:
+            logger.warning("Startup check: Pinecone unavailable — %s", exc)
+    else:
+        try:
+            from sqlalchemy import text as sa_text
+
+            from app.db.postgres import engine
+
+            async with engine.connect() as conn:
+                count = (await conn.execute(sa_text("SELECT count(*) FROM case_vectors"))).scalar()
             checks_passed += 1
-            logger.info("Startup check: Pinecone OK (dimension=%s)", dimension)
-    except Exception as exc:
-        failures.append("Pinecone")
-        logger.warning("Startup check: Pinecone unavailable — %s", exc)
+            logger.info("Startup check: pgvector OK (%s vectors)", count)
+        except Exception as exc:
+            failures.append("pgvector")
+            logger.warning("Startup check: pgvector unavailable — %s", exc)
 
     # 4. Gemini API key validation
     try:

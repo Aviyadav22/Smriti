@@ -84,6 +84,19 @@ async def _check_pinecone() -> dict[str, object]:
     try:
         from app.core.dependencies import get_vector_store
 
+        if settings.vector_provider == "pgvector":
+            # pgvector lives in the main database; a cheap query proves the table is there
+            from sqlalchemy import text
+
+            from app.db.postgres import engine
+
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1 FROM case_vectors LIMIT 1"))
+            return {
+                "status": "healthy",
+                "response_ms": round((time.perf_counter() - start) * 1000, 1),
+            }
+
         store = get_vector_store()
         # Use the cached client to describe the index (sync call, run in thread)
         await asyncio.to_thread(store._client.describe_index, settings.pinecone_index_name)
