@@ -1,0 +1,107 @@
+# Smriti on the Hostinger VM (no GCP).
+#
+# Postgres is the host install (Postgres 17 + pgvector), not a container —
+# it already holds the data. Every service uses host networking so it reaches
+# Postgres on 127.0.0.1 and nothing listens on a public interface except the
+# host nginx on 80/443.
+#
+# Usage:
+#   docker compose -f docker-compose.vm.yml --env-file .env.vm.local up -d --build
+#
+# Ports (all 127.0.0.1): backend 8000, frontend 3100, redis 6379, neo4j 7474/7687.
+# 3000 and 18789 are taken by the hermes WhatsApp bridge and openclaw.
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    network_mode: host
+    command: >
+      redis-server --bind 127.0.0.1 --port 6379
+        --requirepass ${REDIS_PASSWORD}
+        --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 200m
+
+  neo4j:
+    image: neo4j:5-community
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_server_default__listen__address: 127.0.0.1
+      NEO4J_server_memory_heap_initial__size: 384m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7474 >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    mem_limit: 1g
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - ./backend/.env.vm.local
+    command: ["sh", "-c", "uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=127.0.0.1"]
+    volumes:
+      - smriti_files:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    mem_limit: 1200m
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - ./backend/.env.vm.local
+    command: ["celery", "-A", "app.worker:celery_app", "worker", "--loglevel=info", "--concurrency=1"]
+    volumes:
+      - smriti_files:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    mem_limit: 800m
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /api/v1
+        NEXT_PUBLIC_SSE_URL: /api/v1
+        NEXT_PUBLIC_APP_URL: https://smriti.neetiq.in
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PORT: 3100
+      HOSTNAME: 127.0.0.1
+      BACKEND_URL: http://127.0.0.1:8000/api/v1
+    depends_on:
+      - backend
+    mem_limit: 512m
+
+volumes:
+  redis_data:
+  neo4j_data:
+  smriti_files:
