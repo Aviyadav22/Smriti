@@ -306,7 +306,7 @@ class PgGraphStore:
                         params[src] = edge["source_id"]
                         params[tgt] = edge["target_citation"]
                         params[treat] = edge.get("treatment", "CITED")
-                        value_clauses.append(f"(:{src}::uuid, :{tgt}, :{treat})")
+                        value_clauses.append(f"(CAST(:{src} AS uuid), :{tgt}, :{treat})")
 
                     sql = text(
                         "INSERT INTO citations (source_case_id, target_citation, treatment) "

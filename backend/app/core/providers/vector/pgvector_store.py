@@ -140,7 +140,7 @@ class PgvectorStore:
                         params[vmeta] = json.dumps(vec["metadata"])
 
                         value_clauses.append(
-                            f"(:{vid}, :{vcid}::uuid, :{vci}, :{vemb}::vector, :{vmeta}::jsonb)"
+                            f"(:{vid}, CAST(:{vcid} AS uuid), :{vci}, CAST(:{vemb} AS vector), CAST(:{vmeta} AS jsonb))"
                         )
 
                     sql = text(
@@ -180,9 +180,9 @@ class PgvectorStore:
 
         # Cosine distance: <=> operator. Convert to similarity score (1 - distance).
         sql = text(
-            "SELECT id, metadata, 1 - (embedding <=> :query_vec::vector) AS score "
+            "SELECT id, metadata, 1 - (embedding <=> CAST(:query_vec AS vector)) AS score "
             f"FROM case_vectors WHERE {where} "
-            "ORDER BY embedding <=> :query_vec::vector "
+            "ORDER BY embedding <=> CAST(:query_vec AS vector) "
             "LIMIT :top_k"
         )
         try:
