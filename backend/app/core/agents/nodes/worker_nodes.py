@@ -88,6 +88,28 @@ def _worker_found_event(task_type: str, results: list, query: str = "") -> dict:
 # ---------------------------------------------------------------------------
 
 
+# The planner writes court filters in Indian Kanoon's vocabulary ("supreme_court",
+# "highcourts", "tribunals", "judgments"), but cases.court holds names like
+# "Supreme Court of India". Map what we can; drop the rest so the search still
+# runs over our corpus instead of matching nothing.
+_DB_COURT_ALIASES = {
+    "supreme_court": "Supreme Court of India",
+    "supremecourt": "Supreme Court of India",
+    "supreme court": "Supreme Court of India",
+    "supreme court of india": "Supreme Court of India",
+    "sc": "Supreme Court of India",
+}
+
+
+def _db_court_filter(court: object) -> list[str] | None:
+    values = [court] if isinstance(court, str) else list(court or [])
+    mapped = [_DB_COURT_ALIASES.get(str(v).strip().lower()) for v in values]
+    known = sorted({m for m in mapped if m})
+    if values and not known:
+        logger.info("Ignoring court filter %r: not a court in our database", court)
+    return known or None
+
+
 async def case_law_worker(
     state: dict,
     llm: LLMProvider,
@@ -138,7 +160,7 @@ async def case_law_worker(
             search_kwargs["filters"] = SearchFilters(bench_type=bench_value)
 
     # [H10] Propagate court and date range filters from research plan
-    court_filter = task_filters.get("court")
+    court_filter = _db_court_filter(task_filters.get("court"))
     from_year = task_filters.get("from_year")
     to_year = task_filters.get("to_year")
     if court_filter or from_year or to_year:
@@ -156,7 +178,7 @@ async def case_law_worker(
                 if getattr(existing, f.name) is not None
             }
         if court_filter:
-            merge["court"] = [court_filter] if isinstance(court_filter, str) else court_filter
+            merge["court"] = court_filter
         if from_year:
             merge["year_from"] = int(from_year)
         if to_year:

@@ -1444,3 +1444,15 @@ class TestCotSynthesisIntegration:
         assert (
             "Bail" in result["worker_reasonings"][0] or "finding" in result["worker_reasonings"][0]
         )
+
+
+def test_db_court_filter_maps_planner_vocabulary():
+    """Planner court values come from Indian Kanoon; cases.court uses full names."""
+    from app.core.agents.nodes.worker_nodes import _db_court_filter
+
+    assert _db_court_filter("supreme_court") == ["Supreme Court of India"]
+    assert _db_court_filter(["Supreme Court", "highcourts"]) == ["Supreme Court of India"]
+    # Courts we don't hold: no filter, so the search still covers our corpus.
+    assert _db_court_filter("highcourts") is None
+    assert _db_court_filter("tribunals") is None
+    assert _db_court_filter(None) is None
