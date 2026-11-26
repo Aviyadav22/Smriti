@@ -422,6 +422,48 @@ class TestGetSimilar:
 
         app.dependency_overrides.clear()
 
+    @patch("app.api.routes.cases.get_vector_store")
+    @patch("app.api.routes.cases.get_embedder")
+    def test_similar_looks_past_the_case_own_chunks(
+        self,
+        mock_get_embedder: MagicMock,
+        mock_get_vector: MagicMock,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        """A case's own chunks rank first; the search must reach other cases."""
+        similar_row = _make_summary_row(_SIMILAR_CASE_ID, "Similar Case")
+        db = _mock_db_multi_execute(
+            [
+                [{"ratio_decidendi": "Comfort letters are not guarantees.", "title": "Test Case"}],
+                [similar_row],
+            ]
+        )
+
+        async def _override_db():
+            yield db
+
+        app.dependency_overrides[get_db] = _override_db
+        mock_embedder = AsyncMock()
+        mock_embedder.embed_text.return_value = [0.1] * 1536
+        mock_get_embedder.return_value = mock_embedder
+
+        def hit(case_id: str, score: float) -> MagicMock:
+            r = MagicMock()
+            r.id, r.score, r.metadata = f"{case_id}_c", score, {"case_id": case_id}
+            return r
+
+        own_chunks = [hit(_CASE_ID, 0.99 - i * 0.001) for i in range(40)]
+        mock_vector = AsyncMock()
+        mock_vector.search.return_value = [*own_chunks, hit(_SIMILAR_CASE_ID, 0.8)]
+        mock_get_vector.return_value = mock_vector
+
+        resp = client.get(f"/api/v1/cases/{_CASE_ID}/similar?limit=5")
+
+        assert resp.json()["total"] == 1
+        assert mock_vector.search.await_args.kwargs["top_k"] >= 41
+        app.dependency_overrides.clear()
+
     def test_get_similar_case_not_found(self, app: FastAPI, client: TestClient) -> None:
         """Similar on nonexistent case returns 404."""
         db = _mock_db_execute([], scalar=None)

@@ -44,6 +44,9 @@ _ALLOWED_FILTER_KEYS = frozenset(
         "language",
         "is_reportable",
         "user_id",
+        # chunk / proposition / ratio / headnote / statute; used by similar
+        # cases, agent proposition search and section-type search filters.
+        "vector_type",
     }
 )
 

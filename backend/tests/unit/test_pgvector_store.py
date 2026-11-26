@@ -241,3 +241,13 @@ class TestPgvectorStoreDelete:
         call_args = mock_session.execute.call_args
         sql_text = str(call_args[0][0])
         assert "NOT IN" in sql_text
+
+
+def test_vector_type_filter_is_allowed():
+    """Similar cases and agent proposition search filter on vector_type."""
+    from app.core.providers.vector.pgvector_store import _build_filter_clause
+
+    params: dict = {}
+    clause = _build_filter_clause({"vector_type": {"$in": ["chunk", "ratio"]}}, params)
+    assert "metadata->>'vector_type' IN" in clause
+    assert sorted(params.values()) == ["chunk", "ratio"]
