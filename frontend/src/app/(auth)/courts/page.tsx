@@ -14,7 +14,6 @@ import {
     PieChart,
     Pie,
     Cell,
-    Legend,
 } from "recharts";
 import { Building2, ChevronDown, FileText, Loader2, Search, Users } from "lucide-react";
 
@@ -71,6 +70,56 @@ function useThemeColors() {
     }, []);
 
     return theme;
+}
+
+// Distinct hues in the app's warm, muted register — the theme chart vars are
+// all close beiges, which made the disposal slices impossible to tell apart.
+const DISPOSAL_COLORS = [
+    "#C9A25E", // gold
+    "#5E7C99", // slate blue
+    "#B5694A", // terracotta
+    "#7D9461", // olive
+    "#8E6C8A", // plum
+    "#4F8A86", // teal
+    "#8A8378", // warm grey (Other)
+];
+
+// Slices under this share are folded into "Other" so tiny categories
+// (e.g. 1 "Withdrawn" out of 1,400) don't become unreadable slivers.
+const MIN_SLICE_SHARE = 0.03;
+
+type DisposalSlice = { name: string; count: number; detail?: string };
+
+function groupSmallSlices(patterns: Record<string, number>): DisposalSlice[] {
+    const entries = Object.entries(patterns)
+        .filter(([, count]) => count > 0)
+        .sort((a, b) => b[1] - a[1]);
+    const total = entries.reduce((sum, [, count]) => sum + count, 0);
+    if (total === 0) return [];
+
+    const main: DisposalSlice[] = [];
+    const folded: [string, number][] = [];
+    for (const [name, count] of entries) {
+        if (name !== "Other" && count / total >= MIN_SLICE_SHARE) {
+            main.push({ name, count });
+        } else {
+            folded.push([name, count]);
+        }
+    }
+    if (folded.length > 0) {
+        main.push({
+            name: "Other",
+            count: folded.reduce((sum, [, count]) => sum + count, 0),
+            detail: folded.map(([name, count]) => `${name}: ${count}`).join(", "),
+        });
+    }
+    return main;
+}
+
+function formatPct(count: number, total: number): string {
+    if (total === 0) return "0%";
+    const pct = (count / total) * 100;
+    return pct < 1 ? "<1%" : `${Math.round(pct)}%`;
 }
 
 const FALLBACK_COURTS = [
@@ -141,9 +190,8 @@ export default function CourtsPage() {
         .map(([year, count]) => ({ year, count }))
         .sort((a, b) => a.year.localeCompare(b.year));
 
-    const disposalData = Object.entries(stats.disposal_patterns).map(
-        ([name, count]) => ({ name, count }),
-    );
+    const disposalData = groupSmallSlices(stats.disposal_patterns);
+    const disposalTotal = disposalData.reduce((sum, d) => sum + d.count, 0);
 
     return (
         <div className="max-w-6xl mx-auto px-4 py-8">
@@ -214,29 +262,67 @@ export default function CourtsPage() {
 
                         {/* Disposal Patterns */}
                         <div className="border rounded-lg bg-card p-5">
-                            <h2 className="text-sm font-medium mb-4">Disposal Patterns</h2>
+                            <h2 className="text-sm font-medium mb-1">Disposal Patterns</h2>
                             {disposalData.length > 0 ? (
-                                <ResponsiveContainer width="100%" height={280}>
-                                    <PieChart>
-                                        <Pie
-                                            data={disposalData}
-                                            dataKey="count"
-                                            nameKey="name"
-                                            cx="50%"
-                                            cy="50%"
-                                            outerRadius={100}
-                                            stroke={themeColors.card}
-                                            label={({ name }: { name?: string }) => name ?? ""}
-                                            labelLine={{ stroke: themeColors.fg }}
-                                        >
-                                            {disposalData.map((_, idx) => (
-                                                <Cell key={idx} fill={chartColors[idx % chartColors.length]} />
+                                <>
+                                    <p className="text-xs text-muted-foreground mb-4">
+                                        Outcome recorded for {disposalTotal.toLocaleString()} of{" "}
+                                        {stats.total_cases.toLocaleString()} cases
+                                    </p>
+                                    <div className="flex flex-col sm:flex-row items-center gap-6">
+                                        {/* Donut without slice labels — the list carries names and numbers */}
+                                        <div className="relative w-[200px] h-[200px] shrink-0">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <PieChart>
+                                                    <Pie
+                                                        data={disposalData}
+                                                        dataKey="count"
+                                                        nameKey="name"
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        innerRadius={62}
+                                                        outerRadius={96}
+                                                        paddingAngle={1}
+                                                        stroke={themeColors.card}
+                                                        isAnimationActive={false}
+                                                    >
+                                                        {disposalData.map((_, idx) => (
+                                                            <Cell key={idx} fill={DISPOSAL_COLORS[idx % DISPOSAL_COLORS.length]} />
+                                                        ))}
+                                                    </Pie>
+                                                    <Tooltip
+                                                        formatter={(value) => [
+                                                            `${Number(value).toLocaleString()} (${formatPct(Number(value), disposalTotal)})`,
+                                                        ]}
+                                                        contentStyle={{ backgroundColor: themeColors.card, border: `1px solid ${themeColors.border}`, borderRadius: 6, color: themeColors.text, fontSize: 12 }}
+                                                        itemStyle={{ color: themeColors.text }}
+                                                    />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                                <span className="text-xl font-semibold">{disposalTotal.toLocaleString()}</span>
+                                                <span className="text-[11px] text-muted-foreground">cases</span>
+                                            </div>
+                                        </div>
+                                        <ul className="w-full space-y-2">
+                                            {disposalData.map((d, idx) => (
+                                                <li key={d.name} className="flex items-center gap-2 text-sm">
+                                                    <span
+                                                        className="h-2.5 w-2.5 rounded-sm shrink-0"
+                                                        style={{ backgroundColor: DISPOSAL_COLORS[idx % DISPOSAL_COLORS.length] }}
+                                                    />
+                                                    <span className="truncate" title={d.detail}>{d.name}</span>
+                                                    <span className="ml-auto tabular-nums text-muted-foreground shrink-0">
+                                                        {d.count.toLocaleString()}
+                                                    </span>
+                                                    <span className="w-12 text-right tabular-nums text-xs text-muted-foreground shrink-0">
+                                                        {formatPct(d.count, disposalTotal)}
+                                                    </span>
+                                                </li>
                                             ))}
-                                        </Pie>
-                                        <Tooltip contentStyle={{ backgroundColor: themeColors.card, border: `1px solid ${themeColors.border}`, borderRadius: 6, color: themeColors.text, fontSize: 12 }} />
-                                        <Legend wrapperStyle={{ color: themeColors.fg, fontSize: 12 }} />
-                                    </PieChart>
-                                </ResponsiveContainer>
+                                        </ul>
+                                    </div>
+                                </>
                             ) : (
                                 <p className="text-xs text-muted-foreground">No disposal data available.</p>
                             )}
