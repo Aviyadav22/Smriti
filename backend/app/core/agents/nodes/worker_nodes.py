@@ -15,7 +15,6 @@ import re
 from typing import TYPE_CHECKING, Any
 
 import networkx as nx
-from sqlalchemy import select
 
 from app.core.agents.nodes.common import (
     _search_by_title,
@@ -31,6 +30,8 @@ from app.core.agents.research_cache import (
     set_cached_ik_search,
 )
 from app.core.agents.state import WorkerResult
+from app.core.config import settings
+from app.core.search import statute_search
 from app.core.search.hybrid import _exact_citation_search
 from app.core.search.query import expand_statute_references
 from app.db.postgres import async_session_factory
@@ -442,6 +443,17 @@ async def named_case_worker(
 # ---------------------------------------------------------------------------
 
 
+_STATUTE_ACTS: list | None = None
+
+
+async def _statute_acts(db) -> list:
+    """Act names for section-reference parsing; the table only changes on ingest."""
+    global _STATUTE_ACTS
+    if _STATUTE_ACTS is None:
+        _STATUTE_ACTS = await statute_search.load_acts(db)
+    return _STATUTE_ACTS
+
+
 async def statute_worker(
     state: dict,
     embedder: EmbeddingProvider,
@@ -464,44 +476,48 @@ async def statute_worker(
         all_queries = [original_query, *expanded_terms]
 
         async with async_session_factory() as db:
-            from app.models.statute import Statute
-
-            for query_text in all_queries:
-                # Try exact section lookup via PG FTS
-                stmt = (
-                    select(Statute)
-                    .where(Statute.searchable_text.op("@@")(func_websearch_to_tsquery(query_text)))
-                    .limit(10)
+            # Sections the task names outright, then the best keyword matches.
+            # (A plain FTS match on the whole sentence ANDs every word and
+            # found nothing for typical planner queries.)
+            rows: list[dict] = []
+            try:
+                acts = await _statute_acts(db)
+                for query_text in all_queries:
+                    rows += await statute_search.lookup_sections(
+                        db, statute_search.find_section_refs(query_text, acts)
+                    )
+                rows += await statute_search.ranked_search(db, original_query)
+            except Exception as exc:
+                logger.warning("Statute DB lookup failed, using semantic only: %s", exc)
+            for s in rows:
+                results.append(
+                    {
+                        "case_id": f"statute:{s['id']}",
+                        "title": f"{s['act_short_name']} Section {s['section_number']}",
+                        "citation": f"{s['act_short_name']} Section {s['section_number']}",
+                        "section_title": s.get("section_title") or "",
+                        "section_text": (s.get("section_text") or "")[:2000],
+                        "act_name": s["act_name"],
+                        "act_short_name": s["act_short_name"],
+                        "section_number": s["section_number"],
+                        "document_type": s.get("document_type"),
+                        "is_repealed": s.get("is_repealed"),
+                        "replaced_by": s.get("replaced_by"),
+                        "source": "statute_db",
+                    }
                 )
-                try:
-                    db_result = await db.execute(stmt)
-                    for s in db_result.scalars().all():
-                        results.append(
-                            {
-                                "case_id": f"statute:{s.id}",
-                                "title": f"{s.act_short_name} Section {s.section_number}",
-                                "citation": f"{s.act_short_name} Section {s.section_number}",
-                                "section_title": s.section_title or "",
-                                "section_text": s.section_text[:2000],
-                                "act_name": s.act_name,
-                                "act_short_name": s.act_short_name,
-                                "section_number": s.section_number,
-                                "document_type": s.document_type,
-                                "is_repealed": s.is_repealed,
-                                "replaced_by": s.replaced_by,
-                                "source": "statute_db",
-                            }
-                        )
-                except Exception:
-                    pass  # FTS may fail on some queries, fall through to semantic
 
-        # Semantic search in Pinecone for statute chunks
-        query_embedding = await embedder.embed_text(original_query)
-        pinecone_results = await vector_store.search(
-            query_vector=query_embedding,
-            top_k=5,
-            filters={"document_type": {"$in": ["statute", "constitution"]}},
-        )
+        # Semantic search for statute chunks. Only Pinecone has statute vectors;
+        # case_vectors holds case chunks only, so on pgvector this would spend an
+        # embedding request to find nothing.
+        pinecone_results = []
+        if settings.vector_provider == "pinecone":
+            query_embedding = await embedder.embed_text(original_query)
+            pinecone_results = await vector_store.search(
+                query_vector=query_embedding,
+                top_k=5,
+                filters={"document_type": {"$in": ["statute", "constitution"]}},
+            )
         for r in pinecone_results:
             meta = r.metadata if hasattr(r, "metadata") else {}
             results.append(
@@ -562,13 +578,6 @@ async def statute_worker(
         ],
         "process_events": [_worker_found_event("statute", results)],
     }
-
-
-def func_websearch_to_tsquery(query: str) -> object:
-    """Create a websearch_to_tsquery SQL function call."""
-    from sqlalchemy import func
-
-    return func.websearch_to_tsquery("english", query)
 
 
 # ---------------------------------------------------------------------------
