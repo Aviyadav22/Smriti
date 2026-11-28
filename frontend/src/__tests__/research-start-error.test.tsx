@@ -40,7 +40,8 @@ describe("Research agent start errors", () => {
 
   it("keeps the question and shows the error when the request is rejected", async () => {
     // The API rejects before streaming anything (e.g. 422 or rate limit).
-    createAgentSession.mockImplementation(
+    // Once: vitest 4.1 also invokes the mock with no arguments after the test.
+    createAgentSession.mockImplementationOnce(
       (_type: string, _body: unknown, _onEvent: unknown, onError: (e: Error) => void) => {
         queueMicrotask(() => onError(new Error("Rate limit exceeded")));
         return new AbortController();
