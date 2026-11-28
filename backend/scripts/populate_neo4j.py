@@ -110,10 +110,64 @@ def _extract_citation_patterns(cited_str: str) -> list[str]:
     return patterns
 
 
+# Words that differ between how a judgment cites a case and how our titles
+# name it ("& Ors.", "M/s", "Pvt. Ltd."); dropped before comparing parties.
+_PARTY_NOISE = {
+    "the", "m", "s", "ms", "and", "ors", "others", "other", "anr", "another", "etc",
+    "ltd", "limited", "pvt", "private", "co", "lrs", "thr", "through", "d", "dead",
+}
+_VERSUS = re.compile(r"\s+(?:v|vs|versus)\.?\s+", re.IGNORECASE)
+
+
+def _party_key(name: str) -> str:
+    words = re.sub(r"[^a-z ]", " ", name.lower()).split()
+    return " ".join(w for w in words if w not in _PARTY_NOISE)
+
+
+class PartyIndex:
+    """Resolve "A v. B (1974) 1 SCC 242" to a case titled "A versus B".
+
+    Both parties must match (each cited name contained in the title's party
+    name), the match must be unique, and when the citation carries a year the
+    case must be from within a year of it. Strict on purpose: a wrong CITES edge
+    is worse than a missing one.
+    """
+
+    def __init__(self) -> None:
+        self._by_first_word: dict[str, list[tuple[str, str, str, int | None]]] = {}
+
+    def add(self, case_id: str, title: str, year: int | None) -> None:
+        sides = _VERSUS.split(title, maxsplit=1)
+        if len(sides) != 2:
+            return
+        p1, p2 = _party_key(sides[0]), _party_key(sides[1])
+        if p1 and p2:
+            self._by_first_word.setdefault(p1.split()[0], []).append((case_id, p1, p2, year))
+
+    def resolve(self, cited_str: str) -> str | None:
+        sides = _VERSUS.split(cited_str, maxsplit=1)
+        if len(sides) != 2:
+            return None
+        # The second party ends where the citation starts: "B (1974) 1 SCC 242", "B, AIR 1964 SC 859"
+        p1 = _party_key(sides[0])
+        p2 = _party_key(re.split(r"[\[\(,:;]|\bAIR\b|\d", sides[1], maxsplit=1)[0])
+        if len(p1) < 4 or len(p2) < 4:
+            return None
+        year_m = re.search(r"\b(19|20)\d{2}\b", cited_str)
+        year = int(year_m.group(0)) if year_m else None
+        hits = {
+            cid
+            for cid, t1, t2, t_year in self._by_first_word.get(p1.split()[0], [])
+            if p1 in t1 and p2 in t2 and (year is None or t_year is None or abs(t_year - year) <= 1)
+        }
+        return hits.pop() if len(hits) == 1 else None
+
+
 def _resolve_citation(
     cited_str: str,
     citation_map: dict[str, str],
     title_map: dict[str, str],
+    party_index: PartyIndex | None = None,
 ) -> str | None:
     """Try to resolve a cases_cited entry to a case UUID."""
     # 1. Direct match (normalized)
@@ -136,6 +190,10 @@ def _resolve_citation(
         title = title_match.group(1).strip().lower()
         if title in title_map:
             return title_map[title]
+
+    # 4. Party names ("A v. B" against "A versus B")
+    if party_index is not None:
+        return party_index.resolve(cited_str)
 
     return None
 
@@ -188,7 +246,9 @@ async def get_case_count(conn: asyncpg.Connection) -> int:
     return await conn.fetchval("SELECT count(*) FROM cases")
 
 
-async def build_citation_index(conn: asyncpg.Connection) -> tuple[dict[str, str], dict[str, str]]:
+async def build_citation_index(
+    conn: asyncpg.Connection,
+) -> tuple[dict[str, str], dict[str, str], PartyIndex]:
     """Build mappings from citation/title -> case UUID for edge resolution."""
     logger.info("Building citation lookup index from PostgreSQL...")
     citation_map: dict[str, str] = {}
@@ -226,19 +286,21 @@ async def build_citation_index(conn: asyncpg.Connection) -> tuple[dict[str, str]
         logger.debug("case_citation_equivalents table not available")
 
     # Title index for fallback matching
-    rows = await conn.fetch("SELECT id, title FROM cases WHERE title IS NOT NULL")
+    rows = await conn.fetch("SELECT id, title, year FROM cases WHERE title IS NOT NULL")
     title_map: dict[str, str] = {}
+    party_index = PartyIndex()
     for row in rows:
         title = str(row["title"]).strip().lower()
         if title:
             title_map[title] = str(row["id"])
+            party_index.add(str(row["id"]), str(row["title"]), row["year"])
 
     logger.info(
         "Citation index: %d citation entries, %d title entries",
         len(citation_map),
         len(title_map),
     )
-    return citation_map, title_map
+    return citation_map, title_map, party_index
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +396,7 @@ async def batch_create_edges(
     citation_map: dict[str, str],
     title_map: dict[str, str],
     dry_run: bool = False,
+    party_index: PartyIndex | None = None,
 ) -> tuple[int, int]:
     """Create CITES edges between cases with treatment property.
 
@@ -351,7 +414,7 @@ async def batch_create_edges(
             if not citation_str or not isinstance(citation_str, str):
                 continue
 
-            target_id = _resolve_citation(citation_str, citation_map, title_map)
+            target_id = _resolve_citation(citation_str, citation_map, title_map, party_index)
             if target_id and target_id != source_id:
                 edge_key = (source_id, target_id)
                 if edge_key not in seen_edges:
@@ -639,7 +702,7 @@ async def populate(
             return
 
         # Build citation index for edge resolution
-        citation_map, title_map = await build_citation_index(conn)
+        citation_map, title_map, party_index = await build_citation_index(conn)
 
         # Process in batches
         total_nodes = 0
@@ -653,6 +716,7 @@ async def populate(
 
         batch_number = 0
         checkpoint_interval = 10  # Log cumulative progress every N batches
+        cases_for_edges: list[dict] = []
 
         for offset in range(0, total_cases, batch_size):
             batch_start = time.time()
@@ -672,12 +736,10 @@ async def populate(
             created = await batch_create_nodes(driver, database, cases, dry_run=dry_run)
             total_nodes += created
 
-            # Create CITES edges
-            edges_created, unresolved = await batch_create_edges(
-                driver, database, cases, citation_map, title_map, dry_run=dry_run
-            )
-            total_edges += edges_created
-            total_unresolved += unresolved
+            # CITES edges wait until every Case node exists: an edge MATCHes both
+            # ends, so linking to a case in a later batch silently created nothing.
+            cases_for_edges.extend(cases)
+            edges_created = unresolved = 0
 
             # Create Act nodes and INTERPRETS edges
             act_count, act_edge_count = await batch_create_act_nodes(
@@ -731,6 +793,16 @@ async def populate(
                     rate,
                     eta_mins,
                 )
+
+        # Create CITES edges now that all Case nodes exist
+        for i in range(0, len(cases_for_edges), batch_size):
+            edges_created, unresolved = await batch_create_edges(
+                driver, database, cases_for_edges[i : i + batch_size], citation_map, title_map,
+                dry_run=dry_run, party_index=party_index,
+            )
+            total_edges += edges_created
+            total_unresolved += unresolved
+        logger.info("CITES edges: %d created, %d unresolved", total_edges, total_unresolved)
 
         # Update cited_by_count on Neo4j nodes, then sync back to PostgreSQL
         if not dry_run and total_edges > 0:
