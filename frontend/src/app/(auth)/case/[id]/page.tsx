@@ -31,6 +31,7 @@ export default function CaseDetailPage() {
     const [caseData, setCaseData] = useState<CaseDetail | null>(null);
     const [citations, setCitations] = useState<CitationItem[]>([]);
     const [citedBy, setCitedBy] = useState<CitationItem[]>([]);
+    const [citedAuthorities, setCitedAuthorities] = useState<string[]>([]);
     const [similar, setSimilar] = useState<SimilarCase[]>([]);
     const [graphData, setGraphData] = useState<GraphData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -62,7 +63,10 @@ export default function CaseDetailPage() {
                 ]);
                 if (c.status === "fulfilled") setCaseData(c.value);
                 else throw new Error("Case not found");
-                if (cit.status === "fulfilled") setCitations(cit.value.citations);
+                if (cit.status === "fulfilled") {
+                    setCitations(cit.value.citations);
+                    setCitedAuthorities(cit.value.cited_authorities ?? []);
+                }
                 if (cb.status === "fulfilled") setCitedBy(cb.value.cited_by);
                 if (sim.status === "fulfilled") setSimilar(sim.value.similar);
                 if (graph.status === "fulfilled") setGraphData(graph.value);
@@ -266,9 +270,29 @@ export default function CaseDetailPage() {
                                                     ))}
                                                 </div>
                                             ) : (
-                                                <p className="text-xs text-muted-foreground">No citation data available.</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {citedAuthorities.length > 0
+                                                        ? "None of the cases this judgment cites are in Smriti yet. The full list is below."
+                                                        : "No citation data available."}
+                                                </p>
                                             )}
                                         </Card>
+
+                                        {/* Everything the judgment cites, as written (most aren't in the corpus) */}
+                                        {citedAuthorities.length > 0 && (
+                                            <Card className="p-5 rounded-md">
+                                                <h3 className="text-xs uppercase tracking-wider font-medium text-muted-foreground mb-3 flex items-center gap-1.5">
+                                                    <FileText className="h-3 w-3" /> All Authorities Cited in the Judgment ({citedAuthorities.length})
+                                                </h3>
+                                                <ul className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+                                                    {citedAuthorities.map((a, i) => (
+                                                        <li key={i} className="text-sm text-muted-foreground font-[family-name:var(--font-lora)] italic">
+                                                            {a}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </Card>
+                                        )}
 
                                         {/* Cited by */}
                                         <Card className="p-5 rounded-md">

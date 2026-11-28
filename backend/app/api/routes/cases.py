@@ -208,10 +208,14 @@ async def get_citations(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid case_id format")
 
-    # Verify case exists
-    exists = await db.execute(text("SELECT 1 FROM cases WHERE id = :id"), {"id": case_id})
-    if exists.scalar_one_or_none() is None:
+    # Verify case exists; also fetch the judgment's own list of cited authorities.
+    # Most of them aren't in our corpus (foreign, older or High Court cases), so
+    # the graph links only a fraction; the full list keeps the tab useful.
+    result = await db.execute(text("SELECT cases_cited FROM cases WHERE id = :id"), {"id": case_id})
+    found = result.mappings().one_or_none()
+    if found is None:
         raise HTTPException(status_code=404, detail="Case not found")
+    cited_authorities = [c for c in (found.get("cases_cited") or []) if isinstance(c, str) and c.strip()]
 
     graph = get_graph_store()
     try:
@@ -228,7 +232,12 @@ async def get_citations(
     # Enrich with PostgreSQL metadata
     citations = await _enrich_graph_nodes(neighbors, db)
 
-    return {"case_id": case_id, "citations": citations, "total": len(citations)}
+    return {
+        "case_id": case_id,
+        "citations": citations,
+        "total": len(citations),
+        "cited_authorities": cited_authorities,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -419,6 +419,8 @@ export async function getCaseCitations(id: string): Promise<{
     case_id: string;
     citations: CitationItem[];
     total: number;
+    /** Every authority the judgment cites, as written; most aren't in the corpus. */
+    cited_authorities?: string[];
 }> {
     return apiFetch(`/cases/${id}/citations`);
 }

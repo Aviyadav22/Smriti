@@ -241,10 +241,10 @@ class TestGetCitations:
         self, mock_get_graph: MagicMock, app: FastAPI, client: TestClient
     ) -> None:
         """Citations endpoint returns outgoing CITES neighbors."""
-        # First call: existence check (scalar), second call: enrichment query
+        # First call: existence check + cited authorities, second call: enrichment query
         db = _mock_db_multi_execute(
             [
-                {"scalar": 1},  # existence check
+                [{"cases_cited": ["Cited Case Title (2020) 1 SCC 1", "Some Foreign Case [1932] 1 KB 254"]}],
                 [_make_summary_row(_CITED_CASE_ID, "Cited Case Title")],  # enrichment
             ]
         )
@@ -273,6 +273,11 @@ class TestGetCitations:
         assert body["total"] == 1
         assert len(body["citations"]) == 1
         assert body["citations"][0]["case_id"] == _CITED_CASE_ID
+        # The judgment's full list, including authorities not in the corpus
+        assert body["cited_authorities"] == [
+            "Cited Case Title (2020) 1 SCC 1",
+            "Some Foreign Case [1932] 1 KB 254",
+        ]
         assert body["citations"][0]["relationship"] == "CITES"
 
         mock_graph.get_neighbors.assert_awaited_once_with(
