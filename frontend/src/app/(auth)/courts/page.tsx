@@ -237,7 +237,7 @@ export default function CourtsPage() {
                                 <Users className="h-4 w-4" />
                                 <span className="text-xs uppercase tracking-wider">Total Judges</span>
                             </div>
-                            <p className="text-2xl font-semibold">{stats.top_judges.length}</p>
+                            <p className="text-2xl font-semibold">{stats.total_judges ?? stats.top_judges.length}</p>
                         </div>
                     </div>
 

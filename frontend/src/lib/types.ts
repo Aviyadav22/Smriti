@@ -360,6 +360,8 @@ export interface CourtStats {
     case_types: Record<string, number>;
     disposal_patterns: Record<string, number>;
     top_judges: CourtJudge[];
+    /** Distinct judges on the court; top_judges is capped at 20. */
+    total_judges?: number;
 }
 
 // ---------------------------------------------------------------------------

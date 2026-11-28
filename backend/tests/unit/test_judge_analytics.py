@@ -468,6 +468,7 @@ class TestGetCourtStats:
             type_rows,
             disposal_rows,
             judge_rows,
+            237,  # total_judges (distinct, uncapped)
         )
 
         service = JudgeAnalyticsService(session)
@@ -482,6 +483,7 @@ class TestGetCourtStats:
         assert result.disposal_patterns == {"Allowed": 90, "Dismissed": 70}
         assert len(result.top_judges) == 2
         assert result.top_judges[0] == {"judge": "Justice A", "cases": 50}
+        assert result.total_judges == 237
 
     @pytest.mark.asyncio
     async def test_court_stats_empty_subcategories(self) -> None:
@@ -495,6 +497,7 @@ class TestGetCourtStats:
             [],  # case_types
             [],  # disposal_patterns
             [],  # top_judges
+            0,  # total_judges
         )
 
         service = JudgeAnalyticsService(session)

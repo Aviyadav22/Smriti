@@ -76,6 +76,7 @@ class CourtStats:
     case_types: dict[str, int] = field(default_factory=dict)
     disposal_patterns: dict[str, int] = field(default_factory=dict)
     top_judges: list[dict[str, int]] = field(default_factory=list)
+    total_judges: int = 0  # all distinct judges; top_judges is capped at 20
 
 
 class JudgeAnalyticsService:
@@ -594,6 +595,18 @@ class JudgeAnalyticsService:
         judge_result = await self._session.execute(judge_query)
         top_judges = [{"judge": row.judge_name, "cases": row.count} for row in judge_result.all()]
 
+        judges_on_court = (
+            select(func.unnest(Case.judge).label("judge_name"))
+            .where(Case.court == court)
+            .where(Case.judge.isnot(None))
+            .subquery()
+        )
+        total_judges = (
+            await self._session.execute(
+                select(func.count(func.distinct(judges_on_court.c.judge_name)))
+            )
+        ).scalar_one_or_none() or 0
+
         return CourtStats(
             court=court,
             total_cases=total_cases,
@@ -601,6 +614,7 @@ class JudgeAnalyticsService:
             case_types=case_types,
             disposal_patterns=disposal_patterns,
             top_judges=top_judges,
+            total_judges=total_judges,
         )
 
 
