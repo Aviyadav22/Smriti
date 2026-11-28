@@ -554,6 +554,40 @@ class TestGetPdf:
 
         app.dependency_overrides.clear()
 
+    @patch("app.api.routes.cases.get_storage")
+    def test_get_pdf_falls_back_to_public_dataset_copy(
+        self, mock_get_storage: MagicMock, app: FastAPI, client: TestClient
+    ) -> None:
+        """A dev-machine path that isn't on this server falls back to the fetched copy."""
+        db = _mock_db_execute(
+            [
+                {
+                    "pdf_storage_path": "D:\\Startup\\Smriti\\data\\pdfs\\case.pdf",
+                    "s3_source_path": "1960_2_130_146",
+                    "title": "Old Case",
+                }
+            ]
+        )
+
+        async def _override_db():
+            yield db
+
+        app.dependency_overrides[get_db] = _override_db
+
+        async def retrieve(path: str) -> bytes:
+            if path == "sc/1960/1960_2_130_146_EN.pdf":
+                return b"%PDF-1.4 fetched"
+            raise FileNotFoundError(path)
+
+        mock_storage = AsyncMock()
+        mock_storage.retrieve.side_effect = retrieve
+        mock_get_storage.return_value = mock_storage
+
+        resp = client.get(f"/api/v1/cases/{_CASE_ID}/pdf")
+        assert resp.status_code == 200
+        assert resp.content == b"%PDF-1.4 fetched"
+        app.dependency_overrides.clear()
+
     def test_get_pdf_case_not_found(self, app: FastAPI, client: TestClient) -> None:
         """PDF on nonexistent case returns 404."""
         db = _mock_db_execute([])
@@ -619,3 +653,11 @@ class TestGetPdf:
         assert "PDF file not found" in resp.json()["detail"]
 
         app.dependency_overrides.clear()
+
+
+def test_sc_pdf_key():
+    from app.api.routes.cases import sc_pdf_key
+
+    assert sc_pdf_key("2024_9_770_790") == "sc/2024/2024_9_770_790_EN.pdf"
+    assert sc_pdf_key(None) is None
+    assert sc_pdf_key("../etc/passwd") is None

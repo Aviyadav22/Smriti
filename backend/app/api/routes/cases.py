@@ -144,6 +144,17 @@ async def get_case_summary(
 # ---------------------------------------------------------------------------
 
 
+def sc_pdf_key(s3_source_path: str | None) -> str | None:
+    """Local storage key for a Supreme Court judgment from the public AWS dataset.
+
+    s3_source_path is the dataset's file stem, e.g. "1960_2_130_146", whose PDF
+    is data/pdf/year=1960/english/1960_2_130_146_EN.pdf in that bucket.
+    """
+    if not s3_source_path or not re.fullmatch(r"\d{4}_[\w]+", s3_source_path):
+        return None
+    return f"sc/{s3_source_path[:4]}/{s3_source_path}_EN.pdf"
+
+
 @router.get("/{case_id}/pdf", dependencies=[Depends(rate_limit_dependency("30/minute"))])
 async def get_case_pdf(
     case_id: str,
@@ -156,7 +167,7 @@ async def get_case_pdf(
         raise HTTPException(status_code=422, detail="Invalid case_id format")
 
     result = await db.execute(
-        text("SELECT pdf_storage_path, title FROM cases WHERE id = :id"),
+        text("SELECT pdf_storage_path, s3_source_path, title FROM cases WHERE id = :id"),
         {"id": case_id},
     )
     row = result.mappings().one_or_none()
@@ -164,20 +175,23 @@ async def get_case_pdf(
     if row is None:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    pdf_path = row.get("pdf_storage_path")
-    if not pdf_path:
+    # pdf_storage_path is wherever ingestion ran (often a dev machine's disk);
+    # sc_pdf_key() is where scripts/fetch_sc_pdfs.py puts the public copy.
+    candidates = [p for p in (row.get("pdf_storage_path"), sc_pdf_key(row.get("s3_source_path"))) if p]
+    if not candidates:
         raise HTTPException(status_code=404, detail="No PDF available for this case")
 
     storage = get_storage()
-    try:
-        pdf_bytes = await storage.retrieve(pdf_path)
-    except Exception as exc:
-        import logging
-
-        logging.getLogger(__name__).error(
-            "PDF retrieve failed for %s (type=%s): %s", pdf_path, type(exc).__name__, exc
-        )
-        raise HTTPException(status_code=404, detail="PDF file not found in storage") from exc
+    pdf_bytes = None
+    for pdf_path in candidates:
+        try:
+            pdf_bytes = await storage.retrieve(pdf_path)
+            break
+        except Exception as exc:
+            logger.info("PDF not at %s (%s)", pdf_path, type(exc).__name__)
+    if pdf_bytes is None:
+        logger.error("PDF retrieve failed for case %s; tried %s", case_id, candidates)
+        raise HTTPException(status_code=404, detail="PDF file not found in storage")
 
     raw_title = row.get("title", case_id) or case_id
     safe_title = re.sub(r"[^\w\s\-.]", "", str(raw_title))[:100]

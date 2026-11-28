@@ -26,10 +26,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import asyncpg  # noqa: E402
-import httpx  # noqa: E402
-
-from backfill_missing_vectors import main as backfill  # noqa: E402
+import asyncpg
+import httpx
+from backfill_missing_vectors import main as backfill
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("backfill_daily")
@@ -69,7 +68,7 @@ async def requests_left() -> int | None:
 
 
 def seconds_until_reset() -> float:
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     tomorrow = (now + dt.timedelta(days=1)).replace(hour=0, minute=5, second=0, microsecond=0)
     return (tomorrow - now).total_seconds()
 
