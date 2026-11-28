@@ -38,7 +38,7 @@ dependencies = [
     "cryptography>=46.0.6",       # CVE-2024-12797, CVE-2026-26007, CVE-2026-34073
 
     # AI/ML
-    "google-genai==1.5.0",
+    "google-genai>=1.5.0,<2",  # 1.5 capped websockets <15; langsmith>=0.8.18 needs >=15
     "pinecone==5.4.2",
     "cohere==5.13.3",
     "neo4j==5.27.0",
@@ -48,6 +48,8 @@ dependencies = [
     # langgraph-checkpoint to >=4.0.0 for CVE-2025-64439 (RCE via JSON
     # fallback) + CVE-2026-27794 (RCE via pickle cache fallback).
     "langgraph>=1.0.10,<2.0",
+    # Transitive via langchain-core; pinned up for CVE-2026-59152.
+    "langsmith>=0.8.18",
     "langgraph-checkpoint-postgres>=3.0.0",
     "psycopg[binary]==3.3.3",
     "psycopg-pool==3.3.0",
@@ -70,7 +72,7 @@ dependencies = [
     "scipy>=1.11",  # required by networkx.pagerank()
 
     # Data
-    "pyarrow==18.1.0",
+    "pyarrow>=23.0.1,<24",  # PYSEC-2026-113
     "pandas==2.2.3",
 
     # Settings & Validation

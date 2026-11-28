@@ -57,9 +57,9 @@ def _is_retryable(exc: BaseException) -> bool:
         if limit_resets_later(exc.response):
             return False
         return exc.response.status_code == 429 or exc.response.status_code >= 500
-    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+    if isinstance(exc, asyncio.TimeoutError | TimeoutError):
         return False
-    return isinstance(exc, (EmptyResponseError, httpx.TransportError, ConnectionError, OSError))
+    return isinstance(exc, EmptyResponseError | httpx.TransportError | ConnectionError | OSError)
 
 
 # Free models allow 20 requests/minute, so back off for up to a minute.

@@ -25,8 +25,8 @@ def generate_audio(self, case_id: str, language: str = "en") -> dict:
 
 async def _generate_audio_async(case_id: str, language: str) -> dict:
     """Async implementation of audio generation."""
-    from app.core.legal.prompts import AUDIO_SUMMARY_SYSTEM, AUDIO_SUMMARY_USER
     from app.core.dependencies import get_llm
+    from app.core.legal.prompts import AUDIO_SUMMARY_SYSTEM, AUDIO_SUMMARY_USER
     from app.core.providers.storage.local_storage import LocalStorage
     from app.db.postgres import get_async_session
 

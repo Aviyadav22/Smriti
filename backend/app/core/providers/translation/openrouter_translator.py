@@ -10,7 +10,8 @@ from app.core.providers.translation.gemini_translator import GeminiTranslator
 class OpenRouterTranslator(GeminiTranslator):
     """Translation provider using the OpenRouter fast model."""
 
-    def __init__(self, model: str | None = None) -> None:  # noqa: D107 — no Gemini client needed
+    def __init__(self, model: str | None = None) -> None:
+        # No Gemini client: everything goes through _complete().
         self._llm = OpenRouterLLM(model=model or settings.openrouter_flash_model)
 
     async def _complete(self, prompt: str) -> str | None:
