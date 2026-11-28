@@ -1190,13 +1190,16 @@ async def graph_community_worker(
         redis = None
 
     try:
-        # Strategy 1: Semantic search for relevant communities
-        query_embedding = await embedder.embed_text(task["nl_query"])
-        pinecone_results = await vector_store.search(
-            query_vector=query_embedding,
-            top_k=5,
-            filters={"document_type": "community"},
-        )
+        # Strategy 1: Semantic search for relevant communities (community
+        # summaries are only embedded on Pinecone; see build_citation_communities)
+        pinecone_results = []
+        if settings.vector_provider == "pinecone":
+            query_embedding = await embedder.embed_text(task["nl_query"])
+            pinecone_results = await vector_store.search(
+                query_vector=query_embedding,
+                top_k=5,
+                filters={"document_type": "community"},
+            )
         for r in pinecone_results:
             meta = r.metadata if hasattr(r, "metadata") else {}
             comm_id = meta.get("community_id")

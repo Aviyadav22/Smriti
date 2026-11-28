@@ -239,8 +239,13 @@ async def build_communities(
     }
     await store_communities(summaries, case_to_community, graph_store)
 
-    # Step 5: Embed summaries
-    await embed_community_summaries(summaries, embedder, vector_store)
+    # Step 5: Embed summaries. Only Pinecone can hold them: case_vectors rows
+    # must belong to a case, and the research worker finds communities through
+    # BELONGS_TO from the cases it already has.
+    from app.core.config import settings
+
+    if settings.vector_provider == "pinecone":
+        await embed_community_summaries(summaries, embedder, vector_store)
 
     logger.info("Community build complete: %d communities", len(summaries))
 

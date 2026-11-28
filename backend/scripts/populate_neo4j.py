@@ -843,6 +843,20 @@ async def populate(
                 stats["authored_by_edges"],
             )
 
+            # Full-text indexes the app queries (case_search, principle_text).
+            # Nothing else creates them, and the research agent errors without.
+            from app.core.providers.graph.neo4j_store import Neo4jGraph
+
+            store = Neo4jGraph()
+            try:
+                await store.ensure_constraints()
+            finally:
+                await store.close()
+            logger.info(
+                "Rebuilding cleared any Community nodes; re-run "
+                "scripts/build_citation_communities.py for the research agent."
+            )
+
     finally:
         await conn.close()
         await driver.close()
